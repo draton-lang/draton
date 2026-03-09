@@ -8,7 +8,7 @@ pub mod types;
 pub use expr::{BinOp, Expr, FStrPart, MatchArm, MatchArmBody, UnOp};
 pub use item::{
     ClassDef, ClassMember, ConstDef, EnumDef, ErrorDef, ExternBlock, FieldDef, FnDef, ImportDef,
-    ImportItem, InterfaceDef, Item, Param, Program, TypeBlock, TypeMember,
+    ImportItem, InterfaceDef, Item, LayerDef, Param, Program, TypeBlock, TypeMember,
 };
 pub use stmt::{
     AssignOp, AssignStmt, Block, ElseBranch, ForStmt, GcConfigEntry, GcConfigStmt, IfCompileStmt,

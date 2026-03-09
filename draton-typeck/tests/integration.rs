@@ -79,3 +79,37 @@ class User {
         other => panic!("unexpected stmt: {other:?}"),
     }
 }
+
+#[test]
+fn flattens_layer_methods_into_class_scope() {
+    let result = parse_and_check(
+        r#"
+class User {
+    let name: String
+
+    layer Accessors {
+        fn getName() { self.name }
+    }
+
+    fn read() {
+        self.getName()
+    }
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "type errors: {:?}", result.errors);
+    let TypedItem::Class(class_def) = &result.typed_program.items[0] else {
+        panic!("expected class");
+    };
+    assert_eq!(class_def.methods.len(), 2);
+    let read_method = class_def
+        .methods
+        .iter()
+        .find(|method| method.name == "read")
+        .expect("read method");
+    let body = read_method.body.as_ref().expect("body");
+    match &body.stmts[0].kind {
+        TypedStmtKind::Expr(expr) => assert_eq!(expr.ty, Type::String),
+        other => panic!("unexpected stmt: {other:?}"),
+    }
+}

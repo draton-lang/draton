@@ -46,6 +46,7 @@ pub enum TokenKind {
     In,
     Match,
     Class,
+    Layer,
     Extends,
     Implements,
     Interface,

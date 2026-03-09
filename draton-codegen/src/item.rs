@@ -63,6 +63,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 TypedItem::Class(class_def) => {
                     self.predeclare_constructor(&class_def.name)?;
+                    // Layer methods are already flattened into the typed class method list.
                     for method in &class_def.methods {
                         self.predeclare_function(method, Some(&class_def.name))?;
                     }
@@ -139,6 +140,7 @@ impl<'ctx> CodeGen<'ctx> {
             | TypedItem::OomHandler(function) => self.emit_function(function, None),
             TypedItem::Class(class_def) => {
                 self.emit_constructor(class_def)?;
+                // Layer methods are already flattened into the typed class method list.
                 for method in &class_def.methods {
                     self.emit_function(method, Some(&class_def.name))?;
                 }

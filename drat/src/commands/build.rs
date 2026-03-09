@@ -458,6 +458,26 @@ fn render_parse_errors(path: &Path, source: &str, errors: &[ParseError]) -> Stri
                 Vec::new(),
                 Some("kiem tra lai cu phap bieu thuc".to_string()),
             ),
+            ParseError::NestedLayerNotAllowed { line, col } => render_diagnostic(
+                "E010",
+                "nested layer not allowed",
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("layers khong duoc long ben trong layer khac".to_string()),
+            ),
+            ParseError::LayerOutsideClass { line, col } => render_diagnostic(
+                "E011",
+                "layer outside class",
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("layer chi duoc khai bao ben trong than class".to_string()),
+            ),
         })
         .collect::<Vec<_>>()
         .join("\n\n")

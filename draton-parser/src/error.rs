@@ -18,4 +18,10 @@ pub enum ParseError {
 
     #[error("invalid expression at line {line}, col {col}")]
     InvalidExpr { line: usize, col: usize },
+
+    #[error("nested layer not allowed at line {line}, col {col}")]
+    NestedLayerNotAllowed { line: usize, col: usize },
+
+    #[error("layer outside class at line {line}, col {col}")]
+    LayerOutsideClass { line: usize, col: usize },
 }

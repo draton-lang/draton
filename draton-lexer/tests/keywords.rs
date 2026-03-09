@@ -3,7 +3,7 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn lexes_all_keywords() {
-    let source = "let mut fn return if else for while in match class extends implements interface enum error pub import as spawn chan const lambda";
+    let source = "let mut fn return if else for while in match class layer extends implements interface enum error pub import as spawn chan const lambda";
     let result = Lexer::new(source).tokenize();
 
     assert_eq!(result.errors, Vec::new());
@@ -25,6 +25,7 @@ fn lexes_all_keywords() {
             TokenKind::In,
             TokenKind::Match,
             TokenKind::Class,
+            TokenKind::Layer,
             TokenKind::Extends,
             TokenKind::Implements,
             TokenKind::Interface,
@@ -73,7 +74,7 @@ fn lexes_all_at_keywords() {
 
 #[test]
 fn does_not_confuse_keyword_prefixes_with_keywords() {
-    let source = "letter mutable fnord returning iffy elsewhere formal whiley inside matchbox classy extendsable implementsort interfaceable enumerate erroring public imports assert spawnable channel constant lambdax @typewriter";
+    let source = "letter mutable fnord returning iffy elsewhere formal whiley inside matchbox classy layered extendsable implementsort interfaceable enumerate erroring public imports assert spawnable channel constant lambdax @typewriter";
     let result = Lexer::new(source).tokenize();
 
     assert_eq!(result.errors, Vec::new());
@@ -84,7 +85,7 @@ fn does_not_confuse_keyword_prefixes_with_keywords() {
             .map(|token| token.kind)
             .collect::<Vec<_>>(),
         {
-            let mut expected = vec![TokenKind::Ident; 23];
+            let mut expected = vec![TokenKind::Ident; 24];
             expected.extend([TokenKind::At, TokenKind::Ident, TokenKind::Eof]);
             expected
         }

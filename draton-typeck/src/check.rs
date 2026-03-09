@@ -163,20 +163,24 @@ impl TypeChecker {
             .iter()
             .filter_map(|member| match member {
                 ClassMember::Field(field) => Some(self.infer_class_field(class_def, field)),
-                ClassMember::Method(_) => None,
+                ClassMember::Method(_) | ClassMember::Layer(_) => None,
             })
             .collect::<Vec<_>>();
 
-        let methods = class_def
-            .members
-            .iter()
-            .filter_map(|member| match member {
-                ClassMember::Field(_) => None,
+        let mut methods = Vec::new();
+        for member in &class_def.members {
+            match member {
+                ClassMember::Field(_) => {}
                 ClassMember::Method(method) => {
-                    Some(self.infer_fn_item(method, Some(&class_def.name)))
+                    methods.push(self.infer_fn_item(method, Some(&class_def.name)));
                 }
-            })
-            .collect::<Vec<_>>();
+                ClassMember::Layer(layer) => {
+                    for method in &layer.methods {
+                        methods.push(self.infer_fn_item(method, Some(&class_def.name)));
+                    }
+                }
+            }
+        }
 
         self.env.pop_scope();
         let _ = self.current_class.pop();
@@ -1447,22 +1451,37 @@ impl TypeChecker {
                         .map(|hint| self.type_from_annotation(hint))
                         .unwrap_or_else(|| self.fresh_var()),
                 )),
-                ClassMember::Method(_) => None,
+                ClassMember::Method(_) | ClassMember::Layer(_) => None,
             })
             .collect::<HashMap<_, _>>();
         self.class_fields.insert(class_def.name.clone(), fields);
 
         let mut methods = HashMap::new();
         for member in &class_def.members {
-            if let ClassMember::Method(method) = member {
-                let ty = self.function_placeholder(method);
-                methods.insert(
-                    method.name.clone(),
-                    Scheme {
-                        quantified: Vec::new(),
-                        ty,
-                    },
-                );
+            match member {
+                ClassMember::Method(method) => {
+                    let ty = self.function_placeholder(method);
+                    methods.insert(
+                        method.name.clone(),
+                        Scheme {
+                            quantified: Vec::new(),
+                            ty,
+                        },
+                    );
+                }
+                ClassMember::Layer(layer) => {
+                    for method in &layer.methods {
+                        let ty = self.function_placeholder(method);
+                        methods.insert(
+                            method.name.clone(),
+                            Scheme {
+                                quantified: Vec::new(),
+                                ty,
+                            },
+                        );
+                    }
+                }
+                ClassMember::Field(_) => {}
             }
         }
         self.class_methods.insert(class_def.name.clone(), methods);

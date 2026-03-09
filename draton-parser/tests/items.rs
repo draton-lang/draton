@@ -1,6 +1,6 @@
 use draton_ast::{ClassMember, Item, TypeMember};
 use draton_lexer::Lexer;
-use draton_parser::Parser;
+use draton_parser::{ParseError, Parser};
 use pretty_assertions::assert_eq;
 
 fn parse_program(source: &str) -> draton_parser::ParseResult {
@@ -83,5 +83,93 @@ import {
     );
     assert!(
         matches!(&result.program.items[1], Item::Extern(ext) if ext.abi == "C" && ext.functions.len() == 2)
+    );
+}
+
+#[test]
+fn parses_class_with_layers() {
+    let source = r#"
+class UserService {
+    layer Validation {
+        fn validateName(name) { Ok(()) }
+    }
+    layer Persistence {
+        pub fn save(user) { Ok(()) }
+    }
+}
+"#;
+    let result = parse_program(source);
+    assert!(
+        result.errors.is_empty(),
+        "parser errors: {:?}",
+        result.errors
+    );
+
+    let Item::Class(class_def) = &result.program.items[0] else {
+        panic!("expected class item");
+    };
+    let layers = class_def
+        .members
+        .iter()
+        .filter_map(|member| match member {
+            ClassMember::Layer(layer) => Some(layer),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(layers.len(), 2);
+    assert_eq!(layers[0].name, "Validation");
+    assert_eq!(layers[0].methods.len(), 1);
+    assert_eq!(layers[1].name, "Persistence");
+    assert!(layers[1].methods[0].is_pub);
+}
+
+#[test]
+fn reports_nested_layer_error() {
+    let source = r#"
+class Foo {
+    layer Outer {
+        layer Inner { }
+    }
+}
+"#;
+    let result = parse_program(source);
+    assert!(result
+        .errors
+        .iter()
+        .any(|error| matches!(error, ParseError::NestedLayerNotAllowed { .. })));
+}
+
+#[test]
+fn reports_layer_outside_class_error() {
+    let source = r#"
+layer Validation {
+    fn validate() { }
+}
+"#;
+    let result = parse_program(source);
+    assert!(result
+        .errors
+        .iter()
+        .any(|error| matches!(error, ParseError::LayerOutsideClass { .. })));
+}
+
+#[test]
+fn parses_calls_to_layer_methods_on_self() {
+    let source = r#"
+class Foo {
+    layer A {
+        fn bar() { 42 }
+    }
+
+    fn baz() {
+        self.bar()
+    }
+}
+"#;
+    let result = parse_program(source);
+    assert!(
+        result.errors.is_empty(),
+        "parser errors: {:?}",
+        result.errors
     );
 }

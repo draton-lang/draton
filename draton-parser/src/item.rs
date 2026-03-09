@@ -1,6 +1,6 @@
 use draton_ast::{
     ClassDef, ClassMember, ConstDef, EnumDef, ErrorDef, ExternBlock, FieldDef, FnDef, ImportDef,
-    ImportItem, InterfaceDef, Item, Param, TypeBlock, TypeExpr, TypeMember,
+    ImportItem, InterfaceDef, Item, LayerDef, Param, TypeBlock, TypeExpr, TypeMember,
 };
 use draton_lexer::TokenKind;
 
@@ -15,6 +15,15 @@ impl Parser {
         let item = match self.current_kind() {
             TokenKind::Fn => self.parse_fn_def(is_pub, true).map(Item::Fn),
             TokenKind::Class => self.parse_class_def().map(Item::Class),
+            TokenKind::Layer => {
+                let token = self.current_token().clone();
+                self.errors.push(crate::ParseError::LayerOutsideClass {
+                    line: token.span.line,
+                    col: token.span.col,
+                });
+                self.skip_layer_block();
+                None
+            }
             TokenKind::Interface => self.parse_interface_def().map(Item::Interface),
             TokenKind::Enum => self.parse_enum_def().map(Item::Enum),
             TokenKind::Error => self.parse_error_def().map(Item::Error),
@@ -162,6 +171,21 @@ impl Parser {
                         self.synchronize_stmt();
                     }
                 }
+                TokenKind::Pub => {
+                    self.advance();
+                    if let Some(method) = self.parse_fn_def(true, true) {
+                        members.push(ClassMember::Method(method));
+                    } else {
+                        self.synchronize_stmt();
+                    }
+                }
+                TokenKind::Layer => {
+                    if let Some(layer) = self.parse_layer() {
+                        members.push(ClassMember::Layer(layer));
+                    } else {
+                        self.synchronize_stmt();
+                    }
+                }
                 _ => {
                     let token = self.current_token().clone();
                     self.error_unexpected(&token, "class member");
@@ -199,6 +223,92 @@ impl Parser {
             type_hint,
             span: self.merge_spans(start, end),
         })
+    }
+
+    fn parse_layer(&mut self) -> Option<LayerDef> {
+        let start = self.token_span();
+        if !self.expect(TokenKind::Layer, "layer") {
+            return None;
+        }
+
+        let (name, _) = self.consume_ident("layer name")?;
+        if !self.expect(TokenKind::LBrace, "{") {
+            return None;
+        }
+
+        let mut methods = Vec::new();
+        while !self.is_eof() && !self.check(TokenKind::RBrace) {
+            self.skip_doc_comments();
+            match self.current_kind() {
+                TokenKind::Fn => {
+                    if let Some(method) = self.parse_fn_def(false, true) {
+                        methods.push(method);
+                    } else {
+                        self.synchronize_stmt();
+                    }
+                }
+                TokenKind::Pub => {
+                    self.advance();
+                    if let Some(method) = self.parse_fn_def(true, true) {
+                        methods.push(method);
+                    } else {
+                        self.synchronize_stmt();
+                    }
+                }
+                TokenKind::Layer => {
+                    let token = self.current_token().clone();
+                    self.errors.push(crate::ParseError::NestedLayerNotAllowed {
+                        line: token.span.line,
+                        col: token.span.col,
+                    });
+                    self.skip_layer_block();
+                }
+                _ => {
+                    let token = self.current_token().clone();
+                    self.error_unexpected(&token, "layer method");
+                    self.synchronize_stmt();
+                }
+            }
+        }
+
+        let end = self.token_span();
+        let _ = self.expect(TokenKind::RBrace, "}");
+        Some(LayerDef {
+            name,
+            methods,
+            span: self.merge_spans(start, end),
+        })
+    }
+
+    fn skip_layer_block(&mut self) {
+        if !self.match_kind(TokenKind::Layer) {
+            return;
+        }
+
+        if matches!(self.current_kind(), TokenKind::Ident) {
+            self.advance();
+        }
+
+        if !self.match_kind(TokenKind::LBrace) {
+            return;
+        }
+
+        let mut depth = 1usize;
+        while depth > 0 && !self.is_eof() {
+            match self.current_kind() {
+                TokenKind::LBrace => {
+                    depth += 1;
+                    self.advance();
+                }
+                TokenKind::RBrace => {
+                    depth -= 1;
+                    self.advance();
+                }
+                _ => {
+                    self.advance();
+                }
+            }
+        }
     }
 
     fn parse_interface_def(&mut self) -> Option<InterfaceDef> {

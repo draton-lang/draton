@@ -71,6 +71,16 @@ pub enum ClassMember {
     Field(FieldDef),
     /// A method definition.
     Method(FnDef),
+    /// A named group of class methods.
+    Layer(LayerDef),
+}
+
+/// A named group of methods within a class.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerDef {
+    pub name: String,
+    pub methods: Vec<FnDef>,
+    pub span: Span,
 }
 
 /// A class field definition.

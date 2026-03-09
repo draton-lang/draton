@@ -547,6 +547,7 @@ impl<'a> Lexer<'a> {
             "in" => TokenKind::In,
             "match" => TokenKind::Match,
             "class" => TokenKind::Class,
+            "layer" => TokenKind::Layer,
             "extends" => TokenKind::Extends,
             "implements" => TokenKind::Implements,
             "interface" => TokenKind::Interface,
