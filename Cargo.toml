@@ -1,0 +1,3 @@
+[workspace]
+members = ["draton-lexer"]
+resolver = "2"
