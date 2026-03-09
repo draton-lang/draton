@@ -18,7 +18,6 @@ fn parse_and_check(source: &str) -> draton_typeck::TypeCheckResult {
 fn propagates_result_error_type_through_nullish() {
     let result = parse_and_check(
         r#"
-@type { fn getUser() -> Result[String, String] }
 fn getUser() { Ok("alice") }
 fn load() {
     let user = getUser() ?? "missing"

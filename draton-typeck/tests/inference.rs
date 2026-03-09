@@ -65,7 +65,7 @@ fn main() {
     );
     assert!(result.errors.is_empty(), "type errors: {:?}", result.errors);
     let TypedItem::Fn(add_fn) = &result.typed_program.items[1] else {
-        panic!("expected add fn");
+        panic!("expected add function");
     };
     assert_eq!(
         add_fn.ty,
@@ -73,7 +73,7 @@ fn main() {
     );
 
     let TypedItem::Fn(main_fn) = &result.typed_program.items[2] else {
-        panic!("expected main fn");
+        panic!("expected main function");
     };
     let body = main_fn.body.as_ref().expect("body");
     match &body.stmts[0].kind {
@@ -102,6 +102,27 @@ fn main() {
             }
             other => panic!("unexpected expr: {other:?}"),
         },
+        other => panic!("unexpected stmt: {other:?}"),
+    }
+}
+
+#[test]
+fn infers_function_without_type_block_from_usage() {
+    let result = parse_and_check(
+        r#"
+fn add(a, b) { a + b }
+fn main() {
+    let sum = add(1, 2)
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "type errors: {:?}", result.errors);
+    let TypedItem::Fn(main_fn) = &result.typed_program.items[1] else {
+        panic!("expected main function");
+    };
+    let body = main_fn.body.as_ref().expect("body");
+    match &body.stmts[0].kind {
+        TypedStmtKind::Let(let_stmt) => assert_eq!(let_stmt.ty, Type::Int),
         other => panic!("unexpected stmt: {other:?}"),
     }
 }

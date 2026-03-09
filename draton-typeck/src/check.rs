@@ -378,16 +378,6 @@ impl TypeChecker {
             self.env.define(&function.name, scheme.clone());
         }
 
-        if scheme.quantified.is_empty()
-            && !free_type_vars(&self.apply_subst(full_ty.clone())).is_empty()
-        {
-            self.errors.push(TypeError::CannotInfer {
-                name: function.name.clone(),
-                line: function.span.line,
-                col: function.span.col,
-            });
-        }
-
         TypedFnDef {
             is_pub: function.is_pub,
             name: function.name.clone(),
