@@ -1,3 +1,9 @@
 [workspace]
-members = ["draton-lexer", "draton-ast", "draton-parser", "draton-typeck"]
+members = [
+    "draton-lexer",
+    "draton-ast",
+    "draton-parser",
+    "draton-typeck",
+    "draton-codegen",
+]
 resolver = "2"

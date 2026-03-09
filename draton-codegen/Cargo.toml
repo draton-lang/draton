@@ -1,0 +1,15 @@
+[package]
+name = "draton-codegen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+draton-ast = { path = "../draton-ast" }
+draton-typeck = { path = "../draton-typeck" }
+inkwell = { version = "0.4", features = ["llvm14-0"] }
+thiserror = "1"
+
+[dev-dependencies]
+draton-lexer = { path = "../draton-lexer" }
+draton-parser = { path = "../draton-parser" }
+pretty_assertions = "1"
