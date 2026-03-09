@@ -1,0 +1,14 @@
+[package]
+name = "draton-typeck"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+draton-ast = { path = "../draton-ast" }
+thiserror = "1"
+im = "15"
+
+[dev-dependencies]
+pretty_assertions = "1"
+draton-lexer = { path = "../draton-lexer" }
+draton-parser = { path = "../draton-parser" }
