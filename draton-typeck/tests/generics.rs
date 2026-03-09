@@ -82,3 +82,24 @@ fn main() {
         other => panic!("unexpected stmt: {other:?}"),
     }
 }
+
+#[test]
+fn infers_open_row_type_from_field_access_without_annotations() {
+    let result = parse_and_check(
+        r#"
+fn getName(x) { x.name }
+"#,
+    );
+    assert!(result.errors.is_empty(), "type errors: {:?}", result.errors);
+    let TypedItem::Fn(get_name) = &result.typed_program.items[0] else {
+        panic!("expected function");
+    };
+    match &get_name.params[0].ty {
+        Type::Row { fields, rest } => {
+            let field_ty = fields.get("name").expect("row field");
+            assert_eq!(field_ty, &get_name.ret_type);
+            assert!(rest.is_some(), "expected open row");
+        }
+        other => panic!("expected row type, got {other:?}"),
+    }
+}

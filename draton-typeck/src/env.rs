@@ -125,6 +125,15 @@ fn substitute_type(ty: &Type, replacements: &HashMap<u32, Type>) -> Type {
                 .map(|arg| substitute_type(arg, replacements))
                 .collect(),
         ),
+        Type::Row { fields, rest } => Type::Row {
+            fields: fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), substitute_type(ty, replacements)))
+                .collect(),
+            rest: rest
+                .as_ref()
+                .map(|rest| Box::new(substitute_type(rest, replacements))),
+        },
         Type::Pointer(inner) => Type::Pointer(Box::new(substitute_type(inner, replacements))),
         other => other.clone(),
     }

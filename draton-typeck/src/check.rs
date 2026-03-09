@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use draton_ast::{
@@ -10,7 +10,7 @@ use draton_ast::{
 
 use crate::env::{Scheme, TypeEnv};
 use crate::error::TypeError;
-use crate::infer::{free_type_vars, free_type_vars_in_env};
+use crate::infer::{free_type_vars, free_type_vars_in_env, Substitution};
 use crate::typed_ast::{
     Type, TypedAssignStmt, TypedBlock, TypedClassDef, TypedConstDef, TypedElseBranch, TypedEnumDef,
     TypedErrorDef, TypedExpr, TypedExprKind, TypedExternBlock, TypedFStrPart, TypedFieldDef,
@@ -34,8 +34,7 @@ pub struct TypeChecker {
     errors: Vec<TypeError>,
     next_var: u32,
     fresh_counter: Rc<Cell<u32>>,
-    subst: HashMap<u32, Type>,
-    row_fields: HashMap<u32, HashMap<String, Type>>,
+    subst: Substitution,
     class_fields: HashMap<String, HashMap<String, Type>>,
     class_methods: HashMap<String, HashMap<String, Scheme>>,
     function_hints: HashMap<String, FnDef>,
@@ -54,8 +53,7 @@ impl TypeChecker {
             errors: Vec::new(),
             next_var: 0,
             fresh_counter,
-            subst: HashMap::new(),
-            row_fields: HashMap::new(),
+            subst: Substitution::empty(),
             class_fields: HashMap::new(),
             class_methods: HashMap::new(),
             function_hints: HashMap::new(),
@@ -1196,16 +1194,28 @@ impl TypeChecker {
     fn record_effect(&mut self, err_ty: Type) {
         let current = self.current_effect.last().cloned().unwrap_or(None);
         let merged = match current {
-            Some(existing) => Some(self.unify(
-                existing,
-                err_ty,
-                draton_ast::Span {
-                    start: 0,
-                    end: 0,
-                    line: 0,
-                    col: 0,
-                },
-            )),
+            Some(existing) => {
+                let before = self.errors.len();
+                let unified = self.unify(
+                    existing.clone(),
+                    err_ty.clone(),
+                    draton_ast::Span {
+                        start: 0,
+                        end: 0,
+                        line: 0,
+                        col: 0,
+                    },
+                );
+                if self.errors.len() > before {
+                    self.errors.push(TypeError::IncompatibleErrors {
+                        lhs: existing.to_string(),
+                        rhs: err_ty.to_string(),
+                        line: 0,
+                        col: 0,
+                    });
+                }
+                Some(unified)
+            }
             None => Some(err_ty),
         };
         if let Some(slot) = self.current_effect.last_mut() {
@@ -1214,42 +1224,16 @@ impl TypeChecker {
     }
 
     fn require_field(&mut self, object_ty: Type, field: &str, span: draton_ast::Span) -> Type {
-        match self.apply_subst(object_ty.clone()) {
-            Type::Named(name, _) => {
-                if let Some(fields) = self.class_fields.get(&name) {
-                    if let Some(field_ty) = fields.get(field) {
-                        return field_ty.clone();
-                    }
-                }
-                self.errors.push(TypeError::NoField {
-                    field: field.to_string(),
-                    ty: name,
-                    line: span.line,
-                    col: span.col,
-                });
-                self.fresh_var()
-            }
-            Type::Var(var) => {
-                let fresh = self.fresh_var();
-                let field_ty = self
-                    .row_fields
-                    .entry(var)
-                    .or_default()
-                    .entry(field.to_string())
-                    .or_insert(fresh)
-                    .clone();
-                field_ty
-            }
-            other => {
-                self.errors.push(TypeError::NoField {
-                    field: field.to_string(),
-                    ty: other.to_string(),
-                    line: span.line,
-                    col: span.col,
-                });
-                self.fresh_var()
-            }
-        }
+        let field_ty = self.fresh_var();
+        let rest_ty = self.fresh_var();
+        let mut fields = BTreeMap::new();
+        fields.insert(field.to_string(), field_ty.clone());
+        let expected = Type::Row {
+            fields,
+            rest: Some(Box::new(rest_ty)),
+        };
+        let _ = self.unify(object_ty, expected, span);
+        self.apply_subst(field_ty)
     }
 
     fn lookup_method_scheme(
@@ -1563,54 +1547,15 @@ impl TypeChecker {
     fn generalize(&self, ty: Type) -> Scheme {
         let ty = self.apply_subst(ty);
         let env_vars = free_type_vars_in_env(&self.env);
-        let row_vars = self.row_fields.keys().copied().collect::<BTreeSet<_>>();
         let quantified = free_type_vars(&ty)
             .into_iter()
-            .filter(|var| !env_vars.contains(var) && !row_vars.contains(var))
+            .filter(|var| !env_vars.contains(var))
             .collect::<Vec<_>>();
         Scheme { quantified, ty }
     }
 
     fn apply_subst(&self, ty: Type) -> Type {
-        match ty {
-            Type::Var(id) => self
-                .subst
-                .get(&id)
-                .cloned()
-                .map(|inner| self.apply_subst(inner))
-                .unwrap_or(Type::Var(id)),
-            Type::Array(inner) => Type::Array(Box::new(self.apply_subst(*inner))),
-            Type::Map(key, value) => Type::Map(
-                Box::new(self.apply_subst(*key)),
-                Box::new(self.apply_subst(*value)),
-            ),
-            Type::Set(inner) => Type::Set(Box::new(self.apply_subst(*inner))),
-            Type::Tuple(items) => Type::Tuple(
-                items
-                    .into_iter()
-                    .map(|item| self.apply_subst(item))
-                    .collect(),
-            ),
-            Type::Option(inner) => Type::Option(Box::new(self.apply_subst(*inner))),
-            Type::Result(ok, err) => Type::Result(
-                Box::new(self.apply_subst(*ok)),
-                Box::new(self.apply_subst(*err)),
-            ),
-            Type::Chan(inner) => Type::Chan(Box::new(self.apply_subst(*inner))),
-            Type::Fn(params, ret) => Type::Fn(
-                params
-                    .into_iter()
-                    .map(|param| self.apply_subst(param))
-                    .collect(),
-                Box::new(self.apply_subst(*ret)),
-            ),
-            Type::Named(name, args) => Type::Named(
-                name,
-                args.into_iter().map(|arg| self.apply_subst(arg)).collect(),
-            ),
-            Type::Pointer(inner) => Type::Pointer(Box::new(self.apply_subst(*inner))),
-            other => other,
-        }
+        self.subst.apply(ty)
     }
 
     fn unify(&mut self, lhs: Type, rhs: Type, span: draton_ast::Span) -> Type {
@@ -1705,6 +1650,30 @@ impl TypeChecker {
                         .collect(),
                 )
             }
+            (
+                Type::Row {
+                    fields: lhs_fields,
+                    rest: lhs_rest,
+                },
+                Type::Row {
+                    fields: rhs_fields,
+                    rest: rhs_rest,
+                },
+            ) => self.unify_rows(lhs_fields, lhs_rest, rhs_fields, rhs_rest, span),
+            (
+                Type::Row {
+                    fields: row_fields,
+                    rest: row_rest,
+                },
+                Type::Named(name, args),
+            )
+            | (
+                Type::Named(name, args),
+                Type::Row {
+                    fields: row_fields,
+                    rest: row_rest,
+                },
+            ) => self.unify_row_with_named(row_fields, row_rest, name, args, span),
             (lhs, rhs) => {
                 self.push_mismatch("matching types", &lhs, &rhs, span);
                 lhs
@@ -1726,44 +1695,150 @@ impl TypeChecker {
             return Type::Var(var);
         }
 
-        if let Some(fields) = self.row_fields.get(&var).cloned() {
-            match self.apply_subst(ty.clone()) {
-                Type::Named(name, _) => {
-                    if let Some(class_fields) = self.class_fields.get(&name).cloned() {
-                        for (field_name, field_ty) in fields {
-                            if let Some(actual_ty) = class_fields.get(&field_name) {
-                                let _ = self.unify(field_ty, actual_ty.clone(), span);
-                            } else {
-                                self.errors.push(TypeError::NoField {
-                                    field: field_name,
-                                    ty: name.clone(),
-                                    line: span.line,
-                                    col: span.col,
-                                });
-                            }
-                        }
-                    }
-                }
-                Type::Var(other) => {
-                    let entry = self.row_fields.entry(other).or_default();
-                    for (field_name, field_ty) in fields {
-                        entry.entry(field_name).or_insert(field_ty);
-                    }
-                }
-                other => {
-                    self.errors.push(TypeError::Mismatch {
-                        expected: "type with required fields".to_string(),
-                        found: other.to_string(),
-                        hint: "add a concrete class type or field annotation".to_string(),
-                        line: span.line,
-                        col: span.col,
-                    });
-                }
+        match self.subst.clone().bind(var, ty.clone()) {
+            Ok(subst) => {
+                self.subst = subst;
+                ty
+            }
+            Err(TypeError::InfiniteType { var: var_name, .. }) => {
+                self.errors.push(TypeError::InfiniteType {
+                    var: var_name,
+                    line: span.line,
+                    col: span.col,
+                });
+                Type::Var(var)
+            }
+            Err(err) => {
+                self.errors.push(err);
+                Type::Var(var)
+            }
+        }
+    }
+
+    fn unify_rows(
+        &mut self,
+        mut lhs_fields: BTreeMap<String, Type>,
+        lhs_rest: Option<Box<Type>>,
+        mut rhs_fields: BTreeMap<String, Type>,
+        rhs_rest: Option<Box<Type>>,
+        span: draton_ast::Span,
+    ) -> Type {
+        let mut merged = BTreeMap::new();
+        let shared = lhs_fields
+            .keys()
+            .filter(|key| rhs_fields.contains_key(*key))
+            .cloned()
+            .collect::<Vec<_>>();
+        for key in shared {
+            if let (Some(left), Some(right)) = (lhs_fields.remove(&key), rhs_fields.remove(&key)) {
+                merged.insert(key, self.unify(left, right, span));
             }
         }
 
-        self.subst.insert(var, ty.clone());
-        ty
+        if rhs_rest.is_none() {
+            for field in lhs_fields.keys() {
+                self.push_no_field(
+                    field,
+                    &Type::Row {
+                        fields: rhs_fields.clone(),
+                        rest: None,
+                    },
+                    span,
+                );
+            }
+        } else {
+            merged.extend(lhs_fields.clone());
+        }
+
+        if lhs_rest.is_none() {
+            for field in rhs_fields.keys() {
+                self.push_no_field(
+                    field,
+                    &Type::Row {
+                        fields: lhs_fields.clone(),
+                        rest: None,
+                    },
+                    span,
+                );
+            }
+        } else {
+            merged.extend(rhs_fields.clone());
+        }
+
+        let rest = match (lhs_rest, rhs_rest) {
+            (Some(lhs), Some(rhs)) => Some(Box::new(self.unify(*lhs, *rhs, span))),
+            (Some(lhs), None) => Some(Box::new(self.apply_subst(*lhs))),
+            (None, Some(rhs)) => Some(Box::new(self.apply_subst(*rhs))),
+            (None, None) => None,
+        };
+
+        Type::Row {
+            fields: merged
+                .into_iter()
+                .map(|(name, ty)| (name, self.apply_subst(ty)))
+                .collect(),
+            rest,
+        }
+    }
+
+    fn unify_row_with_named(
+        &mut self,
+        row_fields: BTreeMap<String, Type>,
+        row_rest: Option<Box<Type>>,
+        name: String,
+        args: Vec<Type>,
+        span: draton_ast::Span,
+    ) -> Type {
+        let Some(class_fields) = self.class_fields.get(&name).cloned() else {
+            self.push_mismatch(
+                "type with accessible fields",
+                &Type::Row {
+                    fields: row_fields,
+                    rest: row_rest,
+                },
+                &Type::Named(name.clone(), args.clone()),
+                span,
+            );
+            return Type::Named(name, args);
+        };
+
+        let mut remaining = class_fields
+            .into_iter()
+            .map(|(field, ty)| (field, self.apply_subst(ty)))
+            .collect::<BTreeMap<_, _>>();
+
+        for (field, expected_ty) in row_fields {
+            match remaining.remove(&field) {
+                Some(actual_ty) => {
+                    let _ = self.unify(expected_ty, actual_ty, span);
+                }
+                None => self.errors.push(TypeError::NoField {
+                    field,
+                    ty: name.clone(),
+                    line: span.line,
+                    col: span.col,
+                }),
+            }
+        }
+
+        if let Some(rest) = row_rest {
+            let rest_row = Type::Row {
+                fields: remaining,
+                rest: None,
+            };
+            let _ = self.unify(*rest, rest_row, span);
+        }
+
+        Type::Named(name, args)
+    }
+
+    fn push_no_field(&mut self, field: &str, ty: &Type, span: draton_ast::Span) {
+        self.errors.push(TypeError::NoField {
+            field: field.to_string(),
+            ty: ty.to_string(),
+            line: span.line,
+            col: span.col,
+        });
     }
 
     fn type_from_annotation(&mut self, type_expr: &TypeExpr) -> Type {

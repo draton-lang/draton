@@ -51,3 +51,22 @@ fn bad() {
         .iter()
         .any(|error| matches!(error, TypeError::InfiniteType { .. })));
 }
+
+#[test]
+fn reports_incompatible_error_propagation_for_mixed_nullish_errors() {
+    let result = parse_and_check(
+        r#"
+fn first() { Ok(1) }
+fn second() { Ok(2) }
+fn load() {
+    let a = first() ?? "missing"
+    let b = second() ?? 404
+    b
+}
+"#,
+    );
+    assert!(result
+        .errors
+        .iter()
+        .any(|error| matches!(error, TypeError::IncompatibleErrors { .. })));
+}

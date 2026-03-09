@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt;
 
 use draton_ast::{AssignOp, BinOp, Span, UnOp};
@@ -386,7 +387,7 @@ pub enum TypedMatchArmBody {
 }
 
 /// A resolved Draton type.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     /// `Int`
     Int,
@@ -440,6 +441,11 @@ pub enum Type {
     Fn(Vec<Type>, Box<Type>),
     /// User-defined named types.
     Named(String, Vec<Type>),
+    /// An open or closed row type used for structural field inference.
+    Row {
+        fields: BTreeMap<String, Type>,
+        rest: Option<Box<Type>>,
+    },
     /// A pointer type.
     Pointer(Box<Type>),
     /// An internal unification variable.
@@ -498,6 +504,22 @@ impl fmt::Display for Type {
                         .collect::<Vec<_>>()
                         .join(", ");
                     write!(f, "{name}[{rendered}]")
+                }
+            }
+            Self::Row { fields, rest } => {
+                let rendered = fields
+                    .iter()
+                    .map(|(name, ty)| format!("{name}: {ty}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if let Some(rest) = rest {
+                    if rendered.is_empty() {
+                        write!(f, "{{ | {rest} }}")
+                    } else {
+                        write!(f, "{{ {rendered} | {rest} }}")
+                    }
+                } else {
+                    write!(f, "{{ {rendered} }}")
                 }
             }
             Self::Pointer(inner) => write!(f, "Pointer[{inner}]"),

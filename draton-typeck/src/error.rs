@@ -70,4 +70,12 @@ pub enum TypeError {
         line: usize,
         col: usize,
     },
+
+    #[error("incompatible error propagation types at line {line}, col {col}\n  left:  {lhs}\n  right: {rhs}\n  hint:  wrap both in a shared error type")]
+    IncompatibleErrors {
+        lhs: String,
+        rhs: String,
+        line: usize,
+        col: usize,
+    },
 }

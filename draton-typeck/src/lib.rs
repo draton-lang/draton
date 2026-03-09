@@ -10,6 +10,7 @@ pub mod unify;
 pub use check::{TypeCheckResult, TypeChecker};
 pub use env::{Scheme, TypeEnv};
 pub use error::TypeError;
+pub use infer::Substitution;
 pub use typed_ast::{
     Type, TypedBlock, TypedExpr, TypedExprKind, TypedFStrPart, TypedFnDef, TypedItem,
     TypedMatchArm, TypedMatchArmBody, TypedParam, TypedProgram, TypedStmt, TypedStmtKind,
