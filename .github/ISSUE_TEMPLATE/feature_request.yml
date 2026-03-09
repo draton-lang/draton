@@ -1,0 +1,67 @@
+name: Feature request
+description: Propose a language, runtime, tooling, or documentation improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for language features, compiler improvements, runtime ideas, or
+        tooling enhancements.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem or limitation are you trying to solve?
+      placeholder: A clear description of the need or pain point.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the solution you want to see.
+      placeholder: Explain the design or user-facing behavior you are proposing.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any alternative designs or workarounds you considered.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - language syntax
+        - type system
+        - code generation
+        - runtime
+        - standard library
+        - CLI / tooling
+        - documentation
+        - ecosystem
+    validations:
+      required: true
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples
+      description: Sample code, CLI UX, prior art, or references.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find the same request.
+          required: true
+        - label: This request is specific enough to discuss design and scope.
+          required: true

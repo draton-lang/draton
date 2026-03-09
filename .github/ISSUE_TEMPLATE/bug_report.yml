@@ -1,0 +1,81 @@
+name: Bug report
+description: Report a reproducible problem in the compiler, runtime, stdlib, or CLI
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please provide enough detail for us
+        to reproduce the issue.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect instead?
+      placeholder: A clear and concise summary of the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Steps, source snippets, commands, and inputs needed to reproduce.
+      placeholder: |
+        1. Run `...`
+        2. Compile `...`
+        3. Observe `...`
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: Describe the expected result.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: Describe the actual result, including error messages if any.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      options:
+        - lexer
+        - parser
+        - type checker
+        - codegen
+        - runtime
+        - stdlib
+        - drat CLI
+        - documentation
+        - other
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Environment
+      description: Operating system, Rust version, and LLVM version if relevant.
+      placeholder: Ubuntu 24.04, rustc 1.xx, LLVM 14
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Logs, screenshots, bisect results, or related issues.

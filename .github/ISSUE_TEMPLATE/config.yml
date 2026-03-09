@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability report
+    url: mailto:lhquangmink@gmail.com?subject=Draton%20security%20report
+    about: Report security issues privately instead of opening a public issue.
+  - name: Contribution guide
+    url: https://github.com/draton-lang/draton/blob/main/.github/CONTRIBUTING.md
+    about: Read the contribution workflow before opening major changes.
