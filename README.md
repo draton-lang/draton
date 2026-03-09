@@ -1,0 +1,208 @@
+<div align="center">
+
+<h1>Draton</h1>
+
+<p>A compiled, statically-typed programming language with an ergonomic syntax and first-class tooling.</p>
+
+[![Build](https://img.shields.io/github/actions/workflow/status/draton-lang/draton/ci.yml?branch=main&style=flat-square)](https://github.com/draton-lang/draton/actions)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/drat?style=flat-square)](https://crates.io/crates/drat)
+
+</div>
+
+---
+
+## Overview
+
+Draton is a compiled language that targets LLVM for native performance. It combines a clean, expressive syntax with strong static typing, a rich type system, and an integrated toolchain (`drat`) that handles everything from project scaffolding to publishing.
+
+The compiler is written entirely in Rust and designed as a Cargo workspace of focused, independently usable crates.
+
+## Features
+
+| | |
+|---|---|
+| **LLVM backend** | Native code generation via LLVM 14, with release-mode optimizations |
+| **Static typing** | Full type inference — annotate only what you need to |
+| **Classes & interfaces** | Inheritance, interface implementation, and named method layers |
+| **Enums & errors** | First-class enum and structured error types |
+| **Result types** | Built-in `Ok`/`Err` values and nullish-coalescing (`??`) |
+| **Concurrency** | Channels (`chan[T]`) and `spawn` for lightweight concurrent tasks |
+| **Pattern matching** | Exhaustive `match` expressions with structured arms |
+| **Low-level escape hatches** | `unsafe`, `@pointer`, inline `asm`, and comptime blocks |
+| **Integrated toolchain** | Format, lint, test, doc, REPL, LSP — all via a single `drat` binary |
+
+## Quick Start
+
+### Prerequisites
+
+- Rust stable toolchain
+- LLVM 14 (`llvm-14-dev` on Debian/Ubuntu, `llvm@14` via Homebrew)
+
+### Install from source
+
+```sh
+git clone https://github.com/draton-lang/draton.git
+cd draton
+cargo build --release
+# Optionally add to PATH
+export PATH="$PWD/target/release:$PATH"
+```
+
+### Create and run a project
+
+```sh
+drat init hello-world
+cd hello-world
+drat run
+```
+
+## Language Tour
+
+### Variables and types
+
+```draton
+let x = 42
+let mut count: Int = 0
+let name: String = "Draton"
+let greeting = f"Hello, {name}!"
+```
+
+### Functions
+
+```draton
+pub fn add(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+let double = |x| x * 2
+```
+
+### Classes and interfaces
+
+```draton
+interface Shape {
+    fn area() -> Float
+}
+
+class Circle implements Shape {
+    let radius: Float
+
+    fn area() -> Float {
+        return 3.14159 * radius * radius
+    }
+
+    @layer display {
+        fn to_string() -> String {
+            return f"Circle(r={radius})"
+        }
+    }
+}
+
+class ColoredCircle extends Circle {
+    let color: String
+}
+```
+
+### Enums and pattern matching
+
+```draton
+enum Direction {
+    North
+    South
+    East
+    West
+}
+
+let label = match dir {
+    Direction.North => "up"
+    Direction.South => "down"
+    _ => "sideways"
+}
+```
+
+### Error types and results
+
+```draton
+error ParseError { message: String }
+
+fn parse(input: String) -> Int {
+    // ...
+    return Err(ParseError { message: "invalid input" })
+}
+
+let value = parse("abc") ?? 0
+```
+
+### Concurrency
+
+```draton
+let ch = chan[Int]
+
+spawn {
+    ch.send(42)
+}
+
+let result = ch.recv()
+```
+
+### Low-level blocks
+
+```draton
+let raw = @pointer {
+    // pointer arithmetic here
+}
+
+let value = @comptime {
+    // evaluated at compile time
+}
+```
+
+## CLI Reference
+
+`drat` is the official build tool and package manager.
+
+| Command | Description |
+|---|---|
+| `drat init [name]` | Scaffold a new project |
+| `drat build` | Compile in debug mode |
+| `drat build --release` | Compile with optimizations |
+| `drat run` | Build and run |
+| `drat test` | Run tests |
+| `drat fmt` | Format source files |
+| `drat lint` | Lint source files |
+| `drat doc` | Generate documentation |
+| `drat repl` | Start an interactive REPL |
+| `drat lsp` | Start the Language Server |
+| `drat add <pkg>` | Add a dependency |
+| `drat remove <pkg>` | Remove a dependency |
+| `drat update [pkg]` | Update dependencies |
+| `drat publish` | Publish to the package registry |
+
+## Repository Structure
+
+This repository is a Cargo workspace. Each crate has a single, well-defined responsibility.
+
+```
+draton/
+├── drat/               # CLI binary and compiler driver
+├── draton-lexer/       # Source tokenization
+├── draton-ast/         # AST node definitions
+├── draton-parser/      # Token stream → AST
+├── draton-typeck/      # Type checker and inference
+├── draton-codegen/     # LLVM IR generation
+├── draton-runtime/     # Runtime support library
+└── draton-stdlib/      # Standard library
+```
+
+## Contributing
+
+Contributions are welcome — bug reports, feature requests, documentation improvements, and code are all appreciated. Please read [CONTRIBUTING](.github/CONTRIBUTING.md) before opening a pull request, and follow our [Code of Conduct](.github/CODE_OF_CONDUCT.md).
+
+## Security
+
+To report a vulnerability, please follow the process described in [SECURITY](.github/SECURITY.md). Do not open public issues for security problems.
+
+## License
+
+Draton is licensed under the [Apache License, Version 2.0](LICENSE).
