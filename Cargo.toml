@@ -7,5 +7,6 @@ members = [
     "draton-codegen",
     "draton-runtime",
     "draton-stdlib",
+    "drat",
 ]
 resolver = "2"

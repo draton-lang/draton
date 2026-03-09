@@ -1,0 +1,21 @@
+[package]
+name = "drat"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "drat"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+colored = "2"
+draton-codegen = { path = "../draton-codegen" }
+draton-lexer = { path = "../draton-lexer" }
+draton-parser = { path = "../draton-parser" }
+draton-typeck = { path = "../draton-typeck" }
+inkwell = { version = "0.4", features = ["llvm14-0"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
