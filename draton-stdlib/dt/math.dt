@@ -1,0 +1,88 @@
+/// Math standard library module.
+
+@extern "C" {
+    fn __draton_std_math_sqrt(x: Float) -> Float
+    fn __draton_std_math_pow(base: Float, exp: Float) -> Float
+    fn __draton_std_math_abs(x: Float) -> Float
+    fn __draton_std_math_floor(x: Float) -> Float
+    fn __draton_std_math_ceil(x: Float) -> Float
+    fn __draton_std_math_round(x: Float) -> Float
+    fn __draton_std_math_sin(x: Float) -> Float
+    fn __draton_std_math_cos(x: Float) -> Float
+    fn __draton_std_math_tan(x: Float) -> Float
+    fn __draton_std_math_log(x: Float) -> Float
+    fn __draton_std_math_log2(x: Float) -> Float
+    fn __draton_std_math_log10(x: Float) -> Float
+    fn __draton_std_math_min(a: Float, b: Float) -> Float
+    fn __draton_std_math_max(a: Float, b: Float) -> Float
+    fn __draton_std_math_clamp(x: Float, lo: Float, hi: Float) -> Float
+    fn __draton_std_math_pi() -> Float
+    fn __draton_std_math_e() -> Float
+    fn __draton_std_math_checked_add(a: Int, b: Int) -> Option[Int]
+    fn __draton_std_math_checked_sub(a: Int, b: Int) -> Option[Int]
+    fn __draton_std_math_checked_mul(a: Int, b: Int) -> Option[Int]
+    fn __draton_std_math_checked_div(a: Int, b: Int) -> Option[Int]
+}
+
+/// Returns the square root.
+pub fn sqrt(x: Float) -> Float { __draton_std_math_sqrt(x) }
+
+/// Raises a value to a power.
+pub fn pow(base: Float, exp: Float) -> Float { __draton_std_math_pow(base, exp) }
+
+/// Returns the absolute value.
+pub fn abs(x: Float) -> Float { __draton_std_math_abs(x) }
+
+/// Floors a value.
+pub fn floor(x: Float) -> Float { __draton_std_math_floor(x) }
+
+/// Ceils a value.
+pub fn ceil(x: Float) -> Float { __draton_std_math_ceil(x) }
+
+/// Rounds a value.
+pub fn round(x: Float) -> Float { __draton_std_math_round(x) }
+
+/// Returns sine.
+pub fn sin(x: Float) -> Float { __draton_std_math_sin(x) }
+
+/// Returns cosine.
+pub fn cos(x: Float) -> Float { __draton_std_math_cos(x) }
+
+/// Returns tangent.
+pub fn tan(x: Float) -> Float { __draton_std_math_tan(x) }
+
+/// Returns natural log.
+pub fn log(x: Float) -> Float { __draton_std_math_log(x) }
+
+/// Returns base-2 log.
+pub fn log2(x: Float) -> Float { __draton_std_math_log2(x) }
+
+/// Returns base-10 log.
+pub fn log10(x: Float) -> Float { __draton_std_math_log10(x) }
+
+/// Returns the minimum.
+pub fn min(a: Float, b: Float) -> Float { __draton_std_math_min(a, b) }
+
+/// Returns the maximum.
+pub fn max(a: Float, b: Float) -> Float { __draton_std_math_max(a, b) }
+
+/// Clamps a value.
+pub fn clamp(x: Float, lo: Float, hi: Float) -> Float { __draton_std_math_clamp(x, lo, hi) }
+
+/// Returns pi.
+pub fn pi() -> Float { __draton_std_math_pi() }
+
+/// Returns Euler's number.
+pub fn e() -> Float { __draton_std_math_e() }
+
+/// Adds with overflow checking.
+pub fn checked_add(a: Int, b: Int) -> Option[Int] { __draton_std_math_checked_add(a, b) }
+
+/// Subtracts with overflow checking.
+pub fn checked_sub(a: Int, b: Int) -> Option[Int] { __draton_std_math_checked_sub(a, b) }
+
+/// Multiplies with overflow checking.
+pub fn checked_mul(a: Int, b: Int) -> Option[Int] { __draton_std_math_checked_mul(a, b) }
+
+/// Divides with overflow checking.
+pub fn checked_div(a: Int, b: Int) -> Option[Int] { __draton_std_math_checked_div(a, b) }

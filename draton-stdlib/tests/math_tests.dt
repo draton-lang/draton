@@ -1,0 +1,11 @@
+import { math, test }
+
+test.case("math constants and checked ops", fn() {
+    test.true_(math.pi() > 3.14)
+    test.eq(math.checked_add(1, 2), Some(3))
+    test.eq(math.checked_div(10, 2), Some(5))
+})
+
+test.case("math checked overflow returns none", fn() {
+    test.eq(math.checked_mul(9223372036854775807, 2), None)
+})

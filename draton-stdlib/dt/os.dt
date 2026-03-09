@@ -1,0 +1,36 @@
+/// Operating system standard library module.
+
+@extern "C" {
+    fn __draton_std_os_env(key: String) -> Option[String]
+    fn __draton_std_os_set_env(key: String, val: String)
+    fn __draton_std_os_args() -> Array[String]
+    fn __draton_std_os_exit(code: Int)
+    fn __draton_std_os_pid() -> Int
+    fn __draton_std_os_platform() -> String
+    fn __draton_std_os_arch() -> String
+    fn __draton_std_os_hostname() -> String
+}
+
+/// Returns an environment variable.
+pub fn env(key: String) -> Option[String] { __draton_std_os_env(key) }
+
+/// Sets an environment variable.
+pub fn set_env(key: String, val: String) { __draton_std_os_set_env(key, val) }
+
+/// Returns CLI arguments.
+pub fn args() -> Array[String] { __draton_std_os_args() }
+
+/// Exits the process.
+pub fn exit(code: Int) { __draton_std_os_exit(code) }
+
+/// Returns the process id.
+pub fn pid() -> Int { __draton_std_os_pid() }
+
+/// Returns the current platform.
+pub fn platform() -> String { __draton_std_os_platform() }
+
+/// Returns the current architecture.
+pub fn arch() -> String { __draton_std_os_arch() }
+
+/// Returns the hostname.
+pub fn hostname() -> String { __draton_std_os_hostname() }

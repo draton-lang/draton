@@ -1,0 +1,13 @@
+import { fs, test }
+
+test.case("fs read write append roundtrip", fn() {
+    let path = "tmp/fs_tests_roundtrip.txt"
+    test.ok(fs.write(path, "hello"))
+    test.ok(fs.append(path, " world"))
+    test.eq(fs.read(path), Ok("hello world"))
+    test.ok(fs.delete(path))
+})
+
+test.case("fs missing file returns error", fn() {
+    test.err(fs.read("tmp/does-not-exist.txt"))
+})

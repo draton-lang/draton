@@ -1,0 +1,49 @@
+/// Networking standard library module.
+
+import { json as json_mod }
+
+error NetError(msg: String)
+
+pub class Response {
+    raw: @pointer
+
+    /// Returns the HTTP status code.
+    pub fn status() -> Int { __draton_std_net_response_status(self.raw) }
+
+    /// Returns the response body as text.
+    pub fn text() -> String { __draton_std_net_response_text(self.raw) }
+
+    /// Parses the body as JSON.
+    pub fn json() -> Result[json_mod.JsonValue, json_mod.JsonError] {
+        json_mod.parse(self.text())
+    }
+
+    /// Returns response headers.
+    pub fn headers() -> Map[String, String] { __draton_std_net_response_headers(self.raw) }
+}
+
+@extern "C" {
+    fn __draton_std_net_get(url: String) -> Result[Response, NetError]
+    fn __draton_std_net_post(url: String, body: String) -> Result[Response, NetError]
+    fn __draton_std_net_put(url: String, body: String) -> Result[Response, NetError]
+    fn __draton_std_net_delete(url: String) -> Result[Response, NetError]
+    fn __draton_std_net_response_status(raw: @pointer) -> Int
+    fn __draton_std_net_response_text(raw: @pointer) -> String
+    fn __draton_std_net_response_headers(raw: @pointer) -> Map[String, String]
+}
+
+/// Performs a blocking GET request.
+pub fn get(url: String) -> Result[Response, NetError] { __draton_std_net_get(url) }
+
+/// Performs a blocking POST request.
+pub fn post(url: String, body: String) -> Result[Response, NetError] {
+    __draton_std_net_post(url, body)
+}
+
+/// Performs a blocking PUT request.
+pub fn put(url: String, body: String) -> Result[Response, NetError] {
+    __draton_std_net_put(url, body)
+}
+
+/// Performs a blocking DELETE request.
+pub fn delete_req(url: String) -> Result[Response, NetError] { __draton_std_net_delete(url) }

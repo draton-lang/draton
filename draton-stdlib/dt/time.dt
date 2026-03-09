@@ -1,0 +1,37 @@
+/// Time standard library module.
+
+pub class Timestamp {
+    raw: Int64
+
+    /// Returns Unix epoch milliseconds.
+    pub fn unix() -> Int64 { self.raw }
+
+    /// Formats the timestamp using a strftime-like pattern.
+    pub fn format(fmt: String) -> String { __draton_std_time_format(self.raw, fmt) }
+}
+
+pub class Duration {
+    raw: Int64
+
+    /// Returns milliseconds.
+    pub fn ms() -> Int64 { self.raw }
+
+    /// Returns seconds.
+    pub fn seconds() -> Float { self.raw as Float / 1000.0 }
+}
+
+@extern "C" {
+    fn __draton_std_time_now() -> Timestamp
+    fn __draton_std_time_sleep(ms: Int)
+    fn __draton_std_time_since(ts: Timestamp) -> Duration
+    fn __draton_std_time_format(unix_ms: Int64, fmt: String) -> String
+}
+
+/// Returns the current timestamp.
+pub fn now() -> Timestamp { __draton_std_time_now() }
+
+/// Sleeps for a number of milliseconds.
+pub fn sleep(ms: Int) { __draton_std_time_sleep(ms) }
+
+/// Returns the time since a timestamp.
+pub fn since(ts: Timestamp) -> Duration { __draton_std_time_since(ts) }

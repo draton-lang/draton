@@ -1,0 +1,28 @@
+/// Console I/O standard library module.
+
+@extern "C" {
+    fn __draton_std_io_print(s: String)
+    fn __draton_std_io_println(s: String)
+    fn __draton_std_io_eprint(s: String)
+    fn __draton_std_io_eprintln(s: String)
+    fn __draton_std_io_readline() -> String
+    fn __draton_std_io_readlines() -> Array[String]
+}
+
+/// Prints without a trailing newline.
+pub fn print(s: String) { __draton_std_io_print(s) }
+
+/// Prints with a trailing newline.
+pub fn println(s: String) { __draton_std_io_println(s) }
+
+/// Prints to stderr without a trailing newline.
+pub fn eprint(s: String) { __draton_std_io_eprint(s) }
+
+/// Prints to stderr with a trailing newline.
+pub fn eprintln(s: String) { __draton_std_io_eprintln(s) }
+
+/// Reads one line from stdin.
+pub fn readline() -> String { __draton_std_io_readline() }
+
+/// Reads all lines from stdin until EOF.
+pub fn readlines() -> Array[String] { __draton_std_io_readlines() }

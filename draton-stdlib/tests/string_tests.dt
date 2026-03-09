@@ -1,0 +1,12 @@
+import { string, test }
+
+test.case("string casing and slicing", fn() {
+    test.eq(string.upper("draton"), "DRATON")
+    test.eq(string.slice("compiler", 0, 4), "comp")
+    test.eq(string.index_of("compiler", "pile"), Some(3))
+})
+
+test.case("string parse errors surface", fn() {
+    test.err(string.to_int("nope"))
+    test.err(string.to_float("bad"))
+})

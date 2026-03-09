@@ -1,0 +1,11 @@
+import { json, test }
+
+test.case("json parse stringify roundtrip", fn() {
+    let value = json.parse("{\"name\":\"draton\",\"ok\":true}")
+    test.ok(value)
+    test.eq(json.stringify(value ?? json.JsonValue.Null), "{\"name\":\"draton\",\"ok\":true}")
+})
+
+test.case("json parse reports invalid text", fn() {
+    test.err(json.parse("{ bad json }"))
+})

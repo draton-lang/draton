@@ -1,0 +1,28 @@
+/// JSON standard library module.
+
+error JsonError(msg: String, line: Int, col: Int)
+
+pub enum JsonValue {
+    Null,
+    Bool(Bool),
+    Int(Int64),
+    Float(Float64),
+    Str(String),
+    Array(Array[JsonValue]),
+    Object(Map[String, JsonValue]),
+}
+
+@extern "C" {
+    fn __draton_std_json_parse(s: String) -> Result[JsonValue, JsonError]
+    fn __draton_std_json_stringify(val: JsonValue) -> String
+    fn __draton_std_json_pretty(val: JsonValue) -> String
+}
+
+/// Parses JSON text.
+pub fn parse(s: String) -> Result[JsonValue, JsonError] { __draton_std_json_parse(s) }
+
+/// Serializes JSON compactly.
+pub fn stringify(val: JsonValue) -> String { __draton_std_json_stringify(val) }
+
+/// Serializes JSON with indentation.
+pub fn pretty(val: JsonValue) -> String { __draton_std_json_pretty(val) }

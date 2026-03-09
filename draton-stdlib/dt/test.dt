@@ -1,0 +1,40 @@
+/// Test helper module used by `drat test`.
+
+@extern "C" {
+    fn __draton_std_test_case(name: String, body: fn())
+    fn __draton_std_test_eq[T](a: T, b: T)
+    fn __draton_std_test_neq[T](a: T, b: T)
+    fn __draton_std_test_ok[T, E](r: Result[T, E])
+    fn __draton_std_test_err[T, E](r: Result[T, E])
+    fn __draton_std_test_true(b: Bool)
+    fn __draton_std_test_false(b: Bool)
+    fn __draton_std_test_panic_with(msg: String)
+    fn __draton_std_test_skip(reason: String)
+}
+
+/// Registers a named test case.
+pub fn case(name: String, body: fn()) { __draton_std_test_case(name, body) }
+
+/// Asserts equality.
+pub fn eq[T](a: T, b: T) { __draton_std_test_eq(a, b) }
+
+/// Asserts inequality.
+pub fn neq[T](a: T, b: T) { __draton_std_test_neq(a, b) }
+
+/// Asserts a result is `Ok`.
+pub fn ok[T, E](r: Result[T, E]) { __draton_std_test_ok(r) }
+
+/// Asserts a result is `Err`.
+pub fn err[T, E](r: Result[T, E]) { __draton_std_test_err(r) }
+
+/// Asserts a boolean is true.
+pub fn true_(b: Bool) { __draton_std_test_true(b) }
+
+/// Asserts a boolean is false.
+pub fn false_(b: Bool) { __draton_std_test_false(b) }
+
+/// Asserts a panic containing a message.
+pub fn panic_with(msg: String) { __draton_std_test_panic_with(msg) }
+
+/// Skips a test.
+pub fn skip(reason: String) { __draton_std_test_skip(reason) }

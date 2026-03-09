@@ -1,0 +1,46 @@
+/// Filesystem standard library module.
+
+error FsError(msg: String)
+
+@extern "C" {
+    fn __draton_std_fs_read(path: String) -> Result[String, FsError]
+    fn __draton_std_fs_write(path: String, content: String) -> Result[Unit, FsError]
+    fn __draton_std_fs_append(path: String, content: String) -> Result[Unit, FsError]
+    fn __draton_std_fs_delete(path: String) -> Result[Unit, FsError]
+    fn __draton_std_fs_exists(path: String) -> Bool
+    fn __draton_std_fs_mkdir(path: String) -> Result[Unit, FsError]
+    fn __draton_std_fs_readdir(path: String) -> Result[Array[String], FsError]
+    fn __draton_std_fs_copy(src: String, dst: String) -> Result[Unit, FsError]
+    fn __draton_std_fs_move(src: String, dst: String) -> Result[Unit, FsError]
+}
+
+/// Reads a UTF-8 file.
+pub fn read(path: String) -> Result[String, FsError] { __draton_std_fs_read(path) }
+
+/// Writes a UTF-8 file.
+pub fn write(path: String, content: String) -> Result[Unit, FsError] {
+    __draton_std_fs_write(path, content)
+}
+
+/// Appends to a UTF-8 file.
+pub fn append(path: String, content: String) -> Result[Unit, FsError] {
+    __draton_std_fs_append(path, content)
+}
+
+/// Deletes a file or directory.
+pub fn delete(path: String) -> Result[Unit, FsError] { __draton_std_fs_delete(path) }
+
+/// Checks whether a path exists.
+pub fn exists(path: String) -> Bool { __draton_std_fs_exists(path) }
+
+/// Creates a directory recursively.
+pub fn mkdir(path: String) -> Result[Unit, FsError] { __draton_std_fs_mkdir(path) }
+
+/// Reads directory entries.
+pub fn readdir(path: String) -> Result[Array[String], FsError] { __draton_std_fs_readdir(path) }
+
+/// Copies a file.
+pub fn copy(src: String, dst: String) -> Result[Unit, FsError] { __draton_std_fs_copy(src, dst) }
+
+/// Moves a file or directory.
+pub fn move(src: String, dst: String) -> Result[Unit, FsError] { __draton_std_fs_move(src, dst) }
