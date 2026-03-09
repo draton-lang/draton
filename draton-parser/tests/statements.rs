@@ -1,0 +1,53 @@
+use draton_ast::{AssignOp, Expr, Stmt};
+use draton_lexer::Lexer;
+use draton_parser::Parser;
+
+fn parse_stmt(source: &str) -> Stmt {
+    let wrapped = format!("fn main() {{ {source} }}");
+    let lexed = Lexer::new(&wrapped).tokenize();
+    assert!(lexed.errors.is_empty(), "lexer errors: {:?}", lexed.errors);
+    let result = Parser::new(lexed.tokens).parse();
+    assert!(
+        result.errors.is_empty(),
+        "parser errors: {:?}",
+        result.errors
+    );
+    let draton_ast::Item::Fn(function) = &result.program.items[0] else {
+        panic!("expected function item");
+    };
+    function
+        .body
+        .as_ref()
+        .and_then(|body| body.stmts.first())
+        .cloned()
+        .expect("statement")
+}
+
+#[test]
+fn parses_let_statements() {
+    assert!(
+        matches!(parse_stmt("let x = 42"), Stmt::Let(let_stmt) if !let_stmt.is_mut && let_stmt.name == "x")
+    );
+    assert!(
+        matches!(parse_stmt("let mut x = 0"), Stmt::Let(let_stmt) if let_stmt.is_mut && let_stmt.name == "x")
+    );
+}
+
+#[test]
+fn parses_assignment_variants() {
+    assert!(
+        matches!(parse_stmt("count += 1"), Stmt::Assign(assign) if assign.op == AssignOp::AddAssign)
+    );
+    assert!(matches!(parse_stmt("count++"), Stmt::Assign(assign) if assign.op == AssignOp::Inc));
+}
+
+#[test]
+fn parses_return_and_expression_statements() {
+    assert!(
+        matches!(parse_stmt("return x"), Stmt::Return(ret) if matches!(&ret.value, Some(Expr::Ident(name, _)) if name == "x"))
+    );
+    assert!(matches!(
+        parse_stmt("print(\"hello\")"),
+        Stmt::Expr(Expr::Call(_, _, _))
+    ));
+}

@@ -1,0 +1,166 @@
+use crate::expr::Expr;
+use crate::Span;
+use crate::TypeExpr;
+
+/// A statement node.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Stmt {
+    /// A local variable declaration.
+    Let(LetStmt),
+    /// An assignment-like statement.
+    Assign(AssignStmt),
+    /// A return statement.
+    Return(ReturnStmt),
+    /// An expression statement.
+    Expr(Expr),
+    /// An if statement.
+    If(IfStmt),
+    /// A for loop.
+    For(ForStmt),
+    /// A while loop.
+    While(WhileStmt),
+    /// A spawn statement.
+    Spawn(SpawnStmt),
+    /// A nested block statement.
+    Block(Block),
+    /// An unsafe block.
+    UnsafeBlock(Block),
+    /// A pointer block.
+    PointerBlock(Block),
+    /// An inline assembly block.
+    AsmBlock(String, Span),
+    /// A compile-time block.
+    ComptimeBlock(Block),
+    /// A compile-time if statement.
+    IfCompile(IfCompileStmt),
+    /// A GC configuration block.
+    GcConfig(GcConfigStmt),
+}
+
+/// A block of statements.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Block {
+    pub stmts: Vec<Stmt>,
+    pub span: Span,
+}
+
+/// A `let` statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LetStmt {
+    pub is_mut: bool,
+    pub name: String,
+    pub type_hint: Option<TypeExpr>,
+    pub value: Option<Expr>,
+    pub span: Span,
+}
+
+/// An assignment statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssignStmt {
+    pub target: Expr,
+    pub op: AssignOp,
+    pub value: Option<Expr>,
+    pub span: Span,
+}
+
+/// An assignment operator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignOp {
+    /// `=`
+    Assign,
+    /// `+=`
+    AddAssign,
+    /// `-=`
+    SubAssign,
+    /// `*=`
+    MulAssign,
+    /// `/=`
+    DivAssign,
+    /// `%=`
+    ModAssign,
+    /// `++`
+    Inc,
+    /// `--`
+    Dec,
+}
+
+/// A return statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnStmt {
+    pub value: Option<Expr>,
+    pub span: Span,
+}
+
+/// An if statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IfStmt {
+    pub condition: Expr,
+    pub then_branch: Block,
+    pub else_branch: Option<ElseBranch>,
+    pub span: Span,
+}
+
+/// A trailing else branch.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ElseBranch {
+    /// An `else if`.
+    If(Box<IfStmt>),
+    /// A plain `else`.
+    Block(Block),
+}
+
+/// A for loop statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForStmt {
+    pub name: String,
+    pub iter: Expr,
+    pub body: Block,
+    pub span: Span,
+}
+
+/// A while loop statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhileStmt {
+    pub condition: Expr,
+    pub body: Block,
+    pub span: Span,
+}
+
+/// A spawn statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpawnStmt {
+    pub body: SpawnBody,
+    pub span: Span,
+}
+
+/// The body of a spawn statement.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SpawnBody {
+    /// A spawned expression.
+    Expr(Expr),
+    /// A spawned block.
+    Block(Block),
+}
+
+/// A compile-time if statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IfCompileStmt {
+    pub condition: Expr,
+    pub body: Block,
+    pub span: Span,
+}
+
+/// A GC configuration block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GcConfigStmt {
+    pub entries: Vec<GcConfigEntry>,
+    pub span: Span,
+}
+
+/// A single GC configuration entry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GcConfigEntry {
+    pub key: String,
+    pub value: Expr,
+    pub span: Span,
+}
