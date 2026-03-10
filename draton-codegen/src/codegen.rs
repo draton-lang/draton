@@ -49,6 +49,7 @@ pub struct CodeGen<'ctx> {
     pub(crate) builder: Builder<'ctx>,
     pub(crate) mode: BuildMode,
     pub(crate) string_type: StructType<'ctx>,
+    pub(crate) closure_record_type: StructType<'ctx>,
     pub(crate) functions: HashMap<String, FunctionValue<'ctx>>,
     pub(crate) class_layouts: HashMap<String, ClassLayout<'ctx>>,
     pub(crate) variables: Vec<HashMap<String, PointerValue<'ctx>>>,
@@ -65,6 +66,8 @@ pub struct CodeGen<'ctx> {
     pub(crate) vtable_types: HashMap<String, StructType<'ctx>>,
     pub(crate) fat_pointer_types: HashMap<String, StructType<'ctx>>,
     pub(crate) vtable_globals: HashMap<(String, String), GlobalValue<'ctx>>,
+    pub(crate) closure_counter: usize,
+    pub(crate) closure_type_descriptor_id: u16,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -75,12 +78,15 @@ impl<'ctx> CodeGen<'ctx> {
         let i64_type = context.i64_type();
         let i8_ptr = context.i8_type().ptr_type(AddressSpace::default());
         let string_type = context.struct_type(&[i64_type.into(), i8_ptr.into()], false);
+        let closure_record_type = context.opaque_struct_type("draton.closure");
+        closure_record_type.set_body(&[i8_ptr.into(), i8_ptr.into()], false);
         Self {
             context,
             module,
             builder,
             mode,
             string_type,
+            closure_record_type,
             functions: HashMap::new(),
             class_layouts: HashMap::new(),
             variables: Vec::new(),
@@ -97,6 +103,8 @@ impl<'ctx> CodeGen<'ctx> {
             vtable_types: HashMap::new(),
             fat_pointer_types: HashMap::new(),
             vtable_globals: HashMap::new(),
+            closure_counter: 0,
+            closure_type_descriptor_id: 0,
         }
     }
 
@@ -107,6 +115,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.iface_registry = InterfaceRegistry::build(program);
         self.emit_interface_runtime_types()?;
         self.declare_runtime()?;
+        self.ensure_closure_runtime_metadata()?;
         self.predeclare_program_items(program)?;
         for item in &program.items {
             self.emit_item(item)?;
@@ -280,6 +289,16 @@ impl<'ctx> CodeGen<'ctx> {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).copied())
+    }
+
+    pub(crate) fn all_locals(&self) -> HashMap<String, PointerValue<'ctx>> {
+        let mut locals = HashMap::new();
+        for scope in self.variables.iter().rev() {
+            for (name, ptr) in scope {
+                locals.entry(name.clone()).or_insert(*ptr);
+            }
+        }
+        locals
     }
 
     pub(crate) fn create_entry_alloca(

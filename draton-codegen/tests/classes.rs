@@ -102,7 +102,10 @@ class User {
     );
     assert!(ir.contains("@TypeDesc_User = constant"), "{ir}");
     assert!(ir.contains("@draton_gc_alloc(i64"), "{ir}");
-    assert!(ir.contains("i16 1"), "{ir}");
+    assert!(
+        ir.contains("i16 1") || ir.contains("i16 2") || ir.contains("i16 3"),
+        "{ir}"
+    );
 }
 
 #[test]

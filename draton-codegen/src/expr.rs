@@ -54,8 +54,10 @@ impl<'ctx> CodeGen<'ctx> {
             TypedExprKind::Ident(name) => {
                 if let Some(ptr) = self.lookup_local(name) {
                     self.build_load(ptr, name).map(Some)
-                } else if let Some(function) = self.functions.get(name).copied() {
-                    Ok(Some(function.as_global_value().as_pointer_value().into()))
+                } else if matches!(expr.ty, Type::Fn(_, _)) {
+                    let symbol = self.resolve_function_value_symbol(name, &expr.ty)?;
+                    self.emit_named_function_closure(&symbol, &expr.ty, expr.span)
+                        .map(Some)
                 } else if let Some(global) = self.module.get_global(name) {
                     self.build_load(global.as_pointer_value(), name).map(Some)
                 } else {
@@ -66,7 +68,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedExprKind::Tuple(items) => self.emit_tuple(items, &expr.ty),
             TypedExprKind::BinOp(lhs, op, rhs) => self.emit_binop(lhs, *op, rhs, &expr.ty),
             TypedExprKind::UnOp(op, value) => self.emit_unop(*op, value, &expr.ty),
-            TypedExprKind::Call(callee, args) => self.emit_call(callee, args),
+            TypedExprKind::Call(callee, args) => self.emit_call(callee, args, &expr.ty),
             TypedExprKind::MethodCall(target, method, args) => {
                 self.emit_method_call(target, method, args)
             }
@@ -76,10 +78,12 @@ impl<'ctx> CodeGen<'ctx> {
             TypedExprKind::Ok(value) => self.emit_result(value, &expr.ty, true),
             TypedExprKind::Err(value) => self.emit_result(value, &expr.ty, false),
             TypedExprKind::Nullish(lhs, rhs) => self.emit_nullish(lhs, rhs, &expr.ty),
+            TypedExprKind::Lambda(params, body) => {
+                self.emit_lambda(params, body, expr.span).map(Some)
+            }
             TypedExprKind::Map(_)
             | TypedExprKind::Set(_)
             | TypedExprKind::Index(_, _)
-            | TypedExprKind::Lambda(_, _)
             | TypedExprKind::Chan(_) => {
                 Err(CodeGenError::UnsupportedExpr(format!("{:?}", expr.kind)))
             }
@@ -458,22 +462,42 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         callee: &TypedExpr,
         args: &[TypedExpr],
+        ret_ty: &Type,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        if let TypedExprKind::Ident(name) = &callee.kind {
+            if self.lookup_local(name).is_none() {
+                return self.emit_direct_call(name, callee, args);
+            }
+        }
+
+        let (params, ret) = match &callee.ty {
+            Type::Fn(params, ret) => (params.clone(), ret.as_ref().clone()),
+            _ => (
+                args.iter().map(|arg| arg.ty.clone()).collect::<Vec<_>>(),
+                ret_ty.clone(),
+            ),
+        };
+        let closure_ptr = self
+            .emit_expr(callee)?
+            .ok_or_else(|| CodeGenError::UnsupportedExpr("callee missing value".to_string()))?
+            .into_pointer_value();
+        self.emit_closure_call(closure_ptr, args, &params, &ret)
+    }
+
+    fn emit_direct_call(
+        &mut self,
+        name: &str,
+        callee: &TypedExpr,
+        args: &[TypedExpr],
     ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
         let expected_params = match &callee.ty {
             Type::Fn(params, _) => Some(params.clone()),
             _ => None,
         };
-        let symbol = match &callee.kind {
-            TypedExprKind::Ident(name) => self.resolve_function_symbol(
-                name,
-                &args.iter().map(|arg| arg.ty.clone()).collect::<Vec<_>>(),
-            )?,
-            _ => {
-                return Err(CodeGenError::UnsupportedExpr(
-                    "indirect calls are not lowered".to_string(),
-                ))
-            }
-        };
+        let symbol = self.resolve_function_symbol(
+            name,
+            &args.iter().map(|arg| arg.ty.clone()).collect::<Vec<_>>(),
+        )?;
         if symbol == "print" {
             let value = args
                 .first()
@@ -532,6 +556,16 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         self.emit_safepoint_poll()?;
         Ok(call.try_as_basic_value().left())
+    }
+
+    fn resolve_function_value_symbol(&self, name: &str, ty: &Type) -> Result<String, CodeGenError> {
+        if self.functions.contains_key(name) {
+            return Ok(name.to_string());
+        }
+        if let Type::Fn(params, _) = ty {
+            return self.resolve_function_symbol(name, params);
+        }
+        Err(CodeGenError::MissingSymbol(name.to_string()))
     }
 
     fn emit_method_call(
@@ -745,7 +779,7 @@ impl<'ctx> CodeGen<'ctx> {
         false
     }
 
-    fn emit_expr_as_type(
+    pub(crate) fn emit_expr_as_type(
         &mut self,
         expr: &TypedExpr,
         expected_ty: &Type,

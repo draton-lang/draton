@@ -98,8 +98,8 @@ impl<'ctx> CodeGen<'ctx> {
                 .i8_type()
                 .ptr_type(AddressSpace::default())
                 .into()),
-            Type::Fn(params, ret) => Ok(self
-                .llvm_function_type(ret, params)?
+            Type::Fn(_, _) => Ok(self
+                .closure_record_type
                 .ptr_type(AddressSpace::default())
                 .into()),
             Type::Named(name, args) if args.is_empty() && self.is_interface_type_name(name) => self
