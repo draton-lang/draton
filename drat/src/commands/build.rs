@@ -120,6 +120,12 @@ pub(crate) fn compile_project(entry_path: &Path) -> Result<CompiledProject> {
     if !typed.errors.is_empty() {
         bail!("{}", render_type_errors(entry_path, &source, &typed.errors));
     }
+    if !typed.warnings.is_empty() {
+        eprintln!(
+            "{}",
+            render_type_warnings(entry_path, &source, &typed.warnings)
+        );
+    }
     let main_return_type = typed
         .typed_program
         .items
@@ -150,6 +156,12 @@ pub(crate) fn compile_snippet(source: &str) -> Result<CompiledProject> {
     let typed = TypeChecker::new().check(parsed.program);
     if !typed.errors.is_empty() {
         bail!("{}", render_type_errors(&synthetic, source, &typed.errors));
+    }
+    if !typed.warnings.is_empty() {
+        eprintln!(
+            "{}",
+            render_type_warnings(&synthetic, source, &typed.warnings)
+        );
     }
     let main_return_type = typed
         .typed_program
@@ -640,6 +652,49 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                     "hint:     them method con thieu hoac sua lai danh sach implements".to_string(),
                 ),
             ),
+            TypeError::NonExhaustiveMatch { missing, line, col } => render_diagnostic(
+                "E012",
+                "non-exhaustive match",
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("missing:  {missing}")],
+                Some(
+                    "hint:     them arm `_ => ...` hoac cover day du cac pattern con thieu"
+                        .to_string(),
+                ),
+            ),
+            TypeError::RedundantPattern { pattern, line, col } => render_diagnostic(
+                "W001",
+                &format!("redundant pattern '{pattern}'"),
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("hint:     pattern nay khong bao gio duoc match".to_string()),
+            ),
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn render_type_warnings(path: &Path, source: &str, warnings: &[TypeError]) -> String {
+    warnings
+        .iter()
+        .filter_map(|warning| match warning {
+            TypeError::RedundantPattern { pattern, line, col } => Some(render_warning_diagnostic(
+                "W001",
+                &format!("redundant pattern '{pattern}'"),
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("hint:     pattern nay khong bao gio duoc match".to_string()),
+            )),
+            _ => None,
         })
         .collect::<Vec<_>>()
         .join("\n\n")
@@ -676,6 +731,47 @@ fn render_diagnostic(
     out.push_str("  |\n");
     out.push_str(&format!("{line:>2}|   {snippet}\n"));
     out.push_str(&format!("  |   {}\n", marker.red().bold()));
+    out.push_str("  |\n");
+    for note in notes {
+        out.push_str(&format!("  = {note}\n"));
+    }
+    if let Some(hint) = hint {
+        out.push_str(&format!("  = {hint}\n"));
+    }
+    out.trim_end().to_string()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_warning_diagnostic(
+    code: &str,
+    title: &str,
+    path: &Path,
+    source: &str,
+    line: usize,
+    col: usize,
+    notes: Vec<String>,
+    hint: Option<String>,
+) -> String {
+    let lines = source.lines().collect::<Vec<_>>();
+    let snippet = lines
+        .get(line.saturating_sub(1))
+        .copied()
+        .unwrap_or_default();
+    let marker_width = col.saturating_sub(1);
+    let marker = format!("{}^", " ".repeat(marker_width));
+    let mut out = String::new();
+    out.push_str(&format!(
+        "{}[{}] {} — {}:{}:{}\n",
+        "warning".yellow().bold(),
+        code.yellow().bold(),
+        title,
+        path.display(),
+        line,
+        col
+    ));
+    out.push_str("  |\n");
+    out.push_str(&format!("{line:>2}|   {snippet}\n"));
+    out.push_str(&format!("  |   {}\n", marker.yellow().bold()));
     out.push_str("  |\n");
     for note in notes {
         out.push_str(&format!("  = {note}\n"));

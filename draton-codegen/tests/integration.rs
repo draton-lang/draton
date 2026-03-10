@@ -68,6 +68,7 @@ fn recur(n) {
         8 => recur(7) + 1
         9 => recur(8) + 1
         10 => recur(9) + 1
+        _ => 0
     }
 }
 fn main() { recur(10) }

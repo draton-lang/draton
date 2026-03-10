@@ -3,6 +3,7 @@
 pub mod check;
 pub mod env;
 pub mod error;
+pub mod exhaust;
 pub mod infer;
 pub mod typed_ast;
 pub mod unify;

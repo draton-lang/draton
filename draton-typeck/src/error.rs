@@ -87,4 +87,18 @@ pub enum TypeError {
         line: usize,
         col: usize,
     },
+
+    #[error("non-exhaustive match at line {line}, col {col}\n  missing patterns: {missing}\n  hint: add a wildcard arm `_ => ...` or cover the missing cases")]
+    NonExhaustiveMatch {
+        missing: String,
+        line: usize,
+        col: usize,
+    },
+
+    #[error("redundant pattern '{pattern}' at line {line}, col {col}")]
+    RedundantPattern {
+        pattern: String,
+        line: usize,
+        col: usize,
+    },
 }

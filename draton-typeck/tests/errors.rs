@@ -107,3 +107,126 @@ class Rect implements Drawable {
         } if class == "Rect" && interface == "Drawable" && method == "draw"
     )));
 }
+
+#[test]
+fn reports_non_exhaustive_enum_match() {
+    let result = parse_and_check(
+        r#"
+enum Direction { North, South, East, West }
+fn main() {
+    let dir = Direction.North
+    match dir {
+        Direction.North => print("up")
+        Direction.South => print("down")
+    }
+}
+"#,
+    );
+    assert!(result.errors.iter().any(
+        |error| matches!(error, TypeError::NonExhaustiveMatch { missing, .. }
+            if missing.contains("Direction.East") && missing.contains("Direction.West"))
+    ));
+}
+
+#[test]
+fn wildcard_makes_match_exhaustive() {
+    let result = parse_and_check(
+        r#"
+enum Direction { North, South, East, West }
+fn main() {
+    let dir = Direction.North
+    match dir {
+        Direction.North => print("up")
+        _ => print("other")
+    }
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+}
+
+#[test]
+fn reports_bool_exhaustiveness_and_int_wildcard_requirement() {
+    let bool_ok = parse_and_check(
+        r#"
+fn main() {
+    let b = true
+    match b {
+        true => print("yes")
+        false => print("no")
+    }
+}
+"#,
+    );
+    assert!(bool_ok.errors.is_empty(), "errors: {:?}", bool_ok.errors);
+
+    let bool_bad = parse_and_check(
+        r#"
+fn main() {
+    let b = true
+    match b {
+        true => print("yes")
+    }
+}
+"#,
+    );
+    assert!(bool_bad
+        .errors
+        .iter()
+        .any(|error| matches!(error, TypeError::NonExhaustiveMatch { .. })));
+
+    let int_bad = parse_and_check(
+        r#"
+fn main() {
+    let x = 42
+    match x {
+        1 => print("one")
+        2 => print("two")
+    }
+}
+"#,
+    );
+    assert!(int_bad.errors.iter().any(|error| matches!(
+        error,
+        TypeError::NonExhaustiveMatch { missing, .. }
+        if missing.contains("wildcard required")
+    )));
+}
+
+#[test]
+fn result_match_is_exhaustive_with_ok_and_err() {
+    let result = parse_and_check(
+        r#"
+fn main() {
+    let r = Ok(42)
+    match r {
+        Ok(v) => print("ok")
+        Err(e) => print("err")
+    }
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+}
+
+#[test]
+fn redundant_pattern_is_reported_as_warning() {
+    let result = parse_and_check(
+        r#"
+enum Direction { North, South }
+fn main() {
+    let dir = Direction.North
+    match dir {
+        Direction.North => print("up")
+        Direction.North => print("still up")
+        _ => print("other")
+    }
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+    assert!(result
+        .warnings
+        .iter()
+        .any(|warning| matches!(warning, TypeError::RedundantPattern { .. })));
+}

@@ -10,6 +10,7 @@ use draton_ast::{
 
 use crate::env::{Scheme, TypeEnv};
 use crate::error::TypeError;
+use crate::exhaust::{classify_subject, extract_pattern, ExhaustivenessChecker};
 use crate::infer::{free_type_vars, free_type_vars_in_env, Substitution};
 use crate::typed_ast::{
     Type, TypedAssignStmt, TypedBlock, TypedClassDef, TypedConstDef, TypedElseBranch, TypedEnumDef,
@@ -26,12 +27,14 @@ use crate::unify::occurs;
 pub struct TypeCheckResult {
     pub typed_program: TypedProgram,
     pub errors: Vec<TypeError>,
+    pub warnings: Vec<TypeError>,
 }
 
 /// The Draton type checker.
 pub struct TypeChecker {
     env: TypeEnv,
     errors: Vec<TypeError>,
+    warnings: Vec<TypeError>,
     next_var: u32,
     fresh_counter: Rc<Cell<u32>>,
     subst: Substitution,
@@ -39,6 +42,8 @@ pub struct TypeChecker {
     class_methods: HashMap<String, HashMap<String, Scheme>>,
     interface_methods: HashMap<String, HashMap<String, Scheme>>,
     class_interfaces: HashMap<String, Vec<String>>,
+    enum_defs: HashMap<String, Vec<String>>,
+    exhaust_checker: ExhaustivenessChecker,
     function_hints: HashMap<String, FnDef>,
     binding_hints: HashMap<String, TypeExpr>,
     current_return: Vec<Type>,
@@ -54,6 +59,7 @@ impl TypeChecker {
         let mut checker = Self {
             env: TypeEnv::with_counter(Rc::clone(&fresh_counter)),
             errors: Vec::new(),
+            warnings: Vec::new(),
             next_var: 0,
             fresh_counter,
             subst: Substitution::empty(),
@@ -61,6 +67,8 @@ impl TypeChecker {
             class_methods: HashMap::new(),
             interface_methods: HashMap::new(),
             class_interfaces: HashMap::new(),
+            enum_defs: HashMap::new(),
+            exhaust_checker: ExhaustivenessChecker::default(),
             function_hints: HashMap::new(),
             binding_hints: HashMap::new(),
             current_return: Vec::new(),
@@ -89,6 +97,7 @@ impl TypeChecker {
         TypeCheckResult {
             typed_program,
             errors: self.errors,
+            warnings: self.warnings,
         }
     }
 
@@ -1192,6 +1201,26 @@ impl TypeChecker {
         field: &str,
         span: draton_ast::Span,
     ) -> (TypedExpr, Type) {
+        if let Expr::Ident(enum_name, target_span) = target {
+            if self
+                .enum_defs
+                .get(enum_name)
+                .map(|variants| variants.iter().any(|variant| variant == field))
+                .unwrap_or(false)
+            {
+                let enum_ty = Type::Named(enum_name.clone(), Vec::new());
+                let typed_target = TypedExpr {
+                    kind: TypedExprKind::Ident(enum_name.clone()),
+                    ty: enum_ty.clone(),
+                    span: *target_span,
+                };
+                return self.typed_expr(
+                    TypedExprKind::Field(Box::new(typed_target), field.to_string()),
+                    enum_ty,
+                    span,
+                );
+            }
+        }
         let (typed_target, target_ty) = self.infer_expr(target);
         let field_ty = self.require_field(target_ty, field, span);
         self.typed_expr(
@@ -1344,11 +1373,13 @@ impl TypeChecker {
     ) -> (TypedExpr, Type) {
         let (typed_subject, subject_ty) = self.infer_expr(subject);
         let result_ty = self.fresh_var();
+        let expected_subject = self.apply_subst(subject_ty.clone());
         let typed_arms = arms
             .iter()
             .map(|arm| {
                 self.env.push_scope();
-                let (typed_pattern, pattern_ty) = self.infer_expr(&arm.pattern);
+                let (typed_pattern, pattern_ty) =
+                    self.infer_pattern(&arm.pattern, Some(expected_subject.clone()));
                 let _ = self.unify(subject_ty.clone(), pattern_ty, arm.pattern.span());
                 let (typed_body, body_ty) = match &arm.body {
                     MatchArmBody::Expr(expr) => {
@@ -1369,9 +1400,232 @@ impl TypeChecker {
                 }
             })
             .collect::<Vec<_>>();
+        let resolved_subject_ty = self.apply_subst(expected_subject);
+        let subject_kind = classify_subject(&resolved_subject_ty, &self.enum_defs);
+        let patterns = typed_arms
+            .iter()
+            .map(|arm| extract_pattern(&arm.pattern))
+            .collect::<Vec<_>>();
+        let missing = self.exhaust_checker.check(&patterns, &subject_kind);
+        if !missing.is_empty() {
+            self.errors.push(TypeError::NonExhaustiveMatch {
+                missing: missing.join(", "),
+                line: span.line,
+                col: span.col,
+            });
+        }
+        for (index, pattern) in self
+            .exhaust_checker
+            .check_redundancy(&patterns, &subject_kind)
+        {
+            let arm = &typed_arms[index];
+            self.warnings.push(TypeError::RedundantPattern {
+                pattern,
+                line: arm.span.line,
+                col: arm.span.col,
+            });
+        }
         self.typed_expr(
             TypedExprKind::Match(Box::new(typed_subject), typed_arms),
             self.apply_subst(result_ty.clone()),
+            span,
+        )
+    }
+
+    fn infer_pattern(&mut self, pattern: &Expr, expected: Option<Type>) -> (TypedExpr, Type) {
+        match pattern {
+            Expr::Ident(name, span) if name == "_" => {
+                let ty = expected.unwrap_or_else(|| self.fresh_var());
+                self.typed_expr(TypedExprKind::Ident(name.clone()), ty, *span)
+            }
+            Expr::Ident(name, span) => {
+                if let Some(scheme) = self.env.lookup(name).cloned() {
+                    let ty = self.instantiate_scheme(&scheme);
+                    self.typed_expr(TypedExprKind::Ident(name.clone()), ty, *span)
+                } else {
+                    let ty = expected.unwrap_or_else(|| self.fresh_var());
+                    self.env.define(
+                        name,
+                        Scheme {
+                            quantified: Vec::new(),
+                            ty: ty.clone(),
+                        },
+                    );
+                    self.typed_expr(TypedExprKind::Ident(name.clone()), ty, *span)
+                }
+            }
+            Expr::IntLit(value, span) => {
+                self.typed_expr(TypedExprKind::IntLit(*value), Type::Int, *span)
+            }
+            Expr::FloatLit(value, span) => {
+                self.typed_expr(TypedExprKind::FloatLit(*value), Type::Float, *span)
+            }
+            Expr::StrLit(value, span) => {
+                self.typed_expr(TypedExprKind::StrLit(value.clone()), Type::String, *span)
+            }
+            Expr::BoolLit(value, span) => {
+                self.typed_expr(TypedExprKind::BoolLit(*value), Type::Bool, *span)
+            }
+            Expr::NoneLit(span) => {
+                let ty = match expected {
+                    Some(expected_ty) => match self.apply_subst(expected_ty.clone()) {
+                        Type::Option(_) => expected_ty,
+                        _ => {
+                            let inner = self.fresh_var();
+                            self.unify(expected_ty, Type::Option(Box::new(inner)), *span)
+                        }
+                    },
+                    None => Type::Option(Box::new(self.fresh_var())),
+                };
+                self.typed_expr(TypedExprKind::NoneLit, ty, *span)
+            }
+            Expr::Tuple(items, span) => {
+                let expected_items = match expected {
+                    Some(Type::Tuple(expected_items)) if expected_items.len() == items.len() => {
+                        Some(expected_items)
+                    }
+                    _ => None,
+                };
+                let typed_items = items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| {
+                        let expected_item = expected_items
+                            .as_ref()
+                            .and_then(|items| items.get(index))
+                            .cloned();
+                        self.infer_pattern(item, expected_item)
+                    })
+                    .collect::<Vec<_>>();
+                let ty = Type::Tuple(
+                    typed_items
+                        .iter()
+                        .map(|(_, ty)| self.apply_subst(ty.clone()))
+                        .collect(),
+                );
+                self.typed_expr(
+                    TypedExprKind::Tuple(typed_items.into_iter().map(|(expr, _)| expr).collect()),
+                    ty,
+                    *span,
+                )
+            }
+            Expr::Ok(inner, span) => {
+                let (ok_expected, err_expected) = match expected.clone() {
+                    Some(Type::Result(ok, err)) => (Some(*ok), Some(*err)),
+                    _ => (None, None),
+                };
+                let (typed_inner, ok_ty) = self.infer_pattern(inner, ok_expected);
+                let err_ty = err_expected.unwrap_or_else(|| self.fresh_var());
+                self.typed_expr(
+                    TypedExprKind::Ok(Box::new(typed_inner)),
+                    Type::Result(Box::new(self.apply_subst(ok_ty)), Box::new(err_ty)),
+                    *span,
+                )
+            }
+            Expr::Err(inner, span) => {
+                let (ok_expected, err_expected) = match expected.clone() {
+                    Some(Type::Result(ok, err)) => (Some(*ok), Some(*err)),
+                    _ => (None, None),
+                };
+                let (typed_inner, err_ty) = self.infer_pattern(inner, err_expected);
+                let ok_ty = ok_expected.unwrap_or_else(|| self.fresh_var());
+                self.typed_expr(
+                    TypedExprKind::Err(Box::new(typed_inner)),
+                    Type::Result(Box::new(ok_ty), Box::new(self.apply_subst(err_ty))),
+                    *span,
+                )
+            }
+            Expr::Field(target, field, span) => {
+                if let Expr::Ident(enum_name, target_span) = target.as_ref() {
+                    if self
+                        .enum_defs
+                        .get(enum_name)
+                        .map(|variants| variants.iter().any(|variant| variant == field))
+                        .unwrap_or(false)
+                    {
+                        let enum_ty = Type::Named(enum_name.clone(), Vec::new());
+                        let typed_target = TypedExpr {
+                            kind: TypedExprKind::Ident(enum_name.clone()),
+                            ty: enum_ty.clone(),
+                            span: *target_span,
+                        };
+                        return self.typed_expr(
+                            TypedExprKind::Field(Box::new(typed_target), field.clone()),
+                            enum_ty,
+                            *span,
+                        );
+                    }
+                }
+                self.infer_expr_with_expected(pattern, expected)
+            }
+            Expr::Call(callee, args, span) => {
+                self.infer_pattern_call(callee, args, *span, expected)
+            }
+            _ => self.infer_expr_with_expected(pattern, expected),
+        }
+    }
+
+    fn infer_pattern_call(
+        &mut self,
+        callee: &Expr,
+        args: &[Expr],
+        span: draton_ast::Span,
+        expected: Option<Type>,
+    ) -> (TypedExpr, Type) {
+        let (typed_callee, callee_ty) = self.infer_pattern(callee, None);
+        let (param_types, ret_type) = match self.apply_subst(callee_ty.clone()) {
+            Type::Fn(params, ret) => (params, *ret),
+            Type::Var(_) => {
+                let params = (0..args.len())
+                    .map(|_| self.fresh_var())
+                    .collect::<Vec<_>>();
+                let ret = expected.unwrap_or_else(|| self.fresh_var());
+                let resolved = self.unify(callee_ty, Type::Fn(params.clone(), Box::new(ret)), span);
+                match self.apply_subst(resolved) {
+                    Type::Fn(params, ret) => (params, *ret),
+                    _ => (
+                        (0..args.len()).map(|_| self.fresh_var()).collect(),
+                        self.fresh_var(),
+                    ),
+                }
+            }
+            other => {
+                self.errors.push(TypeError::Mismatch {
+                    expected: "callable pattern".to_string(),
+                    found: other.to_string(),
+                    hint: "use constructors or tuple/literal patterns inside match arms"
+                        .to_string(),
+                    line: span.line,
+                    col: span.col,
+                });
+                (
+                    (0..args.len()).map(|_| self.fresh_var()).collect(),
+                    self.fresh_var(),
+                )
+            }
+        };
+        if param_types.len() != args.len() {
+            self.errors.push(TypeError::ArgCount {
+                expected: param_types.len(),
+                got: args.len(),
+                line: span.line,
+                col: span.col,
+            });
+        }
+        let typed_args = args
+            .iter()
+            .enumerate()
+            .map(|(index, arg)| {
+                let expected_arg = param_types.get(index).cloned();
+                self.infer_pattern(arg, expected_arg)
+            })
+            .collect::<Vec<_>>();
+        self.typed_expr(
+            TypedExprKind::Call(
+                Box::new(typed_callee),
+                typed_args.into_iter().map(|(expr, _)| expr).collect(),
+            ),
+            self.apply_subst(ret_type),
             span,
         )
     }
@@ -1679,6 +1933,11 @@ impl TypeChecker {
                     );
                 }
                 Item::Enum(enum_def) => {
+                    self.enum_defs
+                        .insert(enum_def.name.clone(), enum_def.variants.clone());
+                    self.exhaust_checker
+                        .enum_defs
+                        .insert(enum_def.name.clone(), enum_def.variants.clone());
                     for variant in &enum_def.variants {
                         self.env.define(
                             variant,
