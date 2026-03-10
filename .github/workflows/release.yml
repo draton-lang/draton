@@ -102,15 +102,32 @@ jobs:
           if (Test-Path C:\llvm) {
             Remove-Item -Recurse -Force C:\llvm
           }
+          if (Test-Path C:\llvm-shim) {
+            Remove-Item -Recurse -Force C:\llvm-shim
+          }
           if (Test-Path C:\llvm-download) {
             Remove-Item -Recurse -Force C:\llvm-download
           }
           New-Item -ItemType Directory -Force -Path C:\llvm-download | Out-Null
+          New-Item -ItemType Directory -Force -Path C:\llvm-shim\bin | Out-Null
           Invoke-WebRequest -Uri "${{ matrix.llvm_archive }}" -OutFile C:\llvm-download\llvm.tar.xz
           tar -xf C:\llvm-download\llvm.tar.xz -C C:\
           Move-Item -Force "C:\${{ matrix.llvm_dir }}" C:\llvm
-          echo "LLVM_SYS_140_PREFIX=C:\llvm" >> $env:GITHUB_ENV
-          echo "LLVM_CONFIG_PATH=C:\llvm\bin\llvm-config.exe" >> $env:GITHUB_ENV
+          @'
+          @echo off
+          setlocal
+          set "REAL=C:\llvm\bin\llvm-config.exe"
+          if /I "%~1"=="--system-libs" (
+            for /f "usebackq delims=" %%i in (`"%REAL%" %*`) do set "OUT=%%i"
+            set "OUT=%OUT:xml2s.lib=%"
+            echo %OUT%
+            exit /b 0
+          )
+          "%REAL%" %*
+          '@ | Set-Content -Path C:\llvm-shim\bin\llvm-config.cmd -Encoding ascii
+          echo "LLVM_SYS_140_PREFIX=C:\llvm-shim" >> $env:GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=C:\llvm-shim\bin\llvm-config.cmd" >> $env:GITHUB_ENV
+          echo "C:\llvm-shim\bin" >> $env:GITHUB_PATH
           echo "C:\llvm\bin" >> $env:GITHUB_PATH
 
       - name: Set up QEMU
@@ -166,6 +183,13 @@ jobs:
               . "$HOME/.cargo/env"
               export LLVM_SYS_140_PREFIX=/usr/lib/llvm14
               export LLVM_CONFIG_PATH=/usr/bin/llvm14-config
+              mkdir -p /opt/musl-compat
+              cat > /tmp/rt_stub.c <<'"'"'EOF'"'"'
+              void __draton_musl_rt_stub(void) {}
+              EOF
+              cc -c /tmp/rt_stub.c -o /tmp/rt_stub.o
+              ar rcs /opt/musl-compat/librt.a /tmp/rt_stub.o
+              export RUSTFLAGS="${RUSTFLAGS} -L native=/opt/musl-compat"
               cargo build --release --package drat --target x86_64-unknown-linux-musl
               mkdir -p dist
               strip target/x86_64-unknown-linux-musl/release/drat || true
