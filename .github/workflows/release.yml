@@ -164,7 +164,8 @@ jobs:
               }
           }
           "@
-          Add-Type -TypeDefinition $llvmShimSource -Language CSharp -OutputAssembly C:\llvm-shim\bin\llvm-config.exe -OutputType ConsoleApplication
+          $llvmShimSource | Set-Content -Path C:\llvm-shim\bin\llvm-config.cs -Encoding ascii
+          & csc.exe /nologo /target:exe /out:C:\llvm-shim\bin\llvm-config.exe C:\llvm-shim\bin\llvm-config.cs
           echo "LLVM_SYS_140_PREFIX=C:\llvm-shim" >> $env:GITHUB_ENV
           echo "LLVM_CONFIG_PATH=C:\llvm-shim\bin\llvm-config.exe" >> $env:GITHUB_ENV
           echo "C:\llvm-shim\bin" >> $env:GITHUB_PATH
