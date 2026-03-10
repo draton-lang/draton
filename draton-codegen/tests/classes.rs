@@ -243,3 +243,74 @@ fn use_circle(shape) {
     assert!(ir.contains("insertvalue %Drawable"), "{ir}");
     assert!(ir.contains("@Circle_Drawable_vtable"), "{ir}");
 }
+
+#[test]
+fn child_calls_parent_method_with_parent_upcast() {
+    let ir = compile_ir(
+        r#"
+class Animal {
+    fn speak() { print("...") }
+}
+class Dog extends Animal {
+    fn fetch() { print("fetch!") }
+}
+@type { fn call_speak(d: Dog) -> Unit }
+fn call_speak(d) {
+    d.speak()
+}
+"#,
+    );
+    let function_start = ir.find("define void @call_speak").expect("call_speak");
+    let function_ir = &ir[function_start..];
+    assert!(
+        function_ir.contains("call void @Animal.speak(%Animal*"),
+        "{function_ir}"
+    );
+    assert!(
+        function_ir.contains("%upcast.ptr") || function_ir.contains("%parent.ptr"),
+        "{function_ir}"
+    );
+}
+
+#[test]
+fn child_layout_keeps_parent_as_first_field() {
+    let ir = compile_ir(
+        r#"
+class Animal {
+    let name: String
+}
+class Dog extends Animal {
+    let age: Int
+}
+"#,
+    );
+    assert!(ir.contains("%Dog = type { %Animal, i64 }"), "{ir}");
+}
+
+#[test]
+fn override_prefers_child_method_symbol() {
+    let ir = compile_ir(
+        r#"
+class Animal {
+    fn speak() { print("...") }
+}
+class Dog extends Animal {
+    fn speak() { print("woof") }
+}
+@type { fn call_speak(d: Dog) -> Unit }
+fn call_speak(d) {
+    d.speak()
+}
+"#,
+    );
+    let function_start = ir.find("define void @call_speak").expect("call_speak");
+    let function_ir = &ir[function_start..];
+    assert!(
+        function_ir.contains("call void @Dog.speak(%Dog*"),
+        "{function_ir}"
+    );
+    assert!(
+        !function_ir.contains("call void @Animal.speak"),
+        "{function_ir}"
+    );
+}

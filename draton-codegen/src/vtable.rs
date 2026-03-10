@@ -218,15 +218,17 @@ impl<'ctx> CodeGen<'ctx> {
         class_name: &str,
         iface_name: &str,
     ) -> Result<inkwell::values::StructValue<'ctx>, CodeGenError> {
+        let (value, implementor) =
+            self.resolve_interface_receiver(value, class_name, iface_name)?;
         let fat_ptr_type = *self
             .fat_pointer_types
             .get(iface_name)
             .ok_or_else(|| CodeGenError::MissingSymbol(iface_name.to_string()))?;
         let vtable_global = *self
             .vtable_globals
-            .get(&(class_name.to_string(), iface_name.to_string()))
+            .get(&(implementor.clone(), iface_name.to_string()))
             .ok_or_else(|| {
-                CodeGenError::MissingSymbol(format!("{class_name}_{iface_name}_vtable"))
+                CodeGenError::MissingSymbol(format!("{implementor}_{iface_name}_vtable"))
             })?;
         let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
         let data_ptr = self
@@ -239,6 +241,36 @@ impl<'ctx> CodeGen<'ctx> {
             &[data_ptr.into(), vtable_global.as_pointer_value().into()],
             "iface.upcast",
         )
+    }
+
+    fn resolve_interface_receiver(
+        &mut self,
+        value: PointerValue<'ctx>,
+        class_name: &str,
+        iface_name: &str,
+    ) -> Result<(PointerValue<'ctx>, String), CodeGenError> {
+        let mut current_ptr = value;
+        let mut current_class = class_name.to_string();
+        loop {
+            if self
+                .vtable_globals
+                .contains_key(&(current_class.clone(), iface_name.to_string()))
+            {
+                return Ok((current_ptr, current_class));
+            }
+            let parent_class = self
+                .class_layouts
+                .get(&current_class)
+                .and_then(|layout| layout.parent_class.clone())
+                .ok_or_else(|| {
+                    CodeGenError::MissingSymbol(format!("{class_name}_{iface_name}_vtable"))
+                })?;
+            current_ptr = self
+                .builder
+                .build_struct_gep(current_ptr, 0, "iface.parent")
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            current_class = parent_class;
+        }
     }
 
     pub(crate) fn emit_interface_method_call(

@@ -109,6 +109,59 @@ class Rect implements Drawable {
 }
 
 #[test]
+fn child_inherits_parent_method_without_error() {
+    let result = parse_and_check(
+        r#"
+class Animal {
+    fn speak() { print("...") }
+}
+class Dog extends Animal {
+    fn fetch() { print("fetch!") }
+}
+@type { fn main(d: Dog) -> Unit }
+fn main(d) {
+    d.speak()
+    d.fetch()
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+}
+
+#[test]
+fn reports_circular_inheritance_error() {
+    let result = parse_and_check(
+        r#"
+class A extends B { }
+class B extends A { }
+"#,
+    );
+    assert!(result
+        .errors
+        .iter()
+        .any(|error| matches!(error, TypeError::CircularInheritance { .. })));
+}
+
+#[test]
+fn child_accesses_parent_field_without_error() {
+    let result = parse_and_check(
+        r#"
+class Shape {
+    let color: String
+}
+class Circle extends Shape {
+    let radius: Int
+}
+@type { fn color_of(c: Circle) -> String }
+fn color_of(c) {
+    c.color
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+}
+
+#[test]
 fn reports_non_exhaustive_enum_match() {
     let result = parse_and_check(
         r#"

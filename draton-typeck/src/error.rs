@@ -88,6 +88,21 @@ pub enum TypeError {
         col: usize,
     },
 
+    #[error("circular inheritance at line {line}, col {col}: class {class} inherits from itself")]
+    CircularInheritance {
+        class: String,
+        line: usize,
+        col: usize,
+    },
+
+    #[error("undefined parent class '{parent}' for class '{class}' at line {line}, col {col}")]
+    UndefinedParent {
+        class: String,
+        parent: String,
+        line: usize,
+        col: usize,
+    },
+
     #[error("non-exhaustive match at line {line}, col {col}\n  missing patterns: {missing}\n  hint: add a wildcard arm `_ => ...` or cover the missing cases")]
     NonExhaustiveMatch {
         missing: String,

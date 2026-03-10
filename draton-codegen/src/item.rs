@@ -23,6 +23,7 @@ impl<'ctx> CodeGen<'ctx> {
                         struct_type,
                         field_indices: HashMap::new(),
                         method_names: HashMap::new(),
+                        parent_class: class_def.extends.clone(),
                     },
                 );
             }
@@ -236,6 +237,7 @@ impl<'ctx> CodeGen<'ctx> {
                     struct_type,
                     field_indices: HashMap::new(),
                     method_names: HashMap::new(),
+                    parent_class: None,
                 },
             );
         }
@@ -265,6 +267,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .ok_or_else(|| CodeGenError::MissingSymbol(specialized.name.clone()))?;
             layout.struct_type.set_body(&body_types, false);
             layout.field_indices = field_indices;
+            layout.parent_class = specialized.extends.clone();
 
             let _ = self.emit_class_type_descriptor(&specialized)?;
             self.predeclare_constructor(&specialized.name)?;

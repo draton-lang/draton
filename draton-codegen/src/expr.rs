@@ -459,6 +459,10 @@ impl<'ctx> CodeGen<'ctx> {
         callee: &TypedExpr,
         args: &[TypedExpr],
     ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        let expected_params = match &callee.ty {
+            Type::Fn(params, _) => Some(params.clone()),
+            _ => None,
+        };
         let symbol = match &callee.kind {
             TypedExprKind::Ident(name) => self.resolve_function_symbol(
                 name,
@@ -499,8 +503,17 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| CodeGenError::MissingSymbol(symbol.clone()))?;
         let args = args
             .iter()
-            .map(|arg| {
-                self.emit_expr(arg)?.ok_or_else(|| {
+            .enumerate()
+            .map(|(index, arg)| {
+                let value = if let Some(expected) = expected_params
+                    .as_ref()
+                    .and_then(|params| params.get(index))
+                {
+                    self.emit_expr_as_type(arg, expected)?
+                } else {
+                    self.emit_expr(arg)?
+                };
+                value.ok_or_else(|| {
                     CodeGenError::UnsupportedExpr("call arg missing value".to_string())
                 })
             })
@@ -547,21 +560,31 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             mangle_class(class_name, type_args)
         };
-        let symbol = self
-            .class_layouts
-            .get(&runtime_name)
-            .and_then(|layout| layout.method_names.get(method))
-            .cloned()
+        let (owner_class, function) = self
+            .resolve_method_fn(&runtime_name, method)
+            .map(|(owner, symbol)| {
+                self.functions
+                    .get(&symbol)
+                    .copied()
+                    .map(|function| (owner, function))
+                    .ok_or(CodeGenError::MissingSymbol(symbol))
+            })
+            .transpose()?
             .ok_or_else(|| CodeGenError::MissingSymbol(format!("{runtime_name}.{method}")))?;
-        let function = self
-            .functions
-            .get(&symbol)
-            .copied()
-            .ok_or_else(|| CodeGenError::MissingSymbol(symbol.clone()))?;
         let mut call_args = Vec::new();
-        call_args.push(self.emit_expr(target)?.ok_or_else(|| {
-            CodeGenError::UnsupportedExpr("method target missing value".to_string())
-        })?);
+        let target_ptr = self
+            .emit_expr(target)?
+            .ok_or_else(|| {
+                CodeGenError::UnsupportedExpr("method target missing value".to_string())
+            })?
+            .into_pointer_value();
+        let target_value = if owner_class == runtime_name {
+            target_ptr.into()
+        } else {
+            self.emit_upcast_to_parent(target_ptr, &runtime_name, &owner_class)?
+                .into()
+        };
+        call_args.push(target_value);
         call_args.extend(
             args.iter()
                 .map(|arg| {
@@ -612,22 +635,162 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             mangle_class(class_name, type_args)
         };
-        let layout = self
-            .class_layouts
-            .get(&runtime_name)
-            .ok_or_else(|| CodeGenError::MissingSymbol(runtime_name.clone()))?;
-        let index = layout
-            .field_indices
-            .get(field)
-            .copied()
-            .ok_or_else(|| CodeGenError::MissingSymbol(format!("{runtime_name}.{field}")))?;
         let base = self
             .emit_expr(target)?
             .ok_or_else(|| CodeGenError::UnsupportedExpr("field target missing value".to_string()))?
             .into_pointer_value();
-        self.builder
-            .build_struct_gep(base, index, field)
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))
+        self.emit_field_ptr_in_class(base, &runtime_name, field)
+    }
+
+    fn emit_field_ptr_in_class(
+        &mut self,
+        ptr: PointerValue<'ctx>,
+        class_name: &str,
+        field: &str,
+    ) -> Result<PointerValue<'ctx>, CodeGenError> {
+        let layout = self
+            .class_layouts
+            .get(class_name)
+            .cloned()
+            .ok_or_else(|| CodeGenError::MissingSymbol(class_name.to_string()))?;
+        if let Some(index) = layout.field_indices.get(field).copied() {
+            return self
+                .builder
+                .build_struct_gep(ptr, index, field)
+                .map_err(|err| CodeGenError::Llvm(err.to_string()));
+        }
+        if let Some(parent_class) = layout.parent_class {
+            let parent_ptr = self
+                .builder
+                .build_struct_gep(ptr, 0, "parent.ptr")
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            return self.emit_field_ptr_in_class(parent_ptr, &parent_class, field);
+        }
+        Err(CodeGenError::MissingSymbol(format!("{class_name}.{field}")))
+    }
+
+    fn resolve_method_fn(&self, class_name: &str, method: &str) -> Option<(String, String)> {
+        let mut current = Some(class_name.to_string());
+        while let Some(class_name) = current {
+            let symbol = format!("{class_name}.{method}");
+            if self.functions.contains_key(&symbol) {
+                return Some((class_name, symbol));
+            }
+            current = self
+                .class_layouts
+                .get(&class_name)
+                .and_then(|layout| layout.parent_class.clone());
+        }
+        None
+    }
+
+    fn emit_upcast_to_parent(
+        &mut self,
+        child_ptr: PointerValue<'ctx>,
+        child_class: &str,
+        target_class: &str,
+    ) -> Result<PointerValue<'ctx>, CodeGenError> {
+        if child_class == target_class {
+            return Ok(child_ptr);
+        }
+        let layout = self
+            .class_layouts
+            .get(child_class)
+            .cloned()
+            .ok_or_else(|| CodeGenError::MissingSymbol(child_class.to_string()))?;
+        let parent_class = layout.parent_class.ok_or_else(|| {
+            CodeGenError::MissingSymbol(format!("{child_class} does not extend {target_class}"))
+        })?;
+        let parent_ptr = self
+            .builder
+            .build_struct_gep(child_ptr, 0, "upcast.ptr")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        self.emit_upcast_to_parent(parent_ptr, &parent_class, target_class)
+    }
+
+    fn class_extends(&self, child_class: &str, target_class: &str) -> bool {
+        if child_class == target_class {
+            return true;
+        }
+        let mut current = Some(child_class.to_string());
+        while let Some(class_name) = current {
+            if class_name == target_class {
+                return true;
+            }
+            current = self
+                .class_layouts
+                .get(&class_name)
+                .and_then(|layout| layout.parent_class.clone());
+        }
+        false
+    }
+
+    fn class_implements_interface(&self, class_name: &str, iface_name: &str) -> bool {
+        let mut current = Some(class_name.to_string());
+        while let Some(class_name) = current {
+            if self
+                .iface_registry
+                .implementors
+                .get(iface_name)
+                .map(|implementors| implementors.iter().any(|item| item == &class_name))
+                .unwrap_or(false)
+            {
+                return true;
+            }
+            current = self
+                .class_layouts
+                .get(&class_name)
+                .and_then(|layout| layout.parent_class.clone());
+        }
+        false
+    }
+
+    fn emit_expr_as_type(
+        &mut self,
+        expr: &TypedExpr,
+        expected_ty: &Type,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        match (&expr.ty, expected_ty) {
+            (Type::Named(class_name, class_args), Type::Named(iface_name, iface_args))
+                if iface_args.is_empty()
+                    && self.is_interface_type_name(iface_name)
+                    && self.class_implements_interface(
+                        &self.runtime_class_name(class_name, class_args),
+                        iface_name,
+                    ) =>
+            {
+                let runtime_name = self.runtime_class_name(class_name, class_args);
+                let value = self
+                    .emit_expr(expr)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "interface upcast source missing value".to_string(),
+                        )
+                    })?
+                    .into_pointer_value();
+                self.emit_upcast_to_interface(value, &runtime_name, iface_name)
+                    .map(|value| Some(value.into()))
+            }
+            (Type::Named(class_name, class_args), Type::Named(parent_name, parent_args)) => {
+                let runtime_name = self.runtime_class_name(class_name, class_args);
+                let target_name = self.runtime_class_name(parent_name, parent_args);
+                if runtime_name != target_name && self.class_extends(&runtime_name, &target_name) {
+                    let value = self
+                        .emit_expr(expr)?
+                        .ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr(
+                                "parent upcast source missing value".to_string(),
+                            )
+                        })?
+                        .into_pointer_value();
+                    return self
+                        .emit_upcast_to_parent(value, &runtime_name, &target_name)
+                        .map(|value| Some(value.into()));
+                }
+                self.emit_expr(expr)
+            }
+            _ => self.emit_expr(expr),
+        }
     }
 
     fn emit_cast(
@@ -635,10 +798,12 @@ impl<'ctx> CodeGen<'ctx> {
         value: &TypedExpr,
         to_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
-        if let (Type::Named(class_name, class_args), Type::Named(iface_name, iface_args)) =
+        if let (Type::Named(class_name, class_args), Type::Named(target_name, target_args)) =
             (&value.ty, to_ty)
         {
-            if iface_args.is_empty() && self.is_interface_type_name(iface_name) {
+            let runtime_name = self.runtime_class_name(class_name, class_args);
+            let target_runtime_name = self.runtime_class_name(target_name, target_args);
+            if target_args.is_empty() && self.is_interface_type_name(target_name) {
                 let runtime_name = self.runtime_class_name(class_name, class_args);
                 let value = self
                     .emit_expr(value)?
@@ -649,7 +814,22 @@ impl<'ctx> CodeGen<'ctx> {
                     })?
                     .into_pointer_value();
                 return self
-                    .emit_upcast_to_interface(value, &runtime_name, iface_name)
+                    .emit_upcast_to_interface(value, &runtime_name, target_name)
+                    .map(Into::into);
+            }
+            if runtime_name != target_runtime_name
+                && self.class_extends(&runtime_name, &target_runtime_name)
+            {
+                let value = self
+                    .emit_expr(value)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "parent cast source missing value".to_string(),
+                        )
+                    })?
+                    .into_pointer_value();
+                return self
+                    .emit_upcast_to_parent(value, &runtime_name, &target_runtime_name)
                     .map(Into::into);
             }
         }

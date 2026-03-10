@@ -26,6 +26,7 @@ pub(crate) struct ClassLayout<'ctx> {
     pub struct_type: StructType<'ctx>,
     pub field_indices: HashMap<String, u32>,
     pub method_names: HashMap<String, String>,
+    pub parent_class: Option<String>,
 }
 
 /// Build flavor for LLVM emission.

@@ -40,8 +40,10 @@ pub struct TypeChecker {
     subst: Substitution,
     class_fields: HashMap<String, HashMap<String, Type>>,
     class_methods: HashMap<String, HashMap<String, Scheme>>,
+    class_parents: HashMap<String, String>,
     interface_methods: HashMap<String, HashMap<String, Scheme>>,
     class_interfaces: HashMap<String, Vec<String>>,
+    declared_classes: BTreeSet<String>,
     enum_defs: HashMap<String, Vec<String>>,
     exhaust_checker: ExhaustivenessChecker,
     function_hints: HashMap<String, FnDef>,
@@ -65,8 +67,10 @@ impl TypeChecker {
             subst: Substitution::empty(),
             class_fields: HashMap::new(),
             class_methods: HashMap::new(),
+            class_parents: HashMap::new(),
             interface_methods: HashMap::new(),
             class_interfaces: HashMap::new(),
+            declared_classes: BTreeSet::new(),
             enum_defs: HashMap::new(),
             exhaust_checker: ExhaustivenessChecker::default(),
             function_hints: HashMap::new(),
@@ -233,11 +237,6 @@ impl TypeChecker {
     }
 
     fn check_interface_impl(&mut self, class_def: &ClassDef) {
-        let class_methods = self
-            .class_methods
-            .get(&class_def.name)
-            .cloned()
-            .unwrap_or_default();
         for iface_name in &class_def.implements {
             let Some(required_methods) = self.interface_methods.get(iface_name).cloned() else {
                 self.errors.push(TypeError::UndefinedVar {
@@ -248,7 +247,9 @@ impl TypeChecker {
                 continue;
             };
             for (method_name, iface_scheme) in required_methods {
-                let Some(class_scheme) = class_methods.get(&method_name).cloned() else {
+                let Some(class_scheme) =
+                    self.lookup_method_in_class_hierarchy(&class_def.name, &method_name)
+                else {
                     self.errors.push(TypeError::MissingInterfaceMethod {
                         class: class_def.name.clone(),
                         interface: iface_name.clone(),
@@ -278,10 +279,7 @@ impl TypeChecker {
 
     fn infer_class_field(&mut self, class_def: &ClassDef, field: &FieldDef) -> TypedFieldDef {
         let ty = self
-            .class_fields
-            .get(&class_def.name)
-            .and_then(|fields| fields.get(&field.name))
-            .cloned()
+            .lookup_field_ty(&class_def.name, &field.name)
             .unwrap_or_else(|| {
                 field
                     .type_hint
@@ -1222,7 +1220,21 @@ impl TypeChecker {
             }
         }
         let (typed_target, target_ty) = self.infer_expr(target);
-        let field_ty = self.require_field(target_ty, field, span);
+        let resolved_target_ty = self.apply_subst(target_ty.clone());
+        let field_ty = match &resolved_target_ty {
+            Type::Named(class_name, _) => {
+                self.lookup_field_ty(class_name, field).unwrap_or_else(|| {
+                    self.errors.push(TypeError::NoField {
+                        field: field.to_string(),
+                        ty: class_name.clone(),
+                        line: span.line,
+                        col: span.col,
+                    });
+                    self.fresh_var()
+                })
+            }
+            _ => self.require_field(target_ty, field, span),
+        };
         self.typed_expr(
             TypedExprKind::Field(Box::new(typed_target), field.to_string()),
             self.apply_subst(field_ty.clone()),
@@ -1720,6 +1732,38 @@ impl TypeChecker {
         self.apply_subst(field_ty)
     }
 
+    fn lookup_field_ty(&self, class_name: &str, field: &str) -> Option<Type> {
+        let mut current = Some(class_name.to_string());
+        while let Some(class_name) = current {
+            if let Some(field_ty) = self
+                .class_fields
+                .get(&class_name)
+                .and_then(|fields| fields.get(field))
+                .cloned()
+            {
+                return Some(field_ty);
+            }
+            current = self.class_parents.get(&class_name).cloned();
+        }
+        None
+    }
+
+    fn lookup_method_in_class_hierarchy(&self, class_name: &str, name: &str) -> Option<Scheme> {
+        let mut current = Some(class_name.to_string());
+        while let Some(class_name) = current {
+            if let Some(method) = self
+                .class_methods
+                .get(&class_name)
+                .and_then(|methods| methods.get(name))
+                .cloned()
+            {
+                return Some(method);
+            }
+            current = self.class_parents.get(&class_name).cloned();
+        }
+        None
+    }
+
     fn lookup_method_scheme(
         &mut self,
         target_ty: &Type,
@@ -1732,9 +1776,7 @@ impl TypeChecker {
             Type::Int | Type::Float | Type::Bool => self.builtin_scalar_method(name),
             Type::Chan(inner) => self.builtin_chan_method(name, *inner),
             Type::Named(class_name, _) => self
-                .class_methods
-                .get(&class_name)
-                .and_then(|methods| methods.get(name).cloned())
+                .lookup_method_in_class_hierarchy(&class_name, name)
                 .or_else(|| {
                     self.interface_methods
                         .get(&class_name)
@@ -1766,10 +1808,31 @@ impl TypeChecker {
     }
 
     fn class_implements_interface(&self, class_name: &str, interface_name: &str) -> bool {
-        self.class_interfaces
-            .get(class_name)
-            .map(|interfaces| interfaces.iter().any(|name| name == interface_name))
-            .unwrap_or(false)
+        let mut current = Some(class_name.to_string());
+        while let Some(class_name) = current {
+            if self
+                .class_interfaces
+                .get(&class_name)
+                .map(|interfaces| interfaces.iter().any(|name| name == interface_name))
+                .unwrap_or(false)
+            {
+                return true;
+            }
+            current = self.class_parents.get(&class_name).cloned();
+        }
+        false
+    }
+
+    fn check_no_cycle(&self, start: &str) -> bool {
+        let mut visited = BTreeSet::new();
+        let mut current = Some(start.to_string());
+        while let Some(class_name) = current {
+            if !visited.insert(class_name.clone()) {
+                return false;
+            }
+            current = self.class_parents.get(&class_name).cloned();
+        }
+        true
     }
 
     fn can_upcast_to_interface(&self, from: &Type, to: &Type) -> bool {
@@ -1869,6 +1932,14 @@ impl TypeChecker {
     }
 
     fn predeclare_items(&mut self, program: &Program) {
+        self.declared_classes = program
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Class(class_def) => Some(class_def.name.clone()),
+                _ => None,
+            })
+            .collect();
         for item in &program.items {
             match item {
                 Item::Class(class_def) => {
@@ -1957,6 +2028,26 @@ impl TypeChecker {
         self.push_type_params(&class_def.type_params);
         self.class_interfaces
             .insert(class_def.name.clone(), class_def.implements.clone());
+        if let Some(parent) = &class_def.extends {
+            if !self.declared_classes.contains(parent) {
+                self.errors.push(TypeError::UndefinedParent {
+                    class: class_def.name.clone(),
+                    parent: parent.clone(),
+                    line: class_def.span.line,
+                    col: class_def.span.col,
+                });
+            } else {
+                self.class_parents
+                    .insert(class_def.name.clone(), parent.clone());
+                if !self.check_no_cycle(&class_def.name) {
+                    self.errors.push(TypeError::CircularInheritance {
+                        class: class_def.name.clone(),
+                        line: class_def.span.line,
+                        col: class_def.span.col,
+                    });
+                }
+            }
+        }
         let fields = class_def
             .members
             .iter()
