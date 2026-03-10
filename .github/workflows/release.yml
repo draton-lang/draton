@@ -233,6 +233,8 @@ jobs:
               ar rcs /opt/musl-compat/librt.a /tmp/rt_stub.o
               export RUSTFLAGS="${RUSTFLAGS} -L native=/opt/musl-compat"
               cargo build --release --package drat --target x86_64-unknown-linux-musl
+              test -f target/x86_64-unknown-linux-musl/release/drat
+              ls -lh target/x86_64-unknown-linux-musl/release/drat
               mkdir -p dist
               strip target/x86_64-unknown-linux-musl/release/drat || true
               tar -czf dist/drat-linux-x86_64-musl.tar.gz -C target/x86_64-unknown-linux-musl/release drat
@@ -274,6 +276,8 @@ jobs:
               export LLVM_SYS_140_PREFIX=/usr/lib/llvm-14
               export LLVM_CONFIG_PATH=/usr/lib/llvm-14/bin/llvm-config
               cargo build --release --package drat --target riscv64gc-unknown-linux-gnu
+              test -f target/riscv64gc-unknown-linux-gnu/release/drat
+              ls -lh target/riscv64gc-unknown-linux-gnu/release/drat
               mkdir -p dist
               strip target/riscv64gc-unknown-linux-gnu/release/drat || true
               tar -czf dist/drat-linux-riscv64.tar.gz -C target/riscv64gc-unknown-linux-gnu/release drat
