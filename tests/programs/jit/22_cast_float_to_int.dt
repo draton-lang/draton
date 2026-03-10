@@ -1,0 +1,6 @@
+// RUN: jit
+// EXPECT: 3
+fn main() {
+    let x = 3.75 as Int
+    x
+}

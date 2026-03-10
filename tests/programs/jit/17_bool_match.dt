@@ -1,0 +1,7 @@
+// RUN: compile
+fn main() {
+    match true {
+        true => 2
+        false => 0
+    }
+}

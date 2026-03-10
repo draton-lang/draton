@@ -1,0 +1,7 @@
+// RUN: compile
+fn main() {
+    @comptime {
+        let size = 4 * 1024
+    }
+    0
+}

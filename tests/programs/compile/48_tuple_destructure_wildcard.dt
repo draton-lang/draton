@@ -1,0 +1,6 @@
+// RUN: jit
+// EXPECT: 2
+fn main() {
+    let (_, y) = (1, 2)
+    y
+}

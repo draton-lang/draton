@@ -1,0 +1,6 @@
+// RUN: compile
+fn work() { 1 }
+fn main() {
+    spawn work()
+    0
+}

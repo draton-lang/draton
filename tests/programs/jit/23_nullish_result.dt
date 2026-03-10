@@ -1,0 +1,6 @@
+// RUN: compile
+@type { fn compute() -> Result[Int, Int] fn main() -> Int }
+fn compute() {
+    Ok(42)
+}
+fn main() { 0 }

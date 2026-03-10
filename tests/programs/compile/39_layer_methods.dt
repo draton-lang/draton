@@ -1,0 +1,12 @@
+// RUN: compile
+class User {
+    let name: String
+
+    layer Access {
+        fn getName() { self.name }
+    }
+
+    fn read() { self.getName() }
+}
+@type { fn main(u: User) -> String }
+fn main(u) { u.read() }

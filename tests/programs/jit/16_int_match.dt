@@ -1,0 +1,9 @@
+// RUN: jit
+// EXPECT: 20
+fn main() {
+    match 2 {
+        1 => 10
+        2 => 20
+        _ => 0
+    }
+}

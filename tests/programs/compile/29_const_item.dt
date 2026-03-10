@@ -1,0 +1,4 @@
+// RUN: jit
+// EXPECT: 0
+const ANSWER = 42
+fn main() { 0 }

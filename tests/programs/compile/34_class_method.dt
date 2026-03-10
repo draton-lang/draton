@@ -1,0 +1,7 @@
+// RUN: compile
+class User {
+    let name: String
+    fn getName() { self.name }
+}
+@type { fn main(u: User) -> String }
+fn main(u) { u.getName() }

@@ -1,0 +1,4 @@
+// RUN: compile
+@type { fn make() -> Result[Int, Int] fn main() -> Int }
+fn make() { Ok(4) }
+fn main() { 0 }

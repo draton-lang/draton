@@ -1,0 +1,7 @@
+// RUN: compile
+fn main() {
+    @unsafe {
+        let x = 1 + 2
+    }
+    0
+}

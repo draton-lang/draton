@@ -1,0 +1,8 @@
+// RUN: compile
+class Service {
+    layer Api {
+        pub fn ready() { 1 }
+    }
+}
+@type { fn main(s: Service) -> Int }
+fn main(s) { s.ready() }

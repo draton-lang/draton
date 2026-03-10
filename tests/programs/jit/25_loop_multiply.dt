@@ -1,0 +1,11 @@
+// RUN: jit
+// EXPECT: 16
+fn main() {
+    let mut x = 1
+    let mut i = 0
+    while (i < 4) {
+        x = x * 2
+        i++
+    }
+    x
+}

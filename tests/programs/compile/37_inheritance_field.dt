@@ -1,0 +1,9 @@
+// RUN: compile
+class Shape {
+    let color: String
+}
+class Circle extends Shape {
+    let radius: Int
+}
+@type { fn main(c: Circle) -> String }
+fn main(c) { c.color }

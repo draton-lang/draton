@@ -1,0 +1,3 @@
+// RUN: compile
+error NotFound(msg: String)
+fn main() { 0 }

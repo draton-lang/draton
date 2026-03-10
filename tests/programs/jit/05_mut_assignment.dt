@@ -1,0 +1,7 @@
+// RUN: jit
+// EXPECT: 5
+fn main() {
+    let mut x = 0
+    x = x + 5
+    x
+}

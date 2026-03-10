@@ -1,0 +1,6 @@
+// RUN: compile
+fn main() {
+    let name = "draton"
+    print(f"hi {name}")
+    0
+}

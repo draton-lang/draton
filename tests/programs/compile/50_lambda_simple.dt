@@ -1,0 +1,5 @@
+// RUN: compile
+fn main() {
+    let add1 = lambda x => x + 1
+    add1(41)
+}

@@ -1,0 +1,5 @@
+// RUN: compile
+@extern "C" {
+    fn puts(msg: String)
+}
+fn main() { 0 }

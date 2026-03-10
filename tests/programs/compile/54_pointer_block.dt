@@ -1,0 +1,7 @@
+// RUN: compile
+fn main() {
+    @pointer {
+        let x = 1
+    }
+    0
+}

@@ -1,0 +1,6 @@
+// RUN: jit
+// EXPECT: 6
+fn main() {
+    let (a, b, c) = (1, 2, 3)
+    a + b + c
+}

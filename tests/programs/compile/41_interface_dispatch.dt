@@ -1,0 +1,9 @@
+// RUN: compile
+interface Drawable {
+    fn draw() -> Int
+}
+class Circle implements Drawable {
+    fn draw() { 1 }
+}
+@type { fn render(d: Drawable) -> Int }
+fn render(d) { d.draw() }

@@ -1,0 +1,5 @@
+// RUN: compile
+fn main() {
+    spawn { let x = 1 }
+    0
+}

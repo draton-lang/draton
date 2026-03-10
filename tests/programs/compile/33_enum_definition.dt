@@ -1,0 +1,3 @@
+// RUN: compile
+enum Direction { North, South, East, West }
+fn main() { 0 }

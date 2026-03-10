@@ -1,0 +1,8 @@
+// RUN: compile
+class Counter {
+    let value: Int
+    fn current() { self.value }
+    fn read() { self.current() }
+}
+@type { fn main(c: Counter) -> Int }
+fn main(c) { c.read() }

@@ -1,0 +1,3 @@
+// RUN: compile
+import { fs as f, net }
+fn main() { 0 }

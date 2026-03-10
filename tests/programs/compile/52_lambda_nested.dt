@@ -1,0 +1,6 @@
+// RUN: compile
+fn main() {
+    let a = 1
+    let outer = lambda x => (lambda y => x + y + a)(2)
+    outer(10)
+}

@@ -1,0 +1,3 @@
+// RUN: compile
+fn id(x) { x }
+fn main() { id(42) }

@@ -1,0 +1,9 @@
+// RUN: jit
+// EXPECT: 10
+@type { fn main() -> Int }
+fn main() {
+    let x = 10
+    let mut out = 0
+    if (x < 5) { out = 1 } else if (x == 10) { out = 10 } else { out = 0 }
+    out
+}

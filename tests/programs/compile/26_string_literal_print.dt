@@ -1,0 +1,5 @@
+// RUN: compile
+fn main() {
+    print("hello")
+    0
+}

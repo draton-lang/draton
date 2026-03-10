@@ -1,0 +1,8 @@
+// RUN: compile
+/// increments a number
+@type { fn inc(x: Int) -> Int }
+fn inc(x) {
+    // keep this tiny
+    x + 1
+}
+fn main() { inc(1) }

@@ -1,0 +1,9 @@
+// RUN: compile
+class Animal {
+    fn speak() { 1 }
+}
+class Dog extends Animal {
+    fn bark() { 2 }
+}
+@type { fn main(d: Dog) -> Int }
+fn main(d) { d.speak() }

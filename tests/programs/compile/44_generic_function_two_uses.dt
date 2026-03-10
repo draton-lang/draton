@@ -1,0 +1,5 @@
+// RUN: compile
+fn id(x) { x }
+fn useInt() { id(1) }
+fn useString() { id("x") }
+fn main() { useInt() }

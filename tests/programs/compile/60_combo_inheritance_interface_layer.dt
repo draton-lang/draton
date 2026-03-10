@@ -1,0 +1,18 @@
+// RUN: compile
+interface Named {
+    fn name() -> String
+}
+class Entity {
+    let label: String
+    fn name() { self.label }
+}
+class User extends Entity implements Named {
+    fn name() { self.label }
+
+    layer Access {
+        fn read() { self.name() }
+    }
+}
+@type { fn render(n: Named) -> String fn main(u: User) -> String }
+fn render(n) { n.name() }
+fn main(u) { render(u) }

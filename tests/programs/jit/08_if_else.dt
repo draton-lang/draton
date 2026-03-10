@@ -1,0 +1,8 @@
+// RUN: jit
+// EXPECT: 11
+@type { fn main() -> Int }
+fn main() {
+    let mut out = 0
+    if (4 > 3) { out = 11 } else { out = 0 }
+    out
+}

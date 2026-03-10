@@ -1,0 +1,13 @@
+// RUN: compile
+interface Drawable {
+    fn draw() -> Int
+}
+class Shape {
+    fn id() { 7 }
+}
+class Circle extends Shape implements Drawable {
+    fn draw() { self.id() }
+}
+@type { fn render(d: Drawable) -> Int fn main(c: Circle) -> Int }
+fn render(d) { d.draw() }
+fn main(c) { render(c) }

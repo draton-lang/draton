@@ -1,0 +1,3 @@
+// RUN: compile
+fn apply(f, x) { f(x) }
+fn main() { apply(lambda x => x + 1, 41) }

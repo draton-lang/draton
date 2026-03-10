@@ -1,0 +1,5 @@
+// RUN: jit
+// EXPECT: 9
+@type { fn add(a: Int, b: Int) -> Int }
+fn add(a, b) { a + b }
+fn main() { add(4, 5) }

@@ -1,0 +1,3 @@
+// RUN: jit
+// EXPECT: 42
+fn main() { 40 + 2 }

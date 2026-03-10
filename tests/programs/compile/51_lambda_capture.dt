@@ -1,0 +1,6 @@
+// RUN: compile
+fn main() {
+    let y = 10
+    let addY = lambda x => x + y
+    addY(5)
+}

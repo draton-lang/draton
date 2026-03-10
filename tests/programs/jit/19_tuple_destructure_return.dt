@@ -1,0 +1,7 @@
+// RUN: jit
+// EXPECT: 30
+fn pair() { (10, 20) }
+fn main() {
+    let (x, y) = pair()
+    x + y
+}

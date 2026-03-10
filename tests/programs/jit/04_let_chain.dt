@@ -1,0 +1,7 @@
+// RUN: jit
+// EXPECT: 9
+fn main() {
+    let a = 2
+    let b = 3
+    a + b + 4
+}
