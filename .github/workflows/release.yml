@@ -165,7 +165,13 @@ jobs:
           }
           "@
           $llvmShimSource | Set-Content -Path C:\llvm-shim\bin\llvm-config.cs -Encoding ascii
-          & csc.exe /nologo /target:exe /out:C:\llvm-shim\bin\llvm-config.exe C:\llvm-shim\bin\llvm-config.cs
+          $cscDll = Get-ChildItem "$env:ProgramFiles\dotnet\sdk" -Filter csc.dll -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $cscDll) {
+            throw "could not find Roslyn csc.dll under $env:ProgramFiles\\dotnet\\sdk"
+          }
+          & dotnet $cscDll /nologo /target:exe /out:C:\llvm-shim\bin\llvm-config.exe C:\llvm-shim\bin\llvm-config.cs
           echo "LLVM_SYS_140_PREFIX=C:\llvm-shim" >> $env:GITHUB_ENV
           echo "LLVM_CONFIG_PATH=C:\llvm-shim\bin\llvm-config.exe" >> $env:GITHUB_ENV
           echo "C:\llvm-shim\bin" >> $env:GITHUB_PATH
@@ -198,8 +204,10 @@ jobs:
       - name: Build (musl in Alpine)
         if: matrix.mode == 'alpine-musl'
         run: |
+          mkdir -p dist
           docker run --rm \
             -v "$PWD":"$PWD" \
+            -v "$PWD/dist":/out \
             -w "$PWD" \
             -e CARGO_TERM_COLOR="${CARGO_TERM_COLOR}" \
             -e HOST_UID="$(id -u)" \
@@ -235,19 +243,22 @@ jobs:
               cargo build --release --package drat --target x86_64-unknown-linux-musl
               test -f target/x86_64-unknown-linux-musl/release/drat
               ls -lh target/x86_64-unknown-linux-musl/release/drat
-              mkdir -p dist
               strip target/x86_64-unknown-linux-musl/release/drat || true
-              tar -czf dist/drat-linux-x86_64-musl.tar.gz -C target/x86_64-unknown-linux-musl/release drat
-              sha256sum dist/drat-linux-x86_64-musl.tar.gz > dist/drat-linux-x86_64-musl.tar.gz.sha256
-              chown -R "$HOST_UID:$HOST_GID" dist target
+              tar -czf /out/drat-linux-x86_64-musl.tar.gz -C target/x86_64-unknown-linux-musl/release drat
+              sha256sum /out/drat-linux-x86_64-musl.tar.gz > /out/drat-linux-x86_64-musl.tar.gz.sha256
+              chown -R "$HOST_UID:$HOST_GID" /out target
             '
+          test -f dist/${{ matrix.artifact }}.tar.gz
+          ls -lh dist/${{ matrix.artifact }}.tar.gz dist/${{ matrix.artifact }}.tar.gz.sha256
 
       - name: Build (riscv64 in Debian)
         if: matrix.mode == 'qemu-riscv64'
         run: |
+          mkdir -p dist
           docker run --rm \
             --platform linux/riscv64 \
             -v "$PWD":"$PWD" \
+            -v "$PWD/dist":/out \
             -w "$PWD" \
             -e CARGO_TERM_COLOR="${CARGO_TERM_COLOR}" \
             -e HOST_UID="$(id -u)" \
@@ -278,12 +289,13 @@ jobs:
               cargo build --release --package drat --target riscv64gc-unknown-linux-gnu
               test -f target/riscv64gc-unknown-linux-gnu/release/drat
               ls -lh target/riscv64gc-unknown-linux-gnu/release/drat
-              mkdir -p dist
               strip target/riscv64gc-unknown-linux-gnu/release/drat || true
-              tar -czf dist/drat-linux-riscv64.tar.gz -C target/riscv64gc-unknown-linux-gnu/release drat
-              sha256sum dist/drat-linux-riscv64.tar.gz > dist/drat-linux-riscv64.tar.gz.sha256
-              chown -R "$HOST_UID:$HOST_GID" dist target
+              tar -czf /out/drat-linux-riscv64.tar.gz -C target/riscv64gc-unknown-linux-gnu/release drat
+              sha256sum /out/drat-linux-riscv64.tar.gz > /out/drat-linux-riscv64.tar.gz.sha256
+              chown -R "$HOST_UID:$HOST_GID" /out target
             '
+          test -f dist/${{ matrix.artifact }}.tar.gz
+          ls -lh dist/${{ matrix.artifact }}.tar.gz dist/${{ matrix.artifact }}.tar.gz.sha256
 
       - name: Package (Unix)
         if: startsWith(matrix.mode, 'native-') && runner.os != 'Windows'
