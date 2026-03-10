@@ -1,0 +1,259 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+  LLVM_VERSION: "14"
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact: drat-linux-x86_64
+            llvm_pkg: llvm-14-dev
+
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
+            artifact: drat-linux-x86_64-musl
+            llvm_pkg: llvm-14-dev
+
+          - os: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            artifact: drat-linux-arm64
+            llvm_pkg: llvm-14-dev
+            cross: true
+
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: drat-macos-x86_64
+            llvm_pkg: llvm@14
+
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact: drat-macos-arm64
+            llvm_pkg: llvm@14
+
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            artifact: drat-windows-x86_64
+            ext: .exe
+
+          - os: windows-2022
+            target: aarch64-pc-windows-msvc
+            artifact: drat-windows-arm64
+            ext: .exe
+
+          - os: ubuntu-22.04
+            target: riscv64gc-unknown-linux-gnu
+            artifact: drat-linux-riscv64
+            llvm_pkg: llvm-14-dev
+            cross: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh ${{ env.LLVM_VERSION }}
+          sudo apt-get install -y ${{ matrix.llvm_pkg }} libzstd-dev
+
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get install -y musl-tools
+
+      - name: Install cross (Linux cross targets)
+        if: runner.os == 'Linux' && matrix.cross == true
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ${{ matrix.llvm_pkg }}
+          echo "LLVM_SYS_140_PREFIX=$(brew --prefix ${{ matrix.llvm_pkg }})" >> "$GITHUB_ENV"
+          echo "$(brew --prefix ${{ matrix.llvm_pkg }})/bin" >> "$GITHUB_PATH"
+
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install llvm --version=14.0.6 -y
+          echo "LLVM_SYS_140_PREFIX=C:\Program Files\LLVM" >> $env:GITHUB_ENV
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build (native)
+        if: matrix.cross != true
+        run: cargo build --release --package drat --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_DIR: target
+
+      - name: Build (cross)
+        if: runner.os == 'Linux' && matrix.cross == true
+        run: cross build --release --package drat --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_DIR: target
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          BIN=target/${{ matrix.target }}/release/drat
+          strip "$BIN" || true
+          mkdir -p dist
+          tar -czf dist/${{ matrix.artifact }}.tar.gz -C target/${{ matrix.target }}/release drat
+          sha256sum dist/${{ matrix.artifact }}.tar.gz > dist/${{ matrix.artifact }}.tar.gz.sha256
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $bin = "target\\${{ matrix.target }}\\release\\drat.exe"
+          Compress-Archive -Path $bin -DestinationPath "dist\\${{ matrix.artifact }}.zip" -Force
+          (
+            (Get-FileHash "dist\\${{ matrix.artifact }}.zip" -Algorithm SHA256).Hash.ToLower() +
+            "  ${{ matrix.artifact }}.zip"
+          ) | Out-File "dist\\${{ matrix.artifact }}.zip.sha256" -Encoding ascii
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
+
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Get tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate release notes
+        run: |
+          TAG=${{ steps.tag.outputs.tag }}
+          cat > release_notes.md << EOF
+          ## Draton $TAG
+
+          ### Downloads
+
+          | Platform | File |
+          |----------|------|
+          | Linux x86_64 (glibc) | \`drat-linux-x86_64.tar.gz\` |
+          | Linux x86_64 (musl/static) | \`drat-linux-x86_64-musl.tar.gz\` |
+          | Linux ARM64 | \`drat-linux-arm64.tar.gz\` |
+          | Linux RISC-V 64 | \`drat-linux-riscv64.tar.gz\` |
+          | macOS Intel | \`drat-macos-x86_64.tar.gz\` |
+          | macOS Apple Silicon | \`drat-macos-arm64.tar.gz\` |
+          | Windows x86_64 | \`drat-windows-x86_64.zip\` |
+          | Windows ARM64 | \`drat-windows-arm64.zip\` |
+
+          ### Install (Linux/macOS)
+
+          \`\`\`bash
+          curl -L https://github.com/draton-lang/draton/releases/download/$TAG/drat-linux-x86_64.tar.gz | tar xz
+          sudo mv drat /usr/local/bin/
+          drat --version
+          \`\`\`
+
+          ### Verify checksum
+
+          \`\`\`bash
+          sha256sum -c drat-linux-x86_64.tar.gz.sha256
+          \`\`\`
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Draton ${{ steps.tag.outputs.tag }}
+          body_file: release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
+          files: dist/**/*
+
+  smoke-test:
+    name: Smoke test ${{ matrix.artifact }}
+    needs: release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: drat-linux-x86_64
+            ext: ""
+          - os: macos-14
+            artifact: drat-macos-arm64
+            ext: ""
+          - os: windows-2022
+            artifact: drat-windows-x86_64
+            ext: .exe
+
+    steps:
+      - name: Download release binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+
+      - name: Extract (Unix)
+        if: runner.os != 'Windows'
+        run: tar -xzf ${{ matrix.artifact }}.tar.gz
+
+      - name: Extract (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Expand-Archive "${{ matrix.artifact }}.zip" .
+
+      - name: Smoke test (Unix)
+        if: runner.os != 'Windows'
+        run: ./drat${{ matrix.ext }} --version
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\\drat${{ matrix.ext }} --version
