@@ -26,104 +26,187 @@ jobs:
             target: x86_64-unknown-linux-gnu
             artifact: drat-linux-x86_64
             llvm_pkg: llvm-14-dev
+            mode: native-linux
 
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-musl
             artifact: drat-linux-x86_64-musl
-            llvm_pkg: llvm-14-dev
+            mode: alpine-musl
 
           - os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             artifact: drat-linux-arm64
             llvm_pkg: llvm-14-dev
+            mode: native-linux
 
           - os: macos-15-intel
             target: x86_64-apple-darwin
             artifact: drat-macos-x86_64
             llvm_pkg: llvm@14
+            mode: native-macos
 
           - os: macos-15
             target: aarch64-apple-darwin
             artifact: drat-macos-arm64
             llvm_pkg: llvm@14
+            mode: native-macos
 
           - os: windows-2022
             target: x86_64-pc-windows-msvc
             artifact: drat-windows-x86_64
             ext: .exe
+            mode: native-windows
 
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
             artifact: drat-windows-arm64
             ext: .exe
+            mode: native-windows
 
           - os: ubuntu-22.04
             target: riscv64gc-unknown-linux-gnu
             artifact: drat-linux-riscv64
-            llvm_pkg: llvm-14-dev
-            cross: true
+            mode: qemu-riscv64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install LLVM (Linux)
-        if: runner.os == 'Linux'
+        if: matrix.mode == 'native-linux'
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh ${{ env.LLVM_VERSION }}
           sudo apt-get install -y ${{ matrix.llvm_pkg }} libpolly-14-dev libzstd-dev
           echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+          echo "LLVM_CONFIG_PATH=/usr/lib/llvm-14/bin/llvm-config" >> "$GITHUB_ENV"
           echo "/usr/lib/llvm-14/bin" >> "$GITHUB_PATH"
 
-      - name: Install musl tools
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get install -y musl-tools
-
-      - name: Install cross (Linux cross targets)
-        if: runner.os == 'Linux' && matrix.cross == true
-        run: cargo install cross --git https://github.com/cross-rs/cross
-
       - name: Install LLVM (macOS)
-        if: runner.os == 'macOS'
+        if: matrix.mode == 'native-macos'
         run: |
           brew install ${{ matrix.llvm_pkg }}
           echo "LLVM_SYS_140_PREFIX=$(brew --prefix ${{ matrix.llvm_pkg }})" >> "$GITHUB_ENV"
+          echo "LLVM_CONFIG_PATH=$(brew --prefix ${{ matrix.llvm_pkg }})/bin/llvm-config" >> "$GITHUB_ENV"
           echo "$(brew --prefix ${{ matrix.llvm_pkg }})/bin" >> "$GITHUB_PATH"
 
       - name: Install LLVM (Windows)
-        if: runner.os == 'Windows'
+        if: matrix.mode == 'native-windows'
         shell: pwsh
         run: |
           choco upgrade llvm --version=14.0.6 --allow-downgrade --force -y
-          echo "LLVM_SYS_140_PREFIX=C:\Program Files\LLVM" >> $env:GITHUB_ENV
-          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          if (Test-Path C:\llvm-14) {
+            Remove-Item -Recurse -Force C:\llvm-14
+          }
+          Copy-Item -Recurse -Force "C:\Program Files\LLVM" "C:\llvm-14"
+          echo "LLVM_SYS_140_PREFIX=C:\llvm-14" >> $env:GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=C:\llvm-14\bin\llvm-config.exe" >> $env:GITHUB_ENV
+          echo "C:\llvm-14\bin" >> $env:GITHUB_PATH
+
+      - name: Set up QEMU
+        if: matrix.mode == 'qemu-riscv64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: riscv64
 
       - name: Setup Rust
+        if: startsWith(matrix.mode, 'native-')
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Cache cargo
+        if: startsWith(matrix.mode, 'native-')
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
 
       - name: Build (native)
-        if: matrix.cross != true
+        if: startsWith(matrix.mode, 'native-')
         run: cargo build --release --package drat --target ${{ matrix.target }}
         env:
           CARGO_TARGET_DIR: target
 
-      - name: Build (cross)
-        if: runner.os == 'Linux' && matrix.cross == true
-        run: cross build --release --package drat --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_DIR: target
+      - name: Build (musl in Alpine)
+        if: matrix.mode == 'alpine-musl'
+        run: |
+          docker run --rm \
+            -v "$PWD":"$PWD" \
+            -w "$PWD" \
+            -e CARGO_TERM_COLOR="${CARGO_TERM_COLOR}" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            alpine:3.20 \
+            /bin/sh -lc '
+              set -eux
+              apk add --no-cache \
+                bash \
+                build-base \
+                curl \
+                git \
+                linux-headers \
+                llvm14 \
+                llvm14-dev \
+                llvm14-static \
+                lld \
+                python3 \
+                zlib-dev \
+                zstd-dev
+              curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
+              . "$HOME/.cargo/env"
+              export LLVM_SYS_140_PREFIX=/usr/lib/llvm14
+              export LLVM_CONFIG_PATH=/usr/lib/llvm14/bin/llvm-config
+              cargo build --release --package drat --target x86_64-unknown-linux-musl
+              mkdir -p dist
+              strip target/x86_64-unknown-linux-musl/release/drat || true
+              tar -czf dist/drat-linux-x86_64-musl.tar.gz -C target/x86_64-unknown-linux-musl/release drat
+              sha256sum dist/drat-linux-x86_64-musl.tar.gz > dist/drat-linux-x86_64-musl.tar.gz.sha256
+              chown -R "$HOST_UID:$HOST_GID" dist target
+            '
+
+      - name: Build (riscv64 in Debian)
+        if: matrix.mode == 'qemu-riscv64'
+        run: |
+          docker run --rm \
+            --platform linux/riscv64 \
+            -v "$PWD":"$PWD" \
+            -w "$PWD" \
+            -e CARGO_TERM_COLOR="${CARGO_TERM_COLOR}" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            debian:unstable-slim \
+            /bin/bash -lc '
+              set -euxo pipefail
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y \
+                build-essential \
+                ca-certificates \
+                clang-14 \
+                curl \
+                git \
+                libpolly-14-dev \
+                libzstd-dev \
+                llvm-14 \
+                llvm-14-dev \
+                pkg-config \
+                python3 \
+                zlib1g-dev
+              curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
+              . "$HOME/.cargo/env"
+              export LLVM_SYS_140_PREFIX=/usr/lib/llvm-14
+              export LLVM_CONFIG_PATH=/usr/lib/llvm-14/bin/llvm-config
+              cargo build --release --package drat --target riscv64gc-unknown-linux-gnu
+              mkdir -p dist
+              strip target/riscv64gc-unknown-linux-gnu/release/drat || true
+              tar -czf dist/drat-linux-riscv64.tar.gz -C target/riscv64gc-unknown-linux-gnu/release drat
+              sha256sum dist/drat-linux-riscv64.tar.gz > dist/drat-linux-riscv64.tar.gz.sha256
+              chown -R "$HOST_UID:$HOST_GID" dist target
+            '
 
       - name: Package (Unix)
-        if: runner.os != 'Windows'
+        if: startsWith(matrix.mode, 'native-') && runner.os != 'Windows'
         run: |
           BIN=target/${{ matrix.target }}/release/drat
           strip "$BIN" || true
@@ -132,7 +215,7 @@ jobs:
           sha256sum dist/${{ matrix.artifact }}.tar.gz > dist/${{ matrix.artifact }}.tar.gz.sha256
 
       - name: Package (Windows)
-        if: runner.os == 'Windows'
+        if: matrix.mode == 'native-windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
