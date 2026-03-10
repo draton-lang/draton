@@ -62,6 +62,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 TypedItem::Class(class_def) => {
+                    let _ = self.emit_class_type_descriptor(class_def)?;
                     self.predeclare_constructor(&class_def.name)?;
                     // Layer methods are already flattened into the typed class method list.
                     for method in &class_def.methods {
@@ -197,6 +198,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .get_nth_param(param_index)
                 .ok_or_else(|| CodeGenError::MissingSymbol(format!("{symbol}:self")))?;
             let self_ptr = self.create_entry_alloca(llvm_fn, self_param.get_type(), "self")?;
+            self.register_gc_root(self_ptr, &Type::Named(class_name.to_string(), Vec::new()))?;
             self.build_store(self_ptr, self_param)?;
             self.define_local("self", self_ptr);
             self.current_class = Some(class_name.to_string());
@@ -208,6 +210,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .get_nth_param(param_index)
                 .ok_or_else(|| CodeGenError::MissingSymbol(format!("{symbol}:{}", param.name)))?;
             let ptr = self.create_entry_alloca(llvm_fn, value.get_type(), &param.name)?;
+            self.register_gc_root(ptr, &param.ty)?;
             self.build_store(ptr, value)?;
             self.define_local(&param.name, ptr);
             param_index += 1;

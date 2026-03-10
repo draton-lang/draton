@@ -103,3 +103,21 @@ fn getName(x) { x.name }
         other => panic!("expected row type, got {other:?}"),
     }
 }
+
+#[test]
+fn keeps_generic_class_type_params_as_class_scope_type_vars() {
+    let result = parse_and_check(
+        r#"
+class Stack[T] {
+    let items: Array[T]
+    fn push(item: T) { item }
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "type errors: {:?}", result.errors);
+    let TypedItem::Class(class_def) = &result.typed_program.items[0] else {
+        panic!("expected class");
+    };
+    assert!(matches!(class_def.fields[0].ty, Type::Array(_)));
+    assert!(matches!(class_def.methods[0].params[0].ty, Type::Var(_)));
+}

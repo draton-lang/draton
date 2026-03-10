@@ -1,7 +1,7 @@
 use draton_ast::{AssignOp, BinOp};
 use draton_typeck::typed_ast::{
-    TypedAssignStmt, TypedElseBranch, TypedExpr, TypedForStmt, TypedIfStmt, TypedLetStmt,
-    TypedReturnStmt, TypedSpawnBody, TypedWhileStmt,
+    TypedAssignStmt, TypedElseBranch, TypedExpr, TypedExprKind, TypedForStmt, TypedIfStmt,
+    TypedLetStmt, TypedReturnStmt, TypedSpawnBody, TypedWhileStmt,
 };
 use draton_typeck::{TypedBlock, TypedStmt, TypedStmtKind};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
@@ -84,6 +84,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.llvm_basic_type(&let_stmt.ty)?,
             &let_stmt.name,
         )?;
+        self.register_gc_root(storage, &let_stmt.ty)?;
         if let Some(value_expr) = &let_stmt.value {
             if let Some(value) = self.emit_expr(value_expr)? {
                 self.build_store(storage, value)?;
@@ -135,6 +136,21 @@ impl<'ctx> CodeGen<'ctx> {
             }
         };
         self.build_store(target_ptr, value)?;
+        if matches!(&stmt.target.kind, TypedExprKind::Field(_, _))
+            && Self::is_gc_pointer_type(&stmt.target.ty)
+        {
+            if let TypedExprKind::Field(object_expr, _) = &stmt.target.kind {
+                let object_ptr = self
+                    .emit_expr(object_expr)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedStmt(
+                            "field assignment missing object value".to_string(),
+                        )
+                    })?
+                    .into_pointer_value();
+                let _ = self.emit_gc_write_barrier(object_ptr, target_ptr, value);
+            }
+        }
         Ok(())
     }
 

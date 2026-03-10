@@ -48,6 +48,8 @@ pub struct CodeGen<'ctx> {
     pub(crate) current_function: Option<FunctionValue<'ctx>>,
     pub(crate) current_return_type: Option<Type>,
     pub(crate) current_class: Option<String>,
+    pub(crate) type_descriptor_table: HashMap<String, u16>,
+    pub(crate) next_type_descriptor_id: u16,
     pub(crate) string_counter: u64,
 }
 
@@ -71,6 +73,8 @@ impl<'ctx> CodeGen<'ctx> {
             current_function: None,
             current_return_type: None,
             current_class: None,
+            type_descriptor_table: HashMap::new(),
+            next_type_descriptor_id: 1,
             string_counter: 0,
         }
     }
@@ -121,6 +125,55 @@ impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn current_function(&self) -> Result<FunctionValue<'ctx>, CodeGenError> {
         self.current_function
             .ok_or_else(|| CodeGenError::MissingSymbol("current function".to_string()))
+    }
+
+    pub(crate) fn get_or_declare_gcroot_intrinsic(&self) -> FunctionValue<'ctx> {
+        if let Some(function) = self.module.get_function("llvm.gcroot") {
+            return function;
+        }
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_ptr = i8_ptr.ptr_type(AddressSpace::default());
+        let fn_type = self
+            .context
+            .void_type()
+            .fn_type(&[i8_ptr_ptr.into(), i8_ptr.into()], false);
+        self.module.add_function("llvm.gcroot", fn_type, None)
+    }
+
+    pub(crate) fn is_gc_rootable_type(ty: &Type) -> bool {
+        matches!(
+            ty,
+            Type::Named(_, _) | Type::Chan(_) | Type::Pointer(_) | Type::Fn(_, _)
+        )
+    }
+
+    pub(crate) fn register_gc_root(
+        &self,
+        storage: PointerValue<'ctx>,
+        ty: &Type,
+    ) -> Result<(), CodeGenError> {
+        if !Self::is_gc_rootable_type(ty) {
+            return Ok(());
+        }
+        if let Ok(function) = self.current_function() {
+            function.set_gc("shadow-stack");
+        }
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let gcroot = self.get_or_declare_gcroot_intrinsic();
+        let root_location = self
+            .builder
+            .build_bitcast(
+                storage,
+                i8_ptr.ptr_type(AddressSpace::default()),
+                "gc.root.slot",
+            )
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let null_meta = i8_ptr.const_null();
+        let _ = self
+            .builder
+            .build_call(gcroot, &[root_location.into(), null_meta.into()], "")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        Ok(())
     }
 
     pub(crate) fn push_scope(&mut self) {

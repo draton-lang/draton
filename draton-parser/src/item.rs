@@ -131,6 +131,7 @@ impl Parser {
         }
 
         let (name, _) = self.consume_ident("class name")?;
+        let type_params = self.parse_type_param_list()?;
         let extends = if self.match_kind(TokenKind::Extends) {
             self.consume_ident("base class").map(|value| value.0)
         } else {
@@ -198,6 +199,7 @@ impl Parser {
         let _ = self.expect(TokenKind::RBrace, "}");
         Some(ClassDef {
             name,
+            type_params,
             extends,
             implements,
             members,
@@ -223,6 +225,23 @@ impl Parser {
             type_hint,
             span: self.merge_spans(start, end),
         })
+    }
+
+    fn parse_type_param_list(&mut self) -> Option<Vec<String>> {
+        if !self.check(TokenKind::LBracket) {
+            return Some(Vec::new());
+        }
+        let _ = self.expect(TokenKind::LBracket, "[");
+        let mut params = Vec::new();
+        while !self.is_eof() && !self.check(TokenKind::RBracket) {
+            let (name, _) = self.consume_ident("type parameter")?;
+            params.push(name);
+            if !self.match_kind(TokenKind::Comma) {
+                break;
+            }
+        }
+        let _ = self.expect(TokenKind::RBracket, "]");
+        Some(params)
     }
 
     fn parse_layer(&mut self) -> Option<LayerDef> {

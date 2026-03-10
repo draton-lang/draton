@@ -53,3 +53,20 @@ fn main() {
     );
     assert!(ir.contains("switch i64 2"), "{ir}");
 }
+
+#[test]
+fn emits_safepoint_poll_after_call_expressions_and_loop_back_edges() {
+    let ir = compile_ir(
+        r#"
+fn callee() { 1 }
+fn main() {
+    let mut x = callee()
+    while (x < 3) { x++ }
+    x
+}
+"#,
+    );
+    assert!(ir.contains("call i64 @callee()"), "{ir}");
+    assert!(ir.contains("@draton_safepoint_flag"), "{ir}");
+    assert!(ir.contains("@draton_safepoint_slow"), "{ir}");
+}

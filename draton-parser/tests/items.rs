@@ -173,3 +173,24 @@ class Foo {
         result.errors
     );
 }
+
+#[test]
+fn parses_generic_class_type_params() {
+    let source = r#"
+class Stack[T] {
+    let items: Array[T]
+    fn push(item: T) { }
+    fn pop() -> T { }
+}
+"#;
+    let result = parse_program(source);
+    assert!(
+        result.errors.is_empty(),
+        "parser errors: {:?}",
+        result.errors
+    );
+    let Item::Class(class_def) = &result.program.items[0] else {
+        panic!("expected class");
+    };
+    assert_eq!(class_def.type_params, vec!["T".to_string()]);
+}

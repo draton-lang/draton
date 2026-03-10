@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use draton_ast::{
@@ -42,6 +42,7 @@ pub struct TypeChecker {
     current_return: Vec<Type>,
     current_effect: Vec<Option<Type>>,
     current_class: Vec<String>,
+    type_param_scopes: Vec<HashMap<String, Type>>,
 }
 
 impl TypeChecker {
@@ -61,6 +62,7 @@ impl TypeChecker {
             current_return: Vec::new(),
             current_effect: Vec::new(),
             current_class: Vec::new(),
+            type_param_scopes: Vec::new(),
         };
         checker.install_builtins();
         checker
@@ -78,6 +80,7 @@ impl TypeChecker {
                 .map(|item| self.infer_item(item))
                 .collect(),
         };
+        self.check_unresolved_vars(&typed_program);
 
         TypeCheckResult {
             typed_program,
@@ -128,6 +131,25 @@ impl TypeChecker {
         }
     }
 
+    fn push_type_params(&mut self, params: &[String]) {
+        let scope = params
+            .iter()
+            .map(|param| (param.clone(), self.fresh_var()))
+            .collect::<HashMap<_, _>>();
+        self.type_param_scopes.push(scope);
+    }
+
+    fn pop_type_params(&mut self) {
+        let _ = self.type_param_scopes.pop();
+    }
+
+    fn lookup_type_param(&self, name: &str) -> Option<Type> {
+        self.type_param_scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).cloned())
+    }
+
     fn infer_const_item(&mut self, const_def: &draton_ast::ConstDef) -> TypedConstDef {
         let (typed_value, value_ty) = self.infer_expr(&const_def.value);
         let mut ty = value_ty;
@@ -148,6 +170,7 @@ impl TypeChecker {
     }
 
     fn infer_class_item(&mut self, class_def: &ClassDef) -> TypedClassDef {
+        self.push_type_params(&class_def.type_params);
         self.current_class.push(class_def.name.clone());
         self.env.push_scope();
         self.env.define(
@@ -184,6 +207,7 @@ impl TypeChecker {
 
         self.env.pop_scope();
         let _ = self.current_class.pop();
+        self.pop_type_params();
         TypedClassDef {
             name: class_def.name.clone(),
             extends: class_def.extends.clone(),
@@ -426,14 +450,17 @@ impl TypeChecker {
     fn infer_stmt(&mut self, stmt: &Stmt) -> TypedStmt {
         match stmt {
             Stmt::Let(let_stmt) => {
+                let hinted = let_stmt
+                    .type_hint
+                    .as_ref()
+                    .map(|type_hint| self.type_from_annotation(type_hint));
                 let (typed_value, mut ty) = if let Some(expr) = &let_stmt.value {
-                    let (typed, value_ty) = self.infer_expr(expr);
+                    let (typed, value_ty) = self.infer_expr_with_expected(expr, hinted.clone());
                     (Some(typed), value_ty)
                 } else {
                     (None, self.fresh_var())
                 };
-                if let Some(type_hint) = &let_stmt.type_hint {
-                    let hinted = self.type_from_annotation(type_hint);
+                if let Some(hinted) = hinted {
                     ty = self.unify(ty, hinted, let_stmt.span);
                 }
                 ty = self.apply_subst(ty);
@@ -789,7 +816,7 @@ impl TypeChecker {
             }
             Expr::Field(target, field, span) => self.infer_field(target, field, *span),
             Expr::Index(target, index, span) => self.infer_index(target, index, *span),
-            Expr::Lambda(params, body, span) => self.infer_lambda(params, body, *span),
+            Expr::Lambda(params, body, span) => self.infer_lambda(params, body, *span, None),
             Expr::Cast(expr, ty, span) => self.infer_cast(expr, ty, *span),
             Expr::Match(subject, arms, span) => self.infer_match(subject, arms, *span),
             Expr::Ok(expr, span) => {
@@ -808,6 +835,26 @@ impl TypeChecker {
             Expr::Chan(type_expr, span) => {
                 let ty = Type::Chan(Box::new(self.type_from_annotation(type_expr)));
                 self.typed_expr(TypedExprKind::Chan(ty.clone()), ty.clone(), *span)
+            }
+        }
+    }
+
+    fn infer_expr_with_expected(
+        &mut self,
+        expr: &Expr,
+        expected: Option<Type>,
+    ) -> (TypedExpr, Type) {
+        match expr {
+            Expr::Lambda(params, body, span) => self.infer_lambda(params, body, *span, expected),
+            _ => {
+                let (mut typed, ty) = self.infer_expr(expr);
+                if let Some(expected) = expected {
+                    let resolved = self.unify(ty, expected, expr.span());
+                    typed.ty = self.apply_subst(resolved.clone());
+                    (typed, self.apply_subst(resolved))
+                } else {
+                    (typed, ty)
+                }
             }
         }
     }
@@ -902,9 +949,21 @@ impl TypeChecker {
         span: draton_ast::Span,
     ) -> (TypedExpr, Type) {
         let (typed_callee, callee_ty) = self.infer_expr(callee);
+        let expected_params = match self.apply_subst(callee_ty.clone()) {
+            Type::Fn(params, _) => Some(params),
+            _ => None,
+        };
         let typed_args = args
             .iter()
-            .map(|arg| self.infer_expr(arg))
+            .enumerate()
+            .map(|(index, arg)| {
+                self.infer_expr_with_expected(
+                    arg,
+                    expected_params
+                        .as_ref()
+                        .and_then(|params| params.get(index).cloned()),
+                )
+            })
             .collect::<Vec<_>>();
         let arg_types = typed_args
             .iter()
@@ -953,9 +1012,21 @@ impl TypeChecker {
                     Box::new(self.fresh_var()),
                 )
             });
+        let expected_params = match self.apply_subst(instantiated.clone()) {
+            Type::Fn(params, _) => Some(params),
+            _ => None,
+        };
         let typed_args = args
             .iter()
-            .map(|arg| self.infer_expr(arg))
+            .enumerate()
+            .map(|(index, arg)| {
+                self.infer_expr_with_expected(
+                    arg,
+                    expected_params
+                        .as_ref()
+                        .and_then(|params| params.get(index).cloned()),
+                )
+            })
             .collect::<Vec<_>>();
         let arg_types = typed_args
             .iter()
@@ -1051,12 +1122,24 @@ impl TypeChecker {
         params: &[String],
         body: &Expr,
         span: draton_ast::Span,
+        expected: Option<Type>,
     ) -> (TypedExpr, Type) {
+        let expected_fn = match expected.map(|ty| self.apply_subst(ty)) {
+            Some(Type::Fn(params, ret)) => Some((params, *ret)),
+            _ => None,
+        };
         self.env.push_scope();
         let typed_params = params
             .iter()
-            .map(|name| {
-                let ty = self.fresh_var();
+            .enumerate()
+            .map(|(index, name)| {
+                let ty = match &expected_fn {
+                    Some((param_types, _)) if index < param_types.len() => {
+                        let fresh = self.fresh_var();
+                        self.unify(fresh, param_types[index].clone(), span)
+                    }
+                    _ => self.fresh_var(),
+                };
                 self.env.define(
                     name,
                     Scheme {
@@ -1071,14 +1154,28 @@ impl TypeChecker {
                 }
             })
             .collect::<Vec<_>>();
-        let (typed_body, body_ty) = self.infer_expr(body);
+        let expected_ret = expected_fn.as_ref().map(|(_, ret)| ret.clone());
+        let (typed_body, mut body_ty) = self.infer_expr_with_expected(body, expected_ret.clone());
+        if let Some(expected_ret) = expected_ret {
+            body_ty = self.unify(body_ty, expected_ret, span);
+        }
         self.env.pop_scope();
+        let resolved_params = typed_params
+            .into_iter()
+            .map(|mut param| {
+                param.ty = self.apply_subst(param.ty);
+                param
+            })
+            .collect::<Vec<_>>();
         let fn_ty = Type::Fn(
-            typed_params.iter().map(|param| param.ty.clone()).collect(),
-            Box::new(body_ty.clone()),
+            resolved_params
+                .iter()
+                .map(|param| param.ty.clone())
+                .collect(),
+            Box::new(self.apply_subst(body_ty.clone())),
         );
         self.typed_expr(
-            TypedExprKind::Lambda(typed_params, Box::new(typed_body)),
+            TypedExprKind::Lambda(resolved_params, Box::new(typed_body)),
             self.apply_subst(fn_ty.clone()),
             span,
         )
@@ -1439,6 +1536,7 @@ impl TypeChecker {
     }
 
     fn predeclare_class(&mut self, class_def: &ClassDef) {
+        self.push_type_params(&class_def.type_params);
         let fields = class_def
             .members
             .iter()
@@ -1485,6 +1583,7 @@ impl TypeChecker {
             }
         }
         self.class_methods.insert(class_def.name.clone(), methods);
+        self.pop_type_params();
     }
 
     fn function_placeholder(&mut self, function: &FnDef) -> Type {
@@ -1862,7 +1961,9 @@ impl TypeChecker {
 
     fn type_from_annotation(&mut self, type_expr: &TypeExpr) -> Type {
         match type_expr {
-            TypeExpr::Named(name, _) => self.named_type(name),
+            TypeExpr::Named(name, _) => self
+                .lookup_type_param(name)
+                .unwrap_or_else(|| self.named_type(name)),
             TypeExpr::Generic(name, args, _) => {
                 let resolved = args
                     .iter()
@@ -1946,8 +2047,8 @@ impl TypeChecker {
             | Type::UInt64
             | Type::Float
             | Type::Float32
-            | Type::Float64
-            | Type::Var(_) => resolved,
+            | Type::Float64 => resolved,
+            Type::Var(_) => self.unify(resolved, Type::Int, span),
             other => {
                 self.errors.push(TypeError::Mismatch {
                     expected: "numeric type".to_string(),
@@ -1958,6 +2059,401 @@ impl TypeChecker {
                 });
                 other
             }
+        }
+    }
+
+    fn check_unresolved_vars(&mut self, program: &TypedProgram) {
+        let mut seen = BTreeSet::new();
+        for item in &program.items {
+            let allowed = self.allowed_item_vars(item);
+            self.visit_typed_item(item, &allowed, &mut seen);
+        }
+    }
+
+    fn allowed_item_vars(&self, item: &TypedItem) -> BTreeSet<u32> {
+        match item {
+            TypedItem::Fn(function)
+            | TypedItem::PanicHandler(function)
+            | TypedItem::OomHandler(function) => free_type_vars(&function.ty),
+            TypedItem::Class(class_def) => {
+                let mut vars = BTreeSet::new();
+                for field in &class_def.fields {
+                    vars.extend(free_type_vars(&field.ty));
+                }
+                for method in &class_def.methods {
+                    vars.extend(free_type_vars(&method.ty));
+                }
+                vars
+            }
+            TypedItem::Interface(interface_def) => {
+                interface_def
+                    .methods
+                    .iter()
+                    .fold(BTreeSet::new(), |mut vars, method| {
+                        vars.extend(free_type_vars(&method.ty));
+                        vars
+                    })
+            }
+            TypedItem::Error(_) | TypedItem::Const(_) => BTreeSet::new(),
+            TypedItem::Extern(extern_block) => {
+                extern_block
+                    .functions
+                    .iter()
+                    .fold(BTreeSet::new(), |mut vars, function| {
+                        vars.extend(free_type_vars(&function.ty));
+                        vars
+                    })
+            }
+            TypedItem::TypeBlock(type_block) => {
+                type_block
+                    .members
+                    .iter()
+                    .fold(BTreeSet::new(), |mut vars, member| {
+                        match member {
+                            TypedTypeMember::Binding { .. } => {}
+                            TypedTypeMember::Function(function) => {
+                                vars.extend(free_type_vars(&function.ty));
+                            }
+                        }
+                        vars
+                    })
+            }
+            TypedItem::Import(_) | TypedItem::Enum(_) => BTreeSet::new(),
+        }
+    }
+
+    fn visit_typed_item(
+        &mut self,
+        item: &TypedItem,
+        allowed: &BTreeSet<u32>,
+        seen: &mut BTreeSet<u32>,
+    ) {
+        match item {
+            TypedItem::Fn(function)
+            | TypedItem::PanicHandler(function)
+            | TypedItem::OomHandler(function) => self.visit_typed_fn(function, allowed, seen),
+            TypedItem::Class(class_def) => {
+                for field in &class_def.fields {
+                    self.report_unresolved_type(&field.ty, &field.name, field.span, allowed, seen);
+                }
+                for method in &class_def.methods {
+                    self.visit_typed_fn(method, allowed, seen);
+                }
+            }
+            TypedItem::Const(const_def) => {
+                self.report_unresolved_type(
+                    &const_def.ty,
+                    &const_def.name,
+                    const_def.span,
+                    allowed,
+                    seen,
+                );
+                self.visit_typed_expr(&const_def.value, allowed, seen);
+            }
+            TypedItem::Extern(extern_block) => {
+                for function in &extern_block.functions {
+                    self.visit_typed_fn(function, allowed, seen);
+                }
+            }
+            TypedItem::Interface(interface_def) => {
+                for method in &interface_def.methods {
+                    self.visit_typed_fn(method, allowed, seen);
+                }
+            }
+            TypedItem::Error(error_def) => {
+                for field in &error_def.fields {
+                    self.report_unresolved_type(&field.ty, &field.name, field.span, allowed, seen);
+                }
+            }
+            TypedItem::TypeBlock(type_block) => {
+                for member in &type_block.members {
+                    match member {
+                        TypedTypeMember::Binding { name, ty, span } => {
+                            self.report_unresolved_type(ty, name, *span, allowed, seen);
+                        }
+                        TypedTypeMember::Function(function) => {
+                            self.visit_typed_fn(function, allowed, seen);
+                        }
+                    }
+                }
+            }
+            TypedItem::Import(_) | TypedItem::Enum(_) => {}
+        }
+    }
+
+    fn visit_typed_fn(
+        &mut self,
+        function: &TypedFnDef,
+        allowed: &BTreeSet<u32>,
+        seen: &mut BTreeSet<u32>,
+    ) {
+        self.report_unresolved_type(
+            &function.ret_type,
+            &function.name,
+            function.span,
+            allowed,
+            seen,
+        );
+        self.report_unresolved_type(&function.ty, &function.name, function.span, allowed, seen);
+        for param in &function.params {
+            self.report_unresolved_type(&param.ty, &param.name, param.span, allowed, seen);
+        }
+        if let Some(body) = &function.body {
+            self.visit_typed_block(body, allowed, seen);
+        }
+    }
+
+    fn visit_typed_block(
+        &mut self,
+        block: &TypedBlock,
+        allowed: &BTreeSet<u32>,
+        seen: &mut BTreeSet<u32>,
+    ) {
+        for stmt in &block.stmts {
+            self.visit_typed_stmt(stmt, allowed, seen);
+        }
+    }
+
+    fn visit_typed_stmt(
+        &mut self,
+        stmt: &TypedStmt,
+        allowed: &BTreeSet<u32>,
+        seen: &mut BTreeSet<u32>,
+    ) {
+        match &stmt.kind {
+            TypedStmtKind::Let(let_stmt) => {
+                let stmt_allowed = let_stmt
+                    .value
+                    .as_ref()
+                    .map(|value| self.extend_allowed_with_expr_vars(allowed, value))
+                    .unwrap_or_else(|| allowed.clone());
+                self.report_unresolved_type(
+                    &let_stmt.ty,
+                    &let_stmt.name,
+                    let_stmt.span,
+                    &stmt_allowed,
+                    seen,
+                );
+                if let Some(value) = &let_stmt.value {
+                    self.visit_typed_expr(value, &stmt_allowed, seen);
+                }
+            }
+            TypedStmtKind::Assign(assign) => {
+                self.visit_typed_expr(&assign.target, allowed, seen);
+                if let Some(value) = &assign.value {
+                    self.visit_typed_expr(value, allowed, seen);
+                }
+            }
+            TypedStmtKind::Return(ret) => {
+                self.report_unresolved_type(&ret.ty, "return", ret.span, allowed, seen);
+                if let Some(value) = &ret.value {
+                    self.visit_typed_expr(value, allowed, seen);
+                }
+            }
+            TypedStmtKind::Expr(expr) => self.visit_typed_expr(expr, allowed, seen),
+            TypedStmtKind::If(if_stmt) => {
+                self.visit_typed_expr(&if_stmt.condition, allowed, seen);
+                self.visit_typed_block(&if_stmt.then_branch, allowed, seen);
+                if let Some(else_branch) = &if_stmt.else_branch {
+                    self.visit_typed_else_branch(else_branch, allowed, seen);
+                }
+            }
+            TypedStmtKind::For(for_stmt) => {
+                self.report_unresolved_type(
+                    &for_stmt.item_type,
+                    &for_stmt.name,
+                    for_stmt.span,
+                    allowed,
+                    seen,
+                );
+                self.visit_typed_expr(&for_stmt.iter, allowed, seen);
+                self.visit_typed_block(&for_stmt.body, allowed, seen);
+            }
+            TypedStmtKind::While(while_stmt) => {
+                self.visit_typed_expr(&while_stmt.condition, allowed, seen);
+                self.visit_typed_block(&while_stmt.body, allowed, seen);
+            }
+            TypedStmtKind::Spawn(spawn) => match &spawn.body {
+                TypedSpawnBody::Expr(expr) => self.visit_typed_expr(expr, allowed, seen),
+                TypedSpawnBody::Block(block) => self.visit_typed_block(block, allowed, seen),
+            },
+            TypedStmtKind::Block(block)
+            | TypedStmtKind::UnsafeBlock(block)
+            | TypedStmtKind::PointerBlock(block)
+            | TypedStmtKind::ComptimeBlock(block) => self.visit_typed_block(block, allowed, seen),
+            TypedStmtKind::AsmBlock(_)
+            | TypedStmtKind::IfCompile(_)
+            | TypedStmtKind::GcConfig(_) => {}
+        }
+    }
+
+    fn visit_typed_else_branch(
+        &mut self,
+        else_branch: &TypedElseBranch,
+        allowed: &BTreeSet<u32>,
+        seen: &mut BTreeSet<u32>,
+    ) {
+        match else_branch {
+            TypedElseBranch::If(if_stmt) => {
+                self.visit_typed_expr(&if_stmt.condition, allowed, seen);
+                self.visit_typed_block(&if_stmt.then_branch, allowed, seen);
+                if let Some(else_branch) = &if_stmt.else_branch {
+                    self.visit_typed_else_branch(else_branch, allowed, seen);
+                }
+            }
+            TypedElseBranch::Block(block) => self.visit_typed_block(block, allowed, seen),
+        }
+    }
+
+    fn visit_typed_expr(
+        &mut self,
+        expr: &TypedExpr,
+        allowed: &BTreeSet<u32>,
+        seen: &mut BTreeSet<u32>,
+    ) {
+        let expr_allowed = self.extend_allowed_with_expr_vars(allowed, expr);
+        self.report_unresolved_type(
+            &expr.ty,
+            &self.expr_label(expr),
+            expr.span,
+            &expr_allowed,
+            seen,
+        );
+        match &expr.kind {
+            TypedExprKind::FStrLit(parts) => {
+                for part in parts {
+                    if let TypedFStrPart::Interp(expr) = part {
+                        self.visit_typed_expr(expr, &expr_allowed, seen);
+                    }
+                }
+            }
+            TypedExprKind::Array(items)
+            | TypedExprKind::Set(items)
+            | TypedExprKind::Tuple(items) => {
+                for item in items {
+                    self.visit_typed_expr(item, &expr_allowed, seen);
+                }
+            }
+            TypedExprKind::Map(entries) => {
+                for (key, value) in entries {
+                    self.visit_typed_expr(key, &expr_allowed, seen);
+                    self.visit_typed_expr(value, &expr_allowed, seen);
+                }
+            }
+            TypedExprKind::BinOp(lhs, _, rhs)
+            | TypedExprKind::Index(lhs, rhs)
+            | TypedExprKind::Nullish(lhs, rhs) => {
+                self.visit_typed_expr(lhs, &expr_allowed, seen);
+                self.visit_typed_expr(rhs, &expr_allowed, seen);
+            }
+            TypedExprKind::UnOp(_, value)
+            | TypedExprKind::Cast(value, _)
+            | TypedExprKind::Ok(value)
+            | TypedExprKind::Err(value) => self.visit_typed_expr(value, &expr_allowed, seen),
+            TypedExprKind::Call(callee, args) => {
+                self.visit_typed_expr(callee, &expr_allowed, seen);
+                for arg in args {
+                    self.visit_typed_expr(arg, &expr_allowed, seen);
+                }
+            }
+            TypedExprKind::MethodCall(target, _, args) => {
+                self.visit_typed_expr(target, &expr_allowed, seen);
+                for arg in args {
+                    self.visit_typed_expr(arg, &expr_allowed, seen);
+                }
+            }
+            TypedExprKind::Field(target, _) => self.visit_typed_expr(target, &expr_allowed, seen),
+            TypedExprKind::Lambda(params, body) => {
+                for param in params {
+                    self.report_unresolved_type(
+                        &param.ty,
+                        &param.name,
+                        param.span,
+                        &expr_allowed,
+                        seen,
+                    );
+                }
+                self.visit_typed_expr(body, &expr_allowed, seen);
+            }
+            TypedExprKind::Match(subject, arms) => {
+                self.visit_typed_expr(subject, &expr_allowed, seen);
+                for arm in arms {
+                    self.visit_typed_expr(&arm.pattern, &expr_allowed, seen);
+                    match &arm.body {
+                        TypedMatchArmBody::Expr(expr) => {
+                            self.visit_typed_expr(expr, &expr_allowed, seen)
+                        }
+                        TypedMatchArmBody::Block(block) => {
+                            self.visit_typed_block(block, &expr_allowed, seen)
+                        }
+                    }
+                }
+            }
+            TypedExprKind::Chan(ty) => {
+                self.report_unresolved_type(ty, "channel", expr.span, &expr_allowed, seen);
+            }
+            TypedExprKind::IntLit(_)
+            | TypedExprKind::FloatLit(_)
+            | TypedExprKind::StrLit(_)
+            | TypedExprKind::BoolLit(_)
+            | TypedExprKind::NoneLit
+            | TypedExprKind::Ident(_) => {}
+        }
+    }
+
+    fn report_unresolved_type(
+        &mut self,
+        ty: &Type,
+        name: &str,
+        span: draton_ast::Span,
+        allowed: &BTreeSet<u32>,
+        seen: &mut BTreeSet<u32>,
+    ) {
+        let resolved = self.apply_subst(ty.clone());
+        for var in free_type_vars(&resolved) {
+            if allowed.contains(&var) || !seen.insert(var) {
+                continue;
+            }
+            self.errors.push(TypeError::CannotInfer {
+                name: name.to_string(),
+                line: span.line,
+                col: span.col,
+            });
+        }
+    }
+
+    fn expr_label(&self, expr: &TypedExpr) -> String {
+        match &expr.kind {
+            TypedExprKind::Ident(name) => name.clone(),
+            TypedExprKind::Field(_, field) => field.clone(),
+            TypedExprKind::Lambda(_, _) => "lambda".to_string(),
+            TypedExprKind::Array(_) => "array literal".to_string(),
+            TypedExprKind::Map(_) => "map literal".to_string(),
+            TypedExprKind::Set(_) => "set literal".to_string(),
+            TypedExprKind::Tuple(_) => "tuple literal".to_string(),
+            _ => "expression".to_string(),
+        }
+    }
+
+    fn extend_allowed_with_expr_vars(
+        &self,
+        allowed: &BTreeSet<u32>,
+        expr: &TypedExpr,
+    ) -> BTreeSet<u32> {
+        let mut vars = allowed.clone();
+        vars.extend(self.allowed_expr_vars(expr));
+        vars
+    }
+
+    fn allowed_expr_vars(&self, expr: &TypedExpr) -> BTreeSet<u32> {
+        match &expr.kind {
+            TypedExprKind::NoneLit
+            | TypedExprKind::Ident(_)
+            | TypedExprKind::Ok(_)
+            | TypedExprKind::Err(_)
+            | TypedExprKind::Lambda(_, _) => free_type_vars(&expr.ty),
+            TypedExprKind::Tuple(items) if !items.is_empty() => free_type_vars(&expr.ty),
+            _ => BTreeSet::new(),
         }
     }
 

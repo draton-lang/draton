@@ -70,3 +70,18 @@ fn load() {
         .iter()
         .any(|error| matches!(error, TypeError::IncompatibleErrors { .. })));
 }
+
+#[test]
+fn reports_cannot_infer_for_ambiguous_empty_array_literal() {
+    let result = parse_and_check(
+        r#"
+fn main() {
+    let x = []
+}
+"#,
+    );
+    assert!(result
+        .errors
+        .iter()
+        .any(|error| matches!(error, TypeError::CannotInfer { name, .. } if name == "x")));
+}

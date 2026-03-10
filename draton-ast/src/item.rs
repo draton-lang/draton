@@ -58,6 +58,7 @@ pub struct Param {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassDef {
     pub name: String,
+    pub type_params: Vec<String>,
     pub extends: Option<String>,
     pub implements: Vec<String>,
     pub members: Vec<ClassMember>,

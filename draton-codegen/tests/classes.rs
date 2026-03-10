@@ -54,3 +54,53 @@ class Dog extends Animal {
     );
     assert!(ir.contains("%Dog = type { %Animal, i64 }"), "{ir}");
 }
+
+#[test]
+fn emits_write_barrier_for_field_assignment() {
+    let ir = compile_ir(
+        r#"
+class Node {
+    let next: Node
+    fn link(next: Node) {
+        self.next = next
+    }
+}
+"#,
+    );
+    let method_start = ir.find("define void @Node.link").expect("Node.link");
+    let method_ir = &ir[method_start..];
+    assert!(
+        method_ir.contains("call void @draton_gc_write_barrier"),
+        "{method_ir}"
+    );
+}
+
+#[test]
+fn emits_gc_roots_for_pointer_backed_locals() {
+    let ir = compile_ir(
+        r#"
+class User { }
+@type { fn main(user: User) -> User }
+fn main(user) {
+    let other = user
+    other
+}
+"#,
+    );
+    assert!(ir.contains("gc \"shadow-stack\""), "{ir}");
+    assert!(ir.contains("call void @llvm.gcroot"), "{ir}");
+}
+
+#[test]
+fn emits_type_descriptors_and_non_zero_type_ids_for_classes() {
+    let ir = compile_ir(
+        r#"
+class User {
+    let next: User
+}
+"#,
+    );
+    assert!(ir.contains("@TypeDesc_User = constant"), "{ir}");
+    assert!(ir.contains("@draton_gc_alloc(i64"), "{ir}");
+    assert!(ir.contains("i16 1"), "{ir}");
+}

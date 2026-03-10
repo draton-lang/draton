@@ -158,3 +158,55 @@ fn main() {
         other => panic!("unexpected stmt: {other:?}"),
     }
 }
+
+#[test]
+fn infers_lambda_params_from_annotated_function_type() {
+    let result = parse_and_check(
+        r#"
+fn main() {
+    let values = [1, 2, 3]
+    values.map(lambda x => x * 2)
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "type errors: {:?}", result.errors);
+    let TypedItem::Fn(main_fn) = &result.typed_program.items[0] else {
+        panic!("expected function");
+    };
+    let body = main_fn.body.as_ref().expect("body");
+    match &body.stmts[1].kind {
+        TypedStmtKind::Expr(expr) => match &expr.kind {
+            TypedExprKind::MethodCall(_, name, args) => {
+                assert_eq!(name, "map");
+                let lambda = &args[0];
+                match &lambda.kind {
+                    TypedExprKind::Lambda(params, body) => {
+                        assert_eq!(params[0].ty, Type::Int);
+                        assert_eq!(body.ty, Type::Int);
+                    }
+                    other => panic!("unexpected expr: {other:?}"),
+                }
+                assert_eq!(expr.ty, Type::Array(Box::new(Type::Int)));
+            }
+            other => panic!("unexpected expr: {other:?}"),
+        },
+        other => panic!("unexpected stmt: {other:?}"),
+    }
+}
+
+#[test]
+fn arithmetic_without_annotation_defaults_to_int() {
+    let result = parse_and_check(
+        r#"
+fn double(x) { x * 2 }
+fn main() {
+    let n = double(5)
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "type errors: {:?}", result.errors);
+    let TypedItem::Fn(double_fn) = &result.typed_program.items[0] else {
+        panic!("expected function");
+    };
+    assert_eq!(double_fn.ty, Type::Fn(vec![Type::Int], Box::new(Type::Int)));
+}
