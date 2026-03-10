@@ -113,20 +113,60 @@ jobs:
           Invoke-WebRequest -Uri "${{ matrix.llvm_archive }}" -OutFile C:\llvm-download\llvm.tar.xz
           tar -xf C:\llvm-download\llvm.tar.xz -C C:\
           Move-Item -Force "C:\${{ matrix.llvm_dir }}" C:\llvm
-          @'
-          @echo off
-          setlocal
-          set "REAL=C:\llvm\bin\llvm-config.exe"
-          if /I "%~1"=="--system-libs" (
-            for /f "usebackq delims=" %%i in (`"%REAL%" %*`) do set "OUT=%%i"
-            set "OUT=%OUT:xml2s.lib=%"
-            echo %OUT%
-            exit /b 0
-          )
-          "%REAL%" %*
-          '@ | Set-Content -Path C:\llvm-shim\bin\llvm-config.cmd -Encoding ascii
+          $llvmShimSource = @"
+          using System;
+          using System.Diagnostics;
+
+          public static class Program
+          {
+              public static int Main(string[] args)
+              {
+                  var psi = new ProcessStartInfo(@"C:\llvm\bin\llvm-config.exe")
+                  {
+                      UseShellExecute = false,
+                      RedirectStandardOutput = true,
+                      RedirectStandardError = true,
+                      CreateNoWindow = true,
+                  };
+
+                  foreach (var arg in args)
+                  {
+                      psi.ArgumentList.Add(arg);
+                  }
+
+                  using var process = Process.Start(psi);
+                  if (process is null)
+                  {
+                      Console.Error.WriteLine("failed to start llvm-config");
+                      return 1;
+                  }
+
+                  var stdout = process.StandardOutput.ReadToEnd();
+                  var stderr = process.StandardError.ReadToEnd();
+                  process.WaitForExit();
+
+                  if (args.Length > 0 && args[0] == "--system-libs")
+                  {
+                      stdout = stdout.Replace("xml2s.lib", string.Empty).Replace("  ", " ");
+                  }
+
+                  if (!string.IsNullOrEmpty(stdout))
+                  {
+                      Console.Out.Write(stdout);
+                  }
+
+                  if (!string.IsNullOrEmpty(stderr))
+                  {
+                      Console.Error.Write(stderr);
+                  }
+
+                  return process.ExitCode;
+              }
+          }
+          "@
+          Add-Type -TypeDefinition $llvmShimSource -Language CSharp -OutputAssembly C:\llvm-shim\bin\llvm-config.exe -OutputType ConsoleApplication
           echo "LLVM_SYS_140_PREFIX=C:\llvm-shim" >> $env:GITHUB_ENV
-          echo "LLVM_CONFIG_PATH=C:\llvm-shim\bin\llvm-config.cmd" >> $env:GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=C:\llvm-shim\bin\llvm-config.exe" >> $env:GITHUB_ENV
           echo "C:\llvm-shim\bin" >> $env:GITHUB_PATH
           echo "C:\llvm\bin" >> $env:GITHUB_PATH
 
