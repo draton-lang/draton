@@ -94,8 +94,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install llvm --version=14.0.6 -y
+          choco upgrade llvm --version=14.0.6 --allow-downgrade --force -y
           echo "LLVM_SYS_140_PREFIX=C:\Program Files\LLVM" >> $env:GITHUB_ENV
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
