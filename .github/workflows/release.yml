@@ -102,79 +102,18 @@ jobs:
           if (Test-Path C:\llvm) {
             Remove-Item -Recurse -Force C:\llvm
           }
-          if (Test-Path C:\llvm-shim) {
-            Remove-Item -Recurse -Force C:\llvm-shim
-          }
           if (Test-Path C:\llvm-download) {
             Remove-Item -Recurse -Force C:\llvm-download
           }
           New-Item -ItemType Directory -Force -Path C:\llvm-download | Out-Null
-          New-Item -ItemType Directory -Force -Path C:\llvm-shim\bin | Out-Null
           Invoke-WebRequest -Uri "${{ matrix.llvm_archive }}" -OutFile C:\llvm-download\llvm.tar.xz
           tar -xf C:\llvm-download\llvm.tar.xz -C C:\
           Move-Item -Force "C:\${{ matrix.llvm_dir }}" C:\llvm
-          $llvmShimSource = @"
-          using System;
-          using System.Diagnostics;
-
-          public static class Program
-          {
-              public static int Main(string[] args)
-              {
-                  var psi = new ProcessStartInfo(@"C:\llvm\bin\llvm-config.exe")
-                  {
-                      UseShellExecute = false,
-                      RedirectStandardOutput = true,
-                      RedirectStandardError = true,
-                      CreateNoWindow = true,
-                  };
-
-                  foreach (var arg in args)
-                  {
-                      psi.ArgumentList.Add(arg);
-                  }
-
-                  using var process = Process.Start(psi);
-                  if (process is null)
-                  {
-                      Console.Error.WriteLine("failed to start llvm-config");
-                      return 1;
-                  }
-
-                  var stdout = process.StandardOutput.ReadToEnd();
-                  var stderr = process.StandardError.ReadToEnd();
-                  process.WaitForExit();
-
-                  if (args.Length > 0 && args[0] == "--system-libs")
-                  {
-                      stdout = stdout.Replace("xml2s.lib", string.Empty).Replace("  ", " ");
-                  }
-
-                  if (!string.IsNullOrEmpty(stdout))
-                  {
-                      Console.Out.Write(stdout);
-                  }
-
-                  if (!string.IsNullOrEmpty(stderr))
-                  {
-                      Console.Error.Write(stderr);
-                  }
-
-                  return process.ExitCode;
-              }
-          }
-          "@
-          $llvmShimSource | Set-Content -Path C:\llvm-shim\bin\llvm-config.cs -Encoding ascii
-          $cscDll = Get-ChildItem "$env:ProgramFiles\dotnet\sdk" -Filter csc.dll -Recurse -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $cscDll) {
-            throw "could not find Roslyn csc.dll under $env:ProgramFiles\\dotnet\\sdk"
-          }
-          & dotnet $cscDll /nologo /target:exe /out:C:\llvm-shim\bin\llvm-config.exe C:\llvm-shim\bin\llvm-config.cs
-          echo "LLVM_SYS_140_PREFIX=C:\llvm-shim" >> $env:GITHUB_ENV
-          echo "LLVM_CONFIG_PATH=C:\llvm-shim\bin\llvm-config.exe" >> $env:GITHUB_ENV
-          echo "C:\llvm-shim\bin" >> $env:GITHUB_PATH
+          "int __draton_xml2_stub(void) { return 0; }" | Set-Content -Path C:\llvm-download\xml2_stub.c -Encoding ascii
+          & C:\llvm\bin\clang.exe -c C:\llvm-download\xml2_stub.c -o C:\llvm-download\xml2_stub.obj
+          & C:\llvm\bin\llvm-lib.exe /nologo /out:C:\llvm\lib\xml2s.lib C:\llvm-download\xml2_stub.obj
+          echo "LLVM_SYS_140_PREFIX=C:\llvm" >> $env:GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=C:\llvm\bin\llvm-config.exe" >> $env:GITHUB_ENV
           echo "C:\llvm\bin" >> $env:GITHUB_PATH
 
       - name: Set up QEMU
@@ -234,9 +173,7 @@ jobs:
               export LLVM_SYS_140_PREFIX=/usr/lib/llvm14
               export LLVM_CONFIG_PATH=/usr/bin/llvm14-config
               mkdir -p /opt/musl-compat
-              cat > /tmp/rt_stub.c <<'"'"'EOF'"'"'
-              void __draton_musl_rt_stub(void) {}
-              EOF
+              printf "%s\n" "void __draton_musl_rt_stub(void) {}" > /tmp/rt_stub.c
               cc -c /tmp/rt_stub.c -o /tmp/rt_stub.o
               ar rcs /opt/musl-compat/librt.a /tmp/rt_stub.o
               export RUSTFLAGS="${RUSTFLAGS} -L native=/opt/musl-compat"
