@@ -56,12 +56,16 @@ jobs:
             artifact: drat-windows-x86_64
             ext: .exe
             mode: native-windows
+            llvm_archive: https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/clang+llvm-20.1.8-x86_64-pc-windows-msvc.tar.xz
+            llvm_dir: clang+llvm-20.1.8-x86_64-pc-windows-msvc
 
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
             artifact: drat-windows-arm64
             ext: .exe
             mode: native-windows
+            llvm_archive: https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/clang+llvm-20.1.8-aarch64-pc-windows-msvc.tar.xz
+            llvm_dir: clang+llvm-20.1.8-aarch64-pc-windows-msvc
 
           - os: ubuntu-22.04
             target: riscv64gc-unknown-linux-gnu
@@ -95,14 +99,19 @@ jobs:
         if: matrix.mode == 'native-windows'
         shell: pwsh
         run: |
-          choco upgrade llvm --version=14.0.6 --allow-downgrade --force -y
-          if (Test-Path C:\llvm-14) {
-            Remove-Item -Recurse -Force C:\llvm-14
+          if (Test-Path C:\llvm) {
+            Remove-Item -Recurse -Force C:\llvm
           }
-          Copy-Item -Recurse -Force "C:\Program Files\LLVM" "C:\llvm-14"
-          echo "LLVM_SYS_140_PREFIX=C:\llvm-14" >> $env:GITHUB_ENV
-          echo "LLVM_CONFIG_PATH=C:\llvm-14\bin\llvm-config.exe" >> $env:GITHUB_ENV
-          echo "C:\llvm-14\bin" >> $env:GITHUB_PATH
+          if (Test-Path C:\llvm-download) {
+            Remove-Item -Recurse -Force C:\llvm-download
+          }
+          New-Item -ItemType Directory -Force -Path C:\llvm-download | Out-Null
+          Invoke-WebRequest -Uri "${{ matrix.llvm_archive }}" -OutFile C:\llvm-download\llvm.tar.xz
+          tar -xf C:\llvm-download\llvm.tar.xz -C C:\
+          Move-Item -Force "C:\${{ matrix.llvm_dir }}" C:\llvm
+          echo "LLVM_SYS_140_PREFIX=C:\llvm" >> $env:GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=C:\llvm\bin\llvm-config.exe" >> $env:GITHUB_ENV
+          echo "C:\llvm\bin" >> $env:GITHUB_PATH
 
       - name: Set up QEMU
         if: matrix.mode == 'qemu-riscv64'
@@ -137,7 +146,7 @@ jobs:
             -e CARGO_TERM_COLOR="${CARGO_TERM_COLOR}" \
             -e HOST_UID="$(id -u)" \
             -e HOST_GID="$(id -g)" \
-            alpine:3.20 \
+            alpine:3.19 \
             /bin/sh -lc '
               set -eux
               apk add --no-cache \
@@ -156,7 +165,7 @@ jobs:
               curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
               . "$HOME/.cargo/env"
               export LLVM_SYS_140_PREFIX=/usr/lib/llvm14
-              export LLVM_CONFIG_PATH=/usr/lib/llvm14/bin/llvm-config
+              export LLVM_CONFIG_PATH=/usr/bin/llvm14-config
               cargo build --release --package drat --target x86_64-unknown-linux-musl
               mkdir -p dist
               strip target/x86_64-unknown-linux-musl/release/drat || true
