@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use draton_ast::{
-    AssignOp, BinOp, Block, ClassDef, ClassMember, ElseBranch, Expr, FStrPart, FieldDef, FnDef,
-    GcConfigStmt, IfStmt, Item, MatchArm, MatchArmBody, Program, SpawnBody, Stmt, TypeExpr,
-    TypeMember, UnOp,
+    AssignOp, BinOp, Block, ClassDef, ClassMember, DestructureBinding, ElseBranch, Expr, FStrPart,
+    FieldDef, FnDef, GcConfigStmt, IfStmt, Item, LetDestructureStmt, MatchArm, MatchArmBody,
+    Program, SpawnBody, Stmt, TypeExpr, TypeMember, UnOp,
 };
 
 use crate::env::{Scheme, TypeEnv};
@@ -13,12 +13,13 @@ use crate::error::TypeError;
 use crate::exhaust::{classify_subject, extract_pattern, ExhaustivenessChecker};
 use crate::infer::{free_type_vars, free_type_vars_in_env, Substitution};
 use crate::typed_ast::{
-    Type, TypedAssignStmt, TypedBlock, TypedClassDef, TypedConstDef, TypedElseBranch, TypedEnumDef,
-    TypedErrorDef, TypedExpr, TypedExprKind, TypedExternBlock, TypedFStrPart, TypedFieldDef,
-    TypedFnDef, TypedForStmt, TypedGcConfigEntry, TypedGcConfigStmt, TypedIfCompileStmt,
-    TypedIfStmt, TypedImportDef, TypedImportItem, TypedInterfaceDef, TypedItem, TypedLetStmt,
-    TypedMatchArm, TypedMatchArmBody, TypedParam, TypedProgram, TypedReturnStmt, TypedSpawnBody,
-    TypedSpawnStmt, TypedStmt, TypedStmtKind, TypedTypeBlock, TypedTypeMember, TypedWhileStmt,
+    Type, TypedAssignStmt, TypedBlock, TypedClassDef, TypedConstDef, TypedDestructureBinding,
+    TypedElseBranch, TypedEnumDef, TypedErrorDef, TypedExpr, TypedExprKind, TypedExternBlock,
+    TypedFStrPart, TypedFieldDef, TypedFnDef, TypedForStmt, TypedGcConfigEntry, TypedGcConfigStmt,
+    TypedIfCompileStmt, TypedIfStmt, TypedImportDef, TypedImportItem, TypedInterfaceDef, TypedItem,
+    TypedLetDestructureStmt, TypedLetStmt, TypedMatchArm, TypedMatchArmBody, TypedParam,
+    TypedProgram, TypedReturnStmt, TypedSpawnBody, TypedSpawnStmt, TypedStmt, TypedStmtKind,
+    TypedTypeBlock, TypedTypeMember, TypedWhileStmt,
 };
 use crate::unify::occurs;
 
@@ -596,6 +597,7 @@ impl TypeChecker {
                     span: let_stmt.span,
                 }
             }
+            Stmt::LetDestructure(let_stmt) => self.infer_let_destructure(let_stmt),
             Stmt::Assign(assign) => {
                 let (typed_target, target_ty) = self.infer_expr(&assign.target);
                 let typed_value = assign.value.as_ref().map(|expr| self.infer_expr(expr));
@@ -791,6 +793,63 @@ impl TypeChecker {
                     kind: TypedStmtKind::GcConfig(typed),
                 }
             }
+        }
+    }
+
+    fn infer_let_destructure(&mut self, stmt: &LetDestructureStmt) -> TypedStmt {
+        let (typed_value, value_ty) = self.infer_expr(&stmt.value);
+        let resolved_value_ty = self.apply_subst(value_ty.clone());
+        let slot_tys = stmt
+            .names
+            .iter()
+            .map(|_| self.fresh_var())
+            .collect::<Vec<_>>();
+        let expected_tuple = Type::Tuple(slot_tys.clone());
+        let tuple_ty = match &resolved_value_ty {
+            Type::Tuple(items) => {
+                if items.len() != stmt.names.len() {
+                    self.errors.push(TypeError::DestructureArity {
+                        pattern_len: stmt.names.len(),
+                        tuple_len: items.len(),
+                        line: stmt.span.line,
+                        col: stmt.span.col,
+                    });
+                }
+                self.unify(resolved_value_ty.clone(), expected_tuple.clone(), stmt.span)
+            }
+            _ => self.unify(value_ty, expected_tuple.clone(), stmt.span),
+        };
+
+        let mut bindings = Vec::with_capacity(stmt.names.len());
+        for (binding, slot_ty) in stmt.names.iter().zip(slot_tys.iter()) {
+            let concrete = self.apply_subst(slot_ty.clone());
+            match binding {
+                DestructureBinding::Name(name) => {
+                    self.env.define(
+                        name,
+                        Scheme {
+                            quantified: Vec::new(),
+                            ty: concrete.clone(),
+                        },
+                    );
+                    bindings.push(TypedDestructureBinding::Name {
+                        name: name.clone(),
+                        ty: concrete,
+                    });
+                }
+                DestructureBinding::Wildcard => bindings.push(TypedDestructureBinding::Wildcard),
+            }
+        }
+
+        TypedStmt {
+            kind: TypedStmtKind::LetDestructure(TypedLetDestructureStmt {
+                is_mut: stmt.is_mut,
+                bindings,
+                value: typed_value,
+                tuple_ty: self.apply_subst(tuple_ty),
+                span: stmt.span,
+            }),
+            span: stmt.span,
         }
     }
 
@@ -2812,6 +2871,22 @@ impl TypeChecker {
                 if let Some(value) = &let_stmt.value {
                     self.visit_typed_expr(value, &stmt_allowed, seen);
                 }
+            }
+            TypedStmtKind::LetDestructure(let_stmt) => {
+                let stmt_allowed = self.extend_allowed_with_expr_vars(allowed, &let_stmt.value);
+                self.report_unresolved_type(
+                    &let_stmt.tuple_ty,
+                    "tuple destructure",
+                    let_stmt.span,
+                    &stmt_allowed,
+                    seen,
+                );
+                for binding in &let_stmt.bindings {
+                    if let TypedDestructureBinding::Name { name, ty } = binding {
+                        self.report_unresolved_type(ty, name, let_stmt.span, &stmt_allowed, seen);
+                    }
+                }
+                self.visit_typed_expr(&let_stmt.value, &stmt_allowed, seen);
             }
             TypedStmtKind::Assign(assign) => {
                 self.visit_typed_expr(&assign.target, allowed, seen);

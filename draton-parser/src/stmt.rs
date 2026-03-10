@@ -1,6 +1,7 @@
 use draton_ast::{
-    AssignOp, AssignStmt, Block, ElseBranch, Expr, ForStmt, GcConfigEntry, GcConfigStmt,
-    IfCompileStmt, IfStmt, LetStmt, ReturnStmt, SpawnBody, SpawnStmt, Stmt, WhileStmt,
+    AssignOp, AssignStmt, Block, DestructureBinding, ElseBranch, Expr, ForStmt, GcConfigEntry,
+    GcConfigStmt, IfCompileStmt, IfStmt, LetDestructureStmt, LetStmt, ReturnStmt, SpawnBody,
+    SpawnStmt, Stmt, WhileStmt,
 };
 use draton_lexer::TokenKind;
 
@@ -35,7 +36,7 @@ impl Parser {
     pub(crate) fn parse_stmt(&mut self) -> Option<Stmt> {
         self.skip_doc_comments();
         match self.current_kind() {
-            TokenKind::Let => self.parse_let_stmt().map(Stmt::Let),
+            TokenKind::Let => self.parse_let_stmt(),
             TokenKind::Return => self.parse_return_stmt().map(Stmt::Return),
             TokenKind::If => self.parse_if_stmt().map(Stmt::If),
             TokenKind::For => self.parse_for_stmt().map(Stmt::For),
@@ -133,10 +134,13 @@ impl Parser {
         })
     }
 
-    fn parse_let_stmt(&mut self) -> Option<LetStmt> {
+    fn parse_let_stmt(&mut self) -> Option<Stmt> {
         let start = self.token_span();
         let _ = self.expect(TokenKind::Let, "let");
         let is_mut = self.match_kind(TokenKind::Mut);
+        if self.check(TokenKind::LParen) {
+            return self.parse_let_destructure(start, is_mut);
+        }
         let (name, _) = self.consume_ident("binding name")?;
         let type_hint = if self.match_kind(TokenKind::Colon) {
             self.parse_type_expr()
@@ -154,13 +158,43 @@ impl Parser {
             .map(Expr::span)
             .or_else(|| type_hint.as_ref().map(|ty| ty.span()))
             .unwrap_or(start);
-        Some(LetStmt {
+        Some(Stmt::Let(LetStmt {
             is_mut,
             name,
             type_hint,
             value,
             span: self.merge_spans(start, end),
-        })
+        }))
+    }
+
+    fn parse_let_destructure(&mut self, start: draton_ast::Span, is_mut: bool) -> Option<Stmt> {
+        if !self.expect(TokenKind::LParen, "(") {
+            return None;
+        }
+        let mut names = Vec::new();
+        while !self.is_eof() && !self.check(TokenKind::RParen) {
+            if self.check(TokenKind::Ident) && self.current_token().lexeme == "_" {
+                self.advance();
+                names.push(DestructureBinding::Wildcard);
+            } else {
+                let (name, _) = self.consume_ident("binding name")?;
+                names.push(DestructureBinding::Name(name));
+            }
+            if !self.check(TokenKind::RParen) {
+                let _ = self.expect(TokenKind::Comma, ",");
+            }
+        }
+        let _ = self.expect(TokenKind::RParen, ")");
+        let _ = self.expect(TokenKind::Eq, "=");
+        let value = self.parse_expression()?;
+        let end = value.span();
+        self.optional_semicolon();
+        Some(Stmt::LetDestructure(LetDestructureStmt {
+            is_mut,
+            names,
+            value,
+            span: self.merge_spans(start, end),
+        }))
     }
 
     fn parse_return_stmt(&mut self) -> Option<ReturnStmt> {

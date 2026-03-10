@@ -584,6 +584,24 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 vec![format!("expected: {expected}"), format!("found:    {got}")],
                 None,
             ),
+            TypeError::DestructureArity {
+                pattern_len,
+                tuple_len,
+                line,
+                col,
+            } => render_diagnostic(
+                "E015",
+                "tuple destructure arity mismatch",
+                path,
+                source,
+                *line,
+                *col,
+                vec![
+                    format!("pattern:  {pattern_len} binding(s)"),
+                    format!("tuple:    {tuple_len} slot(s)"),
+                ],
+                Some("hint:     sua so luong binding cho khop tuple".to_string()),
+            ),
             TypeError::CannotInfer { name, line, col } => render_diagnostic(
                 "E007",
                 &format!("cannot infer type for '{name}'"),

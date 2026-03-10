@@ -1,5 +1,6 @@
 use draton_ast::{
-    AssignOp, Block, ElseBranch, ForStmt, IfStmt, SpawnBody, SpawnStmt, Stmt, WhileStmt,
+    AssignOp, Block, DestructureBinding, ElseBranch, ForStmt, IfStmt, SpawnBody, SpawnStmt, Stmt,
+    WhileStmt,
 };
 
 use super::Printer;
@@ -40,6 +41,24 @@ impl Printer {
                     self.write(" = ");
                     self.fmt_expr(value);
                 }
+            }
+            Stmt::LetDestructure(let_stmt) => {
+                if let_stmt.is_mut {
+                    self.write("let mut (");
+                } else {
+                    self.write("let (");
+                }
+                for (index, binding) in let_stmt.names.iter().enumerate() {
+                    if index > 0 {
+                        self.write(", ");
+                    }
+                    match binding {
+                        DestructureBinding::Name(name) => self.write(name),
+                        DestructureBinding::Wildcard => self.write("_"),
+                    }
+                }
+                self.write(") = ");
+                self.fmt_expr(&let_stmt.value);
             }
             Stmt::Assign(assign) => {
                 self.fmt_expr(&assign.target);

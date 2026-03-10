@@ -7,6 +7,8 @@ use crate::TypeExpr;
 pub enum Stmt {
     /// A local variable declaration.
     Let(LetStmt),
+    /// A tuple destructuring `let`.
+    LetDestructure(LetDestructureStmt),
     /// An assignment-like statement.
     Assign(AssignStmt),
     /// A return statement.
@@ -52,6 +54,24 @@ pub struct LetStmt {
     pub type_hint: Option<TypeExpr>,
     pub value: Option<Expr>,
     pub span: Span,
+}
+
+/// A tuple destructuring `let` statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LetDestructureStmt {
+    pub is_mut: bool,
+    pub names: Vec<DestructureBinding>,
+    pub value: Expr,
+    pub span: Span,
+}
+
+/// A single tuple destructuring binding.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DestructureBinding {
+    /// Bind the slot to a local variable.
+    Name(String),
+    /// Discard the slot.
+    Wildcard,
 }
 
 /// An assignment statement.

@@ -13,6 +13,7 @@ pub use env::{Scheme, TypeEnv};
 pub use error::TypeError;
 pub use infer::Substitution;
 pub use typed_ast::{
-    Type, TypedBlock, TypedExpr, TypedExprKind, TypedFStrPart, TypedFnDef, TypedItem,
-    TypedMatchArm, TypedMatchArmBody, TypedParam, TypedProgram, TypedStmt, TypedStmtKind,
+    Type, TypedBlock, TypedDestructureBinding, TypedExpr, TypedExprKind, TypedFStrPart, TypedFnDef,
+    TypedItem, TypedLetDestructureStmt, TypedMatchArm, TypedMatchArmBody, TypedParam, TypedProgram,
+    TypedStmt, TypedStmtKind,
 };

@@ -1,7 +1,8 @@
 use draton_ast::{AssignOp, BinOp};
 use draton_typeck::typed_ast::{
-    TypedAssignStmt, TypedElseBranch, TypedExpr, TypedExprKind, TypedForStmt, TypedIfStmt,
-    TypedLetStmt, TypedReturnStmt, TypedSpawnBody, TypedWhileStmt,
+    TypedAssignStmt, TypedDestructureBinding, TypedElseBranch, TypedExpr, TypedExprKind,
+    TypedForStmt, TypedIfStmt, TypedLetDestructureStmt, TypedLetStmt, TypedReturnStmt,
+    TypedSpawnBody, TypedWhileStmt,
 };
 use draton_typeck::{TypedBlock, TypedStmt, TypedStmtKind};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
@@ -33,6 +34,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
         match &stmt.kind {
             TypedStmtKind::Let(let_stmt) => self.emit_let_stmt(let_stmt),
+            TypedStmtKind::LetDestructure(let_stmt) => self.emit_let_destructure(let_stmt),
             TypedStmtKind::Assign(assign) => {
                 self.emit_assign_stmt(assign)?;
                 Ok(None)
@@ -93,6 +95,43 @@ impl<'ctx> CodeGen<'ctx> {
             self.build_store(storage, self.zero_value(&let_stmt.ty)?)?;
         }
         self.define_local(&let_stmt.name, storage);
+        Ok(None)
+    }
+
+    fn emit_let_destructure(
+        &mut self,
+        let_stmt: &TypedLetDestructureStmt,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        let rhs = self
+            .emit_expr(&let_stmt.value)?
+            .ok_or_else(|| CodeGenError::UnsupportedStmt("destructure rhs is void".to_string()))?;
+        let rhs_struct = rhs.into_struct_value();
+        let function = self.current_function()?;
+
+        for (index, binding) in let_stmt.bindings.iter().enumerate() {
+            match binding {
+                TypedDestructureBinding::Wildcard => {}
+                TypedDestructureBinding::Name { name, ty } => {
+                    if Self::is_void_type(ty) {
+                        continue;
+                    }
+                    let slot_value = self
+                        .builder
+                        .build_extract_value(
+                            rhs_struct,
+                            index as u32,
+                            &format!("destructure.{index}"),
+                        )
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    let storage =
+                        self.create_entry_alloca(function, self.llvm_basic_type(ty)?, name)?;
+                    self.register_gc_root(storage, ty)?;
+                    self.build_store(storage, slot_value)?;
+                    self.define_local(name, storage);
+                }
+            }
+        }
+
         Ok(None)
     }
 

@@ -49,6 +49,14 @@ pub enum TypeError {
         col: usize,
     },
 
+    #[error("destructure mismatch at line {line}, col {col}: pattern has {pattern_len} bindings but type has {tuple_len} slots")]
+    DestructureArity {
+        pattern_len: usize,
+        tuple_len: usize,
+        line: usize,
+        col: usize,
+    },
+
     #[error("cannot infer type for '{name}' at line {line}, col {col} — add a @type annotation")]
     CannotInfer {
         name: String,

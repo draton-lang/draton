@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 use draton_typeck::{
     typed_ast::{
-        TypedClassDef, TypedElseBranch, TypedForStmt, TypedGcConfigEntry, TypedGcConfigStmt,
-        TypedIfCompileStmt, TypedIfStmt, TypedLetStmt, TypedMatchArm, TypedReturnStmt,
-        TypedSpawnBody, TypedSpawnStmt, TypedWhileStmt,
+        TypedClassDef, TypedDestructureBinding, TypedElseBranch, TypedForStmt, TypedGcConfigEntry,
+        TypedGcConfigStmt, TypedIfCompileStmt, TypedIfStmt, TypedLetDestructureStmt, TypedLetStmt,
+        TypedMatchArm, TypedReturnStmt, TypedSpawnBody, TypedSpawnStmt, TypedWhileStmt,
     },
     Type, TypedBlock, TypedExpr, TypedExprKind, TypedFStrPart, TypedFnDef, TypedItem,
     TypedMatchArmBody, TypedParam, TypedProgram, TypedStmt, TypedStmtKind,
@@ -187,6 +187,15 @@ impl MonoCollector {
                 if let Some(value) = &let_stmt.value {
                     self.visit_expr(value, subst);
                 }
+            }
+            TypedStmtKind::LetDestructure(let_stmt) => {
+                self.visit_type(&substitute_type(&let_stmt.tuple_ty, subst));
+                for binding in &let_stmt.bindings {
+                    if let TypedDestructureBinding::Name { ty, .. } = binding {
+                        self.visit_type(&substitute_type(ty, subst));
+                    }
+                }
+                self.visit_expr(&let_stmt.value, subst);
             }
             TypedStmtKind::Assign(assign) => {
                 self.visit_expr(&assign.target, subst);
@@ -617,6 +626,27 @@ fn substitute_stmt(
             ty: materialize_type(&let_stmt.ty, subst, self_class),
             span: let_stmt.span,
         }),
+        TypedStmtKind::LetDestructure(let_stmt) => {
+            TypedStmtKind::LetDestructure(TypedLetDestructureStmt {
+                is_mut: let_stmt.is_mut,
+                bindings: let_stmt
+                    .bindings
+                    .iter()
+                    .map(|binding| match binding {
+                        TypedDestructureBinding::Name { name, ty } => {
+                            TypedDestructureBinding::Name {
+                                name: name.clone(),
+                                ty: materialize_type(ty, subst, self_class),
+                            }
+                        }
+                        TypedDestructureBinding::Wildcard => TypedDestructureBinding::Wildcard,
+                    })
+                    .collect(),
+                value: substitute_expr(&let_stmt.value, subst, self_class),
+                tuple_ty: materialize_type(&let_stmt.tuple_ty, subst, self_class),
+                span: let_stmt.span,
+            })
+        }
         TypedStmtKind::Assign(assign) => {
             TypedStmtKind::Assign(draton_typeck::typed_ast::TypedAssignStmt {
                 target: substitute_expr(&assign.target, subst, self_class),

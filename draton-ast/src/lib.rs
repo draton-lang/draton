@@ -11,8 +11,9 @@ pub use item::{
     ImportItem, InterfaceDef, Item, LayerDef, Param, Program, TypeBlock, TypeMember,
 };
 pub use stmt::{
-    AssignOp, AssignStmt, Block, ElseBranch, ForStmt, GcConfigEntry, GcConfigStmt, IfCompileStmt,
-    IfStmt, LetStmt, ReturnStmt, SpawnBody, SpawnStmt, Stmt, WhileStmt,
+    AssignOp, AssignStmt, Block, DestructureBinding, ElseBranch, ForStmt, GcConfigEntry,
+    GcConfigStmt, IfCompileStmt, IfStmt, LetDestructureStmt, LetStmt, ReturnStmt, SpawnBody,
+    SpawnStmt, Stmt, WhileStmt,
 };
 pub use types::TypeExpr;
 

@@ -1,4 +1,4 @@
-use draton_ast::{AssignOp, Expr, Stmt};
+use draton_ast::{AssignOp, DestructureBinding, Expr, Stmt};
 use draton_lexer::Lexer;
 use draton_parser::Parser;
 
@@ -31,6 +31,16 @@ fn parses_let_statements() {
     assert!(
         matches!(parse_stmt("let mut x = 0"), Stmt::Let(let_stmt) if let_stmt.is_mut && let_stmt.name == "x")
     );
+    assert!(matches!(
+        parse_stmt("let (x, y) = (1, 2)"),
+        Stmt::LetDestructure(let_stmt)
+            if matches!(let_stmt.names.as_slice(), [DestructureBinding::Name(x), DestructureBinding::Name(y)] if x == "x" && y == "y")
+    ));
+    assert!(matches!(
+        parse_stmt("let (_, y) = (1, 2)"),
+        Stmt::LetDestructure(let_stmt)
+            if matches!(let_stmt.names.as_slice(), [DestructureBinding::Wildcard, DestructureBinding::Name(y)] if y == "y")
+    ));
 }
 
 #[test]

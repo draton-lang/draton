@@ -167,6 +167,8 @@ pub struct TypedStmt {
 pub enum TypedStmtKind {
     /// A typed let statement.
     Let(TypedLetStmt),
+    /// A typed tuple destructuring let statement.
+    LetDestructure(TypedLetDestructureStmt),
     /// A typed assignment statement.
     Assign(TypedAssignStmt),
     /// A typed return statement.
@@ -205,6 +207,25 @@ pub struct TypedLetStmt {
     pub value: Option<TypedExpr>,
     pub ty: Type,
     pub span: Span,
+}
+
+/// A typed tuple destructuring let statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedLetDestructureStmt {
+    pub is_mut: bool,
+    pub bindings: Vec<TypedDestructureBinding>,
+    pub value: TypedExpr,
+    pub tuple_ty: Type,
+    pub span: Span,
+}
+
+/// A single typed tuple destructuring binding.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedDestructureBinding {
+    /// Bind the slot to a local variable.
+    Name { name: String, ty: Type },
+    /// Discard the slot.
+    Wildcard,
 }
 
 /// A typed assignment statement.

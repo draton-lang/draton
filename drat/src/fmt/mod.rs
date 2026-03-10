@@ -92,4 +92,11 @@ class Counter {
         let out = format_source(input);
         assert!(out.contains("}\n\nfn"), "need blank line between fns");
     }
+
+    #[test]
+    fn formats_tuple_destructure_let() {
+        let input = "fn main(){let(x,_)= (1,2)}";
+        let out = format_source(input);
+        assert!(out.contains("let (x, _) = (1, 2)"), "{out}");
+    }
 }
