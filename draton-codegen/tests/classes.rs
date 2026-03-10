@@ -175,3 +175,71 @@ fn size_nested(stack) { stack.len() }
         "{ir}"
     );
 }
+
+#[test]
+fn emits_interface_vtable_type_and_global() {
+    let ir = compile_ir(
+        r#"
+interface Drawable {
+    fn draw()
+}
+class Circle implements Drawable {
+    fn draw() { print("circle") }
+}
+"#,
+    );
+    assert!(ir.contains("%Drawable_vtable = type"), "{ir}");
+    assert!(
+        ir.contains("%Drawable = type { i8*, %Drawable_vtable* }"),
+        "{ir}"
+    );
+    assert!(
+        ir.contains("@Circle_Drawable_vtable = constant %Drawable_vtable"),
+        "{ir}"
+    );
+    assert!(ir.contains("@Circle.Drawable.draw_thunk"), "{ir}");
+}
+
+#[test]
+fn emits_interface_dispatch_as_indirect_vtable_call() {
+    let ir = compile_ir(
+        r#"
+interface Drawable {
+    fn draw()
+}
+class Circle implements Drawable {
+    fn draw() { print("circle") }
+}
+@type { fn render(shape: Drawable) -> Unit }
+fn render(shape) {
+    shape.draw()
+}
+"#,
+    );
+    assert!(ir.contains("load void (i8*)*"), "{ir}");
+    assert!(ir.contains("call void %"), "{ir}");
+}
+
+#[test]
+fn emits_upcast_to_interface_fat_pointer() {
+    let ir = compile_ir(
+        r#"
+interface Drawable {
+    fn draw()
+}
+class Circle implements Drawable {
+    fn draw() { print("circle") }
+}
+@type { fn render(shape: Drawable) -> Unit }
+fn render(shape) {
+    shape.draw()
+}
+@type { fn use_circle(shape: Circle) -> Unit }
+fn use_circle(shape) {
+    render(shape)
+}
+"#,
+    );
+    assert!(ir.contains("insertvalue %Drawable"), "{ir}");
+    assert!(ir.contains("@Circle_Drawable_vtable"), "{ir}");
+}

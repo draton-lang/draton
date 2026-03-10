@@ -86,6 +86,7 @@ impl<'ctx> CodeGen<'ctx> {
                     for method in &class_def.methods {
                         self.predeclare_function(method, Some(&class_def.name))?;
                     }
+                    self.predeclare_vtable_bindings_for_class(class_def)?;
                 }
                 _ => {}
             }
@@ -176,6 +177,7 @@ impl<'ctx> CodeGen<'ctx> {
                 for method in &class_def.methods {
                     self.emit_function(method, Some(&class_def.name))?;
                 }
+                self.emit_vtable_for_class(class_def)?;
                 Ok(())
             }
             TypedItem::Extern(_)
@@ -205,6 +207,7 @@ impl<'ctx> CodeGen<'ctx> {
             for method in &specialized.methods {
                 self.emit_function(method, Some(&specialized.name))?;
             }
+            self.emit_vtable_for_class(&specialized)?;
         }
         for inst in self.mono.fn_insts.clone() {
             let Some(info) = self.generic_functions.get(&inst.fn_name).cloned() else {
@@ -268,6 +271,7 @@ impl<'ctx> CodeGen<'ctx> {
             for method in &specialized.methods {
                 self.predeclare_function(method, Some(&specialized.name))?;
             }
+            self.predeclare_vtable_bindings_for_class(&specialized)?;
         }
 
         Ok(())

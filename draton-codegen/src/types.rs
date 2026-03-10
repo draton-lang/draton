@@ -102,24 +102,27 @@ impl<'ctx> CodeGen<'ctx> {
                 .llvm_function_type(ret, params)?
                 .ptr_type(AddressSpace::default())
                 .into()),
-            Type::Named(name, args) => self
-                .class_layouts
-                .get(&if args.is_empty() {
+            Type::Named(name, args) if args.is_empty() && self.is_interface_type_name(name) => self
+                .fat_pointer_types
+                .get(name)
+                .copied()
+                .map(Into::into)
+                .ok_or_else(|| {
+                    CodeGenError::UnsupportedType(format!("unknown interface type {name}"))
+                }),
+            Type::Named(name, args) => {
+                let runtime_name = if args.is_empty() {
                     name.clone()
                 } else {
                     mangle_class(name, args)
-                })
-                .map(|layout| layout.struct_type.ptr_type(AddressSpace::default()).into())
-                .ok_or_else(|| {
-                    CodeGenError::UnsupportedType(format!(
-                        "unknown named type {}",
-                        if args.is_empty() {
-                            name.clone()
-                        } else {
-                            mangle_class(name, args)
-                        }
-                    ))
-                }),
+                };
+                self.class_layouts
+                    .get(&runtime_name)
+                    .map(|layout| layout.struct_type.ptr_type(AddressSpace::default()).into())
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedType(format!("unknown named type {runtime_name}"))
+                    })
+            }
             Type::Pointer(inner) => Ok(self
                 .llvm_storage_type(inner)?
                 .ptr_type(AddressSpace::default())

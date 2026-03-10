@@ -78,4 +78,13 @@ pub enum TypeError {
         line: usize,
         col: usize,
     },
+
+    #[error("class '{class}' does not fully implement interface '{interface}' at line {line}, col {col}\n  missing method: {method}")]
+    MissingInterfaceMethod {
+        class: String,
+        interface: String,
+        method: String,
+        line: usize,
+        col: usize,
+    },
 }

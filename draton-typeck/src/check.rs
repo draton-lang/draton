@@ -37,6 +37,8 @@ pub struct TypeChecker {
     subst: Substitution,
     class_fields: HashMap<String, HashMap<String, Type>>,
     class_methods: HashMap<String, HashMap<String, Scheme>>,
+    interface_methods: HashMap<String, HashMap<String, Scheme>>,
+    class_interfaces: HashMap<String, Vec<String>>,
     function_hints: HashMap<String, FnDef>,
     binding_hints: HashMap<String, TypeExpr>,
     current_return: Vec<Type>,
@@ -57,6 +59,8 @@ impl TypeChecker {
             subst: Substitution::empty(),
             class_fields: HashMap::new(),
             class_methods: HashMap::new(),
+            interface_methods: HashMap::new(),
+            class_interfaces: HashMap::new(),
             function_hints: HashMap::new(),
             binding_hints: HashMap::new(),
             current_return: Vec::new(),
@@ -208,6 +212,7 @@ impl TypeChecker {
         self.env.pop_scope();
         let _ = self.current_class.pop();
         self.pop_type_params();
+        self.check_interface_impl(class_def);
         TypedClassDef {
             name: class_def.name.clone(),
             extends: class_def.extends.clone(),
@@ -215,6 +220,50 @@ impl TypeChecker {
             fields,
             methods,
             span: class_def.span,
+        }
+    }
+
+    fn check_interface_impl(&mut self, class_def: &ClassDef) {
+        let class_methods = self
+            .class_methods
+            .get(&class_def.name)
+            .cloned()
+            .unwrap_or_default();
+        for iface_name in &class_def.implements {
+            let Some(required_methods) = self.interface_methods.get(iface_name).cloned() else {
+                self.errors.push(TypeError::UndefinedVar {
+                    name: iface_name.clone(),
+                    line: class_def.span.line,
+                    col: class_def.span.col,
+                });
+                continue;
+            };
+            for (method_name, iface_scheme) in required_methods {
+                let Some(class_scheme) = class_methods.get(&method_name).cloned() else {
+                    self.errors.push(TypeError::MissingInterfaceMethod {
+                        class: class_def.name.clone(),
+                        interface: iface_name.clone(),
+                        method: method_name,
+                        line: class_def.span.line,
+                        col: class_def.span.col,
+                    });
+                    continue;
+                };
+                let iface_ty = self.apply_subst(iface_scheme.ty);
+                let class_ty = self.apply_subst(class_scheme.ty);
+                if iface_ty != class_ty {
+                    self.errors.push(TypeError::Mismatch {
+                        expected: iface_ty.to_string(),
+                        found: class_ty.to_string(),
+                        hint: format!(
+                            "make method '{}' match interface '{}'",
+                            method_name, iface_name
+                        ),
+                        line: class_def.span.line,
+                        col: class_def.span.col,
+                    });
+                }
+            }
         }
     }
 
@@ -248,9 +297,58 @@ impl TypeChecker {
             methods: interface_def
                 .methods
                 .iter()
-                .map(|method| self.infer_fn_item(method, None))
+                .map(|method| self.infer_interface_method(method))
                 .collect(),
             span: interface_def.span,
+        }
+    }
+
+    fn infer_interface_method(&mut self, function: &FnDef) -> TypedFnDef {
+        let hint = self.function_hints.get(&function.name).cloned();
+        let params = function
+            .params
+            .iter()
+            .enumerate()
+            .map(|(index, param)| {
+                param
+                    .type_hint
+                    .as_ref()
+                    .or_else(|| {
+                        hint.as_ref().and_then(|fn_hint| {
+                            fn_hint
+                                .params
+                                .get(index)
+                                .and_then(|value| value.type_hint.as_ref())
+                        })
+                    })
+                    .map(|type_expr| self.type_from_annotation(type_expr))
+                    .unwrap_or_else(|| self.fresh_var())
+            })
+            .collect::<Vec<_>>();
+        let ret_type = function
+            .ret_type
+            .as_ref()
+            .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.as_ref()))
+            .map(|type_expr| self.type_from_annotation(type_expr))
+            .unwrap_or(Type::Unit);
+        let full_ty = Type::Fn(params.clone(), Box::new(ret_type.clone()));
+        TypedFnDef {
+            is_pub: function.is_pub,
+            name: function.name.clone(),
+            params: function
+                .params
+                .iter()
+                .zip(params.iter())
+                .map(|(param, ty)| TypedParam {
+                    name: param.name.clone(),
+                    ty: ty.clone(),
+                    span: param.span,
+                })
+                .collect(),
+            ret_type: ret_type.clone(),
+            body: None,
+            ty: full_ty,
+            span: function.span,
         }
     }
 
@@ -428,8 +526,22 @@ impl TypeChecker {
         self.env.push_scope();
         let mut typed_stmts = Vec::new();
         let mut last_ty = Type::Unit;
-        for stmt in &block.stmts {
-            let typed_stmt = self.infer_stmt(stmt);
+        let last_index = block.stmts.len().saturating_sub(1);
+        for (index, stmt) in block.stmts.iter().enumerate() {
+            let typed_stmt = if index == last_index {
+                if let Stmt::Expr(expr) = stmt {
+                    let (typed_expr, _) =
+                        self.infer_expr_with_expected(expr, self.current_return.last().cloned());
+                    TypedStmt {
+                        kind: TypedStmtKind::Expr(typed_expr),
+                        span: expr.span(),
+                    }
+                } else {
+                    self.infer_stmt(stmt)
+                }
+            } else {
+                self.infer_stmt(stmt)
+            };
             if let TypedStmtKind::Expr(expr) = &typed_stmt.kind {
                 last_ty = expr.ty.clone();
             } else {
@@ -519,8 +631,9 @@ impl TypeChecker {
                 }
             }
             Stmt::Return(return_stmt) => {
+                let expected = self.current_return.last().cloned();
                 let (typed_value, ty) = if let Some(expr) = &return_stmt.value {
-                    let (typed, ty) = self.infer_expr(expr);
+                    let (typed, ty) = self.infer_expr_with_expected(expr, expected.clone());
                     (Some(typed), ty)
                 } else {
                     (None, Type::Unit)
@@ -849,9 +962,25 @@ impl TypeChecker {
             _ => {
                 let (mut typed, ty) = self.infer_expr(expr);
                 if let Some(expected) = expected {
+                    let original_ty = self.apply_subst(ty.clone());
+                    let expected_ty = self.apply_subst(expected.clone());
                     let resolved = self.unify(ty, expected, expr.span());
-                    typed.ty = self.apply_subst(resolved.clone());
-                    (typed, self.apply_subst(resolved))
+                    let resolved = self.apply_subst(resolved);
+                    if self.can_upcast_to_interface(&original_ty, &expected_ty) {
+                        let cast_span = expr.span();
+                        let cast_kind = TypedExprKind::Cast(Box::new(typed), expected_ty.clone());
+                        (
+                            TypedExpr {
+                                kind: cast_kind,
+                                ty: expected_ty.clone(),
+                                span: cast_span,
+                            },
+                            expected_ty,
+                        )
+                    } else {
+                        typed.ty = resolved.clone();
+                        (typed, resolved)
+                    }
                 } else {
                     (typed, ty)
                 }
@@ -1353,6 +1482,11 @@ impl TypeChecker {
                 .get(&class_name)
                 .and_then(|methods| methods.get(name).cloned())
                 .or_else(|| {
+                    self.interface_methods
+                        .get(&class_name)
+                        .and_then(|methods| methods.get(name).cloned())
+                })
+                .or_else(|| {
                     self.errors.push(TypeError::NoField {
                         field: name.to_string(),
                         ty: class_name,
@@ -1371,6 +1505,28 @@ impl TypeChecker {
                 None
             }
         }
+    }
+
+    fn is_interface_name(&self, name: &str) -> bool {
+        self.interface_methods.contains_key(name)
+    }
+
+    fn class_implements_interface(&self, class_name: &str, interface_name: &str) -> bool {
+        self.class_interfaces
+            .get(class_name)
+            .map(|interfaces| interfaces.iter().any(|name| name == interface_name))
+            .unwrap_or(false)
+    }
+
+    fn can_upcast_to_interface(&self, from: &Type, to: &Type) -> bool {
+        matches!(
+            (self.apply_subst(from.clone()), self.apply_subst(to.clone())),
+            (Type::Named(class_name, from_args), Type::Named(interface_name, to_args))
+                if from_args.is_empty()
+                    && to_args.is_empty()
+                    && self.is_interface_name(&interface_name)
+                    && self.class_implements_interface(&class_name, &interface_name)
+        )
     }
 
     fn builtin_array_method(&mut self, name: &str, item_ty: Type) -> Option<Scheme> {
@@ -1464,6 +1620,9 @@ impl TypeChecker {
                 Item::Class(class_def) => {
                     self.predeclare_class(class_def);
                 }
+                Item::Interface(interface_def) => {
+                    self.predeclare_interface(interface_def);
+                }
                 Item::Fn(function) | Item::PanicHandler(function) | Item::OomHandler(function) => {
                     let ty = self.function_placeholder(function);
                     self.env.define(
@@ -1537,6 +1696,8 @@ impl TypeChecker {
 
     fn predeclare_class(&mut self, class_def: &ClassDef) {
         self.push_type_params(&class_def.type_params);
+        self.class_interfaces
+            .insert(class_def.name.clone(), class_def.implements.clone());
         let fields = class_def
             .members
             .iter()
@@ -1584,6 +1745,56 @@ impl TypeChecker {
         }
         self.class_methods.insert(class_def.name.clone(), methods);
         self.pop_type_params();
+    }
+
+    fn predeclare_interface(&mut self, interface_def: &draton_ast::InterfaceDef) {
+        let methods = interface_def
+            .methods
+            .iter()
+            .map(|method| {
+                let ty = self.interface_method_placeholder(method);
+                (
+                    method.name.clone(),
+                    Scheme {
+                        quantified: Vec::new(),
+                        ty,
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        self.interface_methods
+            .insert(interface_def.name.clone(), methods);
+    }
+
+    fn interface_method_placeholder(&mut self, function: &FnDef) -> Type {
+        let hint = self.function_hints.get(&function.name).cloned();
+        let params = function
+            .params
+            .iter()
+            .enumerate()
+            .map(|(index, param)| {
+                param
+                    .type_hint
+                    .as_ref()
+                    .or_else(|| {
+                        hint.as_ref().and_then(|fn_hint| {
+                            fn_hint
+                                .params
+                                .get(index)
+                                .and_then(|value| value.type_hint.as_ref())
+                        })
+                    })
+                    .map(|type_expr| self.type_from_annotation(type_expr))
+                    .unwrap_or_else(|| self.fresh_var())
+            })
+            .collect::<Vec<_>>();
+        let ret = function
+            .ret_type
+            .as_ref()
+            .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.as_ref()))
+            .map(|type_expr| self.type_from_annotation(type_expr))
+            .unwrap_or(Type::Unit);
+        Type::Fn(params, Box::new(ret))
     }
 
     fn function_placeholder(&mut self, function: &FnDef) -> Type {
@@ -1755,6 +1966,20 @@ impl TypeChecker {
                         .collect(),
                     Box::new(self.unify(*lhs_ret, *rhs_ret, span)),
                 )
+            }
+            (Type::Named(lhs_name, lhs_args), Type::Named(rhs_name, rhs_args))
+                if lhs_args.is_empty()
+                    && rhs_args.is_empty()
+                    && self.class_implements_interface(&lhs_name, &rhs_name) =>
+            {
+                Type::Named(rhs_name, Vec::new())
+            }
+            (Type::Named(lhs_name, lhs_args), Type::Named(rhs_name, rhs_args))
+                if lhs_args.is_empty()
+                    && rhs_args.is_empty()
+                    && self.class_implements_interface(&rhs_name, &lhs_name) =>
+            {
+                Type::Named(lhs_name, Vec::new())
             }
             (Type::Named(lhs_name, lhs_args), Type::Named(rhs_name, rhs_args))
                 if lhs_name == rhs_name && lhs_args.len() == rhs_args.len() =>

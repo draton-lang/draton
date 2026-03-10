@@ -622,6 +622,24 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 vec![format!("left:     {lhs}"), format!("right:    {rhs}")],
                 Some("hint:     wrap ca hai vao mot error type chung".to_string()),
             ),
+            TypeError::MissingInterfaceMethod {
+                class,
+                interface,
+                method,
+                line,
+                col,
+            } => render_diagnostic(
+                "E011",
+                &format!("class '{class}' does not fully implement interface '{interface}'"),
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("missing:  {method}")],
+                Some(
+                    "hint:     them method con thieu hoac sua lai danh sach implements".to_string(),
+                ),
+            ),
         })
         .collect::<Vec<_>>()
         .join("\n\n")

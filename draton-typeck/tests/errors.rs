@@ -85,3 +85,25 @@ fn main() {
         .iter()
         .any(|error| matches!(error, TypeError::CannotInfer { name, .. } if name == "x")));
 }
+
+#[test]
+fn reports_missing_interface_method_error() {
+    let result = parse_and_check(
+        r#"
+interface Drawable {
+    fn draw()
+}
+class Rect implements Drawable {
+}
+"#,
+    );
+    assert!(result.errors.iter().any(|error| matches!(
+        error,
+        TypeError::MissingInterfaceMethod {
+            class,
+            interface,
+            method,
+            ..
+        } if class == "Rect" && interface == "Drawable" && method == "draw"
+    )));
+}

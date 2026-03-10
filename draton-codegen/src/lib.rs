@@ -10,6 +10,7 @@ pub mod mangle;
 pub mod mono;
 pub mod stmt;
 pub mod types;
+pub mod vtable;
 
 pub use codegen::{BuildMode, CodeGen};
 pub use error::CodeGenError;

@@ -10,7 +10,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::StructType;
-use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
+use inkwell::values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue};
 use inkwell::{AddressSpace, OptimizationLevel};
 
 use crate::error::CodeGenError;
@@ -19,6 +19,7 @@ use crate::mono::{
     generic_class_def, generic_fn_def, resolve_function_type_args, GenericClassDef, GenericFnDef,
     MonoCollector,
 };
+use crate::vtable::InterfaceRegistry;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ClassLayout<'ctx> {
@@ -59,6 +60,10 @@ pub struct CodeGen<'ctx> {
     pub(crate) mono: MonoCollector,
     pub(crate) generic_classes: HashMap<String, GenericClassDef>,
     pub(crate) generic_functions: HashMap<String, GenericFnDef>,
+    pub(crate) iface_registry: InterfaceRegistry,
+    pub(crate) vtable_types: HashMap<String, StructType<'ctx>>,
+    pub(crate) fat_pointer_types: HashMap<String, StructType<'ctx>>,
+    pub(crate) vtable_globals: HashMap<(String, String), GlobalValue<'ctx>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -87,6 +92,10 @@ impl<'ctx> CodeGen<'ctx> {
             mono: MonoCollector::new(),
             generic_classes: HashMap::new(),
             generic_functions: HashMap::new(),
+            iface_registry: InterfaceRegistry::default(),
+            vtable_types: HashMap::new(),
+            fat_pointer_types: HashMap::new(),
+            vtable_globals: HashMap::new(),
         }
     }
 
@@ -94,6 +103,8 @@ impl<'ctx> CodeGen<'ctx> {
     pub fn emit(mut self, program: &TypedProgram) -> Result<Module<'ctx>, CodeGenError> {
         self.index_generic_items(program);
         self.mono = MonoCollector::new().collect(program);
+        self.iface_registry = InterfaceRegistry::build(program);
+        self.emit_interface_runtime_types()?;
         self.declare_runtime()?;
         self.predeclare_program_items(program)?;
         for item in &program.items {
@@ -237,10 +248,14 @@ impl<'ctx> CodeGen<'ctx> {
                 "gc.root.slot",
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        let null_meta = i8_ptr.const_null();
+        let metadata = self
+            .context
+            .i64_type()
+            .const_int(1, false)
+            .const_to_pointer(i8_ptr);
         let _ = self
             .builder
-            .build_call(gcroot, &[root_location.into(), null_meta.into()], "")
+            .build_call(gcroot, &[root_location.into(), metadata.into()], "")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         Ok(())
     }

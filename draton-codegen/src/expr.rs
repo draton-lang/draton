@@ -533,6 +533,15 @@ impl<'ctx> CodeGen<'ctx> {
                 target.ty
             )));
         };
+        if type_args.is_empty() && self.is_interface_type_name(class_name) {
+            let fat_ptr = self
+                .emit_expr(target)?
+                .ok_or_else(|| {
+                    CodeGenError::UnsupportedExpr("interface target missing value".to_string())
+                })?
+                .into_struct_value();
+            return self.emit_interface_method_call(fat_ptr, class_name, method, args);
+        }
         let runtime_name = if type_args.is_empty() {
             class_name.clone()
         } else {
@@ -626,6 +635,24 @@ impl<'ctx> CodeGen<'ctx> {
         value: &TypedExpr,
         to_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
+        if let (Type::Named(class_name, class_args), Type::Named(iface_name, iface_args)) =
+            (&value.ty, to_ty)
+        {
+            if iface_args.is_empty() && self.is_interface_type_name(iface_name) {
+                let runtime_name = self.runtime_class_name(class_name, class_args);
+                let value = self
+                    .emit_expr(value)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "interface cast source missing value".to_string(),
+                        )
+                    })?
+                    .into_pointer_value();
+                return self
+                    .emit_upcast_to_interface(value, &runtime_name, iface_name)
+                    .map(Into::into);
+            }
+        }
         let value = self.emit_expr(value)?.ok_or_else(|| {
             CodeGenError::UnsupportedExpr("cast source missing value".to_string())
         })?;
