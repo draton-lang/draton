@@ -1,4 +1,5 @@
 mod config;
+mod fmt;
 mod commands {
     pub mod add;
     pub mod build;

@@ -360,6 +360,7 @@ dependencies = [
  "anyhow",
  "clap",
  "colored",
+ "draton-ast",
  "draton-codegen",
  "draton-lexer",
  "draton-parser",

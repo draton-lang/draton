@@ -11,6 +11,7 @@ path = "src/main.rs"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 colored = "2"
+draton-ast = { path = "../draton-ast" }
 draton-codegen = { path = "../draton-codegen" }
 draton-lexer = { path = "../draton-lexer" }
 draton-parser = { path = "../draton-parser" }
