@@ -70,3 +70,23 @@ fn main() { recur(5) }
     let value = unsafe { run_i64_main(module) };
     assert_eq!(value, 5);
 }
+
+#[test]
+fn monomorphizes_generic_function_per_concrete_call_site() {
+    let context = Context::create();
+    let module = compile_module(
+        &context,
+        r#"
+fn id(x) { x }
+fn use_int() { id(42) }
+fn use_string() { id("x") }
+"#,
+    );
+    let ir = module.print_to_string().to_string();
+    assert!(ir.contains("define i64 @id__Int(i64 %0)"), "{ir}");
+    assert!(
+        ir.contains("define { i64, i8* } @id__String({ i64, i8* } %0)"),
+        "{ir}"
+    );
+    assert!(!ir.contains("define i64 @id("), "{ir}");
+}

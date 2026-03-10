@@ -6,6 +6,8 @@ pub mod error;
 pub mod expr;
 pub mod gc;
 pub mod item;
+pub mod mangle;
+pub mod mono;
 pub mod stmt;
 pub mod types;
 

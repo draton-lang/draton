@@ -5,6 +5,7 @@ use inkwell::AddressSpace;
 
 use crate::codegen::CodeGen;
 use crate::error::CodeGenError;
+use crate::mangle::mangle_class;
 
 impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn is_void_type(ty: &Type) -> bool {
@@ -101,11 +102,24 @@ impl<'ctx> CodeGen<'ctx> {
                 .llvm_function_type(ret, params)?
                 .ptr_type(AddressSpace::default())
                 .into()),
-            Type::Named(name, _) => self
+            Type::Named(name, args) => self
                 .class_layouts
-                .get(name)
+                .get(&if args.is_empty() {
+                    name.clone()
+                } else {
+                    mangle_class(name, args)
+                })
                 .map(|layout| layout.struct_type.ptr_type(AddressSpace::default()).into())
-                .ok_or_else(|| CodeGenError::UnsupportedType(format!("unknown named type {name}"))),
+                .ok_or_else(|| {
+                    CodeGenError::UnsupportedType(format!(
+                        "unknown named type {}",
+                        if args.is_empty() {
+                            name.clone()
+                        } else {
+                            mangle_class(name, args)
+                        }
+                    ))
+                }),
             Type::Pointer(inner) => Ok(self
                 .llvm_storage_type(inner)?
                 .ptr_type(AddressSpace::default())

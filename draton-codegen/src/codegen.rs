@@ -14,6 +14,11 @@ use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 use inkwell::{AddressSpace, OptimizationLevel};
 
 use crate::error::CodeGenError;
+use crate::mangle::mangle_fn;
+use crate::mono::{
+    generic_class_def, generic_fn_def, resolve_function_type_args, GenericClassDef, GenericFnDef,
+    MonoCollector,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ClassLayout<'ctx> {
@@ -51,6 +56,9 @@ pub struct CodeGen<'ctx> {
     pub(crate) type_descriptor_table: HashMap<String, u16>,
     pub(crate) next_type_descriptor_id: u16,
     pub(crate) string_counter: u64,
+    pub(crate) mono: MonoCollector,
+    pub(crate) generic_classes: HashMap<String, GenericClassDef>,
+    pub(crate) generic_functions: HashMap<String, GenericFnDef>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -76,16 +84,22 @@ impl<'ctx> CodeGen<'ctx> {
             type_descriptor_table: HashMap::new(),
             next_type_descriptor_id: 1,
             string_counter: 0,
+            mono: MonoCollector::new(),
+            generic_classes: HashMap::new(),
+            generic_functions: HashMap::new(),
         }
     }
 
     /// Emits LLVM IR for a typed Draton program.
     pub fn emit(mut self, program: &TypedProgram) -> Result<Module<'ctx>, CodeGenError> {
+        self.index_generic_items(program);
+        self.mono = MonoCollector::new().collect(program);
         self.declare_runtime()?;
         self.predeclare_program_items(program)?;
         for item in &program.items {
             self.emit_item(item)?;
         }
+        self.emit_mono_items()?;
         self.apply_optimizations();
         self.module
             .verify()
@@ -125,6 +139,61 @@ impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn current_function(&self) -> Result<FunctionValue<'ctx>, CodeGenError> {
         self.current_function
             .ok_or_else(|| CodeGenError::MissingSymbol("current function".to_string()))
+    }
+
+    pub(crate) fn index_generic_items(&mut self, program: &TypedProgram) {
+        self.generic_classes.clear();
+        self.generic_functions.clear();
+        for item in &program.items {
+            match item {
+                draton_typeck::TypedItem::Class(class_def) => {
+                    if let Some(info) = generic_class_def(class_def) {
+                        self.generic_classes.insert(class_def.name.clone(), info);
+                    }
+                }
+                draton_typeck::TypedItem::Fn(function)
+                | draton_typeck::TypedItem::PanicHandler(function)
+                | draton_typeck::TypedItem::OomHandler(function) => {
+                    if let Some(info) = generic_fn_def(function) {
+                        self.generic_functions.insert(function.name.clone(), info);
+                    }
+                }
+                draton_typeck::TypedItem::Extern(extern_block) => {
+                    for function in &extern_block.functions {
+                        if let Some(info) = generic_fn_def(function) {
+                            self.generic_functions.insert(function.name.clone(), info);
+                        }
+                    }
+                }
+                draton_typeck::TypedItem::Interface(_)
+                | draton_typeck::TypedItem::Enum(_)
+                | draton_typeck::TypedItem::Error(_)
+                | draton_typeck::TypedItem::Const(_)
+                | draton_typeck::TypedItem::Import(_)
+                | draton_typeck::TypedItem::TypeBlock(_) => {}
+            }
+        }
+    }
+
+    pub(crate) fn resolve_function_symbol(
+        &self,
+        name: &str,
+        arg_types: &[Type],
+    ) -> Result<String, CodeGenError> {
+        if self.functions.contains_key(name) {
+            return Ok(name.to_string());
+        }
+        if let Some(info) = self.generic_functions.get(name) {
+            if let Some(type_args) =
+                resolve_function_type_args(&info.def, &info.type_vars, arg_types)
+            {
+                let symbol = mangle_fn(name, None, &type_args);
+                if self.functions.contains_key(&symbol) {
+                    return Ok(symbol);
+                }
+            }
+        }
+        Err(CodeGenError::MissingSymbol(name.to_string()))
     }
 
     pub(crate) fn get_or_declare_gcroot_intrinsic(&self) -> FunctionValue<'ctx> {

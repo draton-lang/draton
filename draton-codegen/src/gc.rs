@@ -8,6 +8,7 @@ use inkwell::AddressSpace;
 
 use crate::codegen::CodeGen;
 use crate::error::CodeGenError;
+use crate::mangle::mangle_class;
 
 /// Conservative function-level escape information.
 #[derive(Debug, Clone, Default)]
@@ -57,9 +58,13 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| CodeGenError::MissingSymbol("draton_gc_alloc".to_string()))?;
         let size = self.type_size_value(ty)?;
         let type_id = match ty {
-            Type::Named(class_name, _) => self
+            Type::Named(class_name, args) => self
                 .type_descriptor_table
-                .get(class_name)
+                .get(&if args.is_empty() {
+                    class_name.clone()
+                } else {
+                    mangle_class(class_name, args)
+                })
                 .copied()
                 .unwrap_or(0),
             _ => 0,
@@ -151,11 +156,16 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn type_size_bytes(&self, ty: &Type) -> Result<u64, CodeGenError> {
         match ty {
-            Type::Named(class_name, _) => {
+            Type::Named(class_name, args) => {
+                let runtime_name = if args.is_empty() {
+                    class_name.clone()
+                } else {
+                    mangle_class(class_name, args)
+                };
                 let layout = self
                     .class_layouts
-                    .get(class_name)
-                    .ok_or_else(|| CodeGenError::MissingSymbol(class_name.clone()))?;
+                    .get(&runtime_name)
+                    .ok_or_else(|| CodeGenError::MissingSymbol(runtime_name.clone()))?;
                 let size = layout
                     .struct_type
                     .size_of()

@@ -5,6 +5,7 @@ use inkwell::{FloatPredicate, IntPredicate};
 
 use crate::codegen::CodeGen;
 use crate::error::CodeGenError;
+use crate::mangle::mangle_class;
 
 impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn emit_const_expr(
@@ -459,7 +460,10 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[TypedExpr],
     ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
         let symbol = match &callee.kind {
-            TypedExprKind::Ident(name) => name.clone(),
+            TypedExprKind::Ident(name) => self.resolve_function_symbol(
+                name,
+                &args.iter().map(|arg| arg.ty.clone()).collect::<Vec<_>>(),
+            )?,
             _ => {
                 return Err(CodeGenError::UnsupportedExpr(
                     "indirect calls are not lowered".to_string(),
@@ -523,18 +527,23 @@ impl<'ctx> CodeGen<'ctx> {
         method: &str,
         args: &[TypedExpr],
     ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
-        let Type::Named(class_name, _) = &target.ty else {
+        let Type::Named(class_name, type_args) = &target.ty else {
             return Err(CodeGenError::UnsupportedExpr(format!(
                 "method call on non-class type {}",
                 target.ty
             )));
         };
+        let runtime_name = if type_args.is_empty() {
+            class_name.clone()
+        } else {
+            mangle_class(class_name, type_args)
+        };
         let symbol = self
             .class_layouts
-            .get(class_name)
+            .get(&runtime_name)
             .and_then(|layout| layout.method_names.get(method))
             .cloned()
-            .ok_or_else(|| CodeGenError::MissingSymbol(format!("{class_name}.{method}")))?;
+            .ok_or_else(|| CodeGenError::MissingSymbol(format!("{runtime_name}.{method}")))?;
         let function = self
             .functions
             .get(&symbol)
@@ -583,21 +592,26 @@ impl<'ctx> CodeGen<'ctx> {
         target: &TypedExpr,
         field: &str,
     ) -> Result<PointerValue<'ctx>, CodeGenError> {
-        let Type::Named(class_name, _) = &target.ty else {
+        let Type::Named(class_name, type_args) = &target.ty else {
             return Err(CodeGenError::UnsupportedExpr(format!(
                 "field access on non-class type {}",
                 target.ty
             )));
         };
+        let runtime_name = if type_args.is_empty() {
+            class_name.clone()
+        } else {
+            mangle_class(class_name, type_args)
+        };
         let layout = self
             .class_layouts
-            .get(class_name)
-            .ok_or_else(|| CodeGenError::MissingSymbol(class_name.clone()))?;
+            .get(&runtime_name)
+            .ok_or_else(|| CodeGenError::MissingSymbol(runtime_name.clone()))?;
         let index = layout
             .field_indices
             .get(field)
             .copied()
-            .ok_or_else(|| CodeGenError::MissingSymbol(format!("{class_name}.{field}")))?;
+            .ok_or_else(|| CodeGenError::MissingSymbol(format!("{runtime_name}.{field}")))?;
         let base = self
             .emit_expr(target)?
             .ok_or_else(|| CodeGenError::UnsupportedExpr("field target missing value".to_string()))?

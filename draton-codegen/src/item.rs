@@ -4,6 +4,7 @@ use draton_typeck::{Type, TypedFnDef, TypedItem, TypedProgram};
 
 use crate::codegen::{ClassLayout, CodeGen};
 use crate::error::CodeGenError;
+use crate::mono::{specialize_class, specialize_function};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn predeclare_program_items(
@@ -12,6 +13,9 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<(), CodeGenError> {
         for item in &program.items {
             if let TypedItem::Class(class_def) = item {
+                if self.generic_classes.contains_key(&class_def.name) {
+                    continue;
+                }
                 let struct_type = self.context.opaque_struct_type(&class_def.name);
                 self.class_layouts.insert(
                     class_def.name.clone(),
@@ -26,6 +30,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         for item in &program.items {
             if let TypedItem::Class(class_def) = item {
+                if self.generic_classes.contains_key(&class_def.name) {
+                    continue;
+                }
                 let mut field_indices = HashMap::new();
                 let mut body_types = Vec::new();
                 if let Some(parent) = &class_def.extends {
@@ -49,19 +56,30 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        self.predeclare_mono_classes()?;
+
         for item in &program.items {
             match item {
                 TypedItem::Fn(function)
                 | TypedItem::PanicHandler(function)
                 | TypedItem::OomHandler(function) => {
+                    if self.generic_functions.contains_key(&function.name) {
+                        continue;
+                    }
                     self.predeclare_function(function, None)?;
                 }
                 TypedItem::Extern(extern_block) => {
                     for function in &extern_block.functions {
+                        if self.generic_functions.contains_key(&function.name) {
+                            continue;
+                        }
                         self.predeclare_function(function, None)?;
                     }
                 }
                 TypedItem::Class(class_def) => {
+                    if self.generic_classes.contains_key(&class_def.name) {
+                        continue;
+                    }
                     let _ = self.emit_class_type_descriptor(class_def)?;
                     self.predeclare_constructor(&class_def.name)?;
                     // Layer methods are already flattened into the typed class method list.
@@ -72,6 +90,7 @@ impl<'ctx> CodeGen<'ctx> {
                 _ => {}
             }
         }
+        self.predeclare_mono_functions()?;
         Ok(())
     }
 
@@ -106,6 +125,9 @@ impl<'ctx> CodeGen<'ctx> {
                 )?,
             )
         };
+        if self.functions.contains_key(&symbol) {
+            return Ok(());
+        }
         let value = self.module.add_function(&symbol, llvm_type, None);
         self.functions.insert(symbol.clone(), value);
         if let Some(class_name) = current_class {
@@ -138,8 +160,17 @@ impl<'ctx> CodeGen<'ctx> {
         match item {
             TypedItem::Fn(function)
             | TypedItem::PanicHandler(function)
-            | TypedItem::OomHandler(function) => self.emit_function(function, None),
+            | TypedItem::OomHandler(function) => {
+                if self.generic_functions.contains_key(&function.name) {
+                    Ok(())
+                } else {
+                    self.emit_function(function, None)
+                }
+            }
             TypedItem::Class(class_def) => {
+                if self.generic_classes.contains_key(&class_def.name) {
+                    return Ok(());
+                }
                 self.emit_constructor(class_def)?;
                 // Layer methods are already flattened into the typed class method list.
                 for method in &class_def.methods {
@@ -162,6 +193,100 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(())
             }
         }
+    }
+
+    pub(crate) fn emit_mono_items(&mut self) -> Result<(), CodeGenError> {
+        for inst in self.mono.class_insts.clone() {
+            let Some(info) = self.generic_classes.get(&inst.class_name).cloned() else {
+                continue;
+            };
+            let specialized = specialize_class(&info.def, &info.type_vars, &inst);
+            self.emit_constructor(&specialized)?;
+            for method in &specialized.methods {
+                self.emit_function(method, Some(&specialized.name))?;
+            }
+        }
+        for inst in self.mono.fn_insts.clone() {
+            let Some(info) = self.generic_functions.get(&inst.fn_name).cloned() else {
+                continue;
+            };
+            let specialized = specialize_function(
+                &info.def,
+                &crate::mono::build_var_subst(&info.type_vars, &inst.type_args),
+                None,
+                Some(&inst.mangled),
+            );
+            self.emit_function(&specialized, None)?;
+        }
+        Ok(())
+    }
+
+    fn predeclare_mono_classes(&mut self) -> Result<(), CodeGenError> {
+        for inst in self.mono.class_insts.clone() {
+            if self.class_layouts.contains_key(&inst.mangled) {
+                continue;
+            }
+            let struct_type = self.context.opaque_struct_type(&inst.mangled);
+            self.class_layouts.insert(
+                inst.mangled.clone(),
+                ClassLayout {
+                    struct_type,
+                    field_indices: HashMap::new(),
+                    method_names: HashMap::new(),
+                },
+            );
+        }
+
+        for inst in self.mono.class_insts.clone() {
+            let Some(info) = self.generic_classes.get(&inst.class_name).cloned() else {
+                continue;
+            };
+            let specialized = specialize_class(&info.def, &info.type_vars, &inst);
+            let mut field_indices = HashMap::new();
+            let mut body_types = Vec::new();
+            if let Some(parent) = &specialized.extends {
+                let parent_layout = self
+                    .class_layouts
+                    .get(parent)
+                    .ok_or_else(|| CodeGenError::MissingSymbol(parent.clone()))?;
+                body_types.push(parent_layout.struct_type.into());
+            }
+            for field in &specialized.fields {
+                let index = body_types.len() as u32;
+                field_indices.insert(field.name.clone(), index);
+                body_types.push(self.llvm_basic_type(&field.ty)?);
+            }
+            let layout = self
+                .class_layouts
+                .get_mut(&specialized.name)
+                .ok_or_else(|| CodeGenError::MissingSymbol(specialized.name.clone()))?;
+            layout.struct_type.set_body(&body_types, false);
+            layout.field_indices = field_indices;
+
+            let _ = self.emit_class_type_descriptor(&specialized)?;
+            self.predeclare_constructor(&specialized.name)?;
+            for method in &specialized.methods {
+                self.predeclare_function(method, Some(&specialized.name))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn predeclare_mono_functions(&mut self) -> Result<(), CodeGenError> {
+        for inst in self.mono.fn_insts.clone() {
+            let Some(info) = self.generic_functions.get(&inst.fn_name).cloned() else {
+                continue;
+            };
+            let specialized = specialize_function(
+                &info.def,
+                &crate::mono::build_var_subst(&info.type_vars, &inst.type_args),
+                None,
+                Some(&inst.mangled),
+            );
+            self.predeclare_function(&specialized, None)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn emit_function(

@@ -104,3 +104,74 @@ class User {
     assert!(ir.contains("@draton_gc_alloc(i64"), "{ir}");
     assert!(ir.contains("i16 1"), "{ir}");
 }
+
+#[test]
+fn emits_generic_stack_int_as_monomorphized_struct() {
+    let ir = compile_ir(
+        r#"
+class Stack[T] {
+    let items: Array[T]
+    fn len() { 0 }
+}
+@type { fn size_int(stack: Stack[Int]) -> Int }
+fn size_int(stack) { stack.len() }
+"#,
+    );
+    assert!(ir.contains("%Stack__Int = type"), "{ir}");
+    assert!(
+        ir.contains("define i64 @\"Stack__Int.len\"(%Stack__Int* %0)")
+            || ir.contains("define i64 @Stack__Int.len(%Stack__Int* %0)"),
+        "{ir}"
+    );
+    assert!(
+        !ir.contains("%Stack = type") && !ir.contains("define i64 @\"Stack.len\""),
+        "{ir}"
+    );
+}
+
+#[test]
+fn emits_two_generic_instantiations_as_distinct_structs() {
+    let ir = compile_ir(
+        r#"
+class Stack[T] {
+    let items: Array[T]
+    fn len() { 0 }
+}
+@type { fn size_int(stack: Stack[Int]) -> Int }
+fn size_int(stack) { stack.len() }
+@type { fn size_string(stack: Stack[String]) -> Int }
+fn size_string(stack) { stack.len() }
+"#,
+    );
+    assert!(ir.contains("%Stack__Int = type"), "{ir}");
+    assert!(ir.contains("%Stack__String = type"), "{ir}");
+    assert!(
+        ir.contains("define i64 @\"Stack__Int.len\"") || ir.contains("define i64 @Stack__Int.len"),
+        "{ir}"
+    );
+    assert!(
+        ir.contains("define i64 @\"Stack__String.len\"")
+            || ir.contains("define i64 @Stack__String.len"),
+        "{ir}"
+    );
+}
+
+#[test]
+fn emits_nested_generic_instantiation_names() {
+    let ir = compile_ir(
+        r#"
+class Stack[T] {
+    let items: Array[T]
+    fn len() { 0 }
+}
+@type { fn size_nested(stack: Stack[Array[Int]]) -> Int }
+fn size_nested(stack) { stack.len() }
+"#,
+    );
+    assert!(ir.contains("%Stack__Array_Int_ = type"), "{ir}");
+    assert!(
+        ir.contains("define i64 @\"Stack__Array_Int_.len\"")
+            || ir.contains("define i64 @Stack__Array_Int_.len"),
+        "{ir}"
+    );
+}
