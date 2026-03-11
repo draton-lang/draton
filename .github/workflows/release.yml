@@ -56,16 +56,15 @@ jobs:
             artifact: drat-windows-x86_64
             ext: .exe
             mode: native-windows
-            llvm_archive: https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/clang+llvm-20.1.8-x86_64-pc-windows-msvc.tar.xz
-            llvm_dir: clang+llvm-20.1.8-x86_64-pc-windows-msvc
+            llvm_source: choco
 
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
             artifact: drat-windows-arm64
             ext: .exe
             mode: native-windows
-            llvm_archive: https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/clang+llvm-20.1.8-aarch64-pc-windows-msvc.tar.xz
-            llvm_dir: clang+llvm-20.1.8-aarch64-pc-windows-msvc
+            llvm_source: archive
+            llvm_archive: https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/LLVM-14.0.6-woa64.zip
 
           - os: ubuntu-22.04
             target: riscv64gc-unknown-linux-gnu
@@ -99,22 +98,29 @@ jobs:
         if: matrix.mode == 'native-windows'
         shell: pwsh
         run: |
-          if (Test-Path C:\llvm) {
-            Remove-Item -Recurse -Force C:\llvm
-          }
           if (Test-Path C:\llvm-download) {
             Remove-Item -Recurse -Force C:\llvm-download
           }
           New-Item -ItemType Directory -Force -Path C:\llvm-download | Out-Null
-          Invoke-WebRequest -Uri "${{ matrix.llvm_archive }}" -OutFile C:\llvm-download\llvm.tar.xz
-          tar -xf C:\llvm-download\llvm.tar.xz -C C:\
-          Move-Item -Force "C:\${{ matrix.llvm_dir }}" C:\llvm
+          if ("${{ matrix.llvm_source }}" -eq "choco") {
+            choco install llvm --version=14.0.6 --allow-downgrade --force -y
+            $llvmRoot = "C:\Program Files\LLVM"
+          } else {
+            if (Test-Path C:\llvm) {
+              Remove-Item -Recurse -Force C:\llvm
+            }
+            Invoke-WebRequest -Uri "${{ matrix.llvm_archive }}" -OutFile C:\llvm-download\llvm.zip
+            Expand-Archive -Path C:\llvm-download\llvm.zip -DestinationPath C:\llvm-download\unpack -Force
+            $llvmSourceDir = Get-ChildItem C:\llvm-download\unpack | Select-Object -First 1 -ExpandProperty FullName
+            Move-Item -Force $llvmSourceDir C:\llvm
+            $llvmRoot = "C:\llvm"
+          }
           "int __draton_xml2_stub(void) { return 0; }" | Set-Content -Path C:\llvm-download\xml2_stub.c -Encoding ascii
-          & C:\llvm\bin\clang.exe -c C:\llvm-download\xml2_stub.c -o C:\llvm-download\xml2_stub.obj
-          & C:\llvm\bin\llvm-lib.exe /nologo /out:C:\llvm\lib\xml2s.lib C:\llvm-download\xml2_stub.obj
-          echo "LLVM_SYS_140_PREFIX=C:\llvm" >> $env:GITHUB_ENV
-          echo "LLVM_CONFIG_PATH=C:\llvm\bin\llvm-config.exe" >> $env:GITHUB_ENV
-          echo "C:\llvm\bin" >> $env:GITHUB_PATH
+          & "$llvmRoot\bin\clang.exe" -c C:\llvm-download\xml2_stub.c -o C:\llvm-download\xml2_stub.obj
+          & "$llvmRoot\bin\llvm-lib.exe" /nologo /out:"$llvmRoot\lib\xml2s.lib" C:\llvm-download\xml2_stub.obj
+          echo "LLVM_SYS_140_PREFIX=$llvmRoot" >> $env:GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=$llvmRoot\bin\llvm-config.exe" >> $env:GITHUB_ENV
+          echo "$llvmRoot\bin" >> $env:GITHUB_PATH
 
       - name: Set up QEMU
         if: matrix.mode == 'qemu-riscv64'
@@ -176,7 +182,7 @@ jobs:
               printf "%s\n" "void __draton_musl_rt_stub(void) {}" > /tmp/rt_stub.c
               cc -c /tmp/rt_stub.c -o /tmp/rt_stub.o
               ar rcs /opt/musl-compat/librt.a /tmp/rt_stub.o
-              export RUSTFLAGS="${RUSTFLAGS} -L native=/opt/musl-compat"
+              export RUSTFLAGS="${RUSTFLAGS:-} -L native=/opt/musl-compat"
               cargo build --release --package drat --target x86_64-unknown-linux-musl
               test -f target/x86_64-unknown-linux-musl/release/drat
               ls -lh target/x86_64-unknown-linux-musl/release/drat
