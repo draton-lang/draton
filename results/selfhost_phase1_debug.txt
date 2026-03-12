@@ -49,15 +49,20 @@ Follow-up fix applied after this diagnosis
   emits_default_arm_for_switch_match
 - After that compiler fix:
   - the self-host binary no longer hangs in lex_dump
-  - it progresses further and now crashes in:
-    draton_runtime::draton_str_concat
-    <- append_text
-    <- append_token
-    <- lex_dump
-- This narrows the next blocker to the string/token formatting path in the self-host lexer, not match dispatch anymore.
+  - rewriting the self-host lexer loop to plain if/else removes the remaining runtime crash path
+  - the self-host binary now executes and emits a token stream
+
+Current runtime output
+- For embedded sample source "fn main() { 7 }":
+  Ident\tfn\t1:1-2\nIdent\tmain\t1:4-7\nLParen\t(\t1:8-8\nRParen\t)\t1:9-9\nLBrace\t{\t1:11-11\nIntLit\t7\t1:13-13\nRBrace\t}\t1:15-15\nEof\t\t1:16-15\n
+
+Known remaining mismatches vs Rust lexer
+- `fn` is still classified as `Ident` instead of `Fn`
+- output still contains literal `\\t` and `\\n` characters rather than real tab/newline bytes
+- EOF position currently reflects the no-newline embedded sample
 
 Recommended next step
 - Fix self-host/runtime path by replacing the lexer's match-driven dispatch with if/else temporarily,
   or debug/fix match lowering in the Rust compiler before continuing deeper self-host phases.
-- With match lowering fixed, the next concrete target is to remove Token/Span object formatting from append_token
-  or debug invalid Draton string values flowing into draton_str_concat.
+- With runtime execution working, the next concrete target is to fix string keyword matching
+  and output formatting so the dumped token stream matches the Rust lexer byte-for-byte.

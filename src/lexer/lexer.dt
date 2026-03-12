@@ -193,106 +193,89 @@ fn lex_dump(source: String) {
         let start_line = line
         let start_col = col
         let code = str_byte_at(source, pos)
-        out = match code {
-            32 => {
+        if code == 32 {
+            pos = pos + 1
+            col = col + 1
+        } else if code == 9 {
+            pos = pos + 1
+            col = col + 1
+        } else if code == 10 {
+            pos = pos + 1
+            line = line + 1
+            col = 1
+        } else if code == 13 {
+            pos = pos + 1
+            line = line + 1
+            col = 1
+        } else if code == 47 {
+            if pos + 1 < str_len(source) && str_byte_at(source, pos + 1) == 47 {
                 pos = pos + 1
                 col = col + 1
-                out
-            }
-            9 => {
                 pos = pos + 1
                 col = col + 1
-                out
-            }
-            10 => {
-                pos = pos + 1
-                line = line + 1
-                col = 1
-                out
-            }
-            13 => {
-                pos = pos + 1
-                line = line + 1
-                col = 1
-                out
-            }
-            47 => {
-                let mut slash_out = out
-                if pos + 1 < str_len(source) && str_byte_at(source, pos + 1) == 47 {
-                    pos = pos + 2
-                    col = col + 2
-                    let mut comment_done = false
-                    while pos < str_len(source) && !comment_done {
-                        let comment_code = str_byte_at(source, pos)
-                        if comment_code == 10 || comment_code == 13 {
-                            comment_done = true
-                        } else {
-                            pos = pos + 1
-                            col = col + 1
-                        }
-                    }
-                } else {
-                    pos = pos + 1
-                    col = col + 1
-                    slash_out = append_token(out, "Slash", "/", start, pos, start_line, start_col)
-                }
-                slash_out
-            }
-            _ => {
-                let mut next_out = out
-                if is_digit_code(code) {
-                    while pos < str_len(source) && is_digit_code(str_byte_at(source, pos)) {
-                        pos = pos + 1
-                        col = col + 1
-                    }
-                    next_out = append_token(
-                        out,
-                        "IntLit",
-                        str_slice(source, start, pos),
-                        start,
-                        pos,
-                        start_line,
-                        start_col,
-                    )
-                } else if is_ident_start_code(code) {
-                    pos = pos + 1
-                    col = col + 1
-                    while pos < str_len(source) && is_ident_continue_code(str_byte_at(source, pos)) {
-                        pos = pos + 1
-                        col = col + 1
-                    }
-                    let lexeme = str_slice(source, start, pos)
-                    next_out = append_token(out, keyword_kind(lexeme), str_slice(source, start, pos), start, pos, start_line, start_col)
-                } else {
-                    if code == 40 {
-                        pos = pos + 1
-                        col = col + 1
-                        next_out = append_token(out, "LParen", "(", start, pos, start_line, start_col)
-                    } else if code == 41 {
-                        pos = pos + 1
-                        col = col + 1
-                        next_out = append_token(out, "RParen", ")", start, pos, start_line, start_col)
-                    } else if code == 123 {
-                        pos = pos + 1
-                        col = col + 1
-                        next_out = append_token(out, "LBrace", "{", start, pos, start_line, start_col)
-                    } else if code == 125 {
-                        pos = pos + 1
-                        col = col + 1
-                        next_out = append_token(out, "RBrace", "}", start, pos, start_line, start_col)
+                let mut comment_done = false
+                while pos < str_len(source) && !comment_done {
+                    let comment_code = str_byte_at(source, pos)
+                    if comment_code == 10 || comment_code == 13 {
+                        comment_done = true
                     } else {
                         pos = pos + 1
                         col = col + 1
-                        let bad = str_slice(source, start, pos)
-                        let a = str_concat("unexpected character '", bad)
-                        let b = str_concat(a, "' at line ")
-                        let c2 = str_concat(b, int_to_string(start_line))
-                        let d = str_concat(c2, ", col ")
-                        next_out = append_error(out, new_lex_error(str_concat(d, int_to_string(start_col))))
                     }
                 }
-                next_out
+            } else {
+                pos = pos + 1
+                col = col + 1
+                out = append_token(out, "Slash", "/", start, pos, start_line, start_col)
             }
+        } else if is_digit_code(code) {
+            while pos < str_len(source) && is_digit_code(str_byte_at(source, pos)) {
+                pos = pos + 1
+                col = col + 1
+            }
+            out = append_token(
+                out,
+                "IntLit",
+                str_slice(source, start, pos),
+                start,
+                pos,
+                start_line,
+                start_col,
+            )
+        } else if is_ident_start_code(code) {
+            pos = pos + 1
+            col = col + 1
+            while pos < str_len(source) && is_ident_continue_code(str_byte_at(source, pos)) {
+                pos = pos + 1
+                col = col + 1
+            }
+            let lexeme = str_slice(source, start, pos)
+            out = append_token(out, keyword_kind(lexeme), str_slice(source, start, pos), start, pos, start_line, start_col)
+        } else if code == 40 {
+            pos = pos + 1
+            col = col + 1
+            out = append_token(out, "LParen", "(", start, pos, start_line, start_col)
+        } else if code == 41 {
+            pos = pos + 1
+            col = col + 1
+            out = append_token(out, "RParen", ")", start, pos, start_line, start_col)
+        } else if code == 123 {
+            pos = pos + 1
+            col = col + 1
+            out = append_token(out, "LBrace", "{", start, pos, start_line, start_col)
+        } else if code == 125 {
+            pos = pos + 1
+            col = col + 1
+            out = append_token(out, "RBrace", "}", start, pos, start_line, start_col)
+        } else {
+            pos = pos + 1
+            col = col + 1
+            let bad = str_slice(source, start, pos)
+            let a = str_concat("unexpected character '", bad)
+            let b = str_concat(a, "' at line ")
+            let c2 = str_concat(b, int_to_string(start_line))
+            let d = str_concat(c2, ", col ")
+            out = append_error(out, new_lex_error(str_concat(d, int_to_string(start_col))))
         }
     }
     append_token(out, "Eof", "", pos, pos, line, col)
