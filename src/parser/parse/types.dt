@@ -1,0 +1,5 @@
+import { TypeExpr, Parser }
+
+@type {
+    fn parse_type_expr(p: Parser) -> TypeExpr
+}

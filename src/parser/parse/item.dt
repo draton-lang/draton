@@ -1,0 +1,18 @@
+import { Item, FnDef, Param, ClassDef, FieldDef, LayerDef, InterfaceDef, EnumDef, ErrorDef, ConstDef, ImportDef, ExternBlock, TypeBlockDef, Parser }
+
+@type {
+    fn parse_item(p: Parser) -> Item
+    fn parse_fn_def(p: Parser, is_pub: Bool, allow_body: Bool) -> FnDef
+    fn parse_param_list(p: Parser) -> Array[Param]
+    fn parse_class_def(p: Parser) -> ClassDef
+    fn parse_field_def(p: Parser) -> FieldDef
+    fn parse_layer_def(p: Parser) -> LayerDef
+    fn parse_interface_def(p: Parser) -> InterfaceDef
+    fn parse_enum_def(p: Parser) -> EnumDef
+    fn parse_error_def(p: Parser) -> ErrorDef
+    fn parse_const_def(p: Parser) -> ConstDef
+    fn parse_import_def(p: Parser) -> ImportDef
+    fn parse_extern_block(p: Parser) -> ExternBlock
+    fn parse_type_block(p: Parser) -> TypeBlockDef
+    fn skip_layer_block(p: Parser)
+}

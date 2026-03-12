@@ -1,0 +1,25 @@
+import { Span }
+
+enum ParseErrorKind {
+    UnexpectedToken,
+    UnexpectedEof,
+    InvalidExpr,
+    LayerOutsideClass,
+}
+
+class ParseError {
+    let mut kind: String
+    let mut found: String
+    let mut expected: String
+    let mut line: Int
+    let mut col: Int
+}
+
+@type {
+    fn new_parse_error(kind: String, found: String, expected: String, line: Int, col: Int) -> ParseError
+    fn unexpected_token_error(found: String, expected: String, line: Int, col: Int) -> ParseError
+    fn unexpected_eof_error(expected: String, line: Int, col: Int) -> ParseError
+    fn invalid_expr_error(line: Int, col: Int) -> ParseError
+    fn layer_outside_class_error(line: Int, col: Int) -> ParseError
+    fn parse_error_message(err: ParseError) -> String
+}

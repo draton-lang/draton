@@ -1,0 +1,27 @@
+import { Expr, MatchArm, MatchArmBody, FStrPart, MapEntry, Parser }
+
+@type {
+    fn parse_expression(p: Parser) -> Expr
+    fn parse_nullish(p: Parser) -> Expr
+    fn parse_or(p: Parser) -> Expr
+    fn parse_and(p: Parser) -> Expr
+    fn parse_equality(p: Parser) -> Expr
+    fn parse_comparison(p: Parser) -> Expr
+    fn parse_range(p: Parser) -> Expr
+    fn parse_bit_or_xor(p: Parser) -> Expr
+    fn parse_bit_and(p: Parser) -> Expr
+    fn parse_shift(p: Parser) -> Expr
+    fn parse_additive(p: Parser) -> Expr
+    fn parse_multiplicative(p: Parser) -> Expr
+    fn parse_cast(p: Parser) -> Expr
+    fn parse_unary(p: Parser) -> Expr
+    fn parse_postfix(p: Parser) -> Expr
+    fn parse_primary(p: Parser) -> Expr
+    fn parse_arg_list(p: Parser) -> Array[Expr]
+    fn parse_array_literal(p: Parser) -> Expr
+    fn parse_brace_literal(p: Parser) -> Expr
+    fn parse_paren_or_tuple(p: Parser) -> Expr
+    fn parse_lambda(p: Parser) -> Expr
+    fn parse_match(p: Parser) -> Expr
+    fn parse_chan(p: Parser) -> Expr
+}

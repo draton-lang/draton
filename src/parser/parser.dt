@@ -1,0 +1,36 @@
+import { Token, Span, Program, ParseError }
+
+class Parser {
+    let mut tokens: Array[Token]
+    let mut pos: Int
+    let mut errors: Array[ParseError]
+}
+
+class ParseResult {
+    let mut program: Program
+    let mut errors: Array[ParseError]
+}
+
+@type {
+    fn new_parser(tokens: Array[Token]) -> Parser
+    fn parser_parse(p: Parser) -> ParseResult
+    fn parser_empty_token() -> Token
+    fn parser_current(p: Parser) -> Token
+    fn parser_current_kind(p: Parser) -> String
+    fn parser_is_eof(p: Parser) -> Bool
+    fn parser_advance(p: Parser) -> Token
+    fn parser_check(p: Parser, kind: String) -> Bool
+    fn parser_match_kind(p: Parser, kind: String) -> Bool
+    fn parser_expect(p: Parser, kind: String, expected: String) -> Bool
+    fn parser_consume_ident(p: Parser, expected: String) -> Token
+    fn parser_skip_doc_comments(p: Parser)
+    fn parser_optional_semicolon(p: Parser)
+    fn parser_previous(p: Parser) -> Token
+    fn parser_record_error(p: Parser, err: ParseError)
+    fn parser_error_unexpected(p: Parser, token: Token, expected: String)
+    fn token_to_span(token: Token) -> Span
+    fn merge_spans(a: Span, b: Span) -> Span
+    fn parser_token_span(p: Parser) -> Span
+    fn parser_sync_top_level(p: Parser)
+    fn parser_sync_stmt(p: Parser)
+}

@@ -1,0 +1,17 @@
+import { Stmt, Block, LetStmt, AssignStmt, ReturnStmt, IfStmt, ForStmt, WhileStmt, SpawnStmt, IfCompileStmt, GcConfigStmt, Parser }
+
+@type {
+    fn parse_block(p: Parser) -> Block
+    fn parse_stmt(p: Parser) -> Stmt
+    fn parse_let_stmt(p: Parser) -> LetStmt
+    fn parse_return_stmt(p: Parser) -> ReturnStmt
+    fn parse_if_stmt(p: Parser) -> IfStmt
+    fn parse_for_stmt(p: Parser) -> ForStmt
+    fn parse_while_stmt(p: Parser) -> WhileStmt
+    fn parse_spawn_stmt(p: Parser) -> SpawnStmt
+    fn parse_expr_stmt_or_assignment(p: Parser) -> Stmt
+    fn parse_gc_config_stmt(p: Parser) -> GcConfigStmt
+    fn parse_if_compile_stmt(p: Parser) -> IfCompileStmt
+    fn parse_asm_block(p: Parser) -> Stmt
+    fn parse_special_block(p: Parser, kind: String) -> Stmt
+}
