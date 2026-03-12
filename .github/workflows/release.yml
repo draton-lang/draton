@@ -57,15 +57,7 @@ jobs:
             ext: .exe
             mode: native-windows
             llvm_source: vovkos_archive
-            llvm_archive: https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6-windows-amd64-msvc15-mt/llvm-14.0.6-windows-amd64-msvc15-mt.7z
-
-          - os: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            artifact: drat-windows-arm64
-            ext: .exe
-            mode: native-windows
-            llvm_source: vovkos_archive
-            llvm_archive: https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6-windows-arm64-msvc15-mt/llvm-14.0.6-windows-arm64-msvc15-mt.7z
+            llvm_archive: https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6/llvm-14.0.6-windows-amd64-msvc17-libcmt.7z
 
           - os: ubuntu-22.04
             target: riscv64gc-unknown-linux-gnu
@@ -304,7 +296,6 @@ jobs:
           | macOS Intel | \`drat-macos-x86_64.tar.gz\` |
           | macOS Apple Silicon | \`drat-macos-arm64.tar.gz\` |
           | Windows x86_64 | \`drat-windows-x86_64.zip\` |
-          | Windows ARM64 | \`drat-windows-arm64.zip\` |
 
           ### Install (Linux/macOS)
 
