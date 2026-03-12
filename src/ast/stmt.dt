@@ -1,0 +1,141 @@
+import { Span, Expr, TypeExpr }
+
+enum StmtKind {
+    Let,
+    Assign,
+    Return,
+    Expr,
+    If,
+    For,
+    While,
+    Spawn,
+    Block,
+    UnsafeBlock,
+    PointerBlock,
+    ComptimeBlock,
+    AsmBlock,
+    IfCompile,
+    GcConfig,
+}
+
+class Stmt {
+    let mut kind: String
+    let mut let_stmt: LetStmt
+    let mut assign_stmt: AssignStmt
+    let mut return_stmt: ReturnStmt
+    let mut expr: Expr
+    let mut if_stmt: IfStmt
+    let mut for_stmt: ForStmt
+    let mut while_stmt: WhileStmt
+    let mut spawn_stmt: SpawnStmt
+    let mut block: Block
+    let mut code: String
+    let mut if_compile_stmt: IfCompileStmt
+    let mut gc_config_stmt: GcConfigStmt
+    let mut span: Span
+}
+
+class Block {
+    let mut stmts: Array[Stmt]
+    let mut span: Span
+}
+
+class LetStmt {
+    let mut is_mut: Bool
+    let mut name: String
+    let mut has_type_hint: Bool
+    let mut type_hint: TypeExpr
+    let mut has_value: Bool
+    let mut value: Expr
+    let mut span: Span
+}
+
+class AssignStmt {
+    let mut target: Expr
+    let mut op: String
+    let mut has_value: Bool
+    let mut value: Expr
+    let mut span: Span
+}
+
+enum AssignOp {
+    Assign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    Inc,
+    Dec,
+}
+
+class ReturnStmt {
+    let mut has_value: Bool
+    let mut value: Expr
+    let mut span: Span
+}
+
+class IfStmt {
+    let mut condition: Expr
+    let mut then_branch: Block
+    let mut has_else_branch: Bool
+    let mut else_branch: ElseBranch
+    let mut span: Span
+}
+
+enum ElseBranchKind {
+    If,
+    Block,
+}
+
+class ElseBranch {
+    let mut kind: String
+    let mut stmt: IfStmt
+    let mut block: Block
+}
+
+class ForStmt {
+    let mut binding: String
+    let mut iter: Expr
+    let mut body: Block
+    let mut span: Span
+}
+
+class WhileStmt {
+    let mut condition: Expr
+    let mut body: Block
+    let mut span: Span
+}
+
+class SpawnStmt {
+    let mut body: SpawnBody
+    let mut span: Span
+}
+
+enum SpawnBodyKind {
+    Expr,
+    Block,
+}
+
+class SpawnBody {
+    let mut kind: String
+    let mut expr: Expr
+    let mut block: Block
+}
+
+class IfCompileStmt {
+    let mut condition: Expr
+    let mut body: Block
+    let mut span: Span
+}
+
+class GcConfigStmt {
+    let mut entries: Array[GcConfigEntry]
+    let mut span: Span
+}
+
+class GcConfigEntry {
+    let mut key: String
+    let mut value: Expr
+    let mut span: Span
+}

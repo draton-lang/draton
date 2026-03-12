@@ -1,0 +1,10 @@
+import { Item }
+
+class Program {
+    let mut items: Array[Item]
+}
+
+fn empty_program() {
+    let program = Program()
+    program
+}

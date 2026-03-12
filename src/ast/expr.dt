@@ -1,0 +1,123 @@
+import { Span, TypeExpr, Stmt }
+
+enum ExprKind {
+    IntLit,
+    FloatLit,
+    StrLit,
+    FStrLit,
+    BoolLit,
+    NoneLit,
+    Ident,
+    Array,
+    Map,
+    Set,
+    Tuple,
+    BinOp,
+    UnOp,
+    Call,
+    MethodCall,
+    Field,
+    Index,
+    Lambda,
+    Cast,
+    Match,
+    Ok,
+    Err,
+    Nullish,
+    Chan,
+}
+
+class Expr {
+    let mut kind: String
+    let mut int_value: Int
+    let mut float_value: Float
+    let mut string_value: String
+    let mut bool_value: Bool
+    let mut name: String
+    let mut parts: Array[FStrPart]
+    let mut items: Array[Expr]
+    let mut entries: Array[MapEntry]
+    let mut lhs: Expr
+    let mut rhs: Expr
+    let mut bin_op: String
+    let mut un_op: String
+    let mut expr: Expr
+    let mut callee: Expr
+    let mut args: Array[Expr]
+    let mut target: Expr
+    let mut index: Expr
+    let mut params: Array[String]
+    let mut body: Expr
+    let mut ty: TypeExpr
+    let mut subject: Expr
+    let mut arms: Array[MatchArm]
+    let mut span: Span
+}
+
+class MapEntry {
+    let mut key: Expr
+    let mut value: Expr
+}
+
+fn expr_span(e: Expr) {
+    e.span
+}
+
+enum FStrPartKind {
+    Literal,
+    Interp,
+}
+
+class FStrPart {
+    let mut kind: String
+    let mut text: String
+    let mut expr: Expr
+}
+
+class MatchArm {
+    let mut pattern: Expr
+    let mut body: MatchArmBody
+    let mut span: Span
+}
+
+enum MatchArmBodyKind {
+    Expr,
+    Block,
+}
+
+class MatchArmBody {
+    let mut kind: String
+    let mut expr: Expr
+    let mut stmts: Array[Stmt]
+    let mut span: Span
+}
+
+enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+    Range,
+}
+
+enum UnOp {
+    Neg,
+    Not,
+    BitNot,
+    Ref,
+    Deref,
+}

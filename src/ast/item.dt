@@ -1,0 +1,144 @@
+import { Span, Expr, Block, TypeExpr }
+
+enum ItemKind {
+    Fn,
+    PanicHandler,
+    OomHandler,
+    Class,
+    Interface,
+    Enum,
+    Error,
+    Const,
+    Import,
+    TypeBlock,
+    Extern,
+}
+
+class Item {
+    let mut kind: String
+    let mut fn_def: FnDef
+    let mut panic_handler_def: FnDef
+    let mut oom_handler_def: FnDef
+    let mut class_def: ClassDef
+    let mut interface_def: InterfaceDef
+    let mut enum_def: EnumDef
+    let mut error_def: ErrorDef
+    let mut const_def: ConstDef
+    let mut import_def: ImportDef
+    let mut type_block_def: TypeBlockDef
+    let mut extern_block: ExternBlock
+}
+
+class FnDef {
+    let mut is_pub: Bool
+    let mut name: String
+    let mut params: Array[Param]
+    let mut has_ret_type: Bool
+    let mut ret_type: TypeExpr
+    let mut has_body: Bool
+    let mut body: Block
+    let mut span: Span
+}
+
+class Param {
+    let mut name: String
+    let mut has_type_hint: Bool
+    let mut type_hint: TypeExpr
+    let mut span: Span
+}
+
+class ClassDef {
+    let mut name: String
+    let mut has_extends: Bool
+    let mut extends_name: String
+    let mut implements_names: Array[String]
+    let mut members: Array[ClassMember]
+    let mut span: Span
+}
+
+enum ClassMemberKind {
+    Field,
+    Method,
+    Layer,
+}
+
+class ClassMember {
+    let mut kind: String
+    let mut field_def: FieldDef
+    let mut method_def: FnDef
+    let mut layer_def: LayerDef
+}
+
+class LayerDef {
+    let mut name: String
+    let mut methods: Array[FnDef]
+    let mut span: Span
+}
+
+class FieldDef {
+    let mut is_mut: Bool
+    let mut name: String
+    let mut has_type_hint: Bool
+    let mut type_hint: TypeExpr
+    let mut span: Span
+}
+
+class InterfaceDef {
+    let mut name: String
+    let mut methods: Array[FnDef]
+    let mut span: Span
+}
+
+class EnumDef {
+    let mut name: String
+    let mut variants: Array[String]
+    let mut span: Span
+}
+
+class ErrorDef {
+    let mut name: String
+    let mut fields: Array[Param]
+    let mut span: Span
+}
+
+class ConstDef {
+    let mut name: String
+    let mut value: Expr
+    let mut span: Span
+}
+
+class ImportDef {
+    let mut items: Array[ImportItem]
+    let mut span: Span
+}
+
+class ImportItem {
+    let mut name: String
+    let mut has_alias: Bool
+    let mut alias: String
+    let mut span: Span
+}
+
+class ExternBlock {
+    let mut abi: String
+    let mut functions: Array[FnDef]
+    let mut span: Span
+}
+
+class TypeBlockDef {
+    let mut members: Array[TypeMember]
+    let mut span: Span
+}
+
+enum TypeMemberKind {
+    Binding,
+    Function,
+}
+
+class TypeMember {
+    let mut kind: String
+    let mut name: String
+    let mut type_expr: TypeExpr
+    let mut def: FnDef
+    let mut span: Span
+}

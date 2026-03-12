@@ -1,0 +1,19 @@
+import { Span }
+
+enum TypeExprKind {
+    Named,
+    Generic,
+    Pointer,
+    Infer,
+}
+
+class TypeExpr {
+    let mut kind: String
+    let mut name: String
+    let mut args: Array[TypeExpr]
+    let mut span: Span
+}
+
+fn type_expr_span(ty: TypeExpr) {
+    ty.span
+}
