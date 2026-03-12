@@ -1,0 +1,7 @@
+import { Type }
+
+@type {
+    fn row_get_field(ty: Type, name: String) -> Type
+    fn row_extend(base: Type, name: String, field_ty: Type) -> Type
+    fn free_vars_in_type(ty: Type) -> Array[Int]
+}

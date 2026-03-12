@@ -1,0 +1,45 @@
+import { Span }
+
+enum TypeErrorKind {
+    UndefinedVar,
+    TypeMismatch,
+    InfiniteType,
+    ArityMismatch,
+    NotCallable,
+    UndefinedField,
+    UndefinedMethod,
+    NotIndexable,
+    CannotInfer,
+    NonExhaustiveMatch,
+    DuplicateVariant,
+}
+
+class TypeError {
+    let mut kind: String
+    let mut name: String
+    let mut expected: String
+    let mut found: String
+    let mut ty: String
+    let mut field: String
+    let mut method: String
+    let mut var_name: String
+    let mut missing: Array[String]
+    let mut line: Int
+    let mut col: Int
+}
+
+@type {
+    fn new_type_error(kind: String, line: Int, col: Int) -> TypeError
+    fn undefined_var_error(name: String, line: Int, col: Int) -> TypeError
+    fn type_mismatch_error(expected: String, found: String, line: Int, col: Int) -> TypeError
+    fn infinite_type_error(var_name: String, line: Int, col: Int) -> TypeError
+    fn arity_mismatch_error(expected: Int, found: Int, line: Int, col: Int) -> TypeError
+    fn not_callable_error(ty: String, line: Int, col: Int) -> TypeError
+    fn undefined_field_error(field: String, ty: String, line: Int, col: Int) -> TypeError
+    fn undefined_method_error(method: String, ty: String, line: Int, col: Int) -> TypeError
+    fn not_indexable_error(ty: String, line: Int, col: Int) -> TypeError
+    fn cannot_infer_error(line: Int, col: Int) -> TypeError
+    fn non_exhaustive_match_error(missing: Array[String], line: Int, col: Int) -> TypeError
+    fn duplicate_variant_error(name: String, line: Int, col: Int) -> TypeError
+    fn type_error_message(err: TypeError) -> String
+}

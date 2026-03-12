@@ -1,0 +1,60 @@
+enum TypeKind {
+    Int,
+    Float,
+    Bool,
+    String,
+    Unit,
+    Array,
+    Map,
+    Set,
+    Tuple,
+    Option,
+    Result,
+    Chan,
+    Fn,
+    Named,
+    Row,
+    Pointer,
+    Var,
+}
+
+class Type {
+    let mut kind: String
+    let mut inner: Type
+    let mut key: Type
+    let mut value: Type
+    let mut ok: Type
+    let mut err: Type
+    let mut items: Array[Type]
+    let mut params: Array[Type]
+    let mut ret: Type
+    let mut name: String
+    let mut args: Array[Type]
+    let mut row_fields: Map[String, Type]
+    let mut has_rest: Bool
+    let mut rest: Type
+    let mut id: Int
+}
+
+@type {
+    fn new_type(kind: String) -> Type
+    fn type_int() -> Type
+    fn type_float() -> Type
+    fn type_bool() -> Type
+    fn type_string() -> Type
+    fn type_unit() -> Type
+    fn type_array(inner: Type) -> Type
+    fn type_map(key: Type, value: Type) -> Type
+    fn type_set(inner: Type) -> Type
+    fn type_tuple(items: Array[Type]) -> Type
+    fn type_option(inner: Type) -> Type
+    fn type_result(ok: Type, err: Type) -> Type
+    fn type_chan(inner: Type) -> Type
+    fn type_fn(params: Array[Type], ret: Type) -> Type
+    fn type_named(name: String, args: Array[Type]) -> Type
+    fn type_row(fields: Map[String, Type], has_rest: Bool, rest: Type) -> Type
+    fn type_pointer(inner: Type) -> Type
+    fn type_var(id: Int) -> Type
+    fn type_display(ty: Type) -> String
+    fn type_eq(a: Type, b: Type) -> Bool
+}

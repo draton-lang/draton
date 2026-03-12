@@ -1,0 +1,12 @@
+import { Type }
+
+class Scheme {
+    let mut quantified: Array[Int]
+    let mut ty: Type
+}
+
+@type {
+    fn new_scheme(quantified: Array[Int], ty: Type) -> Scheme
+    fn mono_scheme(ty: Type) -> Scheme
+    fn scheme_is_generic(s: Scheme) -> Bool
+}

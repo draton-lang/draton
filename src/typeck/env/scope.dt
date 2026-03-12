@@ -1,0 +1,14 @@
+import { Scheme }
+
+class Scope {
+    let mut bindings: Map[String, Scheme]
+}
+
+@type {
+    fn new_scope() -> Scope
+    fn scope_define(s: Scope, name: String, scheme: Scheme)
+    fn scope_lookup(s: Scope, name: String) -> Scheme
+    fn scope_remove(s: Scope, name: String) -> Scheme
+    fn scope_contains(s: Scope, name: String) -> Bool
+    fn scope_all_names(s: Scope) -> Array[String]
+}
