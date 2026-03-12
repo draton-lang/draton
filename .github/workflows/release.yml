@@ -100,13 +100,22 @@ jobs:
           New-Item -ItemType Directory -Force -Path C:\llvm-download | Out-Null
           Invoke-WebRequest -Uri "${{ matrix.llvm_archive }}" -OutFile C:\llvm-download\llvm.7z
           & "C:\Program Files\7-Zip\7z.exe" x C:\llvm-download\llvm.7z -oC:\llvm-pkg -y
-          $llvmRoot = Get-ChildItem C:\llvm-pkg | Select-Object -First 1 -ExpandProperty FullName
+          $llvmConfigPath = Get-ChildItem C:\llvm-pkg -Recurse -Filter llvm-config.exe |
+            Select-Object -First 1 -ExpandProperty FullName
+          $clangPath = Get-ChildItem C:\llvm-pkg -Recurse -Filter clang.exe |
+            Select-Object -First 1 -ExpandProperty FullName
+          $llvmLibPath = Get-ChildItem C:\llvm-pkg -Recurse -Filter llvm-lib.exe |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $llvmConfigPath -or -not $clangPath -or -not $llvmLibPath) {
+            throw "failed to locate llvm-config.exe, clang.exe, or llvm-lib.exe inside extracted LLVM package"
+          }
+          $llvmRoot = Split-Path (Split-Path $llvmConfigPath -Parent) -Parent
           "int __draton_xml2_stub(void) { return 0; }" | Set-Content -Path C:\llvm-download\xml2_stub.c -Encoding ascii
-          & "$llvmRoot\bin\clang.exe" -c C:\llvm-download\xml2_stub.c -o C:\llvm-download\xml2_stub.obj
-          & "$llvmRoot\bin\llvm-lib.exe" /nologo /out:"$llvmRoot\lib\xml2s.lib" C:\llvm-download\xml2_stub.obj
+          & $clangPath -c C:\llvm-download\xml2_stub.c -o C:\llvm-download\xml2_stub.obj
+          & $llvmLibPath /nologo /out:"$llvmRoot\lib\xml2s.lib" C:\llvm-download\xml2_stub.obj
           echo "LLVM_SYS_140_PREFIX=$llvmRoot" >> $env:GITHUB_ENV
-          echo "LLVM_CONFIG_PATH=$llvmRoot\bin\llvm-config.exe" >> $env:GITHUB_ENV
-          echo "$llvmRoot\bin" >> $env:GITHUB_PATH
+          echo "LLVM_CONFIG_PATH=$llvmConfigPath" >> $env:GITHUB_ENV
+          echo "$(Split-Path $llvmConfigPath -Parent)" >> $env:GITHUB_PATH
 
       - name: Set up QEMU
         if: matrix.mode == 'qemu-riscv64'
@@ -168,6 +177,7 @@ jobs:
               printf "%s\n" "void __draton_musl_rt_stub(void) {}" > /tmp/rt_stub.c
               cc -c /tmp/rt_stub.c -o /tmp/rt_stub.o
               ar rcs /opt/musl-compat/librt.a /tmp/rt_stub.o
+              ar rcs /opt/musl-compat/libdl.a /tmp/rt_stub.o
               export RUSTFLAGS="${RUSTFLAGS:-} -L native=/opt/musl-compat"
               cargo build --release --package drat --target x86_64-unknown-linux-musl
               test -f target/x86_64-unknown-linux-musl/release/drat
