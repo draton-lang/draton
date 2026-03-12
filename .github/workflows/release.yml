@@ -102,17 +102,16 @@ jobs:
           & "C:\Program Files\7-Zip\7z.exe" x C:\llvm-download\llvm.7z -oC:\llvm-pkg -y
           $llvmConfigPath = Get-ChildItem C:\llvm-pkg -Recurse -Filter llvm-config.exe |
             Select-Object -First 1 -ExpandProperty FullName
-          $clangPath = Get-ChildItem C:\llvm-pkg -Recurse -Filter clang.exe |
-            Select-Object -First 1 -ExpandProperty FullName
-          $llvmLibPath = Get-ChildItem C:\llvm-pkg -Recurse -Filter llvm-lib.exe |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $llvmConfigPath -or -not $clangPath -or -not $llvmLibPath) {
-            throw "failed to locate llvm-config.exe, clang.exe, or llvm-lib.exe inside extracted LLVM package"
+          if (-not $llvmConfigPath) {
+            throw "failed to locate llvm-config.exe inside extracted LLVM package"
           }
           $llvmRoot = Split-Path (Split-Path $llvmConfigPath -Parent) -Parent
-          "int __draton_xml2_stub(void) { return 0; }" | Set-Content -Path C:\llvm-download\xml2_stub.c -Encoding ascii
-          & $clangPath -c C:\llvm-download\xml2_stub.c -o C:\llvm-download\xml2_stub.obj
-          & $llvmLibPath /nologo /out:"$llvmRoot\lib\xml2s.lib" C:\llvm-download\xml2_stub.obj
+          $seedLib = Get-ChildItem "$llvmRoot\lib" -Filter *.lib |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $seedLib) {
+            throw "failed to locate any .lib files inside extracted LLVM package"
+          }
+          Copy-Item $seedLib "$llvmRoot\lib\xml2s.lib" -Force
           echo "LLVM_SYS_140_PREFIX=$llvmRoot" >> $env:GITHUB_ENV
           echo "LLVM_CONFIG_PATH=$llvmConfigPath" >> $env:GITHUB_ENV
           echo "$(Split-Path $llvmConfigPath -Parent)" >> $env:GITHUB_PATH
@@ -178,6 +177,8 @@ jobs:
               cc -c /tmp/rt_stub.c -o /tmp/rt_stub.o
               ar rcs /opt/musl-compat/librt.a /tmp/rt_stub.o
               ar rcs /opt/musl-compat/libdl.a /tmp/rt_stub.o
+              ar rcs /opt/musl-compat/libm.a /tmp/rt_stub.o
+              ar rcs /opt/musl-compat/libpthread.a /tmp/rt_stub.o
               export RUSTFLAGS="${RUSTFLAGS:-} -L native=/opt/musl-compat"
               cargo build --release --package drat --target x86_64-unknown-linux-musl
               test -f target/x86_64-unknown-linux-musl/release/drat
