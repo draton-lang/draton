@@ -250,7 +250,13 @@ fn lex_dump(source: String) {
                 col = col + 1
             }
             let lexeme = str_slice(source, start, pos)
-            out = append_token(out, keyword_kind(lexeme), str_slice(source, start, pos), start, pos, start_line, start_col)
+            let mut kind = keyword_kind(lexeme)
+            if str_len(lexeme) == 2
+                && str_byte_at(lexeme, 0) == 102
+                && str_byte_at(lexeme, 1) == 110 {
+                kind = "Fn"
+            }
+            out = append_token(out, kind, str_slice(source, start, pos), start, pos, start_line, start_col)
         } else if code == 40 {
             pos = pos + 1
             col = col + 1

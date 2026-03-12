@@ -54,12 +54,12 @@ Follow-up fix applied after this diagnosis
 
 Current runtime output
 - For embedded sample source "fn main() { 7 }":
-  Ident\tfn\t1:1-2\nIdent\tmain\t1:4-7\nLParen\t(\t1:8-8\nRParen\t)\t1:9-9\nLBrace\t{\t1:11-11\nIntLit\t7\t1:13-13\nRBrace\t}\t1:15-15\nEof\t\t1:16-15\n
+  Fn\tfn\t1:1-2\nIdent\tmain\t1:4-7\nLParen\t(\t1:8-8\nRParen\t)\t1:9-9\nLBrace\t{\t1:11-11\nIntLit\t7\t1:13-13\nRBrace\t}\t1:15-15\nEof\t\t1:16-15\n
 
 Known remaining mismatches vs Rust lexer
-- `fn` is still classified as `Ident` instead of `Fn`
 - output still contains literal `\\t` and `\\n` characters rather than real tab/newline bytes
 - EOF position currently reflects the no-newline embedded sample
+- other keywords are not yet specially forced through the runtime-safe path, so only `fn` is confirmed fixed
 
 Recommended next step
 - Fix self-host/runtime path by replacing the lexer's match-driven dispatch with if/else temporarily,
