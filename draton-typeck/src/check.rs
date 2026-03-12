@@ -2303,6 +2303,13 @@ impl TypeChecker {
                 ty: Type::Fn(vec![Type::Int], Box::new(Type::String)),
             },
         );
+        self.env.define(
+            "ascii_char",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::Int], Box::new(Type::String)),
+            },
+        );
         let some_var = self.fresh_var();
         self.env.define(
             "Some",

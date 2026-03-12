@@ -721,6 +721,33 @@ impl<'ctx> CodeGen<'ctx> {
                 self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
+            "ascii_char" => {
+                let function = self
+                    .module
+                    .get_function("draton_ascii_char")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_ascii_char".to_string())
+                    })?;
+                let value = self
+                    .emit_expr(
+                        args.first().ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr(
+                                "ascii_char requires one argument".to_string(),
+                            )
+                        })?,
+                    )?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "ascii_char arg missing value".to_string(),
+                        )
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[value.into()], "ascii.char")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
             _ => Ok(None),
         }
     }

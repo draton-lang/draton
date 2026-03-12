@@ -56,13 +56,21 @@ Current runtime output
 - For embedded sample source "fn main() { 7 }":
   Fn\tfn\t1:1-2\nIdent\tmain\t1:4-7\nLParen\t(\t1:8-8\nRParen\t)\t1:9-9\nLBrace\t{\t1:11-11\nIntLit\t7\t1:13-13\nRBrace\t}\t1:15-15\nEof\t\t1:16-15\n
 
-Known remaining mismatches vs Rust lexer
-- output still contains literal `\\t` and `\\n` characters rather than real tab/newline bytes
-- EOF position currently reflects the no-newline embedded sample
-- other keywords are not yet specially forced through the runtime-safe path, so only `fn` is confirmed fixed
+Formatting/runtime follow-up
+- Added runtime builtin `ascii_char(Int) -> String` so the self-host lexer can emit real control bytes
+  without relying on unsupported multiline string literals.
+- Switched the self-host lexer back to accumulator mode, but now it joins lines with real `\\n`
+  and separates columns with real `\\t`.
+
+Current verified match
+- Rust lexer reference on sample source file:
+  Fn\tfn\t1:1-2\nIdent\tmain\t1:4-7\nLParen\t(\t1:8-8\nRParen\t)\t1:9-9\nLBrace\t{\t1:11-11\nIntLit\t7\t1:13-13\nRBrace\t}\t1:15-15\nEof\t\t1:16-15\n
+- Self-host lexer binary on the same sample source:
+  Fn\tfn\t1:1-2\nIdent\tmain\t1:4-7\nLParen\t(\t1:8-8\nRParen\t)\t1:9-9\nLBrace\t{\t1:11-11\nIntLit\t7\t1:13-13\nRBrace\t}\t1:15-15\nEof\t\t1:16-15\n
+- Result: sample token dump now matches byte-for-byte.
 
 Recommended next step
 - Fix self-host/runtime path by replacing the lexer's match-driven dispatch with if/else temporarily,
   or debug/fix match lowering in the Rust compiler before continuing deeper self-host phases.
-- With runtime execution working, the next concrete target is to fix string keyword matching
-  and output formatting so the dumped token stream matches the Rust lexer byte-for-byte.
+- With runtime execution working and sample output matching, the next concrete target is to
+  expand coverage from the embedded sample to real `.dt` files and the full Rust lexer token set.

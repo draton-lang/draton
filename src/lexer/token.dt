@@ -178,13 +178,13 @@ fn is_known_at_keyword(word: String) {
 }
 
 fn token_line(token: Token) {
-    let a = str_concat(token.kind, "\t")
+    let a = str_concat(token.kind, ascii_char(9))
     let b = str_concat(a, token.lexeme)
-    let c = str_concat(b, "\t")
+    let c = str_concat(b, ascii_char(9))
     let d = str_concat(c, int_to_string(token.span.line))
     let e = str_concat(d, ":")
     let f = str_concat(e, int_to_string(token.span.col))
     let g = str_concat(f, "-")
     let h = str_concat(g, int_to_string(token.span.end))
-    str_concat(h, "\n")
+    h
 }

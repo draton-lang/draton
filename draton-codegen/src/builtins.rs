@@ -247,6 +247,14 @@ impl<'ctx> CodeGen<'ctx> {
                 None,
             );
         }
+        if self.module.get_function("draton_ascii_char").is_none() {
+            self.module.add_function(
+                "draton_ascii_char",
+                self.string_type
+                    .fn_type(&[self.context.i64_type().into()], false),
+                None,
+            );
+        }
         Ok(())
     }
 

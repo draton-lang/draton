@@ -203,3 +203,10 @@ pub extern "C" fn draton_str_concat(lhs: DratonString, rhs: DratonString) -> Dra
 pub extern "C" fn draton_int_to_string(value: i64) -> DratonString {
     owned_string(value.to_string().into_bytes())
 }
+
+/// Converts a single ASCII byte value to a one-character Draton string.
+#[no_mangle]
+pub extern "C" fn draton_ascii_char(value: i64) -> DratonString {
+    let byte = value.clamp(0, 255) as u8;
+    owned_string(vec![byte])
+}

@@ -1,5 +1,6 @@
 @type {
     fn append_text(out: String, more: String) -> String
+    fn append_line(out: String, line: String) -> String
     fn append_token(out: String, kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) -> String
     fn append_error(out: String, err: LexError) -> String
     fn skip_whitespace(c: Cursor) -> Bool
@@ -14,23 +15,31 @@ fn append_text(out: String, more: String) {
     str_concat(out, more)
 }
 
+fn append_line(out: String, line: String) {
+    let mut next = line
+    if str_len(out) != 0 {
+        let a = append_text(out, ascii_char(10))
+        next = append_text(a, line)
+    }
+    next
+}
+
 fn append_token(out: String, kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) {
-    let a = append_text(out, kind)
-    let b = append_text(a, "\t")
+    let a = append_text("", kind)
+    let b = append_text(a, ascii_char(9))
     let c = append_text(b, lexeme)
-    let d = append_text(c, "\t")
+    let d = append_text(c, ascii_char(9))
     let e = append_text(d, int_to_string(line))
     let f = append_text(e, ":")
     let g = append_text(f, int_to_string(col))
     let h = append_text(g, "-")
     let i = append_text(h, int_to_string(end))
-    append_text(i, "\n")
+    append_line(out, i)
 }
 
 fn append_error(out: String, err: LexError) {
-    let a = append_text(out, "ERROR\t")
-    let b = append_text(a, lex_error_message(err))
-    append_text(b, "\n")
+    let a = append_text(str_concat("ERROR", ascii_char(9)), lex_error_message(err))
+    append_line(out, a)
 }
 
 fn skip_whitespace(c: Cursor) {
@@ -284,5 +293,5 @@ fn lex_dump(source: String) {
             out = append_error(out, new_lex_error(str_concat(d, int_to_string(start_col))))
         }
     }
-    append_token(out, "Eof", "", pos, pos, line, col)
+    append_line(out, token_line(new_token("Eof", "", pos, pos, line, col)))
 }
