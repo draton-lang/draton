@@ -56,15 +56,16 @@ jobs:
             artifact: drat-windows-x86_64
             ext: .exe
             mode: native-windows
-            llvm_source: choco
+            llvm_source: vovkos_archive
+            llvm_archive: https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6-windows-amd64-msvc15-mt/llvm-14.0.6-windows-amd64-msvc15-mt.7z
 
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
             artifact: drat-windows-arm64
             ext: .exe
             mode: native-windows
-            llvm_source: archive
-            llvm_archive: https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/LLVM-14.0.6-woa64.zip
+            llvm_source: vovkos_archive
+            llvm_archive: https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6-windows-arm64-msvc15-mt/llvm-14.0.6-windows-arm64-msvc15-mt.7z
 
           - os: ubuntu-22.04
             target: riscv64gc-unknown-linux-gnu
@@ -101,20 +102,13 @@ jobs:
           if (Test-Path C:\llvm-download) {
             Remove-Item -Recurse -Force C:\llvm-download
           }
-          New-Item -ItemType Directory -Force -Path C:\llvm-download | Out-Null
-          if ("${{ matrix.llvm_source }}" -eq "choco") {
-            choco install llvm --version=14.0.6 --allow-downgrade --force -y
-            $llvmRoot = "C:\Program Files\LLVM"
-          } else {
-            if (Test-Path C:\llvm) {
-              Remove-Item -Recurse -Force C:\llvm
-            }
-            Invoke-WebRequest -Uri "${{ matrix.llvm_archive }}" -OutFile C:\llvm-download\llvm.zip
-            Expand-Archive -Path C:\llvm-download\llvm.zip -DestinationPath C:\llvm-download\unpack -Force
-            $llvmSourceDir = Get-ChildItem C:\llvm-download\unpack | Select-Object -First 1 -ExpandProperty FullName
-            Move-Item -Force $llvmSourceDir C:\llvm
-            $llvmRoot = "C:\llvm"
+          if (Test-Path C:\llvm-pkg) {
+            Remove-Item -Recurse -Force C:\llvm-pkg
           }
+          New-Item -ItemType Directory -Force -Path C:\llvm-download | Out-Null
+          Invoke-WebRequest -Uri "${{ matrix.llvm_archive }}" -OutFile C:\llvm-download\llvm.7z
+          & "C:\Program Files\7-Zip\7z.exe" x C:\llvm-download\llvm.7z -oC:\llvm-pkg -y
+          $llvmRoot = Get-ChildItem C:\llvm-pkg | Select-Object -First 1 -ExpandProperty FullName
           "int __draton_xml2_stub(void) { return 0; }" | Set-Content -Path C:\llvm-download\xml2_stub.c -Encoding ascii
           & "$llvmRoot\bin\clang.exe" -c C:\llvm-download\xml2_stub.c -o C:\llvm-download\xml2_stub.obj
           & "$llvmRoot\bin\llvm-lib.exe" /nologo /out:"$llvmRoot\lib\xml2s.lib" C:\llvm-download\xml2_stub.obj
