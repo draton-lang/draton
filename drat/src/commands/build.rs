@@ -7,6 +7,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use colored::Colorize;
 use draton_codegen::{BuildMode, CodeGen};
 use draton_lexer::{LexError, Lexer};
+use draton_ast::Program;
 use draton_parser::{ParseError, Parser};
 use draton_typeck::{Type, TypeChecker, TypeError, TypedItem, TypedProgram};
 use inkwell::context::Context as LlvmContext;
@@ -103,28 +104,13 @@ pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOu
 }
 
 pub(crate) fn compile_project(entry_path: &Path) -> Result<CompiledProject> {
-    let source = fs::read_to_string(entry_path)
-        .with_context(|| format!("khong the doc {}", entry_path.display()))?;
-    let lexed = Lexer::new(&source).tokenize();
-    if !lexed.errors.is_empty() {
-        bail!("{}", render_lex_errors(entry_path, &source, &lexed.errors));
-    }
-    let parsed = Parser::new(lexed.tokens).parse();
-    if !parsed.errors.is_empty() {
-        bail!(
-            "{}",
-            render_parse_errors(entry_path, &source, &parsed.errors)
-        );
-    }
-    let typed = TypeChecker::new().check(parsed.program);
+    let program = load_project_program(entry_path)?;
+    let typed = TypeChecker::new().check(program);
     if !typed.errors.is_empty() {
-        bail!("{}", render_type_errors(entry_path, &source, &typed.errors));
+        bail!("{}", render_type_errors_without_source(entry_path, &typed.errors));
     }
     if !typed.warnings.is_empty() {
-        eprintln!(
-            "{}",
-            render_type_warnings(entry_path, &source, &typed.warnings)
-        );
+        eprintln!("{}", render_type_warnings_without_source(entry_path, &typed.warnings));
     }
     let main_return_type = typed
         .typed_program
@@ -138,6 +124,68 @@ pub(crate) fn compile_project(entry_path: &Path) -> Result<CompiledProject> {
         typed_program: typed.typed_program,
         main_return_type,
     })
+}
+
+fn render_type_errors_without_source(path: &Path, errors: &[TypeError]) -> String {
+    errors
+        .iter()
+        .map(|error| format!("type error in {}:\n{}", path.display(), error))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn render_type_warnings_without_source(path: &Path, warnings: &[TypeError]) -> String {
+    warnings
+        .iter()
+        .map(|warning| format!("type warning in {}:\n{}", path.display(), warning))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn load_project_program(entry_path: &Path) -> Result<Program> {
+    let files = collect_project_sources(entry_path)?;
+    let mut items = Vec::new();
+    for path in files {
+        let source =
+            fs::read_to_string(&path).with_context(|| format!("khong the doc {}", path.display()))?;
+        let lexed = Lexer::new(&source).tokenize();
+        if !lexed.errors.is_empty() {
+            bail!("{}", render_lex_errors(&path, &source, &lexed.errors));
+        }
+        let parsed = Parser::new(lexed.tokens).parse();
+        if !parsed.errors.is_empty() {
+            bail!("{}", render_parse_errors(&path, &source, &parsed.errors));
+        }
+        items.extend(parsed.program.items);
+    }
+    Ok(Program { items })
+}
+
+fn collect_project_sources(entry_path: &Path) -> Result<Vec<PathBuf>> {
+    let src_root = entry_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let mut files = Vec::new();
+    collect_dt_files_recursive(&src_root, &mut files)?;
+    files.sort();
+    if files.is_empty() {
+        files.push(entry_path.to_path_buf());
+    }
+    Ok(files)
+}
+
+fn collect_dt_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(dir).with_context(|| format!("khong the doc {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dt_files_recursive(&path, out)?;
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("dt") {
+            out.push(path);
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn compile_snippet(source: &str) -> Result<CompiledProject> {

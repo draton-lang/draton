@@ -6,6 +6,7 @@ mod commands {
     pub mod doc;
     pub mod fmt;
     pub mod init;
+    pub mod lex_dump;
     pub mod lint;
     pub mod lsp;
     pub mod publish;
@@ -18,6 +19,7 @@ mod commands {
 
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
+use std::path::PathBuf;
 
 use crate::commands::build::{BuildRequest, Profile};
 
@@ -32,6 +34,7 @@ struct Cli {
 enum Command {
     Init { name: Option<String> },
     Build(BuildFlags),
+    LexDump { path: PathBuf },
     Run(RunFlags),
     Test,
     Fmt,
@@ -81,6 +84,7 @@ fn main() -> Result<()> {
             println!("{}", output.ir_path.display());
             Ok(())
         }
+        Command::LexDump { path } => commands::lex_dump::run(&path),
         Command::Run(flags) => {
             let request = BuildRequest {
                 profile: Profile::from_flags(
