@@ -28,42 +28,6 @@ jobs:
             llvm_pkg: llvm-14-dev
             mode: native-linux
 
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-musl
-            artifact: drat-linux-x86_64-musl
-            mode: alpine-musl
-
-          - os: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-            artifact: drat-linux-arm64
-            llvm_pkg: llvm-14-dev
-            mode: native-linux
-
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-            artifact: drat-macos-x86_64
-            llvm_pkg: llvm@14
-            mode: native-macos
-
-          - os: macos-15
-            target: aarch64-apple-darwin
-            artifact: drat-macos-arm64
-            llvm_pkg: llvm@14
-            mode: native-macos
-
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-            artifact: drat-windows-x86_64
-            ext: .exe
-            mode: native-windows
-            llvm_source: vovkos_archive
-            llvm_archive: https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6/llvm-14.0.6-windows-amd64-msvc17-libcmt.7z
-
-          - os: ubuntu-22.04
-            target: riscv64gc-unknown-linux-gnu
-            artifact: drat-linux-riscv64
-            mode: qemu-riscv64
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -301,12 +265,6 @@ jobs:
           | Platform | File |
           |----------|------|
           | Linux x86_64 (glibc) | \`drat-linux-x86_64.tar.gz\` |
-          | Linux x86_64 (musl/static) | \`drat-linux-x86_64-musl.tar.gz\` |
-          | Linux ARM64 | \`drat-linux-arm64.tar.gz\` |
-          | Linux RISC-V 64 | \`drat-linux-riscv64.tar.gz\` |
-          | macOS Intel | \`drat-macos-x86_64.tar.gz\` |
-          | macOS Apple Silicon | \`drat-macos-arm64.tar.gz\` |
-          | Windows x86_64 | \`drat-windows-x86_64.zip\` |
 
           ### Install (Linux/macOS)
 
@@ -334,42 +292,18 @@ jobs:
           files: dist/**/*
 
   smoke-test:
-    name: Smoke test ${{ matrix.artifact }}
+    name: Smoke test drat-linux-x86_64
     needs: release
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            artifact: drat-linux-x86_64
-            ext: ""
-          - os: macos-15
-            artifact: drat-macos-arm64
-            ext: ""
-          - os: windows-2022
-            artifact: drat-windows-x86_64
-            ext: .exe
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Download release binary
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: drat-linux-x86_64
 
-      - name: Extract (Unix)
-        if: runner.os != 'Windows'
-        run: tar -xzf ${{ matrix.artifact }}.tar.gz
+      - name: Extract
+        run: tar -xzf drat-linux-x86_64.tar.gz
 
-      - name: Extract (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Expand-Archive "${{ matrix.artifact }}.zip" .
-
-      - name: Smoke test (Unix)
-        if: runner.os != 'Windows'
-        run: ./drat${{ matrix.ext }} --version
-
-      - name: Smoke test (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: .\\drat${{ matrix.ext }} --version
+      - name: Smoke test
+        run: ./drat --version
