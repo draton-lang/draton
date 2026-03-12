@@ -3,6 +3,8 @@
     fn append_line(out: String, line: String) -> String
     fn append_token(out: String, kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) -> String
     fn append_error(out: String, err: LexError) -> String
+    fn str_eq(a: String, b: String) -> Bool
+    fn keyword_kind_runtime(word: String) -> String
     fn skip_whitespace(c: Cursor) -> Bool
     fn lex_identifier_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) -> String
     fn lex_at_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) -> String
@@ -40,6 +42,78 @@ fn append_token(out: String, kind: String, lexeme: String, start: Int, end: Int,
 fn append_error(out: String, err: LexError) {
     let a = append_text(str_concat("ERROR", ascii_char(9)), lex_error_message(err))
     append_line(out, a)
+}
+
+fn str_eq(a: String, b: String) {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
+}
+
+fn keyword_kind_runtime(word: String) {
+    let mut kind = "Ident"
+    if str_eq(word, "let") {
+        kind = "Let"
+    } else if str_eq(word, "mut") {
+        kind = "Mut"
+    } else if str_eq(word, "fn") {
+        kind = "Fn"
+    } else if str_eq(word, "return") {
+        kind = "Return"
+    } else if str_eq(word, "if") {
+        kind = "If"
+    } else if str_eq(word, "else") {
+        kind = "Else"
+    } else if str_eq(word, "for") {
+        kind = "For"
+    } else if str_eq(word, "while") {
+        kind = "While"
+    } else if str_eq(word, "in") {
+        kind = "In"
+    } else if str_eq(word, "match") {
+        kind = "Match"
+    } else if str_eq(word, "class") {
+        kind = "Class"
+    } else if str_eq(word, "layer") {
+        kind = "Layer"
+    } else if str_eq(word, "extends") {
+        kind = "Extends"
+    } else if str_eq(word, "implements") {
+        kind = "Implements"
+    } else if str_eq(word, "interface") {
+        kind = "Interface"
+    } else if str_eq(word, "enum") {
+        kind = "Enum"
+    } else if str_eq(word, "error") {
+        kind = "Error"
+    } else if str_eq(word, "pub") {
+        kind = "Pub"
+    } else if str_eq(word, "import") {
+        kind = "Import"
+    } else if str_eq(word, "as") {
+        kind = "As"
+    } else if str_eq(word, "spawn") {
+        kind = "Spawn"
+    } else if str_eq(word, "chan") {
+        kind = "Chan"
+    } else if str_eq(word, "const") {
+        kind = "Const"
+    } else if str_eq(word, "lambda") {
+        kind = "Lambda"
+    } else if str_eq(word, "true") {
+        kind = "BoolLit"
+    } else if str_eq(word, "false") {
+        kind = "BoolLit"
+    } else if str_eq(word, "None") {
+        kind = "NoneLit"
+    }
+    kind
 }
 
 fn skip_whitespace(c: Cursor) {
@@ -222,20 +296,51 @@ fn lex_dump(source: String) {
                 col = col + 1
                 pos = pos + 1
                 col = col + 1
-                let mut comment_done = false
-                while pos < str_len(source) && !comment_done {
-                    let comment_code = str_byte_at(source, pos)
-                    if comment_code == 10 || comment_code == 13 {
-                        comment_done = true
-                    } else {
-                        pos = pos + 1
-                        col = col + 1
+                if pos < str_len(source) && str_byte_at(source, pos) == 47 {
+                    pos = pos + 1
+                    col = col + 1
+                    let content_start = pos
+                    let mut comment_done = false
+                    while pos < str_len(source) && !comment_done {
+                        let comment_code = str_byte_at(source, pos)
+                        if comment_code == 10 || comment_code == 13 {
+                            comment_done = true
+                        } else {
+                            pos = pos + 1
+                            col = col + 1
+                        }
+                    }
+                    out = append_token(
+                        out,
+                        "DocComment",
+                        str_slice(source, content_start, pos),
+                        start,
+                        pos,
+                        start_line,
+                        start_col,
+                    )
+                } else {
+                    let mut comment_done = false
+                    while pos < str_len(source) && !comment_done {
+                        let comment_code = str_byte_at(source, pos)
+                        if comment_code == 10 || comment_code == 13 {
+                            comment_done = true
+                        } else {
+                            pos = pos + 1
+                            col = col + 1
+                        }
                     }
                 }
             } else {
                 pos = pos + 1
                 col = col + 1
-                out = append_token(out, "Slash", "/", start, pos, start_line, start_col)
+                if pos < str_len(source) && str_byte_at(source, pos) == 61 {
+                    pos = pos + 1
+                    col = col + 1
+                    out = append_token(out, "SlashEq", "/=", start, pos, start_line, start_col)
+                } else {
+                    out = append_token(out, "Slash", "/", start, pos, start_line, start_col)
+                }
             }
         } else if is_digit_code(code) {
             while pos < str_len(source) && is_digit_code(str_byte_at(source, pos)) {
@@ -259,12 +364,7 @@ fn lex_dump(source: String) {
                 col = col + 1
             }
             let lexeme = str_slice(source, start, pos)
-            let mut kind = keyword_kind(lexeme)
-            if str_len(lexeme) == 2
-                && str_byte_at(lexeme, 0) == 102
-                && str_byte_at(lexeme, 1) == 110 {
-                kind = "Fn"
-            }
+            let kind = keyword_kind_runtime(lexeme)
             out = append_token(out, kind, str_slice(source, start, pos), start, pos, start_line, start_col)
         } else if code == 40 {
             pos = pos + 1
@@ -282,6 +382,92 @@ fn lex_dump(source: String) {
             pos = pos + 1
             col = col + 1
             out = append_token(out, "RBrace", "}", start, pos, start_line, start_col)
+        } else if code == 91 {
+            pos = pos + 1
+            col = col + 1
+            out = append_token(out, "LBracket", "[", start, pos, start_line, start_col)
+        } else if code == 93 {
+            pos = pos + 1
+            col = col + 1
+            out = append_token(out, "RBracket", "]", start, pos, start_line, start_col)
+        } else if code == 44 {
+            pos = pos + 1
+            col = col + 1
+            out = append_token(out, "Comma", ",", start, pos, start_line, start_col)
+        } else if code == 59 {
+            pos = pos + 1
+            col = col + 1
+            out = append_token(out, "Semicolon", ";", start, pos, start_line, start_col)
+        } else if code == 58 {
+            pos = pos + 1
+            col = col + 1
+            out = append_token(out, "Colon", ":", start, pos, start_line, start_col)
+        } else if code == 46 {
+            pos = pos + 1
+            col = col + 1
+            if pos < str_len(source) && str_byte_at(source, pos) == 46 {
+                pos = pos + 1
+                col = col + 1
+                out = append_token(out, "DotDot", "..", start, pos, start_line, start_col)
+            } else {
+                out = append_token(out, "Dot", ".", start, pos, start_line, start_col)
+            }
+        } else if code == 43 {
+            pos = pos + 1
+            col = col + 1
+            if pos < str_len(source) && str_byte_at(source, pos) == 61 {
+                pos = pos + 1
+                col = col + 1
+                out = append_token(out, "PlusEq", "+=", start, pos, start_line, start_col)
+            } else if pos < str_len(source) && str_byte_at(source, pos) == 43 {
+                pos = pos + 1
+                col = col + 1
+                out = append_token(out, "PlusPlus", "++", start, pos, start_line, start_col)
+            } else {
+                out = append_token(out, "Plus", "+", start, pos, start_line, start_col)
+            }
+        } else if code == 45 {
+            pos = pos + 1
+            col = col + 1
+            if pos < str_len(source) && str_byte_at(source, pos) == 61 {
+                pos = pos + 1
+                col = col + 1
+                out = append_token(out, "MinusEq", "-=", start, pos, start_line, start_col)
+            } else if pos < str_len(source) && str_byte_at(source, pos) == 45 {
+                pos = pos + 1
+                col = col + 1
+                out = append_token(out, "MinusMinus", "--", start, pos, start_line, start_col)
+            } else if pos < str_len(source) && str_byte_at(source, pos) == 62 {
+                pos = pos + 1
+                col = col + 1
+                out = append_token(out, "Arrow", "->", start, pos, start_line, start_col)
+            } else {
+                out = append_token(out, "Minus", "-", start, pos, start_line, start_col)
+            }
+        } else if code == 42 {
+            pos = pos + 1
+            col = col + 1
+            if pos < str_len(source) && str_byte_at(source, pos) == 61 {
+                pos = pos + 1
+                col = col + 1
+                out = append_token(out, "StarEq", "*=", start, pos, start_line, start_col)
+            } else {
+                out = append_token(out, "Star", "*", start, pos, start_line, start_col)
+            }
+        } else if code == 61 {
+            pos = pos + 1
+            col = col + 1
+            if pos < str_len(source) && str_byte_at(source, pos) == 61 {
+                pos = pos + 1
+                col = col + 1
+                out = append_token(out, "EqEq", "==", start, pos, start_line, start_col)
+            } else if pos < str_len(source) && str_byte_at(source, pos) == 62 {
+                pos = pos + 1
+                col = col + 1
+                out = append_token(out, "FatArrow", "=>", start, pos, start_line, start_col)
+            } else {
+                out = append_token(out, "Eq", "=", start, pos, start_line, start_col)
+            }
         } else {
             pos = pos + 1
             col = col + 1

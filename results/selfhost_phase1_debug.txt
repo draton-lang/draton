@@ -69,6 +69,15 @@ Current verified match
   Fn\tfn\t1:1-2\nIdent\tmain\t1:4-7\nLParen\t(\t1:8-8\nRParen\t)\t1:9-9\nLBrace\t{\t1:11-11\nIntLit\t7\t1:13-13\nRBrace\t}\t1:15-15\nEof\t\t1:16-15\n
 - Result: sample token dump now matches byte-for-byte.
 
+Corpus verification
+- Added tools/verify_selfhost_phase1.py to automate:
+  - embedding each case into src/source/file.dt
+  - rebuilding the self-host binary
+  - comparing stdout against Rust `drat lex-dump`
+  - restoring src/source/file.dt afterward
+- Result file: results/selfhost_phase1_corpus.txt
+- Current corpus status: 8/8 cases pass.
+
 Recommended next step
 - Fix self-host/runtime path by replacing the lexer's match-driven dispatch with if/else temporarily,
   or debug/fix match lowering in the Rust compiler before continuing deeper self-host phases.
