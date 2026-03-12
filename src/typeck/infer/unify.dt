@@ -1,0 +1,5 @@
+import { Type, TypeError, Substitution, Span }
+
+@type {
+    fn unify(s: Substitution, a: Type, b: Type, span: Span) -> Type
+}

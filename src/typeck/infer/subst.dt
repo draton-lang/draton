@@ -1,0 +1,12 @@
+import { Type, TypeError, Span }
+
+class Substitution {
+    let mut map: Map[Int, Type]
+}
+
+@type {
+    fn empty_subst() -> Substitution
+    fn subst_bind(s: Substitution, var_id: Int, ty: Type) -> TypeError
+    fn subst_apply_type(s: Substitution, ty: Type) -> Type
+    fn occurs_check(var_id: Int, ty: Type) -> Bool
+}

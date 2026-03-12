@@ -1,0 +1,19 @@
+import { Type }
+
+enum SubjectKindTag {
+    Bool,
+    Enum,
+    Tuple,
+    Other,
+}
+
+class SubjectKind {
+    let mut kind: String
+    let mut name: String
+    let mut variants: Array[String]
+    let mut arity: Int
+}
+
+@type {
+    fn classify_type(ty: Type) -> SubjectKind
+}

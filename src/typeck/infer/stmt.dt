@@ -1,0 +1,17 @@
+import { Checker, Type, Scheme, TypedStmt, TypedStmtKind, TypedLetStmt, TypedAssignStmt,
+         TypedReturnStmt, TypedIfStmt, TypedElseBranch, TypedForStmt, TypedWhileStmt, TypedBlock,
+         TypedSpawnStmt, TypedSpawnBody, TypedIfCompileStmt, TypedGcConfigStmt, TypedGcConfigEntry,
+         Stmt, Block, LetStmt, AssignStmt, ReturnStmt, IfStmt, ElseBranch, ForStmt, WhileStmt,
+         SpawnStmt, SpawnBody, AssignOp, Span }
+
+@type {
+    fn infer_block(c: Checker, block: Block) -> TypedBlock
+    fn infer_stmt(c: Checker, stmt: Stmt) -> TypedStmt
+    fn infer_let(c: Checker, s: LetStmt) -> TypedStmt
+    fn infer_assign(c: Checker, s: AssignStmt) -> TypedStmt
+    fn infer_return(c: Checker, s: ReturnStmt) -> TypedStmt
+    fn infer_if(c: Checker, s: IfStmt) -> TypedStmt
+    fn infer_for(c: Checker, s: ForStmt) -> TypedStmt
+    fn infer_while(c: Checker, s: WhileStmt) -> TypedStmt
+    fn infer_spawn(c: Checker, s: SpawnStmt) -> TypedStmt
+}

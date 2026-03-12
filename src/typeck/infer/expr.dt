@@ -1,0 +1,20 @@
+import { Checker, Type, Scheme, TypedExpr, TypedMapEntry, TypedMatchArm, TypedMatchArmBody,
+         TypedFStrPart, TypeError, Expr, BinOp, UnOp, FStrPart, MatchArm, MatchArmBody, Span,
+         TypeExpr }
+
+@type {
+    fn infer_expr(c: Checker, expr: Expr) -> TypedExpr
+    fn infer_binop(c: Checker, lhs: Expr, op: String, rhs: Expr, span: Span) -> TypedExpr
+    fn infer_unop(c: Checker, op: String, expr: Expr, span: Span) -> TypedExpr
+    fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) -> TypedExpr
+    fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], span: Span) -> TypedExpr
+    fn infer_field(c: Checker, target: Expr, name: String, span: Span) -> TypedExpr
+    fn infer_index(c: Checker, target: Expr, index: Expr, span: Span) -> TypedExpr
+    fn infer_lambda(c: Checker, params: Array[String], body: Expr, span: Span) -> TypedExpr
+    fn infer_cast(c: Checker, expr: Expr, ty_expr: TypeExpr, span: Span) -> TypedExpr
+    fn infer_match(c: Checker, subject: Expr, arms: Array[MatchArm], span: Span) -> TypedExpr
+    fn infer_nullish(c: Checker, lhs: Expr, rhs: Expr, span: Span) -> TypedExpr
+    fn infer_fstr(c: Checker, parts: Array[FStrPart], span: Span) -> TypedExpr
+    fn expect_numeric(c: Checker, ty: Type, span: Span) -> Type
+    fn make_typed(kind: String, ty: Type, span: Span) -> TypedExpr
+}

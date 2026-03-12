@@ -1,0 +1,6 @@
+import { Pattern, SubjectKind, Type, TypeError, Span, Expr }
+
+@type {
+    fn check_exhaustiveness(patterns: Array[Pattern], kind: SubjectKind, span: Span) -> TypeError
+    fn ast_expr_to_pattern(expr: Expr) -> Pattern
+}

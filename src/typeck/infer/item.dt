@@ -1,0 +1,40 @@
+import { Type, Scheme, TypeEnv, Substitution, TypedFnDef, TypedParam, TypedClassDef, TypedFieldDef,
+         TypedInterfaceDef, TypedEnumDef, TypedErrorDef, TypedConstDef, TypedImportDef,
+         TypedImportItem, TypedExternBlock, TypedTypeBlockDef, TypedTypeMember, TypedItem,
+         TypedProgram, Item, FnDef, ClassDef, InterfaceDef, EnumDef, ErrorDef, ConstDef,
+         ImportDef, ExternBlock, TypeBlockDef, TypeMember, ClassMember, Program, TypeError, Span }
+
+class Checker {
+    let mut env: TypeEnv
+    let mut subst: Substitution
+    let mut errors: Array[TypeError]
+    let mut class_fields: Map[String, Map[String, Type]]
+    let mut class_methods: Map[String, Map[String, Scheme]]
+    let mut current_return: Array[Type]
+    let mut current_class: Array[String]
+}
+
+class TypeCheckResult {
+    let mut typed_program: TypedProgram
+    let mut errors: Array[TypeError]
+}
+
+@type {
+    fn new_checker() -> Checker
+    fn checker_run(c: Checker, program: Program) -> TypeCheckResult
+    fn infer_item(c: Checker, item: Item) -> TypedItem
+    fn infer_fn_def(c: Checker, fn_def: FnDef, current_class: String) -> TypedFnDef
+    fn infer_class_def(c: Checker, def: ClassDef) -> TypedClassDef
+    fn infer_interface_def(c: Checker, def: InterfaceDef) -> TypedInterfaceDef
+    fn infer_error_def(c: Checker, def: ErrorDef) -> TypedErrorDef
+    fn infer_const_def(c: Checker, def: ConstDef) -> TypedConstDef
+    fn infer_extern_block(c: Checker, def: ExternBlock) -> TypedExternBlock
+    fn infer_type_block(c: Checker, def: TypeBlockDef) -> TypedTypeBlockDef
+    fn predeclare_items(c: Checker, program: Program)
+    fn install_builtins(c: Checker)
+    fn type_from_annotation(c: Checker, ty_expr: TypeExpr) -> Type
+    fn generalize(c: Checker, ty: Type) -> Scheme
+    fn checker_apply_subst(c: Checker, ty: Type) -> Type
+    fn checker_fresh_var(c: Checker) -> Type
+    fn checker_unify(c: Checker, a: Type, b: Type, span: Span) -> Type
+}
