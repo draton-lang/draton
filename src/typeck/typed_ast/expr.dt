@@ -1,0 +1,95 @@
+import { Span, Type, BinOp, UnOp, FStrPart, TypeExpr }
+
+enum TypedExprKind {
+    IntLit,
+    FloatLit,
+    StrLit,
+    FStrLit,
+    BoolLit,
+    NoneLit,
+    Ident,
+    Array,
+    Map,
+    Set,
+    Tuple,
+    BinOp,
+    UnOp,
+    Call,
+    MethodCall,
+    Field,
+    Index,
+    Lambda,
+    Cast,
+    Match,
+    Ok,
+    Err,
+    Nullish,
+    Chan,
+    ClassNew,
+}
+
+class TypedExpr {
+    let mut kind: String
+    let mut ty: Type
+    let mut span: Span
+    let mut int_value: Int
+    let mut float_value: Float
+    let mut string_value: String
+    let mut bool_value: Bool
+    let mut name: String
+    let mut parts: Array[TypedFStrPart]
+    let mut items: Array[TypedExpr]
+    let mut entries: Array[TypedMapEntry]
+    let mut lhs: TypedExpr
+    let mut rhs: TypedExpr
+    let mut bin_op: String
+    let mut un_op: String
+    let mut expr: TypedExpr
+    let mut callee: TypedExpr
+    let mut args: Array[TypedExpr]
+    let mut target: TypedExpr
+    let mut index: TypedExpr
+    let mut params: Array[String]
+    let mut body: TypedExpr
+    let mut cast_ty: Type
+    let mut subject: TypedExpr
+    let mut arms: Array[TypedMatchArm]
+    let mut chan_ty: Type
+    let mut class_name: String
+    let mut field_names: Array[String]
+    let mut field_values: Array[TypedExpr]
+}
+
+class TypedMapEntry {
+    let mut key: TypedExpr
+    let mut value: TypedExpr
+}
+
+enum TypedFStrPartKind {
+    Literal,
+    Interp,
+}
+
+class TypedFStrPart {
+    let mut kind: String
+    let mut text: String
+    let mut expr: TypedExpr
+}
+
+class TypedMatchArm {
+    let mut pattern: TypedExpr
+    let mut body: TypedMatchArmBody
+    let mut span: Span
+}
+
+enum TypedMatchArmBodyKind {
+    Expr,
+    Block,
+}
+
+class TypedMatchArmBody {
+    let mut kind: String
+    let mut expr: TypedExpr
+    let mut block: TypedBlock
+    let mut span: Span
+}

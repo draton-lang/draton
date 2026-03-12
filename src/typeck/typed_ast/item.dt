@@ -1,0 +1,125 @@
+import { Span, Type }
+
+enum TypedItemKind {
+    Fn,
+    PanicHandler,
+    OomHandler,
+    Class,
+    Interface,
+    Enum,
+    Error,
+    Const,
+    Import,
+    TypeBlock,
+    Extern,
+}
+
+class TypedItem {
+    let mut kind: String
+    let mut fn_def: TypedFnDef
+    let mut panic_handler_def: TypedFnDef
+    let mut oom_handler_def: TypedFnDef
+    let mut class_def: TypedClassDef
+    let mut interface_def: TypedInterfaceDef
+    let mut enum_def: TypedEnumDef
+    let mut error_def: TypedErrorDef
+    let mut const_def: TypedConstDef
+    let mut import_def: TypedImportDef
+    let mut type_block_def: TypedTypeBlockDef
+    let mut extern_block: TypedExternBlock
+}
+
+class TypedFnDef {
+    let mut is_pub: Bool
+    let mut name: String
+    let mut params: Array[TypedParam]
+    let mut ret_type: Type
+    let mut has_body: Bool
+    let mut body: TypedBlock
+    let mut ty: Type
+    let mut span: Span
+}
+
+class TypedParam {
+    let mut name: String
+    let mut ty: Type
+    let mut span: Span
+}
+
+class TypedClassDef {
+    let mut name: String
+    let mut has_extends: Bool
+    let mut extends_name: String
+    let mut implements_names: Array[String]
+    let mut fields: Array[TypedFieldDef]
+    let mut methods: Array[TypedFnDef]
+    let mut span: Span
+}
+
+class TypedFieldDef {
+    let mut is_mut: Bool
+    let mut name: String
+    let mut ty: Type
+    let mut span: Span
+}
+
+class TypedInterfaceDef {
+    let mut name: String
+    let mut methods: Array[TypedFnDef]
+    let mut span: Span
+}
+
+class TypedEnumDef {
+    let mut name: String
+    let mut variants: Array[String]
+    let mut span: Span
+}
+
+class TypedErrorDef {
+    let mut name: String
+    let mut fields: Array[TypedParam]
+    let mut span: Span
+}
+
+class TypedConstDef {
+    let mut name: String
+    let mut value: TypedExpr
+    let mut ty: Type
+    let mut span: Span
+}
+
+class TypedImportDef {
+    let mut items: Array[TypedImportItem]
+    let mut span: Span
+}
+
+class TypedImportItem {
+    let mut name: String
+    let mut has_alias: Bool
+    let mut alias: String
+    let mut span: Span
+}
+
+class TypedExternBlock {
+    let mut abi: String
+    let mut functions: Array[TypedFnDef]
+    let mut span: Span
+}
+
+class TypedTypeBlockDef {
+    let mut members: Array[TypedTypeMember]
+    let mut span: Span
+}
+
+enum TypedTypeMemberKind {
+    Binding,
+    Function,
+}
+
+class TypedTypeMember {
+    let mut kind: String
+    let mut name: String
+    let mut ty: Type
+    let mut def: TypedFnDef
+    let mut span: Span
+}

@@ -1,0 +1,7 @@
+class TypedProgram {
+    let mut items: Array[TypedItem]
+}
+
+@type {
+    fn empty_typed_program() -> TypedProgram
+}
