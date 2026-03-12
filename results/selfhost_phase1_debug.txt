@@ -1,0 +1,48 @@
+Draton self-host Phase 1 debug notes
+Date: 2026-03-12
+
+Stable milestone already achieved
+- Self-host Phase 1 sources compile and link with:
+  DRATON_DISABLE_GCROOT=1 DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS=1 cargo run -p drat -- build
+- Produced artifacts:
+  build/debug/draton-selfhost-phase1
+  build/debug/draton-selfhost-phase1.o
+  build/debug/draton-selfhost-phase1.ll
+
+Observed runtime problem
+- Running:
+  timeout 5 ./build/debug/draton-selfhost-phase1
+  hangs with exit code 124
+- No stdout is printed before timeout.
+- gdb backtrace reaches:
+  main
+  draton_user_main
+  lex_dump
+
+What was ruled out
+- main/entry wiring is not the first failure, because execution reaches draton_user_main and lex_dump.
+- print works in a minimal self-host binary:
+  print("hello")
+- String helpers work in isolation:
+  print(int_to_string(7))          -> 7
+  print(str_concat("a", "b"))      -> ab
+  print(int_to_string(str_len("fn main() { 7 }"))) -> 15
+  print(int_to_string(str_byte_at("fn main() { 7 }", 0))) -> 102
+  print(str_slice("fn main() { 7 }", 0, 2)) -> fn
+
+Key experiment
+- Rewriting lex_dump locally from:
+  out = match code { ... }
+  to a plain if/else scanner made the self-host binary run instead of hang.
+- Experimental output for sample source "fn main() { 7 }":
+  Ident\tfn\t1:1-2\nIdent\tmain\t1:4-7\nLParen\t(\t1:8-8\nRParen\t)\t1:9-9\nLBrace\t{\t1:11-11\nIntLit\t7\t1:13-13\nRBrace\t}\t1:15-15\nEof\t\t1:16-15\n
+
+Interpretation
+- The hang is most likely in generated control-flow for match expressions that both:
+  - mutate loop locals (pos/line/col)
+  - and return a String accumulator
+- This points to a codegen/runtime interaction in self-hosted match lowering, not a fundamental lexer algorithm bug.
+
+Recommended next step
+- Fix self-host/runtime path by replacing the lexer's match-driven dispatch with if/else temporarily,
+  or debug/fix match lowering in the Rust compiler before continuing deeper self-host phases.
