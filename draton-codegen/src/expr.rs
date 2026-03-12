@@ -1094,20 +1094,48 @@ impl<'ctx> CodeGen<'ctx> {
             Some(self.create_entry_alloca(function, self.llvm_basic_type(ty)?, "match.slot")?)
         };
 
+        let subject_ty = subject.get_type();
         let mut cases = Vec::new();
         let mut arm_blocks = Vec::new();
+        let mut default_arm = None;
         for arm in arms {
-            if let TypedExprKind::IntLit(value) = arm.pattern.kind {
-                let block = self.context.append_basic_block(function, "match.case");
-                cases.push((self.context.i64_type().const_int(value as u64, true), block));
-                arm_blocks.push((block, arm));
+            match arm.pattern.kind {
+                TypedExprKind::IntLit(value) => {
+                    let block = self.context.append_basic_block(function, "match.case");
+                    cases.push((subject_ty.const_int(value as u64, true), block));
+                    arm_blocks.push((block, arm));
+                }
+                TypedExprKind::BoolLit(value) => {
+                    let block = self.context.append_basic_block(function, "match.case");
+                    cases.push((subject_ty.const_int(u64::from(value), false), block));
+                    arm_blocks.push((block, arm));
+                }
+                TypedExprKind::Ident(ref name) if name == "_" => {
+                    let block = self.context.append_basic_block(function, "match.default.arm");
+                    default_arm = Some((block, arm));
+                }
+                _ => {}
             }
         }
+        let default_target = default_arm.map(|(block, _)| block).unwrap_or(default);
         self.builder
-            .build_switch(subject, default, &cases)
+            .build_switch(subject, default_target, &cases)
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
 
         for (block, arm) in arm_blocks {
+            self.builder.position_at_end(block);
+            let value = self.emit_match_arm_body(&arm.body)?;
+            if let (Some(slot), Some(value)) = (result_slot, value) {
+                self.build_store(slot, value)?;
+            }
+            if !self.current_block_terminated() {
+                self.builder
+                    .build_unconditional_branch(exit)
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            }
+        }
+
+        if let Some((block, arm)) = default_arm {
             self.builder.position_at_end(block);
             let value = self.emit_match_arm_body(&arm.body)?;
             if let (Some(slot), Some(value)) = (result_slot, value) {

@@ -43,6 +43,21 @@ Interpretation
   - and return a String accumulator
 - This points to a codegen/runtime interaction in self-hosted match lowering, not a fundamental lexer algorithm bug.
 
+Follow-up fix applied after this diagnosis
+- The Rust codegen switch-based match lowering now emits wildcard/default arms instead of dropping them.
+- Added regression coverage in draton-codegen/tests/control_flow.rs:
+  emits_default_arm_for_switch_match
+- After that compiler fix:
+  - the self-host binary no longer hangs in lex_dump
+  - it progresses further and now crashes in:
+    draton_runtime::draton_str_concat
+    <- append_text
+    <- append_token
+    <- lex_dump
+- This narrows the next blocker to the string/token formatting path in the self-host lexer, not match dispatch anymore.
+
 Recommended next step
 - Fix self-host/runtime path by replacing the lexer's match-driven dispatch with if/else temporarily,
   or debug/fix match lowering in the Rust compiler before continuing deeper self-host phases.
+- With match lowering fixed, the next concrete target is to remove Token/Span object formatting from append_token
+  or debug invalid Draton string values flowing into draton_str_concat.

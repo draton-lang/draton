@@ -56,6 +56,22 @@ fn main() {
 }
 
 #[test]
+fn emits_default_arm_for_switch_match() {
+    let ir = compile_ir(
+        r#"
+fn main() {
+    let x = 2
+    match x {
+        1 => 10
+        _ => 20
+    }
+}
+"#,
+    );
+    assert!(ir.contains("match.default.arm"), "{ir}");
+}
+
+#[test]
 fn emits_safepoint_poll_after_call_expressions_and_loop_back_edges() {
     let ir = compile_ir(
         r#"
