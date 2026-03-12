@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::env;
 use std::path::Path;
 
 use draton_typeck::{Type, TypedProgram};
@@ -204,6 +205,12 @@ impl<'ctx> CodeGen<'ctx> {
         if self.functions.contains_key(name) {
             return Ok(name.to_string());
         }
+        if self.class_layouts.contains_key(name) && arg_types.is_empty() {
+            let symbol = format!("{name}_new");
+            if self.functions.contains_key(&symbol) {
+                return Ok(symbol);
+            }
+        }
         if let Some(info) = self.generic_functions.get(name) {
             if let Some(type_args) =
                 resolve_function_type_args(&info.def, &info.type_vars, arg_types)
@@ -242,6 +249,9 @@ impl<'ctx> CodeGen<'ctx> {
         storage: PointerValue<'ctx>,
         ty: &Type,
     ) -> Result<(), CodeGenError> {
+        if env::var_os("DRATON_DISABLE_GCROOT").is_some() {
+            return Ok(());
+        }
         if !Self::is_gc_rootable_type(ty) {
             return Ok(());
         }

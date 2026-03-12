@@ -1,0 +1,27 @@
+@type {
+    fn make_string_result(kind: String, lexeme: String, has_error: Bool, err: LexError) -> StringResult
+    fn lex_string(c: Cursor, is_fstring: Bool, start: Int, line: Int, col: Int) -> StringResult
+}
+
+class StringResult {
+    let mut kind: String
+    let mut lexeme: String
+    let mut has_error: Bool
+    let mut err: LexError
+}
+
+fn make_string_result(kind: String, lexeme: String, has_error: Bool, err: LexError) {
+    let result = StringResult()
+    result.kind = kind
+    result.lexeme = lexeme
+    result.has_error = has_error
+    result.err = err
+    result
+}
+
+fn lex_string(c: Cursor, is_fstring: Bool, start: Int, line: Int, col: Int) {
+    let a = str_concat("string literal support is not enabled in phase 1 at line ", int_to_string(line))
+    let b = str_concat(a, ", col ")
+    let err = new_lex_error(str_concat(b, int_to_string(col)))
+    make_string_result("StrLit", "", true, err)
+}

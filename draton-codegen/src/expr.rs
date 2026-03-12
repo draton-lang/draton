@@ -490,6 +490,9 @@ impl<'ctx> CodeGen<'ctx> {
         callee: &TypedExpr,
         args: &[TypedExpr],
     ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        if let Some(value) = self.emit_builtin_call(name, args)? {
+            return Ok(value);
+        }
         let expected_params = match &callee.ty {
             Type::Fn(params, _) => Some(params.clone()),
             _ => None,
@@ -556,6 +559,170 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         self.emit_safepoint_poll()?;
         Ok(call.try_as_basic_value().left())
+    }
+
+    fn emit_builtin_call(
+        &mut self,
+        name: &str,
+        args: &[TypedExpr],
+    ) -> Result<Option<Option<BasicValueEnum<'ctx>>>, CodeGenError> {
+        match name {
+            "str_len" => {
+                let value = self
+                    .emit_expr(
+                        args.first().ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr(
+                                "str_len requires one argument".to_string(),
+                            )
+                        })?,
+                    )?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("str_len arg missing value".to_string())
+                    })?
+                    .into_struct_value();
+                let len = self
+                    .builder
+                    .build_extract_value(value, 0, "str.len")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(Some(len)))
+            }
+            "str_byte_at" => {
+                let value = self
+                    .emit_expr(
+                        args.first().ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr(
+                                "str_byte_at requires two arguments".to_string(),
+                            )
+                        })?,
+                    )?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "str_byte_at string arg missing value".to_string(),
+                        )
+                    })?
+                    .into_struct_value();
+                let index = self
+                    .emit_expr(
+                        args.get(1).ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr(
+                                "str_byte_at requires two arguments".to_string(),
+                            )
+                        })?,
+                    )?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "str_byte_at index arg missing value".to_string(),
+                        )
+                    })?
+                    .into_int_value();
+                let ptr = self
+                    .builder
+                    .build_extract_value(value, 1, "str.ptr")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                    .into_pointer_value();
+                let byte_ptr = unsafe {
+                    self.builder
+                        .build_gep(ptr, &[index], "str.byte.ptr")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                };
+                let byte = self
+                    .builder
+                    .build_load(byte_ptr, "str.byte")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                    .into_int_value();
+                let widened = self
+                    .builder
+                    .build_int_z_extend(byte, self.context.i64_type(), "str.byte.int")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(Some(widened.into())))
+            }
+            "str_slice" => {
+                let function = self
+                    .module
+                    .get_function("draton_str_slice")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_str_slice".to_string()))?;
+                let values = args
+                    .iter()
+                    .map(|arg| {
+                        self.emit_expr(arg)?.ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr("str_slice arg missing value".to_string())
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let call = self
+                    .builder
+                    .build_call(
+                        function,
+                        &values
+                            .iter()
+                            .copied()
+                            .map(BasicMetadataValueEnum::from)
+                            .collect::<Vec<_>>(),
+                        "str.slice",
+                    )
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
+            "str_concat" => {
+                let function = self
+                    .module
+                    .get_function("draton_str_concat")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_str_concat".to_string()))?;
+                let values = args
+                    .iter()
+                    .map(|arg| {
+                        self.emit_expr(arg)?.ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr(
+                                "str_concat arg missing value".to_string(),
+                            )
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let call = self
+                    .builder
+                    .build_call(
+                        function,
+                        &values
+                            .iter()
+                            .copied()
+                            .map(BasicMetadataValueEnum::from)
+                            .collect::<Vec<_>>(),
+                        "str.concat",
+                    )
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
+            "int_to_string" => {
+                let function = self
+                    .module
+                    .get_function("draton_int_to_string")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_int_to_string".to_string())
+                    })?;
+                let value = self
+                    .emit_expr(
+                        args.first().ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr(
+                                "int_to_string requires one argument".to_string(),
+                            )
+                        })?,
+                    )?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "int_to_string arg missing value".to_string(),
+                        )
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[value.into()], "int.to_string")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
+            _ => Ok(None),
+        }
     }
 
     fn resolve_function_value_symbol(&self, name: &str, ty: &Type) -> Result<String, CodeGenError> {

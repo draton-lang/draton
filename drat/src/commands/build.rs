@@ -303,13 +303,16 @@ fn link_binary(
     if let Some(target) = target {
         ensure_supported_target(target)?;
     }
-    let runtime_lib = ensure_runtime_staticlib(profile)?;
     let mut command = Command::new("cc");
-    command
-        .arg(object_path)
-        .arg(&runtime_lib)
-        .arg("-o")
-        .arg(binary_path);
+    command.arg(object_path);
+    if env::var_os("DRATON_SKIP_RUNTIME_LINK").is_none() {
+        let runtime_lib = ensure_runtime_staticlib(profile)?;
+        command.arg(&runtime_lib);
+    }
+    command.arg("-o").arg(binary_path);
+    if cfg!(target_os = "linux") && env::var_os("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS").is_some() {
+        command.arg("-Wl,--allow-multiple-definition");
+    }
     if cfg!(target_os = "linux") {
         command.args(["-no-pie", "-ldl", "-lpthread", "-lm", "-lrt", "-lutil"]);
     } else if cfg!(target_os = "macos") {

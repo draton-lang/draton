@@ -1,0 +1,4 @@
+fn main() {
+    let file = demo_source_file()
+    print(lex_dump(file.content))
+}

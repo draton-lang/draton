@@ -1,0 +1,20 @@
+@type {
+    fn make_source_file(path: String, content: String) -> SourceFile
+    fn demo_source_file() -> SourceFile
+}
+
+class SourceFile {
+    let mut path: String
+    let mut content: String
+}
+
+fn make_source_file(path: String, content: String) {
+    let file = SourceFile()
+    file.path = path
+    file.content = content
+    file
+}
+
+fn demo_source_file() {
+    make_source_file("tests/programs/jit/01_constant.dt", "fn main() { 7 }")
+}

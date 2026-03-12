@@ -5,9 +5,39 @@ pub mod panic;
 pub mod scheduler;
 
 use std::ptr;
+use std::slice;
 
 use gc::config::GcConfig;
 use scheduler::channel::RawChan;
+
+#[repr(C)]
+pub struct DratonString {
+    pub len: i64,
+    pub ptr: *mut libc::c_char,
+}
+
+fn string_bytes(value: DratonString) -> &'static [u8] {
+    if value.ptr.is_null() || value.len <= 0 {
+        &[]
+    } else {
+        // SAFETY: The compiler only passes Draton strings created from valid UTF-8
+        // buffers with at least `len` initialized bytes. These helpers treat the
+        // payload as an immutable byte slice for the duration of the call.
+        unsafe { slice::from_raw_parts(value.ptr.cast::<u8>(), value.len as usize) }
+    }
+}
+
+fn owned_string(bytes: Vec<u8>) -> DratonString {
+    let len = bytes.len();
+    let mut raw = bytes;
+    raw.push(0);
+    let boxed = raw.into_boxed_slice();
+    let ptr = Box::into_raw(boxed).cast::<u8>();
+    DratonString {
+        len: len as i64,
+        ptr: ptr.cast::<libc::c_char>(),
+    }
+}
 
 /// Initializes the global runtime scheduler.
 #[no_mangle]
@@ -145,4 +175,31 @@ pub extern "C" fn draton_panic(
     line: u32,
 ) -> ! {
     panic::draton_panic(msg, file, line)
+}
+
+/// Returns a newly allocated substring of a Draton string.
+#[no_mangle]
+pub extern "C" fn draton_str_slice(value: DratonString, start: i64, end: i64) -> DratonString {
+    let bytes = string_bytes(value);
+    let len = bytes.len() as i64;
+    let start = start.clamp(0, len) as usize;
+    let end = end.clamp(start as i64, len) as usize;
+    owned_string(bytes[start..end].to_vec())
+}
+
+/// Concatenates two Draton strings into a newly allocated string.
+#[no_mangle]
+pub extern "C" fn draton_str_concat(lhs: DratonString, rhs: DratonString) -> DratonString {
+    let lhs_bytes = string_bytes(lhs);
+    let rhs_bytes = string_bytes(rhs);
+    let mut out = Vec::with_capacity(lhs_bytes.len() + rhs_bytes.len());
+    out.extend_from_slice(lhs_bytes);
+    out.extend_from_slice(rhs_bytes);
+    owned_string(out)
+}
+
+/// Converts an integer to a Draton string.
+#[no_mangle]
+pub extern "C" fn draton_int_to_string(value: i64) -> DratonString {
+    owned_string(value.to_string().into_bytes())
 }

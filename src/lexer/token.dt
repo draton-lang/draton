@@ -1,0 +1,190 @@
+@type {
+    fn new_token(kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) -> Token
+    fn keyword_kind(word: String) -> String
+    fn at_keyword_kind(word: String) -> String
+    fn is_known_at_keyword(word: String) -> Bool
+    fn token_line(token: Token) -> String
+}
+
+class Token {
+    let mut kind: String
+    let mut lexeme: String
+    let mut span: Span
+}
+
+enum TokenKind {
+    IntLit,
+    FloatLit,
+    HexLit,
+    BinLit,
+    StrLit,
+    FStrLit,
+    BoolLit,
+    NoneLit,
+    Let,
+    Mut,
+    Fn,
+    Return,
+    If,
+    Else,
+    For,
+    While,
+    In,
+    Match,
+    Class,
+    Layer,
+    Extends,
+    Implements,
+    Interface,
+    Enum,
+    Error,
+    Pub,
+    Import,
+    As,
+    Spawn,
+    Chan,
+    Const,
+    Lambda,
+    AtType,
+    AtUnsafe,
+    AtPointer,
+    AtAsm,
+    AtComptime,
+    AtIf,
+    AtGcConfig,
+    AtPanicHandler,
+    AtOomHandler,
+    AtExtern,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Eq,
+    PlusEq,
+    MinusEq,
+    StarEq,
+    SlashEq,
+    PercentEq,
+    PlusPlus,
+    MinusMinus,
+    EqEq,
+    BangEq,
+    Lt,
+    LtEq,
+    Gt,
+    GtEq,
+    AmpAmp,
+    PipePipe,
+    Bang,
+    Amp,
+    Pipe,
+    Caret,
+    Tilde,
+    LtLt,
+    GtGt,
+    Question,
+    QuestionQuestion,
+    FatArrow,
+    Arrow,
+    DotDot,
+    At,
+    LParen,
+    RParen,
+    LBracket,
+    RBracket,
+    LBrace,
+    RBrace,
+    Comma,
+    Semicolon,
+    Colon,
+    Dot,
+    DocComment,
+    Ident,
+    Eof,
+}
+
+fn new_token(kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) {
+    let token = Token()
+    token.kind = kind
+    token.lexeme = lexeme
+    token.span = new_span(start, end, line, col)
+    token
+}
+
+fn keyword_kind(word: String) {
+    match word {
+        "let" => "Let"
+        "mut" => "Mut"
+        "fn" => "Fn"
+        "return" => "Return"
+        "if" => "If"
+        "else" => "Else"
+        "for" => "For"
+        "while" => "While"
+        "in" => "In"
+        "match" => "Match"
+        "class" => "Class"
+        "layer" => "Layer"
+        "extends" => "Extends"
+        "implements" => "Implements"
+        "interface" => "Interface"
+        "enum" => "Enum"
+        "error" => "Error"
+        "pub" => "Pub"
+        "import" => "Import"
+        "as" => "As"
+        "spawn" => "Spawn"
+        "chan" => "Chan"
+        "const" => "Const"
+        "lambda" => "Lambda"
+        "true" => "BoolLit"
+        "false" => "BoolLit"
+        "None" => "NoneLit"
+        _ => "Ident"
+    }
+}
+
+fn at_keyword_kind(word: String) {
+    match word {
+        "@type" => "AtType"
+        "@unsafe" => "AtUnsafe"
+        "@pointer" => "AtPointer"
+        "@asm" => "AtAsm"
+        "@comptime" => "AtComptime"
+        "@if" => "AtIf"
+        "@gc_config" => "AtGcConfig"
+        "@panic_handler" => "AtPanicHandler"
+        "@oom_handler" => "AtOomHandler"
+        "@extern" => "AtExtern"
+        _ => "At"
+    }
+}
+
+fn is_known_at_keyword(word: String) {
+    match word {
+        "@type" => true
+        "@unsafe" => true
+        "@pointer" => true
+        "@asm" => true
+        "@comptime" => true
+        "@if" => true
+        "@gc_config" => true
+        "@panic_handler" => true
+        "@oom_handler" => true
+        "@extern" => true
+        _ => false
+    }
+}
+
+fn token_line(token: Token) {
+    let a = str_concat(token.kind, "\t")
+    let b = str_concat(a, token.lexeme)
+    let c = str_concat(b, "\t")
+    let d = str_concat(c, int_to_string(token.span.line))
+    let e = str_concat(d, ":")
+    let f = str_concat(e, int_to_string(token.span.col))
+    let g = str_concat(f, "-")
+    let h = str_concat(g, int_to_string(token.span.end))
+    str_concat(h, "\n")
+}

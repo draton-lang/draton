@@ -2087,6 +2087,18 @@ impl TypeChecker {
         self.push_type_params(&class_def.type_params);
         self.class_interfaces
             .insert(class_def.name.clone(), class_def.implements.clone());
+        if class_def.type_params.is_empty() {
+            self.env.define(
+                &class_def.name,
+                Scheme {
+                    quantified: Vec::new(),
+                    ty: Type::Fn(
+                        Vec::new(),
+                        Box::new(Type::Named(class_def.name.clone(), Vec::new())),
+                    ),
+                },
+            );
+        }
         if let Some(parent) = &class_def.extends {
             if !self.declared_classes.contains(parent) {
                 self.errors.push(TypeError::UndefinedParent {
@@ -2254,6 +2266,41 @@ impl TypeChecker {
                     vec![Type::Int, Type::Int, Type::Int],
                     Box::new(Type::Array(Box::new(Type::Int))),
                 ),
+            },
+        );
+        self.env.define(
+            "str_len",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String], Box::new(Type::Int)),
+            },
+        );
+        self.env.define(
+            "str_byte_at",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String, Type::Int], Box::new(Type::Int)),
+            },
+        );
+        self.env.define(
+            "str_slice",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String, Type::Int, Type::Int], Box::new(Type::String)),
+            },
+        );
+        self.env.define(
+            "str_concat",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String, Type::String], Box::new(Type::String)),
+            },
+        );
+        self.env.define(
+            "int_to_string",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::Int], Box::new(Type::String)),
             },
         );
         let some_var = self.fresh_var();

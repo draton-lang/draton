@@ -1,0 +1,44 @@
+@type {
+    fn make_number_result(kind: String, lexeme: String, invalid: Bool) -> NumberResult
+    fn is_ident_start_code(code: Int) -> Bool
+    fn is_ident_continue_code(code: Int) -> Bool
+    fn is_digit_code(code: Int) -> Bool
+    fn is_hex_code(code: Int) -> Bool
+    fn lex_number(c: Cursor, start: Int) -> NumberResult
+}
+
+class NumberResult {
+    let mut kind: String
+    let mut lexeme: String
+    let mut invalid: Bool
+}
+
+fn make_number_result(kind: String, lexeme: String, invalid: Bool) {
+    let result = NumberResult()
+    result.kind = kind
+    result.lexeme = lexeme
+    result.invalid = invalid
+    result
+}
+
+fn is_ident_start_code(code: Int) {
+    (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code == 95
+}
+
+fn is_ident_continue_code(code: Int) {
+    is_ident_start_code(code) || (code >= 48 && code <= 57)
+}
+
+fn is_digit_code(code: Int) {
+    code >= 48 && code <= 57
+}
+
+fn is_hex_code(code: Int) {
+    is_digit_code(code)
+        || (code >= 65 && code <= 70)
+        || (code >= 97 && code <= 102)
+}
+
+fn lex_number(c: Cursor, start: Int) {
+    make_number_result("IntLit", cursor_slice(c, start, c.pos), false)
+}

@@ -1,0 +1,112 @@
+@type {
+    fn new_cursor(source: String) -> Cursor
+    fn cursor_len(c: Cursor) -> Int
+    fn cursor_at_end(c: Cursor) -> Bool
+    fn cursor_code_at(c: Cursor, index: Int) -> Int
+    fn cursor_peek_code(c: Cursor) -> Int
+    fn cursor_peek_next_code(c: Cursor) -> Int
+    fn cursor_peek_next_next_code(c: Cursor) -> Int
+    fn cursor_peek(c: Cursor) -> String
+    fn cursor_peek_next(c: Cursor) -> String
+    fn cursor_advance(c: Cursor) -> String
+    fn cursor_advance_newline(c: Cursor, bytes: Int) -> Unit
+    fn cursor_consume_if(c: Cursor, expected_code: Int) -> Bool
+    fn cursor_slice(c: Cursor, from: Int, to: Int) -> String
+}
+
+class Cursor {
+    let mut source: String
+    let mut pos: Int
+    let mut line: Int
+    let mut col: Int
+}
+
+fn new_cursor(source: String) {
+    let c = Cursor()
+    c.source = source
+    c.pos = 0
+    c.line = 1
+    c.col = 1
+    c
+}
+
+fn cursor_len(c: Cursor) {
+    str_len(c.source)
+}
+
+fn cursor_at_end(c: Cursor) {
+    c.pos >= cursor_len(c)
+}
+
+fn cursor_code_at(c: Cursor, index: Int) {
+    let mut code = -1
+    if index < 0 || index >= cursor_len(c) {
+        code = -1
+    } else {
+        code = str_byte_at(c.source, index)
+    }
+    code
+}
+
+fn cursor_peek_code(c: Cursor) {
+    cursor_code_at(c, c.pos)
+}
+
+fn cursor_peek_next_code(c: Cursor) {
+    cursor_code_at(c, c.pos + 1)
+}
+
+fn cursor_peek_next_next_code(c: Cursor) {
+    cursor_code_at(c, c.pos + 2)
+}
+
+fn cursor_peek(c: Cursor) {
+    let mut ch = ""
+    if cursor_at_end(c) {
+        ch = ""
+    } else {
+        ch = str_slice(c.source, c.pos, c.pos + 1)
+    }
+    ch
+}
+
+fn cursor_peek_next(c: Cursor) {
+    let mut ch = ""
+    if c.pos + 1 >= cursor_len(c) {
+        ch = ""
+    } else {
+        ch = str_slice(c.source, c.pos + 1, c.pos + 2)
+    }
+    ch
+}
+
+fn cursor_advance(c: Cursor) {
+    let mut ch = ""
+    if cursor_at_end(c) {
+        ch = ""
+    } else {
+        ch = str_slice(c.source, c.pos, c.pos + 1)
+        c.pos = c.pos + 1
+        c.col = c.col + 1
+    }
+    ch
+}
+
+fn cursor_advance_newline(c: Cursor, bytes: Int) {
+    c.pos = c.pos + bytes
+    c.line = c.line + 1
+    c.col = 1
+}
+
+fn cursor_consume_if(c: Cursor, expected_code: Int) {
+    let mut matched = false
+    if cursor_peek_code(c) == expected_code {
+        cursor_advance(c)
+        matched = true
+    }
+    matched
+}
+
+fn cursor_slice(c: Cursor, from: Int, to: Int) {
+    str_slice(c.source, from, to)
+}

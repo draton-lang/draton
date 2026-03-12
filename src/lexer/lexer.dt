@@ -1,0 +1,290 @@
+@type {
+    fn append_text(out: String, more: String) -> String
+    fn append_token(out: String, kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) -> String
+    fn append_error(out: String, err: LexError) -> String
+    fn skip_whitespace(c: Cursor) -> Bool
+    fn lex_identifier_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) -> String
+    fn lex_at_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) -> String
+    fn lex_slash_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) -> String
+    fn lex_punct_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) -> String
+    fn lex_dump(source: String) -> String
+}
+
+fn append_text(out: String, more: String) {
+    str_concat(out, more)
+}
+
+fn append_token(out: String, kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) {
+    append_text(out, token_line(new_token(kind, lexeme, start, end, line, col)))
+}
+
+fn append_error(out: String, err: LexError) {
+    let a = append_text(out, "ERROR\t")
+    let b = append_text(a, lex_error_message(err))
+    append_text(b, "\n")
+}
+
+fn skip_whitespace(c: Cursor) {
+    false
+}
+
+fn lex_identifier_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
+    cursor_advance(c)
+    while is_ident_continue_code(cursor_peek_code(c)) {
+        cursor_advance(c)
+    }
+    append_token(out, keyword_kind(cursor_slice(c, start, c.pos)), cursor_slice(c, start, c.pos), start, c.pos, line, col)
+}
+
+fn lex_at_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
+    let mut next_out = out
+    if is_ident_start_code(cursor_peek_next_code(c)) {
+        let mut end = start + 1
+        while is_ident_continue_code(cursor_code_at(c, end)) {
+            end = end + 1
+        }
+        let word = cursor_slice(c, start, end)
+        let kind = at_keyword_kind(word)
+        if is_known_at_keyword(word) {
+            while c.pos < end {
+                cursor_advance(c)
+            }
+            next_out = append_token(out, kind, word, start, c.pos, line, col)
+        } else {
+            cursor_advance(c)
+            next_out = append_token(out, "At", "@", start, c.pos, line, col)
+        }
+    } else {
+        cursor_advance(c)
+        next_out = append_token(out, "At", "@", start, c.pos, line, col)
+    }
+    next_out
+}
+
+fn lex_slash_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
+    let mut next_out = out
+    if cursor_peek_next_code(c) == 47 {
+        cursor_advance(c)
+        cursor_advance(c)
+        if cursor_peek_code(c) == 47 {
+            cursor_advance(c)
+            let content_start = c.pos
+            while cursor_peek_code(c) != 10 && cursor_peek_code(c) != 13 && !cursor_at_end(c) {
+                cursor_advance(c)
+            }
+            next_out = append_token(out, "DocComment", cursor_slice(c, content_start, c.pos), start, c.pos, line, col)
+        } else {
+            while cursor_peek_code(c) != 10 && cursor_peek_code(c) != 13 && !cursor_at_end(c) {
+                cursor_advance(c)
+            }
+        }
+    } else {
+        cursor_advance(c)
+        if cursor_consume_if(c, 61) {
+            next_out = append_token(out, "SlashEq", "/=", start, c.pos, line, col)
+        } else {
+            next_out = append_token(out, "Slash", "/", start, c.pos, line, col)
+        }
+    }
+    next_out
+}
+
+fn lex_punct_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
+    let code = cursor_peek_code(c)
+    let mut next_out = out
+    if code == 40 {
+        cursor_advance(c)
+        next_out = append_token(out, "LParen", "(", start, c.pos, line, col)
+    } else if code == 41 {
+        cursor_advance(c)
+        next_out = append_token(out, "RParen", ")", start, c.pos, line, col)
+    } else if code == 123 {
+        cursor_advance(c)
+        next_out = append_token(out, "LBrace", "{", start, c.pos, line, col)
+    } else if code == 125 {
+        cursor_advance(c)
+        next_out = append_token(out, "RBrace", "}", start, c.pos, line, col)
+    } else if code == 91 {
+        cursor_advance(c)
+        next_out = append_token(out, "LBracket", "[", start, c.pos, line, col)
+    } else if code == 93 {
+        cursor_advance(c)
+        next_out = append_token(out, "RBracket", "]", start, c.pos, line, col)
+    } else if code == 44 {
+        cursor_advance(c)
+        next_out = append_token(out, "Comma", ",", start, c.pos, line, col)
+    } else if code == 59 {
+        cursor_advance(c)
+        next_out = append_token(out, "Semicolon", ";", start, c.pos, line, col)
+    } else if code == 58 {
+        cursor_advance(c)
+        next_out = append_token(out, "Colon", ":", start, c.pos, line, col)
+    } else if code == 46 {
+        cursor_advance(c)
+        if cursor_consume_if(c, 46) {
+            next_out = append_token(out, "DotDot", "..", start, c.pos, line, col)
+        } else {
+            next_out = append_token(out, "Dot", ".", start, c.pos, line, col)
+        }
+    } else if code == 43 {
+        cursor_advance(c)
+        if cursor_consume_if(c, 61) {
+            next_out = append_token(out, "PlusEq", "+=", start, c.pos, line, col)
+        } else if cursor_consume_if(c, 43) {
+            next_out = append_token(out, "PlusPlus", "++", start, c.pos, line, col)
+        } else {
+            next_out = append_token(out, "Plus", "+", start, c.pos, line, col)
+        }
+    } else if code == 45 {
+        cursor_advance(c)
+        if cursor_consume_if(c, 61) {
+            next_out = append_token(out, "MinusEq", "-=", start, c.pos, line, col)
+        } else if cursor_consume_if(c, 45) {
+            next_out = append_token(out, "MinusMinus", "--", start, c.pos, line, col)
+        } else if cursor_consume_if(c, 62) {
+            next_out = append_token(out, "Arrow", "->", start, c.pos, line, col)
+        } else {
+            next_out = append_token(out, "Minus", "-", start, c.pos, line, col)
+        }
+    } else if code == 42 {
+        cursor_advance(c)
+        if cursor_consume_if(c, 61) {
+            next_out = append_token(out, "StarEq", "*=", start, c.pos, line, col)
+        } else {
+            next_out = append_token(out, "Star", "*", start, c.pos, line, col)
+        }
+    } else if code == 61 {
+        cursor_advance(c)
+        if cursor_consume_if(c, 61) {
+            next_out = append_token(out, "EqEq", "==", start, c.pos, line, col)
+        } else if cursor_consume_if(c, 62) {
+            next_out = append_token(out, "FatArrow", "=>", start, c.pos, line, col)
+        } else {
+            next_out = append_token(out, "Eq", "=", start, c.pos, line, col)
+        }
+    } else {
+        let bad = cursor_advance(c)
+        let a = str_concat("unexpected character '", bad)
+        let b = str_concat(a, "' at line ")
+        let c2 = str_concat(b, int_to_string(line))
+        let d = str_concat(c2, ", col ")
+        next_out = append_error(out, new_lex_error(str_concat(d, int_to_string(col))))
+    }
+    next_out
+}
+
+fn lex_dump(source: String) {
+    let mut out = ""
+    let mut pos = 0
+    let mut line = 1
+    let mut col = 1
+
+    while pos < str_len(source) {
+        let start = pos
+        let start_line = line
+        let start_col = col
+        let code = str_byte_at(source, pos)
+        out = match code {
+            32 => {
+                pos = pos + 1
+                col = col + 1
+                out
+            }
+            9 => {
+                pos = pos + 1
+                col = col + 1
+                out
+            }
+            10 => {
+                pos = pos + 1
+                line = line + 1
+                col = 1
+                out
+            }
+            13 => {
+                pos = pos + 1
+                line = line + 1
+                col = 1
+                out
+            }
+            47 => {
+                let mut slash_out = out
+                if pos + 1 < str_len(source) && str_byte_at(source, pos + 1) == 47 {
+                    pos = pos + 2
+                    col = col + 2
+                    let mut comment_done = false
+                    while pos < str_len(source) && !comment_done {
+                        let comment_code = str_byte_at(source, pos)
+                        if comment_code == 10 || comment_code == 13 {
+                            comment_done = true
+                        } else {
+                            pos = pos + 1
+                            col = col + 1
+                        }
+                    }
+                } else {
+                    pos = pos + 1
+                    col = col + 1
+                    slash_out = append_token(out, "Slash", "/", start, pos, start_line, start_col)
+                }
+                slash_out
+            }
+            _ => {
+                let mut next_out = out
+                if is_digit_code(code) {
+                    while pos < str_len(source) && is_digit_code(str_byte_at(source, pos)) {
+                        pos = pos + 1
+                        col = col + 1
+                    }
+                    next_out = append_token(
+                        out,
+                        "IntLit",
+                        str_slice(source, start, pos),
+                        start,
+                        pos,
+                        start_line,
+                        start_col,
+                    )
+                } else if is_ident_start_code(code) {
+                    pos = pos + 1
+                    col = col + 1
+                    while pos < str_len(source) && is_ident_continue_code(str_byte_at(source, pos)) {
+                        pos = pos + 1
+                        col = col + 1
+                    }
+                    let lexeme = str_slice(source, start, pos)
+                    next_out = append_token(out, keyword_kind(lexeme), str_slice(source, start, pos), start, pos, start_line, start_col)
+                } else {
+                    if code == 40 {
+                        pos = pos + 1
+                        col = col + 1
+                        next_out = append_token(out, "LParen", "(", start, pos, start_line, start_col)
+                    } else if code == 41 {
+                        pos = pos + 1
+                        col = col + 1
+                        next_out = append_token(out, "RParen", ")", start, pos, start_line, start_col)
+                    } else if code == 123 {
+                        pos = pos + 1
+                        col = col + 1
+                        next_out = append_token(out, "LBrace", "{", start, pos, start_line, start_col)
+                    } else if code == 125 {
+                        pos = pos + 1
+                        col = col + 1
+                        next_out = append_token(out, "RBrace", "}", start, pos, start_line, start_col)
+                    } else {
+                        pos = pos + 1
+                        col = col + 1
+                        let bad = str_slice(source, start, pos)
+                        let a = str_concat("unexpected character '", bad)
+                        let b = str_concat(a, "' at line ")
+                        let c2 = str_concat(b, int_to_string(start_line))
+                        let d = str_concat(c2, ", col ")
+                        next_out = append_error(out, new_lex_error(str_concat(d, int_to_string(start_col))))
+                    }
+                }
+                next_out
+            }
+        }
+    }
+    append_token(out, "Eof", "", pos, pos, line, col)
+}

@@ -9,6 +9,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.declare_safepoint_runtime()?;
         self.declare_gc_runtime()?;
         self.declare_print_runtime()?;
+        self.declare_string_runtime()?;
         self.declare_panic_runtime()?;
         if let Some(print_fn) = self.module.get_function("draton_print") {
             self.functions.insert("print".to_string(), print_fn);
@@ -212,6 +213,40 @@ impl<'ctx> CodeGen<'ctx> {
         builder
             .build_return(None)
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        Ok(())
+    }
+
+    fn declare_string_runtime(&mut self) -> Result<(), CodeGenError> {
+        if self.module.get_function("draton_str_slice").is_none() {
+            self.module.add_function(
+                "draton_str_slice",
+                self.string_type.fn_type(
+                    &[
+                        self.string_type.into(),
+                        self.context.i64_type().into(),
+                        self.context.i64_type().into(),
+                    ],
+                    false,
+                ),
+                None,
+            );
+        }
+        if self.module.get_function("draton_str_concat").is_none() {
+            self.module.add_function(
+                "draton_str_concat",
+                self.string_type
+                    .fn_type(&[self.string_type.into(), self.string_type.into()], false),
+                None,
+            );
+        }
+        if self.module.get_function("draton_int_to_string").is_none() {
+            self.module.add_function(
+                "draton_int_to_string",
+                self.string_type
+                    .fn_type(&[self.context.i64_type().into()], false),
+                None,
+            );
+        }
         Ok(())
     }
 

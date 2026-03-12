@@ -1,0 +1,25 @@
+@type {
+    fn new_lex_error(message: String) -> LexError
+    fn lex_error_message(err: LexError) -> String
+}
+
+enum LexErrorKind {
+    UnexpectedChar,
+    UnterminatedString,
+    UnterminatedBlockComment,
+    InvalidNumericLiteral,
+}
+
+class LexError {
+    let mut message: String
+}
+
+fn new_lex_error(message: String) {
+    let err = LexError()
+    err.message = message
+    err
+}
+
+fn lex_error_message(err: LexError) {
+    err.message
+}
