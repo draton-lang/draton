@@ -5,7 +5,7 @@ class ParsedArgs {
     let mut flags: Array[String]
 }
 
-fn main() {
+fn main() -> Unit {
     if cli_argc() >= 3 {
         let cmd = cli_arg(1)
         if str_eq_main(cmd, "ast-dump") {
@@ -16,13 +16,15 @@ fn main() {
     } else {
         print_usage()
     }
+    let _done = 0
 }
 
-fn print_usage() {
+fn print_usage() -> Unit {
     print("usage: draton-selfhost-phase1 ast-dump <file>")
+    let _done = 0
 }
 
-fn str_eq_main(a: String, b: String) {
+fn str_eq_main(a: String, b: String) -> Bool {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

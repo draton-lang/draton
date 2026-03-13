@@ -187,7 +187,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn basic_type_size_bytes(&self, ty: BasicTypeEnum<'ctx>) -> u64 {
+    pub(crate) fn basic_type_size_bytes(&self, ty: BasicTypeEnum<'ctx>) -> u64 {
         ty.size_of()
             .and_then(|value| value.get_zero_extended_constant())
             .unwrap_or_else(|| match ty {

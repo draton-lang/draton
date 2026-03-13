@@ -97,18 +97,24 @@ class MatchArmBody {
 
 fn new_expr(kind: String, span: Span) {
     let expr = Expr()
+    let empty_parts: Array[FStrPart] = []
+    let empty_items: Array[Expr] = []
+    let empty_entries: Array[MapEntry] = []
+    let empty_args: Array[Expr] = []
+    let empty_params: Array[String] = []
+    let empty_arms: Array[MatchArm] = []
     expr.kind = kind
     expr.int_value = 0
     expr.float_value = 0.0
     expr.string_value = ""
     expr.bool_value = false
     expr.name = ""
-    expr.parts = []
-    expr.items = []
-    expr.entries = []
-    expr.args = []
-    expr.params = []
-    expr.arms = []
+    expr.parts = empty_parts
+    expr.items = empty_items
+    expr.entries = empty_entries
+    expr.args = empty_args
+    expr.params = empty_params
+    expr.arms = empty_arms
     expr.span = span
     expr
 }

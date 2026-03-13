@@ -396,7 +396,49 @@ impl TypeChecker {
                         span: *span,
                     },
                     TypeMember::Function(function) => {
-                        TypedTypeMember::Function(self.infer_fn_item(function, None))
+                        // For @type block stubs (no body), if the function is already defined
+                        // in the env (by a real function body or a prior @type block), skip
+                        // the unification to avoid clashing with duplicate/renamed declarations.
+                        let already_defined = self.env.lookup(&function.name).is_some();
+                        if function.body.is_none() && already_defined {
+                            // Just build a typed stub without trying to unify signatures
+                            let param_types: Vec<Type> = function
+                                .params
+                                .iter()
+                                .map(|p| {
+                                    p.type_hint
+                                        .as_ref()
+                                        .map(|te| self.type_from_annotation(te))
+                                        .unwrap_or_else(|| self.fresh_var())
+                                })
+                                .collect();
+                            let ret_type = function
+                                .ret_type
+                                .as_ref()
+                                .map(|te| self.type_from_annotation(te))
+                                .unwrap_or_else(|| self.fresh_var());
+                            let full_ty = Type::Fn(param_types.clone(), Box::new(ret_type.clone()));
+                            TypedTypeMember::Function(TypedFnDef {
+                                is_pub: function.is_pub,
+                                name: function.name.clone(),
+                                params: function
+                                    .params
+                                    .iter()
+                                    .zip(param_types.iter())
+                                    .map(|(p, ty)| TypedParam {
+                                        name: p.name.clone(),
+                                        ty: ty.clone(),
+                                        span: p.span,
+                                    })
+                                    .collect(),
+                                ret_type,
+                                body: None,
+                                ty: full_ty,
+                                span: function.span,
+                            })
+                        } else {
+                            TypedTypeMember::Function(self.infer_fn_item(function, None))
+                        }
                     }
                 })
                 .collect(),
@@ -538,8 +580,11 @@ impl TypeChecker {
         for (index, stmt) in block.stmts.iter().enumerate() {
             let typed_stmt = if index == last_index {
                 if let Stmt::Expr(expr) = stmt {
-                    let (typed_expr, _) =
-                        self.infer_expr_with_expected(expr, self.current_return.last().cloned());
+                    // Do NOT use current_return as the expected type here —
+                    // that caused nested blocks (e.g. the then-branch of an intermediate "if")
+                    // to incorrectly unify against the enclosing function's return type.
+                    // Return-type unification is done in infer_fn_item after infer_block returns.
+                    let (typed_expr, _) = self.infer_expr(expr);
                     TypedStmt {
                         kind: TypedStmtKind::Expr(typed_expr),
                         span: expr.span(),
@@ -1928,6 +1973,18 @@ impl TypeChecker {
                 quantified: Vec::new(),
                 ty: Type::Fn(Vec::new(), Box::new(Type::Int)),
             }),
+            "push" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![item_ty.clone()], Box::new(Type::Unit)),
+            }),
+            "pop" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(Vec::new(), Box::new(Type::Option(Box::new(item_ty.clone())))),
+            }),
+            "contains" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![item_ty.clone()], Box::new(Type::Bool)),
+            }),
             _ => None,
         }
     }
@@ -1978,11 +2035,14 @@ impl TypeChecker {
                         TypeMember::Binding {
                             name, type_expr, ..
                         } => {
-                            self.binding_hints.insert(name.clone(), type_expr.clone());
+                            self.binding_hints
+                                .entry(name.clone())
+                                .or_insert_with(|| type_expr.clone());
                         }
                         TypeMember::Function(function) => {
                             self.function_hints
-                                .insert(function.name.clone(), function.clone());
+                                .entry(function.name.clone())
+                                .or_insert_with(|| function.clone());
                         }
                     }
                 }

@@ -12,7 +12,8 @@ class Program {
 
 fn new_program() {
     let program = Program()
-    program.items = []
+    let items: Array[Item] = []
+    program.items = items
     program
 }
 

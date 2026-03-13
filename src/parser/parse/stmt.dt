@@ -9,17 +9,36 @@ import { Stmt, Block, LetStmt, AssignStmt, ReturnStmt, IfStmt, ElseBranch, ForSt
          Parser, parser_current, parser_current_kind, parser_advance, parser_match_kind,
          parser_expect, parser_consume_ident, parser_check, parser_is_eof,
          parser_skip_doc_comments, parser_optional_semicolon, parser_token_span, merge_spans,
-         parser_sync_stmt, parser_error_unexpected, Expr, expr_span, type_infer,
-         parse_expression, parse_type_expr }
+         parser_sync_stmt, parser_error_unexpected, Expr, expr_span, expr_ident, type_infer,
+         type_expr_span, parse_expression, parse_type_expr, new_span }
 
-fn parse_block(p: Parser) {
+@type {
+    fn parse_block(p: Parser) -> Block
+    fn parse_stmt(p: Parser) -> Stmt
+    fn parse_let_stmt(p: Parser) -> LetStmt
+    fn parse_return_stmt(p: Parser) -> ReturnStmt
+    fn parse_if_stmt(p: Parser) -> IfStmt
+    fn parse_for_stmt(p: Parser) -> ForStmt
+    fn parse_while_stmt(p: Parser) -> WhileStmt
+    fn parse_spawn_stmt(p: Parser) -> SpawnStmt
+    fn parse_asm_block(p: Parser) -> Stmt
+    fn parse_if_compile_stmt(p: Parser) -> IfCompileStmt
+    fn parse_gc_config_stmt(p: Parser) -> GcConfigStmt
+    fn parse_expr_stmt_or_assignment(p: Parser) -> Stmt
+    fn join_with_space(parts: Array[String]) -> String
+    fn assign_op_name(kind: String) -> String
+    fn empty_block_stmt() -> Block
+    fn str_eq_stmt_parse(a: String, b: String) -> Bool
+}
+
+fn parse_block(p: Parser) -> Block {
     let start = parser_token_span(p)
-    parser_expect(p, "LBrace", "{")
-    let mut stmts = []
+    let _lbrace = parser_expect(p, "LBrace", "{")
+    let mut stmts: Array[Stmt] = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         parser_skip_doc_comments(p)
         let before = p.pos
-        let stmt = parse_stmt(p)
+        let stmt: Stmt = parse_stmt(p)
         if str_len(stmt.kind) != 0 {
             stmts.push(stmt)
         } else if p.pos == before {
@@ -27,76 +46,69 @@ fn parse_block(p: Parser) {
         }
     }
     let end = parser_token_span(p)
-    parser_expect(p, "RBrace", "}")
+    let _rbrace = parser_expect(p, "RBrace", "}")
     new_block(stmts, merge_spans(start, end))
 }
 
-fn parse_stmt(p: Parser) {
+fn parse_stmt(p: Parser) -> Stmt {
     parser_skip_doc_comments(p)
     let kind = parser_current_kind(p)
+    let mut stmt = stmt_from_expr(expr_ident("", parser_token_span(p)))
     if str_eq_stmt_parse(kind, "Let") {
-        return stmt_from_let(parse_let_stmt(p), parse_let_stmt(p).span)
-    }
-    if str_eq_stmt_parse(kind, "Return") {
-        return stmt_from_return(parse_return_stmt(p), parse_return_stmt(p).span)
-    }
-    if str_eq_stmt_parse(kind, "If") {
-        let stmt = parse_if_stmt(p)
-        return stmt_from_if(stmt, stmt.span)
-    }
-    if str_eq_stmt_parse(kind, "For") {
-        let stmt = parse_for_stmt(p)
-        return stmt_from_for(stmt, stmt.span)
-    }
-    if str_eq_stmt_parse(kind, "While") {
-        let stmt = parse_while_stmt(p)
-        return stmt_from_while(stmt, stmt.span)
-    }
-    if str_eq_stmt_parse(kind, "Spawn") {
-        let stmt = parse_spawn_stmt(p)
-        return stmt_from_spawn(stmt, stmt.span)
-    }
-    if str_eq_stmt_parse(kind, "AtUnsafe") {
+        let let_stmt: LetStmt = parse_let_stmt(p)
+        stmt = stmt_from_let(let_stmt, let_stmt.span)
+    } else if str_eq_stmt_parse(kind, "Return") {
+        let return_stmt: ReturnStmt = parse_return_stmt(p)
+        stmt = stmt_from_return(return_stmt, return_stmt.span)
+    } else if str_eq_stmt_parse(kind, "If") {
+        let if_stmt: IfStmt = parse_if_stmt(p)
+        stmt = stmt_from_if(if_stmt, if_stmt.span)
+    } else if str_eq_stmt_parse(kind, "For") {
+        let for_stmt: ForStmt = parse_for_stmt(p)
+        stmt = stmt_from_for(for_stmt, for_stmt.span)
+    } else if str_eq_stmt_parse(kind, "While") {
+        let while_stmt: WhileStmt = parse_while_stmt(p)
+        stmt = stmt_from_while(while_stmt, while_stmt.span)
+    } else if str_eq_stmt_parse(kind, "Spawn") {
+        let spawn_stmt: SpawnStmt = parse_spawn_stmt(p)
+        stmt = stmt_from_spawn(spawn_stmt, spawn_stmt.span)
+    } else if str_eq_stmt_parse(kind, "AtUnsafe") {
         parser_expect(p, "AtUnsafe", "@unsafe")
-        return stmt_from_block(parse_block(p), "UnsafeBlock")
-    }
-    if str_eq_stmt_parse(kind, "AtPointer") {
+        stmt = stmt_from_block(parse_block(p), "UnsafeBlock")
+    } else if str_eq_stmt_parse(kind, "AtPointer") {
         parser_expect(p, "AtPointer", "@pointer")
-        return stmt_from_block(parse_block(p), "PointerBlock")
-    }
-    if str_eq_stmt_parse(kind, "AtComptime") {
+        stmt = stmt_from_block(parse_block(p), "PointerBlock")
+    } else if str_eq_stmt_parse(kind, "AtComptime") {
         parser_expect(p, "AtComptime", "@comptime")
-        return stmt_from_block(parse_block(p), "ComptimeBlock")
+        stmt = stmt_from_block(parse_block(p), "ComptimeBlock")
+    } else if str_eq_stmt_parse(kind, "AtAsm") {
+        stmt = parse_asm_block(p)
+    } else if str_eq_stmt_parse(kind, "AtIf") {
+        let if_compile_stmt: IfCompileStmt = parse_if_compile_stmt(p)
+        stmt = stmt_from_if_compile(if_compile_stmt, if_compile_stmt.span)
+    } else if str_eq_stmt_parse(kind, "AtGcConfig") {
+        let gc_stmt: GcConfigStmt = parse_gc_config_stmt(p)
+        stmt = stmt_from_gc_config(gc_stmt, gc_stmt.span)
+    } else if str_eq_stmt_parse(kind, "LBrace") {
+        stmt = stmt_from_block(parse_block(p), "Block")
+    } else {
+        stmt = parse_expr_stmt_or_assignment(p)
     }
-    if str_eq_stmt_parse(kind, "AtAsm") {
-        return parse_asm_block(p)
-    }
-    if str_eq_stmt_parse(kind, "AtIf") {
-        let stmt = parse_if_compile_stmt(p)
-        return stmt_from_if_compile(stmt, stmt.span)
-    }
-    if str_eq_stmt_parse(kind, "AtGcConfig") {
-        let stmt = parse_gc_config_stmt(p)
-        return stmt_from_gc_config(stmt, stmt.span)
-    }
-    if str_eq_stmt_parse(kind, "LBrace") {
-        return stmt_from_block(parse_block(p), "Block")
-    }
-    parse_expr_stmt_or_assignment(p)
+    stmt
 }
 
-fn parse_let_stmt(p: Parser) {
+fn parse_let_stmt(p: Parser) -> LetStmt {
     let start = parser_token_span(p)
-    parser_expect(p, "Let", "let")
+    let _let = parser_expect(p, "Let", "let")
     let is_mut = parser_match_kind(p, "Mut")
-    let name_token = parser_consume_ident(p, "binding name")
+    let name_token: Token = parser_consume_ident(p, "binding name")
     let mut type_hint = type_infer(start)
     let mut has_type_hint = false
     if parser_match_kind(p, "Colon") {
         type_hint = parse_type_expr(p)
         has_type_hint = true
     }
-    let mut value = expr_ident("", start)
+    let mut value: Expr = expr_ident("", start)
     let mut has_value = false
     if parser_match_kind(p, "Eq") {
         value = parse_expression(p)
@@ -112,10 +124,10 @@ fn parse_let_stmt(p: Parser) {
     new_let_stmt(is_mut, name_token.lexeme, has_type_hint, type_hint, has_value, value, merge_spans(start, end))
 }
 
-fn parse_return_stmt(p: Parser) {
+fn parse_return_stmt(p: Parser) -> ReturnStmt {
     let start = parser_token_span(p)
-    parser_expect(p, "Return", "return")
-    let mut value = expr_ident("", start)
+    let _retkw = parser_expect(p, "Return", "return")
+    let mut value: Expr = expr_ident("", start)
     let mut has_value = false
     let kind = parser_current_kind(p)
     if !str_eq_stmt_parse(kind, "Semicolon") && !str_eq_stmt_parse(kind, "RBrace") && !str_eq_stmt_parse(kind, "Eof") {
@@ -130,18 +142,18 @@ fn parse_return_stmt(p: Parser) {
     new_return_stmt(has_value, value, merge_spans(start, end))
 }
 
-fn parse_if_stmt(p: Parser) {
+fn parse_if_stmt(p: Parser) -> IfStmt {
     let start = parser_token_span(p)
-    parser_expect(p, "If", "if")
-    let mut condition = expr_ident("", start)
+    let _if = parser_expect(p, "If", "if")
+    let mut condition: Expr = expr_ident("", start)
     if parser_match_kind(p, "LParen") {
         condition = parse_expression(p)
-        parser_expect(p, "RParen", ")")
+        let _rparen = parser_expect(p, "RParen", ")")
     } else {
         condition = parse_expression(p)
     }
-    let then_branch = parse_block(p)
-    let mut else_branch = else_branch_block(empty_block_stmt())
+    let then_branch: Block = parse_block(p)
+    let mut else_branch: ElseBranch = else_branch_block(empty_block_stmt())
     let mut has_else_branch = false
     if parser_match_kind(p, "Else") {
         has_else_branch = true
@@ -162,91 +174,92 @@ fn parse_if_stmt(p: Parser) {
     new_if_stmt(condition, then_branch, has_else_branch, else_branch, merge_spans(start, end))
 }
 
-fn parse_for_stmt(p: Parser) {
+fn parse_for_stmt(p: Parser) -> ForStmt {
     let start = parser_token_span(p)
-    parser_expect(p, "For", "for")
-    let name_token = parser_consume_ident(p, "loop variable")
-    parser_expect(p, "In", "in")
-    let iter = parse_expression(p)
-    let body = parse_block(p)
+    let _for = parser_expect(p, "For", "for")
+    let name_token: Token = parser_consume_ident(p, "loop variable")
+    let _in = parser_expect(p, "In", "in")
+    let iter: Expr = parse_expression(p)
+    let body: Block = parse_block(p)
     new_for_stmt(name_token.lexeme, iter, body, merge_spans(start, body.span))
 }
 
-fn parse_while_stmt(p: Parser) {
+fn parse_while_stmt(p: Parser) -> WhileStmt {
     let start = parser_token_span(p)
-    parser_expect(p, "While", "while")
-    let mut condition = expr_ident("", start)
+    let _while = parser_expect(p, "While", "while")
+    let mut condition: Expr = expr_ident("", start)
     if parser_match_kind(p, "LParen") {
         condition = parse_expression(p)
-        parser_expect(p, "RParen", ")")
+        let _rparen = parser_expect(p, "RParen", ")")
     } else {
         condition = parse_expression(p)
     }
-    let body = parse_block(p)
+    let body: Block = parse_block(p)
     new_while_stmt(condition, body, merge_spans(start, body.span))
 }
 
-fn parse_spawn_stmt(p: Parser) {
+fn parse_spawn_stmt(p: Parser) -> SpawnStmt {
     let start = parser_token_span(p)
-    parser_expect(p, "Spawn", "spawn")
-    let mut body = spawn_body_expr(expr_ident("", start))
+    let _spawn = parser_expect(p, "Spawn", "spawn")
+    let mut body: SpawnBody = spawn_body_expr(expr_ident("", start))
     let mut end = start
     if parser_check(p, "LBrace") {
-        let block = parse_block(p)
+        let block: Block = parse_block(p)
         end = block.span
         body = spawn_body_block(block)
     } else {
-        let expr = parse_expression(p)
+        let expr: Expr = parse_expression(p)
         end = expr_span(expr)
         body = spawn_body_expr(expr)
     }
     new_spawn_stmt(body, merge_spans(start, end))
 }
 
-fn parse_asm_block(p: Parser) {
+fn parse_asm_block(p: Parser) -> Stmt {
     let start = parser_token_span(p)
-    parser_expect(p, "AtAsm", "@asm")
-    parser_expect(p, "LBrace", "{")
-    let mut parts = []
+    let _asm = parser_expect(p, "AtAsm", "@asm")
+    let _lbrace = parser_expect(p, "LBrace", "{")
+    let mut parts: Array[String] = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         parts.push(parser_current(p).lexeme)
-        parser_advance(p)
+        let _advanced = parser_advance(p)
     }
     let end = parser_token_span(p)
-    parser_expect(p, "RBrace", "}")
-    stmt_asm_block(parts.join(" "), merge_spans(start, end))
+    let _rbrace = parser_expect(p, "RBrace", "}")
+    stmt_asm_block(join_with_space(parts), merge_spans(start, end))
 }
 
-fn parse_if_compile_stmt(p: Parser) {
+fn parse_if_compile_stmt(p: Parser) -> IfCompileStmt {
     let start = parser_token_span(p)
-    parser_expect(p, "AtIf", "@if")
+    let _atif = parser_expect(p, "AtIf", "@if")
     let condition = parse_expression(p)
     let body = parse_block(p)
     new_if_compile_stmt(condition, body, merge_spans(start, body.span))
 }
 
-fn parse_gc_config_stmt(p: Parser) {
+fn parse_gc_config_stmt(p: Parser) -> GcConfigStmt {
     let start = parser_token_span(p)
-    parser_expect(p, "AtGcConfig", "@gc_config")
-    parser_expect(p, "LBrace", "{")
-    let mut entries = []
+    let _gc = parser_expect(p, "AtGcConfig", "@gc_config")
+    let _lbrace = parser_expect(p, "LBrace", "{")
+    let mut entries: Array[GcConfigEntry] = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         let entry_start = parser_token_span(p)
         let key_token = parser_consume_ident(p, "GC config key")
-        parser_expect(p, "Eq", "=")
+        let _eq = parser_expect(p, "Eq", "=")
         let value = parse_expression(p)
         entries.push(new_gc_config_entry(key_token.lexeme, value, merge_spans(entry_start, expr_span(value))))
-        parser_match_kind(p, "Comma")
+        let _comma = parser_match_kind(p, "Comma")
     }
     let end = parser_token_span(p)
-    parser_expect(p, "RBrace", "}")
+    let _rbrace = parser_expect(p, "RBrace", "}")
     new_gc_config_stmt(entries, merge_spans(start, end))
 }
 
-fn parse_expr_stmt_or_assignment(p: Parser) {
+fn parse_expr_stmt_or_assignment(p: Parser) -> Stmt {
     let start = parser_token_span(p)
-    let expr = parse_expression(p)
+    let expr: Expr = parse_expression(p)
     let kind = parser_current_kind(p)
+    let mut stmt = stmt_from_expr(expr)
     if str_eq_stmt_parse(kind, "Eq") ||
        str_eq_stmt_parse(kind, "PlusEq") ||
        str_eq_stmt_parse(kind, "MinusEq") ||
@@ -254,52 +267,61 @@ fn parse_expr_stmt_or_assignment(p: Parser) {
        str_eq_stmt_parse(kind, "SlashEq") ||
        str_eq_stmt_parse(kind, "PercentEq") {
         let op = parser_current(p).kind
-        parser_advance(p)
-        let value = parse_expression(p)
+        let _adv = parser_advance(p)
+        let value: Expr = parse_expression(p)
         parser_optional_semicolon(p)
-        return stmt_from_assign(new_assign_stmt(expr, assign_op_name(op), true, value, merge_spans(start, expr_span(value))), merge_spans(start, expr_span(value)))
-    }
-    if str_eq_stmt_parse(kind, "PlusPlus") || str_eq_stmt_parse(kind, "MinusMinus") {
+        stmt = stmt_from_assign(new_assign_stmt(expr, assign_op_name(op), true, value, merge_spans(start, expr_span(value))), merge_spans(start, expr_span(value)))
+    } else if str_eq_stmt_parse(kind, "PlusPlus") || str_eq_stmt_parse(kind, "MinusMinus") {
         let op = parser_current(p).kind
         let end = parser_token_span(p)
-        parser_advance(p)
+        let _adv = parser_advance(p)
         parser_optional_semicolon(p)
-        return stmt_from_assign(new_assign_stmt(expr, assign_op_name(op), false, expr_ident("", start), merge_spans(start, end)), merge_spans(start, end))
+        stmt = stmt_from_assign(new_assign_stmt(expr, assign_op_name(op), false, expr_ident("", start), merge_spans(start, end)), merge_spans(start, end))
+    } else {
+        parser_optional_semicolon(p)
     }
-    parser_optional_semicolon(p)
-    stmt_from_expr(expr)
+    stmt
 }
 
-fn assign_op_name(kind: String) {
+fn assign_op_name(kind: String) -> String {
+    let mut name = "Dec"
     if str_eq_stmt_parse(kind, "Eq") {
-        return "Assign"
+        name = "Assign"
+    } else if str_eq_stmt_parse(kind, "PlusEq") {
+        name = "AddAssign"
+    } else if str_eq_stmt_parse(kind, "MinusEq") {
+        name = "SubAssign"
+    } else if str_eq_stmt_parse(kind, "StarEq") {
+        name = "MulAssign"
+    } else if str_eq_stmt_parse(kind, "SlashEq") {
+        name = "DivAssign"
+    } else if str_eq_stmt_parse(kind, "PercentEq") {
+        name = "ModAssign"
+    } else if str_eq_stmt_parse(kind, "PlusPlus") {
+        name = "Inc"
     }
-    if str_eq_stmt_parse(kind, "PlusEq") {
-        return "AddAssign"
-    }
-    if str_eq_stmt_parse(kind, "MinusEq") {
-        return "SubAssign"
-    }
-    if str_eq_stmt_parse(kind, "StarEq") {
-        return "MulAssign"
-    }
-    if str_eq_stmt_parse(kind, "SlashEq") {
-        return "DivAssign"
-    }
-    if str_eq_stmt_parse(kind, "PercentEq") {
-        return "ModAssign"
-    }
-    if str_eq_stmt_parse(kind, "PlusPlus") {
-        return "Inc"
-    }
-    "Dec"
+    name
 }
 
-fn empty_block_stmt() {
-    new_block([], new_span(0, 0, 1, 1))
+fn join_with_space(parts: Array[String]) -> String {
+    let mut out = ""
+    let mut i = 0
+    while i < parts.len() {
+        if i > 0 {
+            out = str_concat(out, " ")
+        }
+        out = str_concat(out, parts[i])
+        i = i + 1
+    }
+    out
 }
 
-fn str_eq_stmt_parse(a: String, b: String) {
+fn empty_block_stmt() -> Block {
+    let stmts: Array[Stmt] = []
+    new_block(stmts, new_span(0, 0, 1, 1))
+}
+
+fn str_eq_stmt_parse(a: String, b: String) -> Bool {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

@@ -1,7 +1,8 @@
 use draton_ast::{BinOp, UnOp};
 use draton_typeck::{Type, TypedExpr, TypedExprKind, TypedFStrPart, TypedMatchArmBody};
+use inkwell::types::BasicType;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, PointerValue};
-use inkwell::{FloatPredicate, IntPredicate};
+use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 
 use crate::codegen::CodeGen;
 use crate::error::CodeGenError;
@@ -73,6 +74,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.emit_method_call(target, method, args)
             }
             TypedExprKind::Field(target, field) => self.emit_field_load(target, field).map(Some),
+            TypedExprKind::Index(target, index) => self.emit_index(target, index).map(Some),
             TypedExprKind::Cast(value, to_ty) => self.emit_cast(value, to_ty).map(Some),
             TypedExprKind::Match(subject, arms) => self.emit_match(subject, arms, &expr.ty),
             TypedExprKind::Ok(value) => self.emit_result(value, &expr.ty, true),
@@ -83,7 +85,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
             TypedExprKind::Map(_)
             | TypedExprKind::Set(_)
-            | TypedExprKind::Index(_, _)
             | TypedExprKind::Chan(_) => {
                 Err(CodeGenError::UnsupportedExpr(format!("{:?}", expr.kind)))
             }
@@ -903,6 +904,9 @@ impl<'ctx> CodeGen<'ctx> {
         method: &str,
         args: &[TypedExpr],
     ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        if let Type::Array(inner) = &target.ty {
+            return self.emit_array_method_call(target, inner, method, args);
+        }
         let Type::Named(class_name, type_args) = &target.ty else {
             return Err(CodeGenError::UnsupportedExpr(format!(
                 "method call on non-class type {}",
@@ -973,6 +977,137 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(call.try_as_basic_value().left())
     }
 
+    fn emit_array_method_call(
+        &mut self,
+        target: &TypedExpr,
+        inner: &Type,
+        method: &str,
+        args: &[TypedExpr],
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        if method == "len" {
+            let array = self
+                .emit_expr(target)?
+                .ok_or_else(|| {
+                    CodeGenError::UnsupportedExpr("array target missing value".to_string())
+                })?
+                .into_struct_value();
+            let len = self
+                .builder
+                .build_extract_value(array, 0, "array.len")
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            return Ok(Some(len));
+        }
+        if method != "push" {
+            return Err(CodeGenError::UnsupportedExpr(format!(
+                "unsupported array method {method}"
+            )));
+        }
+        if args.len() != 1 {
+            return Err(CodeGenError::UnsupportedExpr(format!(
+                "array.push expects 1 arg, got {}",
+                args.len()
+            )));
+        }
+
+        let array_ptr = self.emit_lvalue_ptr(target)?;
+        let array_value = self.build_load(array_ptr, "array.push.load")?.into_struct_value();
+        let old_len = self
+            .builder
+            .build_extract_value(array_value, 0, "array.old.len")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+            .into_int_value();
+        let old_data = self
+            .builder
+            .build_extract_value(array_value, 1, "array.old.ptr")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+            .into_pointer_value();
+        let elem_ty = self.llvm_basic_type(inner)?;
+        let elem_ptr_ty = elem_ty.ptr_type(AddressSpace::default());
+        let elem_size = self.basic_type_size_bytes(elem_ty);
+        let new_len = self
+            .builder
+            .build_int_add(
+                old_len,
+                self.context.i64_type().const_int(1, false),
+                "array.new.len",
+            )
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let total_bytes = self
+            .builder
+            .build_int_mul(
+                new_len,
+                self.context.i64_type().const_int(elem_size, false),
+                "array.alloc.bytes",
+            )
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let malloc = self
+            .module
+            .get_function("malloc")
+            .ok_or_else(|| CodeGenError::MissingSymbol("malloc".to_string()))?;
+        let raw_ptr = self
+            .builder
+            .build_call(malloc, &[total_bytes.into()], "array.push.raw")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
+            .into_pointer_value();
+        let new_data = self
+            .builder
+            .build_pointer_cast(raw_ptr, elem_ptr_ty, "array.push.ptr")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+
+        let old_bytes = self
+            .builder
+            .build_int_mul(
+                old_len,
+                self.context.i64_type().const_int(elem_size, false),
+                "array.copy.bytes",
+            )
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let old_i8 = self
+            .builder
+            .build_pointer_cast(
+                old_data,
+                self.context.i8_type().ptr_type(AddressSpace::default()),
+                "array.old.i8",
+            )
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let new_i8 = self
+            .builder
+            .build_pointer_cast(
+                new_data,
+                self.context.i8_type().ptr_type(AddressSpace::default()),
+                "array.new.i8",
+            )
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        self.builder
+            .build_memcpy(new_i8, 1, old_i8, 1, old_bytes)
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+
+        let value = self
+            .emit_expr(&args[0])?
+            .ok_or_else(|| CodeGenError::UnsupportedExpr("array.push arg missing value".to_string()))?;
+        let end_slot = unsafe {
+            self.builder
+                .build_gep(new_data, &[old_len], "array.push.slot")
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+        };
+        self.build_store(end_slot, value)?;
+
+        let len_ptr = self
+            .builder
+            .build_struct_gep(array_ptr, 0, "array.len.ptr")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        self.build_store(len_ptr, new_len.into())?;
+        let data_ptr = self
+            .builder
+            .build_struct_gep(array_ptr, 1, "array.data.ptr")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        self.build_store(data_ptr, new_data.into())?;
+        Ok(None)
+    }
+
     fn emit_field_load(
         &mut self,
         target: &TypedExpr,
@@ -980,6 +1115,19 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
         let ptr = self.emit_field_ptr(target, field)?;
         self.build_load(ptr, field)
+    }
+
+    fn emit_index(
+        &mut self,
+        target: &TypedExpr,
+        index: &TypedExpr,
+    ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
+        let ptr = self.emit_lvalue_ptr(&TypedExpr {
+            kind: TypedExprKind::Index(Box::new(target.clone()), Box::new(index.clone())),
+            ty: target.ty.clone(),
+            span: target.span,
+        })?;
+        self.build_load(ptr, "index.load")
     }
 
     fn emit_field_ptr(

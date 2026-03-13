@@ -6,7 +6,19 @@ class ParseError {
     let mut col: Int
 }
 
-fn new_parse_error(kind: String, found: String, expected: String, line: Int, col: Int) {
+@type {
+    fn new_parse_error(kind: String, found: String, expected: String, line: Int, col: Int) -> ParseError
+    fn unexpected_token_error(found: String, expected: String, line: Int, col: Int) -> ParseError
+    fn unexpected_eof_error(expected: String, line: Int, col: Int) -> ParseError
+    fn invalid_expr_error(line: Int, col: Int) -> ParseError
+    fn nested_layer_not_allowed_error(line: Int, col: Int) -> ParseError
+    fn layer_outside_class_error(line: Int, col: Int) -> ParseError
+    fn parse_error_kind_is(err: ParseError, kind: String) -> Bool
+    fn parse_error_message(err: ParseError) -> String
+    fn str_eq_parse(a: String, b: String) -> Bool
+}
+
+fn new_parse_error(kind: String, found: String, expected: String, line: Int, col: Int) -> ParseError {
     let err = ParseError()
     err.kind = kind
     err.found = found
@@ -16,31 +28,32 @@ fn new_parse_error(kind: String, found: String, expected: String, line: Int, col
     err
 }
 
-fn unexpected_token_error(found: String, expected: String, line: Int, col: Int) {
+fn unexpected_token_error(found: String, expected: String, line: Int, col: Int) -> ParseError {
     new_parse_error("UnexpectedToken", found, expected, line, col)
 }
 
-fn unexpected_eof_error(expected: String, line: Int, col: Int) {
+fn unexpected_eof_error(expected: String, line: Int, col: Int) -> ParseError {
     new_parse_error("UnexpectedEof", "", expected, line, col)
 }
 
-fn invalid_expr_error(line: Int, col: Int) {
+fn invalid_expr_error(line: Int, col: Int) -> ParseError {
     new_parse_error("InvalidExpr", "", "", line, col)
 }
 
-fn nested_layer_not_allowed_error(line: Int, col: Int) {
+fn nested_layer_not_allowed_error(line: Int, col: Int) -> ParseError {
     new_parse_error("NestedLayerNotAllowed", "", "", line, col)
 }
 
-fn layer_outside_class_error(line: Int, col: Int) {
+fn layer_outside_class_error(line: Int, col: Int) -> ParseError {
     new_parse_error("LayerOutsideClass", "", "", line, col)
 }
 
-fn parse_error_kind_is(err: ParseError, kind: String) {
+fn parse_error_kind_is(err: ParseError, kind: String) -> Bool {
     str_eq_parse(err.kind, kind)
 }
 
-fn parse_error_message(err: ParseError) {
+fn parse_error_message(err: ParseError) -> String {
+    let mut out = ""
     if parse_error_kind_is(err, "UnexpectedToken") {
         let a = str_concat("unexpected token '", err.found)
         let b = str_concat(a, "' at line ")
@@ -48,29 +61,30 @@ fn parse_error_message(err: ParseError) {
         let d = str_concat(c, ", col ")
         let e = str_concat(d, int_to_string(err.col))
         let f = str_concat(e, ", expected ")
-        str_concat(f, err.expected)
+        out = str_concat(f, err.expected)
     } else if parse_error_kind_is(err, "UnexpectedEof") {
         let a = str_concat("unexpected end of file at line ", int_to_string(err.line))
         let b = str_concat(a, ", col ")
         let c = str_concat(b, int_to_string(err.col))
         let d = str_concat(c, ", expected ")
-        str_concat(d, err.expected)
+        out = str_concat(d, err.expected)
     } else if parse_error_kind_is(err, "NestedLayerNotAllowed") {
         let a = str_concat("nested layer not allowed at line ", int_to_string(err.line))
         let b = str_concat(a, ", col ")
-        str_concat(b, int_to_string(err.col))
+        out = str_concat(b, int_to_string(err.col))
     } else if parse_error_kind_is(err, "LayerOutsideClass") {
         let a = str_concat("layer outside class at line ", int_to_string(err.line))
         let b = str_concat(a, ", col ")
-        str_concat(b, int_to_string(err.col))
+        out = str_concat(b, int_to_string(err.col))
     } else {
         let a = str_concat("invalid expression at line ", int_to_string(err.line))
         let b = str_concat(a, ", col ")
-        str_concat(b, int_to_string(err.col))
+        out = str_concat(b, int_to_string(err.col))
     }
+    out
 }
 
-fn str_eq_parse(a: String, b: String) {
+fn str_eq_parse(a: String, b: String) -> Bool {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

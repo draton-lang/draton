@@ -1,6 +1,34 @@
 import { Token, Span, Program, ParseError, Item, Expr, new_program, new_token, new_span,
          unexpected_token_error, unexpected_eof_error }
 
+@type {
+    fn parser_parse(p: Parser) -> ParseResult
+    fn parser_parse_expression_only(p: Parser) -> ExprParseResult
+    fn parser_empty_token() -> Token
+    fn parser_current(p: Parser) -> Token
+    fn parser_current_kind(p: Parser) -> String
+    fn parser_is_eof(p: Parser) -> Bool
+    fn parser_advance(p: Parser) -> Token
+    fn parser_check(p: Parser, kind: String) -> Bool
+    fn parser_match_kind(p: Parser, kind: String) -> Bool
+    fn parser_expect(p: Parser, kind: String, expected: String) -> Bool
+    fn parser_consume_ident(p: Parser, expected: String) -> Token
+    fn parser_skip_doc_comments(p: Parser)
+    fn parser_optional_semicolon(p: Parser)
+    fn parser_previous(p: Parser) -> Token
+    fn parser_record_error(p: Parser, err: ParseError)
+    fn parser_error_unexpected(p: Parser, token: Token, expected: String)
+    fn token_to_span(token: Token) -> Span
+    fn merge_spans(a: Span, b: Span) -> Span
+    fn parser_token_span(p: Parser) -> Span
+    fn parser_sync_top_level(p: Parser)
+    fn parser_sync_stmt(p: Parser)
+    fn str_eq_parser(a: String, b: String) -> Bool
+    fn new_parser(tokens: Array[Token]) -> Parser
+    fn parse_item(p: Parser) -> Item
+    fn parse_expression(p: Parser) -> Expr
+}
+
 class Parser {
     let mut tokens: Array[Token]
     let mut pos: Int
@@ -12,28 +40,28 @@ class ParseResult {
     let mut errors: Array[ParseError]
 }
 
-fn new_parser(tokens: Array[Token]) {
+fn new_parser(tokens: Array[Token]) -> Parser {
     let parser = Parser()
+    let errors: Array[ParseError] = []
     parser.tokens = tokens
     parser.pos = 0
-    parser.errors = []
+    parser.errors = errors
     parser
 }
 
-fn parser_parse(p: Parser) {
+fn parser_parse(p: Parser) -> ParseResult {
     let result = ParseResult()
     let mut program = new_program()
     while !parser_is_eof(p) {
         parser_skip_doc_comments(p)
-        if parser_is_eof(p) {
-            break
-        }
-        let before = p.pos
-        let item = parse_item(p)
-        if str_len(item.kind) != 0 {
-            program.items.push(item)
-        } else if p.pos == before {
-            parser_sync_top_level(p)
+        if !parser_is_eof(p) {
+            let before = p.pos
+            let item: Item = parse_item(p)
+            if str_len(item.kind) != 0 {
+                program.items.push(item)
+            } else if p.pos == before {
+                parser_sync_top_level(p)
+            }
         }
     }
     result.program = program
@@ -41,8 +69,8 @@ fn parser_parse(p: Parser) {
     result
 }
 
-fn parser_parse_expression_only(p: Parser) {
-    let expr = parse_expression(p)
+fn parser_parse_expression_only(p: Parser) -> ExprParseResult {
+    let expr: Expr = parse_expression(p)
     parser_skip_doc_comments(p)
     if !parser_is_eof(p) {
         parser_error_unexpected(p, parser_current(p), "end of expression")
@@ -58,30 +86,33 @@ class ExprParseResult {
     let mut errors: Array[ParseError]
 }
 
-fn parser_empty_token() {
+fn parser_empty_token() -> Token {
     new_token("Eof", "", 0, 0, 1, 1)
 }
 
-fn parser_current(p: Parser) {
+fn parser_current(p: Parser) -> Token {
+    let mut token = parser_empty_token()
     if p.tokens.len() == 0 {
-        return parser_empty_token()
+        token = parser_empty_token()
+    } else {
+        let mut idx = p.pos
+        if idx >= p.tokens.len() {
+            idx = p.tokens.len() - 1
+        }
+        token = p.tokens[idx]
     }
-    let mut idx = p.pos
-    if idx >= p.tokens.len() {
-        idx = p.tokens.len() - 1
-    }
-    p.tokens[idx]
+    token
 }
 
-fn parser_current_kind(p: Parser) {
+fn parser_current_kind(p: Parser) -> String {
     parser_current(p).kind
 }
 
-fn parser_is_eof(p: Parser) {
+fn parser_is_eof(p: Parser) -> Bool {
     str_eq_parser(parser_current_kind(p), "Eof")
 }
 
-fn parser_advance(p: Parser) {
+fn parser_advance(p: Parser) -> Token {
     let token = parser_current(p)
     if p.pos < p.tokens.len() - 1 {
         p.pos = p.pos + 1
@@ -89,62 +120,74 @@ fn parser_advance(p: Parser) {
     token
 }
 
-fn parser_check(p: Parser, kind: String) {
+fn parser_check(p: Parser, kind: String) -> Bool {
     str_eq_parser(parser_current_kind(p), kind)
 }
 
-fn parser_match_kind(p: Parser, kind: String) {
+fn parser_match_kind(p: Parser, kind: String) -> Bool {
     parser_skip_doc_comments(p)
+    let mut matched = false
     if parser_check(p, kind) {
-        parser_advance(p)
-        return true
+        let _advanced = parser_advance(p)
+        matched = true
     }
-    false
+    matched
 }
 
-fn parser_expect(p: Parser, kind: String, expected: String) {
+fn parser_expect(p: Parser, kind: String, expected: String) -> Bool {
     parser_skip_doc_comments(p)
+    let mut matched = false
     if parser_check(p, kind) {
-        parser_advance(p)
-        return true
+        let _advanced = parser_advance(p)
+        matched = true
+    } else {
+        parser_error_unexpected(p, parser_current(p), expected)
     }
-    parser_error_unexpected(p, parser_current(p), expected)
-    false
+    matched
 }
 
-fn parser_consume_ident(p: Parser, expected: String) {
+fn parser_consume_ident(p: Parser, expected: String) -> Token {
     parser_skip_doc_comments(p)
     let token = parser_current(p)
+    let mut out = parser_empty_token()
     if str_eq_parser(token.kind, "Ident") {
-        parser_advance(p)
-        return token
+        let _advanced = parser_advance(p)
+        out = token
+    } else {
+        parser_error_unexpected(p, token, expected)
     }
-    parser_error_unexpected(p, token, expected)
-    parser_empty_token()
+    out
 }
 
-fn parser_skip_doc_comments(p: Parser) {
+fn parser_skip_doc_comments(p: Parser) -> Unit {
     while str_eq_parser(parser_current_kind(p), "DocComment") {
-        parser_advance(p)
+        let _advanced = parser_advance(p)
     }
+    let _done = 0
+    let _done2 = 0
 }
 
-fn parser_optional_semicolon(p: Parser) {
+fn parser_optional_semicolon(p: Parser) -> Unit {
     parser_match_kind(p, "Semicolon")
+    let _done = 0
+    let _done2 = 0
 }
 
-fn parser_previous(p: Parser) {
+fn parser_previous(p: Parser) -> Token {
+    let mut token = parser_empty_token()
     if p.pos > 0 && p.pos - 1 < p.tokens.len() {
-        return p.tokens[p.pos - 1]
+        token = p.tokens[p.pos - 1]
     }
-    parser_empty_token()
+    token
 }
 
-fn parser_record_error(p: Parser, err: ParseError) {
+fn parser_record_error(p: Parser, err: ParseError) -> Unit {
     p.errors.push(err)
+    let _done = 0
+    let _done2 = 0
 }
 
-fn parser_error_unexpected(p: Parser, token: Token, expected: String) {
+fn parser_error_unexpected(p: Parser, token: Token, expected: String) -> Unit {
     if str_eq_parser(token.kind, "Eof") {
         parser_record_error(p, unexpected_eof_error(expected, token.span.line, token.span.col))
     } else {
@@ -153,22 +196,25 @@ fn parser_error_unexpected(p: Parser, token: Token, expected: String) {
             unexpected_token_error(token.lexeme, expected, token.span.line, token.span.col),
         )
     }
+    let _done = 0
+    let _done2 = 0
 }
 
-fn token_to_span(token: Token) {
+fn token_to_span(token: Token) -> Span {
     new_span(token.span.start, token.span.end, token.span.line, token.span.col)
 }
 
-fn merge_spans(a: Span, b: Span) {
+fn merge_spans(a: Span, b: Span) -> Span {
     new_span(a.start, b.end, a.line, a.col)
 }
 
-fn parser_token_span(p: Parser) {
+fn parser_token_span(p: Parser) -> Span {
     token_to_span(parser_current(p))
 }
 
-fn parser_sync_top_level(p: Parser) {
-    while !parser_is_eof(p) {
+fn parser_sync_top_level(p: Parser) -> Unit {
+    let mut done = false
+    while !parser_is_eof(p) && !done {
         let kind = parser_current_kind(p)
         if str_eq_parser(kind, "Fn") ||
            str_eq_parser(kind, "Class") ||
@@ -182,20 +228,23 @@ fn parser_sync_top_level(p: Parser) {
            str_eq_parser(kind, "AtExtern") ||
            str_eq_parser(kind, "AtPanicHandler") ||
            str_eq_parser(kind, "AtOomHandler") {
-            return
+            done = true
+        } else {
+            let _advanced = parser_advance(p)
         }
-        parser_advance(p)
     }
+    let _done = 0
+    let _done2 = 0
 }
 
-fn parser_sync_stmt(p: Parser) {
-    while !parser_is_eof(p) {
+fn parser_sync_stmt(p: Parser) -> Unit {
+    let mut done = false
+    while !parser_is_eof(p) && !done {
         let kind = parser_current_kind(p)
         if str_eq_parser(kind, "Semicolon") {
-            parser_advance(p)
-            return
-        }
-        if str_eq_parser(kind, "RBrace") ||
+            let _advanced = parser_advance(p)
+            done = true
+        } else if str_eq_parser(kind, "RBrace") ||
            str_eq_parser(kind, "Let") ||
            str_eq_parser(kind, "Return") ||
            str_eq_parser(kind, "If") ||
@@ -208,13 +257,16 @@ fn parser_sync_stmt(p: Parser) {
            str_eq_parser(kind, "AtComptime") ||
            str_eq_parser(kind, "AtIf") ||
            str_eq_parser(kind, "AtGcConfig") {
-            return
+            done = true
+        } else {
+            let _advanced = parser_advance(p)
         }
-        parser_advance(p)
     }
+    let _done = 0
+    let _done2 = 0
 }
 
-fn str_eq_parser(a: String, b: String) {
+fn str_eq_parser(a: String, b: String) -> Bool {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

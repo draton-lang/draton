@@ -3,42 +3,52 @@ import { TypeExpr, type_named, type_generic, type_pointer, type_infer, Parser,
          parser_token_span, merge_spans, token_to_span, parser_is_eof, parser_check,
          parser_skip_doc_comments }
 
-fn parse_type_expr(p: Parser) {
+@type {
+    fn parse_type_expr(p: Parser) -> TypeExpr
+    fn str_eq_type_kind(a: String, b: String) -> Bool
+}
+
+fn parse_type_expr(p: Parser) -> TypeExpr {
     parser_skip_doc_comments(p)
     let token = parser_current(p)
+    let mut ty = type_infer(token_to_span(token))
 
     if str_eq_type_kind(token.kind, "AtPointer") {
-        parser_advance(p)
-        return type_pointer(token_to_span(token))
-    }
-
-    if str_eq_type_kind(token.kind, "Ident") {
-        parser_advance(p)
+        let _advanced = parser_advance(p)
+        ty = type_pointer(token_to_span(token))
+    } else if str_eq_type_kind(token.kind, "Ident") {
+        let _advanced = parser_advance(p)
         let name = token.lexeme
         let start = token_to_span(token)
         if parser_match_kind(p, "LBracket") {
-            let mut args = []
-            while !parser_is_eof(p) && !parser_check(p, "RBracket") {
+            let mut args: Array[TypeExpr] = []
+            let mut done = false
+            while !parser_is_eof(p) && !parser_check(p, "RBracket") && !done {
                 args.push(parse_type_expr(p))
                 if !parser_match_kind(p, "Comma") {
-                    break
+                    let end = parser_token_span(p)
+                    let _rbracket = parser_expect(p, "RBracket", "]")
+                    ty = type_generic(name, args, merge_spans(start, end))
+                    done = true
                 }
             }
-            let end = parser_token_span(p)
-            parser_expect(p, "RBracket", "]")
-            return type_generic(name, args, merge_spans(start, end))
+            if !done {
+                let end = parser_token_span(p)
+                let _rbracket = parser_expect(p, "RBracket", "]")
+                ty = type_generic(name, args, merge_spans(start, end))
+            }
+        } else if str_eq_type_kind(name, "_") {
+            ty = type_infer(start)
+        } else {
+            ty = type_named(name, start)
         }
-        if str_eq_type_kind(name, "_") {
-            return type_infer(start)
-        }
-        return type_named(name, start)
+    } else {
+        parser_error_unexpected(p, token, "type expression")
     }
-
-    parser_error_unexpected(p, token, "type expression")
-    type_infer(token_to_span(token))
+    ty
 }
 
-fn str_eq_type_kind(a: String, b: String) {
+fn str_eq_type_kind(a: String, b: String) -> Bool {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

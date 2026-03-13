@@ -29,7 +29,8 @@ fn new_type_expr(kind: String, name: String, args: Array[TypeExpr], span: Span) 
 }
 
 fn type_named(name: String, span: Span) {
-    new_type_expr("Named", name, [], span)
+    let args: Array[TypeExpr] = []
+    new_type_expr("Named", name, args, span)
 }
 
 fn type_generic(name: String, args: Array[TypeExpr], span: Span) {
@@ -37,11 +38,13 @@ fn type_generic(name: String, args: Array[TypeExpr], span: Span) {
 }
 
 fn type_pointer(span: Span) {
-    new_type_expr("Pointer", "", [], span)
+    let args: Array[TypeExpr] = []
+    new_type_expr("Pointer", "", args, span)
 }
 
 fn type_infer(span: Span) {
-    new_type_expr("Infer", "", [], span)
+    let args: Array[TypeExpr] = []
+    new_type_expr("Infer", "", args, span)
 }
 
 fn type_expr_span(ty: TypeExpr) {
