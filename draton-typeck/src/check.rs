@@ -2334,6 +2334,34 @@ impl TypeChecker {
                 ty: Type::Fn(vec![Type::String], Box::new(Type::String)),
             },
         );
+        self.env.define(
+            "read_file",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String], Box::new(Type::String)),
+            },
+        );
+        self.env.define(
+            "string_parse_int",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String], Box::new(Type::Int)),
+            },
+        );
+        self.env.define(
+            "string_parse_int_radix",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String, Type::Int], Box::new(Type::Int)),
+            },
+        );
+        self.env.define(
+            "string_parse_float",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String], Box::new(Type::Float)),
+            },
+        );
         let some_var = self.fresh_var();
         self.env.define(
             "Some",

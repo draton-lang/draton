@@ -296,6 +296,37 @@ pub extern "C" fn draton_ascii_char(value: i64) -> DratonString {
     owned_string(vec![byte])
 }
 
+/// Reads a UTF-8 source file and returns its contents, or an empty string on failure.
+#[no_mangle]
+pub extern "C" fn draton_read_file(path: DratonString) -> DratonString {
+    let path = draton_string_to_owned(path);
+    match fs::read(path) {
+        Ok(bytes) => owned_string(bytes),
+        Err(_) => owned_string(Vec::new()),
+    }
+}
+
+/// Parses a base-10 integer and returns 0 on failure.
+#[no_mangle]
+pub extern "C" fn draton_string_parse_int(value: DratonString) -> i64 {
+    draton_string_to_owned(value).parse::<i64>().unwrap_or(0)
+}
+
+/// Parses an integer with the given radix and returns 0 on failure.
+#[no_mangle]
+pub extern "C" fn draton_string_parse_int_radix(value: DratonString, radix: i64) -> i64 {
+    let radix = radix.clamp(2, 36) as u32;
+    i64::from_str_radix(draton_string_to_owned(value).trim(), radix).unwrap_or(0)
+}
+
+/// Parses an f64 value and returns 0.0 on failure.
+#[no_mangle]
+pub extern "C" fn draton_string_parse_float(value: DratonString) -> f64 {
+    draton_string_to_owned(value)
+        .parse::<f64>()
+        .unwrap_or(0.0)
+}
+
 /// Parses a source file with the host Rust frontend and returns its AST debug dump.
 #[no_mangle]
 pub extern "C" fn draton_host_ast_dump(path: DratonString) -> DratonString {

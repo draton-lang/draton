@@ -256,6 +256,50 @@ impl<'ctx> CodeGen<'ctx> {
                 None,
             );
         }
+        if self.module.get_function("draton_read_file").is_none() {
+            self.module.add_function(
+                "draton_read_file",
+                self.string_type
+                    .fn_type(&[self.string_type.into()], false),
+                None,
+            );
+        }
+        if self.module.get_function("draton_string_parse_int").is_none() {
+            self.module.add_function(
+                "draton_string_parse_int",
+                self.context
+                    .i64_type()
+                    .fn_type(&[self.string_type.into()], false),
+                None,
+            );
+        }
+        if self
+            .module
+            .get_function("draton_string_parse_int_radix")
+            .is_none()
+        {
+            self.module.add_function(
+                "draton_string_parse_int_radix",
+                self.context.i64_type().fn_type(
+                    &[self.string_type.into(), self.context.i64_type().into()],
+                    false,
+                ),
+                None,
+            );
+        }
+        if self
+            .module
+            .get_function("draton_string_parse_float")
+            .is_none()
+        {
+            self.module.add_function(
+                "draton_string_parse_float",
+                self.context
+                    .f64_type()
+                    .fn_type(&[self.string_type.into()], false),
+                None,
+            );
+        }
         Ok(())
     }
 

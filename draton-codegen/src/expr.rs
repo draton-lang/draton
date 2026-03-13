@@ -730,6 +730,106 @@ impl<'ctx> CodeGen<'ctx> {
                 self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
+            "read_file" => {
+                let function = self
+                    .module
+                    .get_function("draton_read_file")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_read_file".to_string()))?;
+                let value = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("read_file requires one argument".to_string())
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("read_file arg missing value".to_string())
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[value.into()], "read.file")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
+            "string_parse_int" => {
+                let function = self
+                    .module
+                    .get_function("draton_string_parse_int")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_string_parse_int".to_string())
+                    })?;
+                let value = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "string_parse_int requires one argument".to_string(),
+                        )
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "string_parse_int arg missing value".to_string(),
+                        )
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[value.into()], "string.parse_int")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
+            "string_parse_int_radix" => {
+                let function = self
+                    .module
+                    .get_function("draton_string_parse_int_radix")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol(
+                            "draton_string_parse_int_radix".to_string(),
+                        )
+                    })?;
+                let values = args
+                    .iter()
+                    .map(|arg| {
+                        self.emit_expr(arg)?.ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr(
+                                "string_parse_int_radix arg missing value".to_string(),
+                            )
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let call = self
+                    .builder
+                    .build_call(
+                        function,
+                        &values
+                            .iter()
+                            .copied()
+                            .map(BasicMetadataValueEnum::from)
+                            .collect::<Vec<_>>(),
+                        "string.parse_int_radix",
+                    )
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
+            "string_parse_float" => {
+                let function = self
+                    .module
+                    .get_function("draton_string_parse_float")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_string_parse_float".to_string())
+                    })?;
+                let value = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "string_parse_float requires one argument".to_string(),
+                        )
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "string_parse_float arg missing value".to_string(),
+                        )
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[value.into()], "string.parse_float")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
             "cli_argc" => {
                 let function = self
                     .module
