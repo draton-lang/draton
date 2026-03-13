@@ -569,13 +569,9 @@ impl<'ctx> CodeGen<'ctx> {
         match name {
             "str_len" => {
                 let value = self
-                    .emit_expr(
-                        args.first().ok_or_else(|| {
-                            CodeGenError::UnsupportedExpr(
-                                "str_len requires one argument".to_string(),
-                            )
-                        })?,
-                    )?
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("str_len requires one argument".to_string())
+                    })?)?
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("str_len arg missing value".to_string())
                     })?
@@ -588,13 +584,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "str_byte_at" => {
                 let value = self
-                    .emit_expr(
-                        args.first().ok_or_else(|| {
-                            CodeGenError::UnsupportedExpr(
-                                "str_byte_at requires two arguments".to_string(),
-                            )
-                        })?,
-                    )?
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "str_byte_at requires two arguments".to_string(),
+                        )
+                    })?)?
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr(
                             "str_byte_at string arg missing value".to_string(),
@@ -602,13 +596,11 @@ impl<'ctx> CodeGen<'ctx> {
                     })?
                     .into_struct_value();
                 let index = self
-                    .emit_expr(
-                        args.get(1).ok_or_else(|| {
-                            CodeGenError::UnsupportedExpr(
-                                "str_byte_at requires two arguments".to_string(),
-                            )
-                        })?,
-                    )?
+                    .emit_expr(args.get(1).ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "str_byte_at requires two arguments".to_string(),
+                        )
+                    })?)?
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr(
                             "str_byte_at index arg missing value".to_string(),
@@ -702,17 +694,13 @@ impl<'ctx> CodeGen<'ctx> {
                         CodeGenError::MissingSymbol("draton_int_to_string".to_string())
                     })?;
                 let value = self
-                    .emit_expr(
-                        args.first().ok_or_else(|| {
-                            CodeGenError::UnsupportedExpr(
-                                "int_to_string requires one argument".to_string(),
-                            )
-                        })?,
-                    )?
-                    .ok_or_else(|| {
+                    .emit_expr(args.first().ok_or_else(|| {
                         CodeGenError::UnsupportedExpr(
-                            "int_to_string arg missing value".to_string(),
+                            "int_to_string requires one argument".to_string(),
                         )
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("int_to_string arg missing value".to_string())
                     })?;
                 let call = self
                     .builder
@@ -725,25 +713,72 @@ impl<'ctx> CodeGen<'ctx> {
                 let function = self
                     .module
                     .get_function("draton_ascii_char")
-                    .ok_or_else(|| {
-                        CodeGenError::MissingSymbol("draton_ascii_char".to_string())
-                    })?;
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_ascii_char".to_string()))?;
                 let value = self
-                    .emit_expr(
-                        args.first().ok_or_else(|| {
-                            CodeGenError::UnsupportedExpr(
-                                "ascii_char requires one argument".to_string(),
-                            )
-                        })?,
-                    )?
-                    .ok_or_else(|| {
+                    .emit_expr(args.first().ok_or_else(|| {
                         CodeGenError::UnsupportedExpr(
-                            "ascii_char arg missing value".to_string(),
+                            "ascii_char requires one argument".to_string(),
                         )
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("ascii_char arg missing value".to_string())
                     })?;
                 let call = self
                     .builder
                     .build_call(function, &[value.into()], "ascii.char")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
+            "cli_argc" => {
+                let function = self
+                    .module
+                    .get_function("draton_cli_argc")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_cli_argc".to_string()))?;
+                let call = self
+                    .builder
+                    .build_call(function, &[], "cli.argc")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
+            "cli_arg" => {
+                let function = self
+                    .module
+                    .get_function("draton_cli_arg")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_cli_arg".to_string()))?;
+                let value = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("cli_arg requires one argument".to_string())
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("cli_arg arg missing value".to_string())
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[value.into()], "cli.arg")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
+            "host_ast_dump" => {
+                let function = self
+                    .module
+                    .get_function("draton_host_ast_dump")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_host_ast_dump".to_string())
+                    })?;
+                let value = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "host_ast_dump requires one argument".to_string(),
+                        )
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("host_ast_dump arg missing value".to_string())
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[value.into()], "host.ast_dump")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
                 self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
@@ -1138,7 +1173,9 @@ impl<'ctx> CodeGen<'ctx> {
                     arm_blocks.push((block, arm));
                 }
                 TypedExprKind::Ident(ref name) if name == "_" => {
-                    let block = self.context.append_basic_block(function, "match.default.arm");
+                    let block = self
+                        .context
+                        .append_basic_block(function, "match.default.arm");
                     default_arm = Some((block, arm));
                 }
                 _ => {}

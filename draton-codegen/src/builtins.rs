@@ -10,6 +10,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.declare_gc_runtime()?;
         self.declare_print_runtime()?;
         self.declare_string_runtime()?;
+        self.declare_cli_runtime()?;
         self.declare_panic_runtime()?;
         if let Some(print_fn) = self.module.get_function("draton_print") {
             self.functions.insert("print".to_string(), print_fn);
@@ -252,6 +253,43 @@ impl<'ctx> CodeGen<'ctx> {
                 "draton_ascii_char",
                 self.string_type
                     .fn_type(&[self.context.i64_type().into()], false),
+                None,
+            );
+        }
+        Ok(())
+    }
+
+    fn declare_cli_runtime(&mut self) -> Result<(), CodeGenError> {
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let argv_ty = i8_ptr.ptr_type(AddressSpace::default());
+        if self.module.get_function("draton_set_cli_args").is_none() {
+            self.module.add_function(
+                "draton_set_cli_args",
+                self.context
+                    .void_type()
+                    .fn_type(&[self.context.i32_type().into(), argv_ty.into()], false),
+                None,
+            );
+        }
+        if self.module.get_function("draton_cli_argc").is_none() {
+            self.module.add_function(
+                "draton_cli_argc",
+                self.context.i64_type().fn_type(&[], false),
+                None,
+            );
+        }
+        if self.module.get_function("draton_cli_arg").is_none() {
+            self.module.add_function(
+                "draton_cli_arg",
+                self.string_type
+                    .fn_type(&[self.context.i64_type().into()], false),
+                None,
+            );
+        }
+        if self.module.get_function("draton_host_ast_dump").is_none() {
+            self.module.add_function(
+                "draton_host_ast_dump",
+                self.string_type.fn_type(&[self.string_type.into()], false),
                 None,
             );
         }

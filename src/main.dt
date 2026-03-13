@@ -6,14 +6,32 @@ class ParsedArgs {
 }
 
 fn main() {
-    let file = demo_source_file()
-    print(lex_dump(file.content))
+    if cli_argc() >= 3 {
+        let cmd = cli_arg(1)
+        if str_eq_main(cmd, "ast-dump") {
+            print(host_ast_dump(cli_arg(2)))
+        } else {
+            print_usage()
+        }
+    } else {
+        print_usage()
+    }
 }
 
 fn print_usage() {
-    print("usage: drat <subcommand> [options] <file>")
-    print("subcommands: build, run, check")
-    print("options: --release, --size, --fast")
+    print("usage: draton-selfhost-phase1 ast-dump <file>")
+}
+
+fn str_eq_main(a: String, b: String) {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
 }
 
 @type {
@@ -22,4 +40,8 @@ fn print_usage() {
     fn cmd_run(args: Array[String]) -> Int
     fn cmd_check(args: Array[String]) -> Int
     fn parse_args(args: Array[String]) -> ParsedArgs
+    fn cli_argc() -> Int
+    fn cli_arg(index: Int) -> String
+    fn host_ast_dump(path: String) -> String
+    fn str_eq_main(a: String, b: String) -> Bool
 }

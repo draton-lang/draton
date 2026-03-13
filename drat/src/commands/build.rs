@@ -5,12 +5,13 @@ use std::process::Command;
 
 use anyhow::{anyhow, bail, Context, Result};
 use colored::Colorize;
+use draton_ast::Program;
 use draton_codegen::{BuildMode, CodeGen};
 use draton_lexer::{LexError, Lexer};
-use draton_ast::Program;
 use draton_parser::{ParseError, Parser};
 use draton_typeck::{Type, TypeChecker, TypeError, TypedItem, TypedProgram};
 use inkwell::context::Context as LlvmContext;
+use inkwell::AddressSpace;
 
 use crate::config::DratonConfig;
 
@@ -107,10 +108,16 @@ pub(crate) fn compile_project(entry_path: &Path) -> Result<CompiledProject> {
     let program = load_project_program(entry_path)?;
     let typed = TypeChecker::new().check(program);
     if !typed.errors.is_empty() {
-        bail!("{}", render_type_errors_without_source(entry_path, &typed.errors));
+        bail!(
+            "{}",
+            render_type_errors_without_source(entry_path, &typed.errors)
+        );
     }
     if !typed.warnings.is_empty() {
-        eprintln!("{}", render_type_warnings_without_source(entry_path, &typed.warnings));
+        eprintln!(
+            "{}",
+            render_type_warnings_without_source(entry_path, &typed.warnings)
+        );
     }
     let main_return_type = typed
         .typed_program
@@ -146,8 +153,8 @@ fn load_project_program(entry_path: &Path) -> Result<Program> {
     let files = collect_project_sources(entry_path)?;
     let mut items = Vec::new();
     for path in files {
-        let source =
-            fs::read_to_string(&path).with_context(|| format!("khong the doc {}", path.display()))?;
+        let source = fs::read_to_string(&path)
+            .with_context(|| format!("khong the doc {}", path.display()))?;
         let lexed = Lexer::new(&source).tokenize();
         if !lexed.errors.is_empty() {
             bail!("{}", render_lex_errors(&path, &source, &lexed.errors));
@@ -259,10 +266,33 @@ fn wrap_main_for_binary<'ctx>(
         return Ok(());
     };
     user_main.as_global_value().set_name("draton_user_main");
-    let wrapper = module.add_function("main", context.i64_type().fn_type(&[], false), None);
+    let i8_ptr = context.i8_type().ptr_type(AddressSpace::default());
+    let argv_ty = i8_ptr.ptr_type(AddressSpace::default());
+    let wrapper = module.add_function(
+        "main",
+        context
+            .i64_type()
+            .fn_type(&[context.i32_type().into(), argv_ty.into()], false),
+        None,
+    );
     let entry = context.append_basic_block(wrapper, "entry");
     let builder = context.create_builder();
     builder.position_at_end(entry);
+    if let Some(set_cli_args) = module.get_function("draton_set_cli_args") {
+        let argc = wrapper
+            .get_nth_param(0)
+            .ok_or_else(|| anyhow!("missing wrapper argc"))?;
+        let argv = wrapper
+            .get_nth_param(1)
+            .ok_or_else(|| anyhow!("missing wrapper argv"))?;
+        let _ = builder
+            .build_call(
+                set_cli_args,
+                &[argc.into(), argv.into()],
+                "drat.set_cli_args",
+            )
+            .map_err(|error| anyhow!(error.to_string()))?;
+    }
     let call = builder
         .build_call(user_main, &[], "drat.main")
         .map_err(|error| anyhow!(error.to_string()))?;

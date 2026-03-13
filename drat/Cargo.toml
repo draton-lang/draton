@@ -15,6 +15,7 @@ draton-ast = { path = "../draton-ast" }
 draton-codegen = { path = "../draton-codegen" }
 draton-lexer = { path = "../draton-lexer" }
 draton-parser = { path = "../draton-parser" }
+draton-runtime = { path = "../draton-runtime" }
 draton-typeck = { path = "../draton-typeck" }
 inkwell = { version = "0.4", features = ["llvm14-0"] }
 serde = { version = "1", features = ["derive"] }

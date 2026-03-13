@@ -9,6 +9,8 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 libc = "0.2"
 crossbeam = "0.8"
+draton-lexer = { path = "../draton-lexer" }
+draton-parser = { path = "../draton-parser" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = "0.6"

@@ -2,6 +2,7 @@ mod config;
 mod fmt;
 mod commands {
     pub mod add;
+    pub mod ast_dump;
     pub mod build;
     pub mod doc;
     pub mod fmt;
@@ -34,6 +35,7 @@ struct Cli {
 enum Command {
     Init { name: Option<String> },
     Build(BuildFlags),
+    AstDump { path: PathBuf },
     LexDump { path: PathBuf },
     Run(RunFlags),
     Test,
@@ -84,6 +86,7 @@ fn main() -> Result<()> {
             println!("{}", output.ir_path.display());
             Ok(())
         }
+        Command::AstDump { path } => commands::ast_dump::run(&path),
         Command::LexDump { path } => commands::lex_dump::run(&path),
         Command::Run(flags) => {
             let request = BuildRequest {

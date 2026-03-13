@@ -364,6 +364,7 @@ dependencies = [
  "draton-codegen",
  "draton-lexer",
  "draton-parser",
+ "draton-runtime",
  "draton-typeck",
  "inkwell",
  "serde",
@@ -411,6 +412,8 @@ name = "draton-runtime"
 version = "0.1.0"
 dependencies = [
  "crossbeam",
+ "draton-lexer",
+ "draton-parser",
  "io-uring",
  "libc",
  "pretty_assertions",

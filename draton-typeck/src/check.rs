@@ -2286,7 +2286,10 @@ impl TypeChecker {
             "str_slice",
             Scheme {
                 quantified: Vec::new(),
-                ty: Type::Fn(vec![Type::String, Type::Int, Type::Int], Box::new(Type::String)),
+                ty: Type::Fn(
+                    vec![Type::String, Type::Int, Type::Int],
+                    Box::new(Type::String),
+                ),
             },
         );
         self.env.define(
@@ -2308,6 +2311,27 @@ impl TypeChecker {
             Scheme {
                 quantified: Vec::new(),
                 ty: Type::Fn(vec![Type::Int], Box::new(Type::String)),
+            },
+        );
+        self.env.define(
+            "cli_argc",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![], Box::new(Type::Int)),
+            },
+        );
+        self.env.define(
+            "cli_arg",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::Int], Box::new(Type::String)),
+            },
+        );
+        self.env.define(
+            "host_ast_dump",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String], Box::new(Type::String)),
             },
         );
         let some_var = self.fresh_var();

@@ -4,9 +4,14 @@ pub mod gc;
 pub mod panic;
 pub mod scheduler;
 
+use std::fs;
+use std::path::Path;
 use std::ptr;
 use std::slice;
+use std::sync::{Mutex, OnceLock};
 
+use draton_lexer::Lexer;
+use draton_parser::Parser;
 use gc::config::GcConfig;
 use scheduler::channel::RawChan;
 
@@ -39,6 +44,39 @@ fn owned_string(bytes: Vec<u8>) -> DratonString {
     }
 }
 
+fn cli_args_storage() -> &'static Mutex<Vec<String>> {
+    static CLI_ARGS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    CLI_ARGS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+fn draton_string_to_owned(value: DratonString) -> String {
+    String::from_utf8_lossy(string_bytes(value)).into_owned()
+}
+
+pub fn host_ast_dump_path(path: &Path) -> Result<String, String> {
+    let source = fs::read_to_string(path)
+        .map_err(|error| format!("khong the doc {}: {error}", path.display()))?;
+    let lexed = Lexer::new(&source).tokenize();
+    if !lexed.errors.is_empty() {
+        return Err(lexed
+            .errors
+            .into_iter()
+            .map(|error| error.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"));
+    }
+    let parsed = Parser::new(lexed.tokens).parse();
+    if !parsed.errors.is_empty() {
+        return Err(parsed
+            .errors
+            .into_iter()
+            .map(|error| error.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"));
+    }
+    Ok(format!("{:#?}", parsed.program))
+}
+
 /// Initializes the global runtime scheduler.
 #[no_mangle]
 pub extern "C" fn draton_runtime_init(n_threads: usize) {
@@ -49,6 +87,53 @@ pub extern "C" fn draton_runtime_init(n_threads: usize) {
 #[no_mangle]
 pub extern "C" fn draton_runtime_shutdown() {
     scheduler::shutdown_global();
+}
+
+/// Stores the process command-line arguments for self-host builtins.
+#[no_mangle]
+pub extern "C" fn draton_set_cli_args(argc: i32, argv: *const *const libc::c_char) {
+    let mut args = Vec::new();
+    if !argv.is_null() && argc > 0 {
+        for index in 0..argc as isize {
+            // SAFETY: `argv` follows the C main ABI and is valid for at least `argc` entries.
+            let ptr = unsafe { *argv.offset(index) };
+            if ptr.is_null() {
+                args.push(String::new());
+            } else {
+                // SAFETY: Each argument pointer is a valid null-terminated C string.
+                let value = unsafe { std::ffi::CStr::from_ptr(ptr) }
+                    .to_string_lossy()
+                    .into_owned();
+                args.push(value);
+            }
+        }
+    }
+    if let Ok(mut guard) = cli_args_storage().lock() {
+        *guard = args;
+    }
+}
+
+/// Returns the stored process argument count.
+#[no_mangle]
+pub extern "C" fn draton_cli_argc() -> i64 {
+    cli_args_storage()
+        .lock()
+        .map(|args| args.len() as i64)
+        .unwrap_or(0)
+}
+
+/// Returns a stored process argument or an empty string when out of bounds.
+#[no_mangle]
+pub extern "C" fn draton_cli_arg(index: i64) -> DratonString {
+    if index < 0 {
+        return owned_string(Vec::new());
+    }
+    cli_args_storage()
+        .lock()
+        .ok()
+        .and_then(|args| args.get(index as usize).cloned())
+        .map(|value| owned_string(value.into_bytes()))
+        .unwrap_or_else(|| owned_string(Vec::new()))
 }
 
 /// Spawns a new coreroutine on the global scheduler.
@@ -209,4 +294,14 @@ pub extern "C" fn draton_int_to_string(value: i64) -> DratonString {
 pub extern "C" fn draton_ascii_char(value: i64) -> DratonString {
     let byte = value.clamp(0, 255) as u8;
     owned_string(vec![byte])
+}
+
+/// Parses a source file with the host Rust frontend and returns its AST debug dump.
+#[no_mangle]
+pub extern "C" fn draton_host_ast_dump(path: DratonString) -> DratonString {
+    let path = draton_string_to_owned(path);
+    match host_ast_dump_path(Path::new(&path)) {
+        Ok(dump) => owned_string(dump.into_bytes()),
+        Err(message) => owned_string(message.into_bytes()),
+    }
 }
