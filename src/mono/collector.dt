@@ -1,0 +1,40 @@
+import { TypedProgram, TypedItem, TypedFnDef, TypedClassDef, TypedExpr, TypedExprKind,
+         TypedStmt, TypedStmtKind, TypedBlock, Type, substitute_fn, substitute_class,
+         substitute_type, mangle_name }
+
+enum MonoKindTag {
+    Fn,
+    Class,
+}
+
+class MonoKind {
+    let mut kind: String
+    let mut name: String
+}
+
+class MonoRequest {
+    let mut kind: MonoKind
+    let mut type_args: Array[Type]
+    let mut mangled: String
+}
+
+class MonoContext {
+    let mut work_list: Array[MonoRequest]
+    let mut done: Set[String]
+    let mut extra_items: Array[TypedItem]
+    let mut program: TypedProgram
+}
+
+@type {
+    fn monomorphize(program: TypedProgram) -> TypedProgram
+    fn collect_from_item(ctx: MonoContext, item: TypedItem)
+    fn collect_from_fn(ctx: MonoContext, fn_def: TypedFnDef)
+    fn collect_from_block(ctx: MonoContext, block: TypedBlock)
+    fn collect_from_stmt(ctx: MonoContext, stmt: TypedStmt)
+    fn collect_from_expr(ctx: MonoContext, expr: TypedExpr)
+    fn process_request(ctx: MonoContext, req: MonoRequest)
+    fn find_fn_in_program(program: TypedProgram, name: String) -> TypedFnDef
+    fn find_class_in_program(program: TypedProgram, name: String) -> TypedClassDef
+    fn build_var_map(fn_ty: Type, concrete_args: Array[Type]) -> Map[Int, Type]
+    fn item_is_generic(item: TypedItem) -> Bool
+}

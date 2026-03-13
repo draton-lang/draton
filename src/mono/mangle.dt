@@ -1,0 +1,7 @@
+import { Type }
+
+@type {
+    fn mangle_name(base_name: String, type_args: Array[Type]) -> String
+    fn mangle_type_arg(ty: Type) -> String
+    fn is_generic_name(name: String) -> Bool
+}

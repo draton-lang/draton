@@ -1,0 +1,16 @@
+import { Type, TypedExpr, TypedExprKind, TypedMatchArm, TypedMatchArmBody, TypedFStrPart,
+         TypedMapEntry, TypedStmt, TypedStmtKind, TypedLetStmt, TypedAssignStmt, TypedIfStmt,
+         TypedElseBranch, TypedForStmt, TypedWhileStmt, TypedBlock, TypedSpawnStmt,
+         TypedSpawnBody, TypedReturnStmt, TypedFnDef, TypedParam, TypedClassDef,
+         TypedFieldDef, TypedItem }
+
+@type {
+    fn substitute_item(item: TypedItem, map: Map[Int, Type]) -> TypedItem
+    fn substitute_fn(fn_def: TypedFnDef, map: Map[Int, Type]) -> TypedFnDef
+    fn substitute_class(class_def: TypedClassDef, map: Map[Int, Type]) -> TypedClassDef
+    fn substitute_type(ty: Type, map: Map[Int, Type]) -> Type
+    fn substitute_block(block: TypedBlock, map: Map[Int, Type]) -> TypedBlock
+    fn substitute_stmt(stmt: TypedStmt, map: Map[Int, Type]) -> TypedStmt
+    fn substitute_expr(expr: TypedExpr, map: Map[Int, Type]) -> TypedExpr
+    fn substitute_expr_kind(kind: String, expr: TypedExpr, map: Map[Int, Type]) -> TypedExprKind
+}
