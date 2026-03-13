@@ -1,0 +1,20 @@
+enum CodeGenErrorKind {
+    Llvm,
+    MissingSymbol,
+    UnsupportedType,
+    UnsupportedExpr,
+    Verify,
+}
+
+class CodeGenError {
+    let mut kind: String
+    let mut message: String
+    let mut name: String
+    let mut ty: String
+    let mut desc: String
+}
+
+@type {
+    fn new_codegen_error(kind: String, message: String) -> CodeGenError
+    fn codegen_error_message(err: CodeGenError) -> String
+}

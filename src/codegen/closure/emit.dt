@@ -1,0 +1,5 @@
+import { CodeGen, LLVMValue, Type, TypedExpr, ClosureEnv, CodeGenError }
+
+@type {
+    fn emit_closure(cg: CodeGen, params: Array[String], body: TypedExpr, closure_ty: Type) -> LLVMValue
+}

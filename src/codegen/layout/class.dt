@@ -1,0 +1,6 @@
+import { TypedClassDef, CodeGen, ClassLayout, LLVMValue, CodeGenError }
+
+@type {
+    fn build_class_layout(cg: CodeGen, class_def: TypedClassDef)
+    fn class_field_ptr(cg: CodeGen, obj_ptr: LLVMValue, class_name: String, field_name: String) -> LLVMValue
+}

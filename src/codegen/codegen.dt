@@ -1,0 +1,72 @@
+import { TypedProgram, TypedItem, Type, CodeGenError }
+
+class LLVMContext {
+    let mut raw: String
+}
+
+class LLVMModule {
+    let mut raw: String
+}
+
+class LLVMBuilder {
+    let mut raw: String
+}
+
+class LLVMType {
+    let mut raw: String
+}
+
+class LLVMValue {
+    let mut raw: String
+}
+
+class LLVMBlock {
+    let mut raw: String
+}
+
+class LLVMTarget {
+    let mut raw: String
+}
+
+class LLVMMachine {
+    let mut raw: String
+}
+
+class ClassLayout {
+    let mut struct_type: LLVMType
+    let mut field_indices: Map[String, Int]
+    let mut method_names: Map[String, String]
+}
+
+class CodeGen {
+    let mut context: LLVMContext
+    let mut module: LLVMModule
+    let mut builder: LLVMBuilder
+    let mut string_type: LLVMType
+    let mut functions: Map[String, LLVMValue]
+    let mut class_layouts: Map[String, ClassLayout]
+    let mut variables: Array[Map[String, LLVMValue]]
+    let mut current_fn: LLVMValue
+    let mut has_current_fn: Bool
+    let mut current_ret_ty: Type
+    let mut has_current_ret_ty: Bool
+    let mut current_class: String
+    let mut has_current_class: Bool
+    let mut string_counter: Int
+}
+
+@type {
+    fn new_codegen() -> CodeGen
+    fn codegen_emit(cg: CodeGen, program: TypedProgram)
+    fn codegen_write_ir(cg: CodeGen, path: String)
+    fn codegen_write_object(cg: CodeGen, path: String)
+    fn cg_push_scope(cg: CodeGen)
+    fn cg_pop_scope(cg: CodeGen)
+    fn cg_define_local(cg: CodeGen, name: String, ptr: LLVMValue)
+    fn cg_lookup_local(cg: CodeGen, name: String) -> LLVMValue
+    fn cg_block_terminated(cg: CodeGen) -> Bool
+    fn cg_create_entry_alloca(cg: CodeGen, fn_val: LLVMValue, ty: LLVMType, name: String) -> LLVMValue
+    fn codegen_declare_runtime(cg: CodeGen)
+    fn codegen_predeclare_items(cg: CodeGen, program: TypedProgram)
+    fn codegen_verify(cg: CodeGen)
+}

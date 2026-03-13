@@ -1,0 +1,5 @@
+import { CodeGen, LLVMValue, CodeGenError }
+
+@type {
+    fn emit_direct_call(cg: CodeGen, fn_name: String, args: Array[LLVMValue], result_name: String) -> LLVMValue
+}

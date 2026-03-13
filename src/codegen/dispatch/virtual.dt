@@ -1,0 +1,5 @@
+import { CodeGen, LLVMValue, CodeGenError }
+
+@type {
+    fn emit_virtual_call(cg: CodeGen, fat_ptr: LLVMValue, method_index: Int, args: Array[LLVMValue], result_name: String) -> LLVMValue
+}

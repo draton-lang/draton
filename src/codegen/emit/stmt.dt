@@ -1,0 +1,14 @@
+import { CodeGen, LLVMValue, TypedStmt, TypedStmtKind, TypedLetStmt, TypedAssignStmt,
+         TypedReturnStmt, TypedIfStmt, TypedElseBranch, TypedForStmt, TypedWhileStmt,
+         TypedBlock, TypedSpawnBody, Type, CodeGenError }
+
+@type {
+    fn emit_block(cg: CodeGen, block: TypedBlock) -> LLVMValue
+    fn emit_stmt(cg: CodeGen, stmt: TypedStmt) -> LLVMValue
+    fn emit_let(cg: CodeGen, s: TypedLetStmt) -> LLVMValue
+    fn emit_assign(cg: CodeGen, s: TypedAssignStmt)
+    fn emit_return(cg: CodeGen, s: TypedReturnStmt)
+    fn emit_if(cg: CodeGen, s: TypedIfStmt)
+    fn emit_for(cg: CodeGen, s: TypedForStmt)
+    fn emit_while(cg: CodeGen, s: TypedWhileStmt)
+}

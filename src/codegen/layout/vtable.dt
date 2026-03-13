@@ -1,0 +1,6 @@
+import { TypedInterfaceDef, TypedClassDef, CodeGen, LLVMValue, LLVMType, CodeGenError }
+
+@type {
+    fn emit_vtable(cg: CodeGen, iface: TypedInterfaceDef, class_def: TypedClassDef) -> LLVMValue
+    fn fat_pointer_type(cg: CodeGen) -> LLVMType
+}

@@ -1,0 +1,6 @@
+import { TypedExpr, TypedExprKind, TypedBlock, TypedStmt, TypedStmtKind }
+
+@type {
+    fn collect_captures(body: TypedExpr, params: Array[String]) -> Array[String]
+    fn collect_captures_in_expr(expr: TypedExpr, params: Set[String], seen: Set[String], out: Array[String])
+}

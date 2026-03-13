@@ -1,0 +1,7 @@
+import { CodeGen, LLVMValue, TypedItem, TypedFnDef, TypedClassDef, CodeGenError }
+
+@type {
+    fn codegen_emit_item(cg: CodeGen, item: TypedItem)
+    fn emit_fn(cg: CodeGen, fn_def: TypedFnDef, current_class: String)
+    fn emit_class(cg: CodeGen, class_def: TypedClassDef)
+}

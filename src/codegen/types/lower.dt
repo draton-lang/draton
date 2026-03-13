@@ -1,0 +1,6 @@
+import { Type, CodeGen, LLVMType, CodeGenError }
+
+@type {
+    fn lower_type(cg: CodeGen, ty: Type) -> LLVMType
+    fn is_void_type(ty: Type) -> Bool
+}

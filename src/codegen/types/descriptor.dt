@@ -1,0 +1,10 @@
+import { Type, CodeGen, LLVMValue }
+
+class TypeDescriptor {
+    let mut size: Int
+    let mut pointer_offsets: Array[Int]
+}
+
+@type {
+    fn emit_type_descriptor(cg: CodeGen, ty: Type) -> LLVMValue
+}

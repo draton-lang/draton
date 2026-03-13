@@ -1,0 +1,5 @@
+import { CodeGen, CodeGenError }
+
+@type {
+    fn emit_safepoint(cg: CodeGen)
+}

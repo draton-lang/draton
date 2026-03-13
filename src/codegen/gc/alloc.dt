@@ -1,0 +1,5 @@
+import { CodeGen, LLVMValue, Type, CodeGenError }
+
+@type {
+    fn emit_gc_alloc(cg: CodeGen, ty: Type, name: String) -> LLVMValue
+}

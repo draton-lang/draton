@@ -1,0 +1,5 @@
+import { CodeGen, LLVMValue, CodeGenError }
+
+@type {
+    fn emit_upcast(cg: CodeGen, obj_ptr: LLVMValue, class_name: String, iface_name: String) -> LLVMValue
+}

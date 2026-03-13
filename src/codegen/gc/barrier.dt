@@ -1,0 +1,5 @@
+import { CodeGen, LLVMValue, CodeGenError }
+
+@type {
+    fn emit_write_barrier(cg: CodeGen, obj_ptr: LLVMValue, field_ptr: LLVMValue, value: LLVMValue)
+}

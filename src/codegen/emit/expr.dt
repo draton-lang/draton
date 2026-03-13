@@ -1,0 +1,22 @@
+import { CodeGen, LLVMValue, TypedExpr, TypedExprKind, TypedMatchArm, TypedMatchArmBody,
+         TypedFStrPart, Type, BinOp, UnOp, CodeGenError }
+
+@type {
+    fn emit_expr(cg: CodeGen, expr: TypedExpr) -> LLVMValue
+    fn emit_binop(cg: CodeGen, lhs: TypedExpr, op: String, rhs: TypedExpr, result_ty: Type) -> LLVMValue
+    fn emit_unop(cg: CodeGen, op: String, expr: TypedExpr) -> LLVMValue
+    fn emit_call(cg: CodeGen, callee: TypedExpr, args: Array[TypedExpr]) -> LLVMValue
+    fn emit_method_call(cg: CodeGen, target: TypedExpr, name: String, args: Array[TypedExpr]) -> LLVMValue
+    fn emit_field_access(cg: CodeGen, target: TypedExpr, name: String) -> LLVMValue
+    fn emit_index(cg: CodeGen, target: TypedExpr, index: TypedExpr) -> LLVMValue
+    fn emit_cast(cg: CodeGen, expr: TypedExpr, target_ty: Type) -> LLVMValue
+    fn emit_match(cg: CodeGen, subject: TypedExpr, arms: Array[TypedMatchArm], result_ty: Type) -> LLVMValue
+    fn emit_class_new(cg: CodeGen, expr: TypedExpr) -> LLVMValue
+    fn emit_array_lit(cg: CodeGen, items: Array[TypedExpr], ty: Type) -> LLVMValue
+    fn emit_tuple_lit(cg: CodeGen, items: Array[TypedExpr], ty: Type) -> LLVMValue
+    fn emit_result_ok(cg: CodeGen, expr: TypedExpr, ty: Type) -> LLVMValue
+    fn emit_result_err(cg: CodeGen, expr: TypedExpr, ty: Type) -> LLVMValue
+    fn emit_nullish(cg: CodeGen, lhs: TypedExpr, rhs: TypedExpr, ty: Type) -> LLVMValue
+    fn emit_fstr(cg: CodeGen, parts: Array[TypedFStrPart]) -> LLVMValue
+    fn emit_string_literal(cg: CodeGen, value: String) -> LLVMValue
+}
