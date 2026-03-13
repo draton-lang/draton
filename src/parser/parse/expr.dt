@@ -1,27 +1,545 @@
-import { Expr, MatchArm, MatchArmBody, FStrPart, MapEntry, Parser }
+import { Expr, MatchArm, MatchArmBody, FStrPart, MapEntry, expr_int_lit, expr_float_lit,
+         expr_str_lit, expr_fstr_lit, expr_bool_lit, expr_none_lit, expr_ident, expr_array,
+         expr_map, expr_set, expr_tuple, expr_bin_op, expr_un_op, expr_call,
+         expr_method_call, expr_field, expr_index, expr_lambda, expr_cast, expr_match,
+         expr_ok, expr_err, expr_nullish, expr_chan, new_map_entry, fstr_literal,
+         fstr_interp, match_arm_body_expr, match_arm_body_block, new_match_arm, expr_span,
+         Parser, parser_current, parser_current_kind, parser_advance, parser_match_kind,
+         parser_expect, parser_consume_ident, parser_check, parser_error_unexpected,
+         parser_token_span, merge_spans, token_to_span, parser_is_eof, parser_skip_doc_comments,
+         parser_previous, parse_type_expr, parse_block, invalid_expr_error, new_span }
 
-@type {
-    fn parse_expression(p: Parser) -> Expr
-    fn parse_nullish(p: Parser) -> Expr
-    fn parse_or(p: Parser) -> Expr
-    fn parse_and(p: Parser) -> Expr
-    fn parse_equality(p: Parser) -> Expr
-    fn parse_comparison(p: Parser) -> Expr
-    fn parse_range(p: Parser) -> Expr
-    fn parse_bit_or_xor(p: Parser) -> Expr
-    fn parse_bit_and(p: Parser) -> Expr
-    fn parse_shift(p: Parser) -> Expr
-    fn parse_additive(p: Parser) -> Expr
-    fn parse_multiplicative(p: Parser) -> Expr
-    fn parse_cast(p: Parser) -> Expr
-    fn parse_unary(p: Parser) -> Expr
-    fn parse_postfix(p: Parser) -> Expr
-    fn parse_primary(p: Parser) -> Expr
-    fn parse_arg_list(p: Parser) -> Array[Expr]
-    fn parse_array_literal(p: Parser) -> Expr
-    fn parse_brace_literal(p: Parser) -> Expr
-    fn parse_paren_or_tuple(p: Parser) -> Expr
-    fn parse_lambda(p: Parser) -> Expr
-    fn parse_match(p: Parser) -> Expr
-    fn parse_chan(p: Parser) -> Expr
+fn parse_expression(p: Parser) {
+    parse_nullish(p)
+}
+
+fn parse_nullish(p: Parser) {
+    let mut expr = parse_or(p)
+    while parser_match_kind(p, "QuestionQuestion") {
+        let rhs = parse_or(p)
+        expr = expr_nullish(expr, rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+    }
+    expr
+}
+
+fn parse_or(p: Parser) {
+    let mut expr = parse_and(p)
+    while parser_match_kind(p, "PipePipe") {
+        let rhs = parse_and(p)
+        expr = expr_bin_op(expr, "Or", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+    }
+    expr
+}
+
+fn parse_and(p: Parser) {
+    let mut expr = parse_equality(p)
+    while parser_match_kind(p, "AmpAmp") {
+        let rhs = parse_equality(p)
+        expr = expr_bin_op(expr, "And", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+    }
+    expr
+}
+
+fn parse_equality(p: Parser) {
+    let mut expr = parse_comparison(p)
+    let mut looping = true
+    while looping {
+        if parser_match_kind(p, "EqEq") {
+            let rhs = parse_comparison(p)
+            expr = expr_bin_op(expr, "Eq", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else if parser_match_kind(p, "BangEq") {
+            let rhs = parse_comparison(p)
+            expr = expr_bin_op(expr, "Ne", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else {
+            looping = false
+        }
+    }
+    expr
+}
+
+fn parse_comparison(p: Parser) {
+    let mut expr = parse_range(p)
+    let mut looping = true
+    while looping {
+        if parser_match_kind(p, "Lt") {
+            let rhs = parse_range(p)
+            expr = expr_bin_op(expr, "Lt", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else if parser_match_kind(p, "LtEq") {
+            let rhs = parse_range(p)
+            expr = expr_bin_op(expr, "Le", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else if parser_match_kind(p, "Gt") {
+            let rhs = parse_range(p)
+            expr = expr_bin_op(expr, "Gt", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else if parser_match_kind(p, "GtEq") {
+            let rhs = parse_range(p)
+            expr = expr_bin_op(expr, "Ge", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else {
+            looping = false
+        }
+    }
+    expr
+}
+
+fn parse_range(p: Parser) {
+    let mut expr = parse_bit_or_xor(p)
+    while parser_match_kind(p, "DotDot") {
+        let rhs = parse_bit_or_xor(p)
+        expr = expr_bin_op(expr, "Range", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+    }
+    expr
+}
+
+fn parse_bit_or_xor(p: Parser) {
+    let mut expr = parse_bit_and(p)
+    let mut looping = true
+    while looping {
+        if parser_match_kind(p, "Pipe") {
+            let rhs = parse_bit_and(p)
+            expr = expr_bin_op(expr, "BitOr", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else if parser_match_kind(p, "Caret") {
+            let rhs = parse_bit_and(p)
+            expr = expr_bin_op(expr, "BitXor", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else {
+            looping = false
+        }
+    }
+    expr
+}
+
+fn parse_bit_and(p: Parser) {
+    let mut expr = parse_shift(p)
+    while parser_match_kind(p, "Amp") {
+        let rhs = parse_shift(p)
+        expr = expr_bin_op(expr, "BitAnd", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+    }
+    expr
+}
+
+fn parse_shift(p: Parser) {
+    let mut expr = parse_additive(p)
+    let mut looping = true
+    while looping {
+        if parser_match_kind(p, "LtLt") {
+            let rhs = parse_additive(p)
+            expr = expr_bin_op(expr, "Shl", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else if parser_match_kind(p, "GtGt") {
+            let rhs = parse_additive(p)
+            expr = expr_bin_op(expr, "Shr", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else {
+            looping = false
+        }
+    }
+    expr
+}
+
+fn parse_additive(p: Parser) {
+    let mut expr = parse_multiplicative(p)
+    let mut looping = true
+    while looping {
+        if parser_match_kind(p, "Plus") {
+            let rhs = parse_multiplicative(p)
+            expr = expr_bin_op(expr, "Add", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else if parser_match_kind(p, "Minus") {
+            let rhs = parse_multiplicative(p)
+            expr = expr_bin_op(expr, "Sub", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else {
+            looping = false
+        }
+    }
+    expr
+}
+
+fn parse_multiplicative(p: Parser) {
+    let mut expr = parse_cast(p)
+    let mut looping = true
+    while looping {
+        if parser_match_kind(p, "Star") {
+            let rhs = parse_cast(p)
+            expr = expr_bin_op(expr, "Mul", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else if parser_match_kind(p, "Slash") {
+            let rhs = parse_cast(p)
+            expr = expr_bin_op(expr, "Div", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else if parser_match_kind(p, "Percent") {
+            let rhs = parse_cast(p)
+            expr = expr_bin_op(expr, "Mod", rhs, merge_spans(expr_span(expr), expr_span(rhs)))
+        } else {
+            looping = false
+        }
+    }
+    expr
+}
+
+fn parse_cast(p: Parser) {
+    let mut expr = parse_unary(p)
+    while parser_match_kind(p, "As") {
+        let ty = parse_type_expr(p)
+        expr = expr_cast(expr, ty, merge_spans(expr_span(expr), ty.span))
+    }
+    expr
+}
+
+fn parse_unary(p: Parser) {
+    let token = parser_current(p)
+    if str_eq_expr_parse(token.kind, "Minus") {
+        parser_advance(p)
+        let inner = parse_unary(p)
+        return expr_un_op("Neg", inner, merge_spans(token_to_span(token), expr_span(inner)))
+    }
+    if str_eq_expr_parse(token.kind, "Bang") {
+        parser_advance(p)
+        let inner = parse_unary(p)
+        return expr_un_op("Not", inner, merge_spans(token_to_span(token), expr_span(inner)))
+    }
+    if str_eq_expr_parse(token.kind, "Tilde") {
+        parser_advance(p)
+        let inner = parse_unary(p)
+        return expr_un_op("BitNot", inner, merge_spans(token_to_span(token), expr_span(inner)))
+    }
+    if str_eq_expr_parse(token.kind, "Amp") {
+        parser_advance(p)
+        let inner = parse_unary(p)
+        return expr_un_op("Ref", inner, merge_spans(token_to_span(token), expr_span(inner)))
+    }
+    if str_eq_expr_parse(token.kind, "Star") {
+        parser_advance(p)
+        let inner = parse_unary(p)
+        return expr_un_op("Deref", inner, merge_spans(token_to_span(token), expr_span(inner)))
+    }
+    parse_postfix(p)
+}
+
+fn parse_postfix(p: Parser) {
+    let mut expr = parse_primary(p)
+    let mut looping = true
+    while looping {
+        if parser_match_kind(p, "LParen") {
+            let args = parse_arg_list(p)
+            let end = token_to_span(parser_previous(p))
+            let span = merge_spans(expr_span(expr), end)
+            if str_eq_expr_parse(expr.kind, "Field") {
+                expr = expr_method_call(expr.target, expr.name, args, span)
+            } else if str_eq_expr_parse(expr.kind, "Ident") && str_eq_expr_parse(expr.name, "Ok") && args.len() == 1 {
+                expr = expr_ok(args[0], span)
+            } else if str_eq_expr_parse(expr.kind, "Ident") && str_eq_expr_parse(expr.name, "Err") && args.len() == 1 {
+                expr = expr_err(args[0], span)
+            } else {
+                expr = expr_call(expr, args, span)
+            }
+        } else if parser_match_kind(p, "Dot") {
+            let name_token = parser_consume_ident(p, "field or method name")
+            expr = expr_field(expr, name_token.lexeme, merge_spans(expr_span(expr), token_to_span(name_token)))
+        } else if parser_match_kind(p, "LBracket") {
+            let index = parse_expression(p)
+            let end = parser_token_span(p)
+            parser_expect(p, "RBracket", "]")
+            expr = expr_index(expr, index, merge_spans(expr_span(expr), end))
+        } else {
+            looping = false
+        }
+    }
+    expr
+}
+
+fn parse_arg_list(p: Parser) {
+    let mut args = []
+    while !parser_is_eof(p) && !parser_check(p, "RParen") {
+        args.push(parse_expression(p))
+        if !parser_match_kind(p, "Comma") {
+            break
+        }
+    }
+    parser_expect(p, "RParen", ")")
+    args
+}
+
+fn parse_primary(p: Parser) {
+    parser_skip_doc_comments(p)
+    let token = parser_current(p)
+    if str_eq_expr_parse(token.kind, "IntLit") {
+        parser_advance(p)
+        return expr_int_lit(string_parse_int(token.lexeme), token_to_span(token))
+    }
+    if str_eq_expr_parse(token.kind, "HexLit") {
+        parser_advance(p)
+        return expr_int_lit(string_parse_int_radix(str_slice(token.lexeme, 2, str_len(token.lexeme)), 16), token_to_span(token))
+    }
+    if str_eq_expr_parse(token.kind, "BinLit") {
+        parser_advance(p)
+        return expr_int_lit(string_parse_int_radix(str_slice(token.lexeme, 2, str_len(token.lexeme)), 2), token_to_span(token))
+    }
+    if str_eq_expr_parse(token.kind, "FloatLit") {
+        parser_advance(p)
+        return expr_float_lit(string_parse_float(token.lexeme), token_to_span(token))
+    }
+    if str_eq_expr_parse(token.kind, "StrLit") {
+        parser_advance(p)
+        return expr_str_lit(unquote_string(token.lexeme), token_to_span(token))
+    }
+    if str_eq_expr_parse(token.kind, "FStrLit") {
+        parser_advance(p)
+        return parse_fstring(token, p)
+    }
+    if str_eq_expr_parse(token.kind, "BoolLit") {
+        parser_advance(p)
+        return expr_bool_lit(str_eq_expr_parse(token.lexeme, "true"), token_to_span(token))
+    }
+    if str_eq_expr_parse(token.kind, "NoneLit") {
+        parser_advance(p)
+        return expr_none_lit(token_to_span(token))
+    }
+    if str_eq_expr_parse(token.kind, "Ident") {
+        parser_advance(p)
+        return expr_ident(token.lexeme, token_to_span(token))
+    }
+    if str_eq_expr_parse(token.kind, "LBracket") {
+        return parse_array_literal(p)
+    }
+    if str_eq_expr_parse(token.kind, "LBrace") {
+        return parse_brace_literal(p)
+    }
+    if str_eq_expr_parse(token.kind, "LParen") {
+        return parse_paren_or_tuple(p)
+    }
+    if str_eq_expr_parse(token.kind, "Lambda") {
+        return parse_lambda(p)
+    }
+    if str_eq_expr_parse(token.kind, "Match") {
+        return parse_match(p)
+    }
+    if str_eq_expr_parse(token.kind, "Chan") {
+        return parse_chan(p)
+    }
+
+    parser_error_unexpected(p, token, "expression")
+    p.errors.push(invalid_expr_error(token.span.line, token.span.col))
+    parser_advance(p)
+    expr_ident("", token_to_span(token))
+}
+
+fn parse_fstring(token: Token, p: Parser) {
+    let span = token_to_span(token)
+    let inner = str_slice(token.lexeme, 2, str_len(token.lexeme) - 1)
+    let mut parts = []
+    let mut buffer = ""
+    let mut i = 0
+    while i < str_len(inner) {
+        let code = str_byte_at(inner, i)
+        if code == 123 {
+            if str_len(buffer) > 0 {
+                parts.push(fstr_literal(buffer))
+                buffer = ""
+            }
+            i = i + 1
+            let start_i = i
+            let mut depth = 1
+            while i < str_len(inner) && depth > 0 {
+                let inner_code = str_byte_at(inner, i)
+                if inner_code == 123 {
+                    depth = depth + 1
+                } else if inner_code == 125 {
+                    depth = depth - 1
+                }
+                i = i + 1
+            }
+            if depth != 0 {
+                p.errors.push(invalid_expr_error(span.line, span.col))
+                return expr_fstr_lit(parts, span)
+            }
+            let expr_src = trim_string(str_slice(inner, start_i, i - 1))
+            parts.push(fstr_interp(parse_inline_fstring_expr(expr_src, span)))
+        } else {
+            buffer = str_concat(buffer, ascii_char(code))
+            i = i + 1
+        }
+    }
+    if str_len(buffer) > 0 {
+        parts.push(fstr_literal(buffer))
+    }
+    expr_fstr_lit(parts, span)
+}
+
+fn parse_inline_fstring_expr(source: String, span: Span) {
+    if str_len(source) == 0 {
+        return expr_ident("", span)
+    }
+    if is_number_string(source) {
+        return expr_int_lit(string_parse_int(source), span)
+    }
+    expr_ident(source, span)
+}
+
+fn parse_array_literal(p: Parser) {
+    let start = parser_token_span(p)
+    parser_expect(p, "LBracket", "[")
+    let mut items = []
+    while !parser_is_eof(p) && !parser_check(p, "RBracket") {
+        items.push(parse_expression(p))
+        if !parser_match_kind(p, "Comma") {
+            break
+        }
+    }
+    let end = parser_token_span(p)
+    parser_expect(p, "RBracket", "]")
+    expr_array(items, merge_spans(start, end))
+}
+
+fn parse_brace_literal(p: Parser) {
+    let start = parser_token_span(p)
+    parser_expect(p, "LBrace", "{")
+    if parser_match_kind(p, "RBrace") {
+        return expr_map([], start)
+    }
+    let first = parse_expression(p)
+    if parser_match_kind(p, "Colon") {
+        let mut entries = []
+        let value = parse_expression(p)
+        entries.push(new_map_entry(first, value))
+        while parser_match_kind(p, "Comma") {
+            if parser_check(p, "RBrace") {
+                break
+            }
+            let key = parse_expression(p)
+            parser_expect(p, "Colon", ":")
+            let entry_value = parse_expression(p)
+            entries.push(new_map_entry(key, entry_value))
+        }
+        let end = parser_token_span(p)
+        parser_expect(p, "RBrace", "}")
+        return expr_map(entries, merge_spans(start, end))
+    }
+    let mut items = [first]
+    while parser_match_kind(p, "Comma") {
+        if parser_check(p, "RBrace") {
+            break
+        }
+        items.push(parse_expression(p))
+    }
+    let end = parser_token_span(p)
+    parser_expect(p, "RBrace", "}")
+    expr_set(items, merge_spans(start, end))
+}
+
+fn parse_paren_or_tuple(p: Parser) {
+    let start = parser_token_span(p)
+    parser_expect(p, "LParen", "(")
+    if parser_match_kind(p, "RParen") {
+        return expr_tuple([], start)
+    }
+    let first = parse_expression(p)
+    if parser_match_kind(p, "Comma") {
+        let mut items = [first]
+        while !parser_is_eof(p) && !parser_check(p, "RParen") {
+            items.push(parse_expression(p))
+            if !parser_match_kind(p, "Comma") {
+                break
+            }
+        }
+        let end = parser_token_span(p)
+        parser_expect(p, "RParen", ")")
+        return expr_tuple(items, merge_spans(start, end))
+    }
+    parser_expect(p, "RParen", ")")
+    first
+}
+
+fn parse_lambda(p: Parser) {
+    let start = parser_token_span(p)
+    parser_expect(p, "Lambda", "lambda")
+    let mut params = []
+    while !parser_is_eof(p) && !parser_check(p, "FatArrow") {
+        params.push(parser_consume_ident(p, "lambda parameter").lexeme)
+        if !parser_match_kind(p, "Comma") {
+            break
+        }
+    }
+    parser_expect(p, "FatArrow", "=>")
+    let body = parse_expression(p)
+    expr_lambda(params, body, merge_spans(start, expr_span(body)))
+}
+
+fn parse_match(p: Parser) {
+    let start = parser_token_span(p)
+    parser_expect(p, "Match", "match")
+    let subject = parse_expression(p)
+    parser_expect(p, "LBrace", "{")
+    let mut arms = []
+    while !parser_is_eof(p) && !parser_check(p, "RBrace") {
+        let arm_start = parser_token_span(p)
+        let pattern = parse_expression(p)
+        parser_expect(p, "FatArrow", "=>")
+        let mut body = match_arm_body_expr(expr_ident("", arm_start))
+        let mut end = arm_start
+        if parser_check(p, "LBrace") {
+            let block = parse_block(p)
+            body = match_arm_body_block(block)
+            end = block.span
+        } else {
+            let expr = parse_expression(p)
+            body = match_arm_body_expr(expr)
+            end = expr_span(expr)
+        }
+        arms.push(new_match_arm(pattern, body, merge_spans(arm_start, end)))
+        parser_match_kind(p, "Comma")
+    }
+    let end = parser_token_span(p)
+    parser_expect(p, "RBrace", "}")
+    expr_match(subject, arms, merge_spans(start, end))
+}
+
+fn parse_chan(p: Parser) {
+    let start = parser_token_span(p)
+    parser_expect(p, "Chan", "chan")
+    parser_expect(p, "LBracket", "[")
+    let ty = parse_type_expr(p)
+    let end = parser_token_span(p)
+    parser_expect(p, "RBracket", "]")
+    expr_chan(ty, merge_spans(start, end))
+}
+
+fn unquote_string(raw: String) {
+    if str_len(raw) >= 2 {
+        return str_slice(raw, 1, str_len(raw) - 1)
+    }
+    raw
+}
+
+fn trim_string(value: String) {
+    let mut start = 0
+    let mut end = str_len(value)
+    while start < end && is_space_code(str_byte_at(value, start)) {
+        start = start + 1
+    }
+    while end > start && is_space_code(str_byte_at(value, end - 1)) {
+        end = end - 1
+    }
+    str_slice(value, start, end)
+}
+
+fn is_space_code(code: Int) {
+    code == 32 || code == 9 || code == 10 || code == 13
+}
+
+fn is_number_string(value: String) {
+    let mut i = 0
+    let mut ok = str_len(value) > 0
+    while ok && i < str_len(value) {
+        let code = str_byte_at(value, i)
+        if code < 48 || code > 57 {
+            ok = false
+        }
+        i = i + 1
+    }
+    ok
+}
+
+fn str_eq_expr_parse(a: String, b: String) {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
 }
