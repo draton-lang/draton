@@ -1,4 +1,25 @@
+import { CompileSession, CompileOutput, PipelineError, PipelineResult }
+
+class ParsedArgs {
+    let mut source_path: String
+    let mut flags: Array[String]
+}
+
 fn main() {
     let file = demo_source_file()
     print(lex_dump(file.content))
+}
+
+fn print_usage() {
+    print("usage: drat <subcommand> [options] <file>")
+    print("subcommands: build, run, check")
+    print("options: --release, --size, --fast")
+}
+
+@type {
+    fn main_with_args(args: Array[String]) -> Int
+    fn cmd_build(args: Array[String]) -> Int
+    fn cmd_run(args: Array[String]) -> Int
+    fn cmd_check(args: Array[String]) -> Int
+    fn parse_args(args: Array[String]) -> ParsedArgs
 }

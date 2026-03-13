@@ -1,0 +1,27 @@
+import { CompileSession, CompileOutput }
+
+enum PipelineErrorKind {
+    Io,
+    Lex,
+    Parse,
+    TypeCheck,
+    CodeGen,
+    Link,
+}
+
+class PipelineError {
+    let mut kind: String
+    let mut message: String
+    let mut errors: Array[String]
+}
+
+class PipelineResult {
+    let mut ok: Bool
+    let mut output: CompileOutput
+    let mut pipeline_error: PipelineError
+}
+
+@type {
+    fn run_pipeline(session: CompileSession) -> PipelineResult
+    fn link_object(obj_path: String, bin_path: String) -> String
+}

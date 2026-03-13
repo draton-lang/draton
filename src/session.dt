@@ -1,0 +1,32 @@
+enum BuildMode {
+    Debug,
+    Release,
+    Size,
+    Fast,
+}
+
+class CompileSession {
+    let mut source_path: String
+    let mut output_dir: String
+    let mut mode: String
+    let mut has_target: Bool
+    let mut target: String
+}
+
+class CompileOutput {
+    let mut ir_path: String
+    let mut object_path: String
+    let mut binary_path: String
+}
+
+fn session_ir_path(s: CompileSession) {
+    str_concat(s.output_dir, "/output.ll")
+}
+
+fn session_object_path(s: CompileSession) {
+    str_concat(s.output_dir, "/output.o")
+}
+
+fn session_binary_path(s: CompileSession) {
+    str_concat(s.output_dir, "/output")
+}
