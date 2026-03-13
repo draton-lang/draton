@@ -1,19 +1,5 @@
 import { Span, Expr, Block, TypeExpr }
 
-enum ItemKind {
-    Fn,
-    PanicHandler,
-    OomHandler,
-    Class,
-    Interface,
-    Enum,
-    Error,
-    Const,
-    Import,
-    TypeBlock,
-    Extern,
-}
-
 class Item {
     let mut kind: String
     let mut fn_def: FnDef
@@ -54,12 +40,6 @@ class ClassDef {
     let mut implements_names: Array[String]
     let mut members: Array[ClassMember]
     let mut span: Span
-}
-
-enum ClassMemberKind {
-    Field,
-    Method,
-    Layer,
 }
 
 class ClassMember {
@@ -130,15 +110,359 @@ class TypeBlockDef {
     let mut span: Span
 }
 
-enum TypeMemberKind {
-    Binding,
-    Function,
-}
-
 class TypeMember {
     let mut kind: String
     let mut name: String
     let mut type_expr: TypeExpr
     let mut def: FnDef
     let mut span: Span
+}
+
+@type {
+    fn item_from_fn(def: FnDef) -> Item
+    fn item_from_panic_handler(def: FnDef) -> Item
+    fn item_from_oom_handler(def: FnDef) -> Item
+    fn item_from_class(def: ClassDef) -> Item
+    fn item_from_interface(def: InterfaceDef) -> Item
+    fn item_from_enum(def: EnumDef) -> Item
+    fn item_from_error(def: ErrorDef) -> Item
+    fn item_from_const(def: ConstDef) -> Item
+    fn item_from_import(def: ImportDef) -> Item
+    fn item_from_type_block(def: TypeBlockDef) -> Item
+    fn item_from_extern(def: ExternBlock) -> Item
+    fn new_fn_def(is_pub: Bool, name: String, params: Array[Param], has_ret_type: Bool, ret_type: TypeExpr, has_body: Bool, body: Block, span: Span) -> FnDef
+    fn fn_def_push_param(def: FnDef, param: Param) -> FnDef
+    fn new_param(name: String, has_type_hint: Bool, type_hint: TypeExpr, span: Span) -> Param
+    fn new_class_def(name: String, has_extends: Bool, extends_name: String, implements_names: Array[String], members: Array[ClassMember], span: Span) -> ClassDef
+    fn class_def_push_implements(def: ClassDef, iface_name: String) -> ClassDef
+    fn class_def_push_member(def: ClassDef, member: ClassMember) -> ClassDef
+    fn class_member_field(def: FieldDef) -> ClassMember
+    fn class_member_method(def: FnDef) -> ClassMember
+    fn class_member_layer(def: LayerDef) -> ClassMember
+    fn new_layer_def(name: String, methods: Array[FnDef], span: Span) -> LayerDef
+    fn layer_def_push_method(def: LayerDef, method: FnDef) -> LayerDef
+    fn new_field_def(is_mut: Bool, name: String, has_type_hint: Bool, type_hint: TypeExpr, span: Span) -> FieldDef
+    fn new_interface_def(name: String, methods: Array[FnDef], span: Span) -> InterfaceDef
+    fn interface_def_push_method(def: InterfaceDef, method: FnDef) -> InterfaceDef
+    fn new_enum_def(name: String, variants: Array[String], span: Span) -> EnumDef
+    fn enum_def_push_variant(def: EnumDef, variant: String) -> EnumDef
+    fn new_error_def(name: String, fields: Array[Param], span: Span) -> ErrorDef
+    fn error_def_push_field(def: ErrorDef, field: Param) -> ErrorDef
+    fn new_const_def(name: String, value: Expr, span: Span) -> ConstDef
+    fn new_import_def(items: Array[ImportItem], span: Span) -> ImportDef
+    fn import_def_push_item(def: ImportDef, item: ImportItem) -> ImportDef
+    fn new_import_item(name: String, has_alias: Bool, alias: String, span: Span) -> ImportItem
+    fn new_extern_block(abi: String, functions: Array[FnDef], span: Span) -> ExternBlock
+    fn extern_block_push_function(def: ExternBlock, function: FnDef) -> ExternBlock
+    fn new_type_block(members: Array[TypeMember], span: Span) -> TypeBlockDef
+    fn type_block_push_member(def: TypeBlockDef, member: TypeMember) -> TypeBlockDef
+    fn type_member_binding(name: String, type_expr: TypeExpr, span: Span) -> TypeMember
+    fn type_member_function(def: FnDef) -> TypeMember
+    fn item_kind_is(item: Item, kind: String) -> Bool
+    fn class_member_kind_is(member: ClassMember, kind: String) -> Bool
+    fn type_member_kind_is(member: TypeMember, kind: String) -> Bool
+    fn str_eq_item(a: String, b: String) -> Bool
+}
+
+fn item_from_fn(def: FnDef) {
+    let item = Item()
+    item.kind = "Fn"
+    item.fn_def = def
+    item
+}
+
+fn item_from_panic_handler(def: FnDef) {
+    let item = Item()
+    item.kind = "PanicHandler"
+    item.panic_handler_def = def
+    item
+}
+
+fn item_from_oom_handler(def: FnDef) {
+    let item = Item()
+    item.kind = "OomHandler"
+    item.oom_handler_def = def
+    item
+}
+
+fn item_from_class(def: ClassDef) {
+    let item = Item()
+    item.kind = "Class"
+    item.class_def = def
+    item
+}
+
+fn item_from_interface(def: InterfaceDef) {
+    let item = Item()
+    item.kind = "Interface"
+    item.interface_def = def
+    item
+}
+
+fn item_from_enum(def: EnumDef) {
+    let item = Item()
+    item.kind = "Enum"
+    item.enum_def = def
+    item
+}
+
+fn item_from_error(def: ErrorDef) {
+    let item = Item()
+    item.kind = "Error"
+    item.error_def = def
+    item
+}
+
+fn item_from_const(def: ConstDef) {
+    let item = Item()
+    item.kind = "Const"
+    item.const_def = def
+    item
+}
+
+fn item_from_import(def: ImportDef) {
+    let item = Item()
+    item.kind = "Import"
+    item.import_def = def
+    item
+}
+
+fn item_from_type_block(def: TypeBlockDef) {
+    let item = Item()
+    item.kind = "TypeBlock"
+    item.type_block_def = def
+    item
+}
+
+fn item_from_extern(def: ExternBlock) {
+    let item = Item()
+    item.kind = "Extern"
+    item.extern_block = def
+    item
+}
+
+fn new_fn_def(is_pub: Bool, name: String, params: Array[Param], has_ret_type: Bool, ret_type: TypeExpr, has_body: Bool, body: Block, span: Span) {
+    let def = FnDef()
+    def.is_pub = is_pub
+    def.name = name
+    def.params = params
+    def.has_ret_type = has_ret_type
+    def.ret_type = ret_type
+    def.has_body = has_body
+    def.body = body
+    def.span = span
+    def
+}
+
+fn fn_def_push_param(def: FnDef, param: Param) {
+    def.params.push(param)
+    def
+}
+
+fn new_param(name: String, has_type_hint: Bool, type_hint: TypeExpr, span: Span) {
+    let param = Param()
+    param.name = name
+    param.has_type_hint = has_type_hint
+    param.type_hint = type_hint
+    param.span = span
+    param
+}
+
+fn new_class_def(name: String, has_extends: Bool, extends_name: String, implements_names: Array[String], members: Array[ClassMember], span: Span) {
+    let def = ClassDef()
+    def.name = name
+    def.has_extends = has_extends
+    def.extends_name = extends_name
+    def.implements_names = implements_names
+    def.members = members
+    def.span = span
+    def
+}
+
+fn class_def_push_implements(def: ClassDef, iface_name: String) {
+    def.implements_names.push(iface_name)
+    def
+}
+
+fn class_def_push_member(def: ClassDef, member: ClassMember) {
+    def.members.push(member)
+    def
+}
+
+fn class_member_field(def: FieldDef) {
+    let member = ClassMember()
+    member.kind = "Field"
+    member.field_def = def
+    member
+}
+
+fn class_member_method(def: FnDef) {
+    let member = ClassMember()
+    member.kind = "Method"
+    member.method_def = def
+    member
+}
+
+fn class_member_layer(def: LayerDef) {
+    let member = ClassMember()
+    member.kind = "Layer"
+    member.layer_def = def
+    member
+}
+
+fn new_layer_def(name: String, methods: Array[FnDef], span: Span) {
+    let def = LayerDef()
+    def.name = name
+    def.methods = methods
+    def.span = span
+    def
+}
+
+fn layer_def_push_method(def: LayerDef, method: FnDef) {
+    def.methods.push(method)
+    def
+}
+
+fn new_field_def(is_mut: Bool, name: String, has_type_hint: Bool, type_hint: TypeExpr, span: Span) {
+    let def = FieldDef()
+    def.is_mut = is_mut
+    def.name = name
+    def.has_type_hint = has_type_hint
+    def.type_hint = type_hint
+    def.span = span
+    def
+}
+
+fn new_interface_def(name: String, methods: Array[FnDef], span: Span) {
+    let def = InterfaceDef()
+    def.name = name
+    def.methods = methods
+    def.span = span
+    def
+}
+
+fn interface_def_push_method(def: InterfaceDef, method: FnDef) {
+    def.methods.push(method)
+    def
+}
+
+fn new_enum_def(name: String, variants: Array[String], span: Span) {
+    let def = EnumDef()
+    def.name = name
+    def.variants = variants
+    def.span = span
+    def
+}
+
+fn enum_def_push_variant(def: EnumDef, variant: String) {
+    def.variants.push(variant)
+    def
+}
+
+fn new_error_def(name: String, fields: Array[Param], span: Span) {
+    let def = ErrorDef()
+    def.name = name
+    def.fields = fields
+    def.span = span
+    def
+}
+
+fn error_def_push_field(def: ErrorDef, field: Param) {
+    def.fields.push(field)
+    def
+}
+
+fn new_const_def(name: String, value: Expr, span: Span) {
+    let def = ConstDef()
+    def.name = name
+    def.value = value
+    def.span = span
+    def
+}
+
+fn new_import_def(items: Array[ImportItem], span: Span) {
+    let def = ImportDef()
+    def.items = items
+    def.span = span
+    def
+}
+
+fn import_def_push_item(def: ImportDef, item: ImportItem) {
+    def.items.push(item)
+    def
+}
+
+fn new_import_item(name: String, has_alias: Bool, alias: String, span: Span) {
+    let item = ImportItem()
+    item.name = name
+    item.has_alias = has_alias
+    item.alias = alias
+    item.span = span
+    item
+}
+
+fn new_extern_block(abi: String, functions: Array[FnDef], span: Span) {
+    let block = ExternBlock()
+    block.abi = abi
+    block.functions = functions
+    block.span = span
+    block
+}
+
+fn extern_block_push_function(def: ExternBlock, function: FnDef) {
+    def.functions.push(function)
+    def
+}
+
+fn new_type_block(members: Array[TypeMember], span: Span) {
+    let block = TypeBlockDef()
+    block.members = members
+    block.span = span
+    block
+}
+
+fn type_block_push_member(def: TypeBlockDef, member: TypeMember) {
+    def.members.push(member)
+    def
+}
+
+fn type_member_binding(name: String, type_expr: TypeExpr, span: Span) {
+    let member = TypeMember()
+    member.kind = "Binding"
+    member.name = name
+    member.type_expr = type_expr
+    member.span = span
+    member
+}
+
+fn type_member_function(def: FnDef) {
+    let member = TypeMember()
+    member.kind = "Function"
+    member.def = def
+    member.span = def.span
+    member
+}
+
+fn item_kind_is(item: Item, kind: String) {
+    str_eq_item(item.kind, kind)
+}
+
+fn class_member_kind_is(member: ClassMember, kind: String) {
+    str_eq_item(member.kind, kind)
+}
+
+fn type_member_kind_is(member: TypeMember, kind: String) {
+    str_eq_item(member.kind, kind)
+}
+
+fn str_eq_item(a: String, b: String) {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
 }

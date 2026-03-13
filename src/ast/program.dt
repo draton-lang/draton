@@ -4,7 +4,23 @@ class Program {
     let mut items: Array[Item]
 }
 
-fn empty_program() {
+@type {
+    fn new_program() -> Program
+    fn program_push_item(program: Program, item: Item) -> Program
+    fn program_item_count(program: Program) -> Int
+}
+
+fn new_program() {
     let program = Program()
+    program.items = []
     program
+}
+
+fn program_push_item(program: Program, item: Item) {
+    program.items.push(item)
+    program
+}
+
+fn program_item_count(program: Program) {
+    program.items.len()
 }

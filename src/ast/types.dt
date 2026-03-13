@@ -1,12 +1,5 @@
 import { Span }
 
-enum TypeExprKind {
-    Named,
-    Generic,
-    Pointer,
-    Infer,
-}
-
 class TypeExpr {
     let mut kind: String
     let mut name: String
@@ -14,6 +7,64 @@ class TypeExpr {
     let mut span: Span
 }
 
+@type {
+    fn new_type_expr(kind: String, name: String, args: Array[TypeExpr], span: Span) -> TypeExpr
+    fn type_named(name: String, span: Span) -> TypeExpr
+    fn type_generic(name: String, args: Array[TypeExpr], span: Span) -> TypeExpr
+    fn type_pointer(span: Span) -> TypeExpr
+    fn type_infer(span: Span) -> TypeExpr
+    fn type_expr_span(ty: TypeExpr) -> Span
+    fn type_expr_add_arg(ty: TypeExpr, arg: TypeExpr) -> TypeExpr
+    fn type_expr_kind_is(ty: TypeExpr, kind: String) -> Bool
+    fn str_eq_types(a: String, b: String) -> Bool
+}
+
+fn new_type_expr(kind: String, name: String, args: Array[TypeExpr], span: Span) {
+    let ty = TypeExpr()
+    ty.kind = kind
+    ty.name = name
+    ty.args = args
+    ty.span = span
+    ty
+}
+
+fn type_named(name: String, span: Span) {
+    new_type_expr("Named", name, [], span)
+}
+
+fn type_generic(name: String, args: Array[TypeExpr], span: Span) {
+    new_type_expr("Generic", name, args, span)
+}
+
+fn type_pointer(span: Span) {
+    new_type_expr("Pointer", "", [], span)
+}
+
+fn type_infer(span: Span) {
+    new_type_expr("Infer", "", [], span)
+}
+
 fn type_expr_span(ty: TypeExpr) {
     ty.span
+}
+
+fn type_expr_add_arg(ty: TypeExpr, arg: TypeExpr) {
+    ty.args.push(arg)
+    ty
+}
+
+fn type_expr_kind_is(ty: TypeExpr, kind: String) {
+    str_eq_types(ty.kind, kind)
+}
+
+fn str_eq_types(a: String, b: String) {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
 }

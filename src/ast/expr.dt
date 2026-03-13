@@ -1,31 +1,4 @@
-import { Span, TypeExpr, Stmt }
-
-enum ExprKind {
-    IntLit,
-    FloatLit,
-    StrLit,
-    FStrLit,
-    BoolLit,
-    NoneLit,
-    Ident,
-    Array,
-    Map,
-    Set,
-    Tuple,
-    BinOp,
-    UnOp,
-    Call,
-    MethodCall,
-    Field,
-    Index,
-    Lambda,
-    Cast,
-    Match,
-    Ok,
-    Err,
-    Nullish,
-    Chan,
-}
+import { Span, TypeExpr, Block }
 
 class Expr {
     let mut kind: String
@@ -59,15 +32,6 @@ class MapEntry {
     let mut value: Expr
 }
 
-fn expr_span(e: Expr) {
-    e.span
-}
-
-enum FStrPartKind {
-    Literal,
-    Interp,
-}
-
 class FStrPart {
     let mut kind: String
     let mut text: String
@@ -80,44 +44,326 @@ class MatchArm {
     let mut span: Span
 }
 
-enum MatchArmBodyKind {
-    Expr,
-    Block,
-}
-
 class MatchArmBody {
     let mut kind: String
     let mut expr: Expr
-    let mut stmts: Array[Stmt]
-    let mut span: Span
+    let mut block: Block
 }
 
-enum BinOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    Eq,
-    Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
-    And,
-    Or,
-    BitAnd,
-    BitOr,
-    BitXor,
-    Shl,
-    Shr,
-    Range,
+@type {
+    fn new_expr(kind: String, span: Span) -> Expr
+    fn expr_int_lit(value: Int, span: Span) -> Expr
+    fn expr_float_lit(value: Float, span: Span) -> Expr
+    fn expr_str_lit(value: String, span: Span) -> Expr
+    fn expr_fstr_lit(parts: Array[FStrPart], span: Span) -> Expr
+    fn expr_bool_lit(value: Bool, span: Span) -> Expr
+    fn expr_none_lit(span: Span) -> Expr
+    fn expr_ident(name: String, span: Span) -> Expr
+    fn expr_array(items: Array[Expr], span: Span) -> Expr
+    fn expr_map(entries: Array[MapEntry], span: Span) -> Expr
+    fn expr_set(items: Array[Expr], span: Span) -> Expr
+    fn expr_tuple(items: Array[Expr], span: Span) -> Expr
+    fn expr_bin_op(lhs: Expr, op: String, rhs: Expr, span: Span) -> Expr
+    fn expr_un_op(op: String, inner: Expr, span: Span) -> Expr
+    fn expr_call(callee: Expr, args: Array[Expr], span: Span) -> Expr
+    fn expr_method_call(target: Expr, name: String, args: Array[Expr], span: Span) -> Expr
+    fn expr_field(target: Expr, name: String, span: Span) -> Expr
+    fn expr_index(target: Expr, index: Expr, span: Span) -> Expr
+    fn expr_lambda(params: Array[String], body: Expr, span: Span) -> Expr
+    fn expr_cast(value: Expr, ty: TypeExpr, span: Span) -> Expr
+    fn expr_match(subject: Expr, arms: Array[MatchArm], span: Span) -> Expr
+    fn expr_ok(value: Expr, span: Span) -> Expr
+    fn expr_err(value: Expr, span: Span) -> Expr
+    fn expr_nullish(lhs: Expr, rhs: Expr, span: Span) -> Expr
+    fn expr_chan(ty: TypeExpr, span: Span) -> Expr
+    fn new_map_entry(key: Expr, value: Expr) -> MapEntry
+    fn fstr_literal(text: String) -> FStrPart
+    fn fstr_interp(expr: Expr) -> FStrPart
+    fn match_arm_body_expr(expr: Expr) -> MatchArmBody
+    fn match_arm_body_block(block: Block) -> MatchArmBody
+    fn new_match_arm(pattern: Expr, body: MatchArmBody, span: Span) -> MatchArm
+    fn expr_push_item(expr: Expr, item: Expr) -> Expr
+    fn expr_push_entry(expr: Expr, entry: MapEntry) -> Expr
+    fn expr_push_arg(expr: Expr, arg: Expr) -> Expr
+    fn expr_push_param(expr: Expr, param: String) -> Expr
+    fn expr_push_arm(expr: Expr, arm: MatchArm) -> Expr
+    fn expr_push_part(expr: Expr, part: FStrPart) -> Expr
+    fn expr_span(expr: Expr) -> Span
+    fn expr_kind_is(expr: Expr, kind: String) -> Bool
+    fn fstr_part_kind_is(part: FStrPart, kind: String) -> Bool
+    fn match_arm_body_kind_is(body: MatchArmBody, kind: String) -> Bool
+    fn str_eq_expr(a: String, b: String) -> Bool
 }
 
-enum UnOp {
-    Neg,
-    Not,
-    BitNot,
-    Ref,
-    Deref,
+fn new_expr(kind: String, span: Span) {
+    let expr = Expr()
+    expr.kind = kind
+    expr.int_value = 0
+    expr.float_value = 0.0
+    expr.string_value = ""
+    expr.bool_value = false
+    expr.name = ""
+    expr.parts = []
+    expr.items = []
+    expr.entries = []
+    expr.args = []
+    expr.params = []
+    expr.arms = []
+    expr.span = span
+    expr
+}
+
+fn expr_int_lit(value: Int, span: Span) {
+    let expr = new_expr("IntLit", span)
+    expr.int_value = value
+    expr
+}
+
+fn expr_float_lit(value: Float, span: Span) {
+    let expr = new_expr("FloatLit", span)
+    expr.float_value = value
+    expr
+}
+
+fn expr_str_lit(value: String, span: Span) {
+    let expr = new_expr("StrLit", span)
+    expr.string_value = value
+    expr
+}
+
+fn expr_fstr_lit(parts: Array[FStrPart], span: Span) {
+    let expr = new_expr("FStrLit", span)
+    expr.parts = parts
+    expr
+}
+
+fn expr_bool_lit(value: Bool, span: Span) {
+    let expr = new_expr("BoolLit", span)
+    expr.bool_value = value
+    expr
+}
+
+fn expr_none_lit(span: Span) {
+    new_expr("NoneLit", span)
+}
+
+fn expr_ident(name: String, span: Span) {
+    let expr = new_expr("Ident", span)
+    expr.name = name
+    expr
+}
+
+fn expr_array(items: Array[Expr], span: Span) {
+    let expr = new_expr("Array", span)
+    expr.items = items
+    expr
+}
+
+fn expr_map(entries: Array[MapEntry], span: Span) {
+    let expr = new_expr("Map", span)
+    expr.entries = entries
+    expr
+}
+
+fn expr_set(items: Array[Expr], span: Span) {
+    let expr = new_expr("Set", span)
+    expr.items = items
+    expr
+}
+
+fn expr_tuple(items: Array[Expr], span: Span) {
+    let expr = new_expr("Tuple", span)
+    expr.items = items
+    expr
+}
+
+fn expr_bin_op(lhs: Expr, op: String, rhs: Expr, span: Span) {
+    let expr = new_expr("BinOp", span)
+    expr.lhs = lhs
+    expr.bin_op = op
+    expr.rhs = rhs
+    expr
+}
+
+fn expr_un_op(op: String, inner: Expr, span: Span) {
+    let expr = new_expr("UnOp", span)
+    expr.un_op = op
+    expr.expr = inner
+    expr
+}
+
+fn expr_call(callee: Expr, args: Array[Expr], span: Span) {
+    let expr = new_expr("Call", span)
+    expr.callee = callee
+    expr.args = args
+    expr
+}
+
+fn expr_method_call(target: Expr, name: String, args: Array[Expr], span: Span) {
+    let expr = new_expr("MethodCall", span)
+    expr.target = target
+    expr.name = name
+    expr.args = args
+    expr
+}
+
+fn expr_field(target: Expr, name: String, span: Span) {
+    let expr = new_expr("Field", span)
+    expr.target = target
+    expr.name = name
+    expr
+}
+
+fn expr_index(target: Expr, index: Expr, span: Span) {
+    let expr = new_expr("Index", span)
+    expr.target = target
+    expr.index = index
+    expr
+}
+
+fn expr_lambda(params: Array[String], body: Expr, span: Span) {
+    let expr = new_expr("Lambda", span)
+    expr.params = params
+    expr.body = body
+    expr
+}
+
+fn expr_cast(value: Expr, ty: TypeExpr, span: Span) {
+    let expr = new_expr("Cast", span)
+    expr.expr = value
+    expr.ty = ty
+    expr
+}
+
+fn expr_match(subject: Expr, arms: Array[MatchArm], span: Span) {
+    let expr = new_expr("Match", span)
+    expr.subject = subject
+    expr.arms = arms
+    expr
+}
+
+fn expr_ok(value: Expr, span: Span) {
+    let expr = new_expr("Ok", span)
+    expr.expr = value
+    expr
+}
+
+fn expr_err(value: Expr, span: Span) {
+    let expr = new_expr("Err", span)
+    expr.expr = value
+    expr
+}
+
+fn expr_nullish(lhs: Expr, rhs: Expr, span: Span) {
+    let expr = new_expr("Nullish", span)
+    expr.lhs = lhs
+    expr.rhs = rhs
+    expr
+}
+
+fn expr_chan(ty: TypeExpr, span: Span) {
+    let expr = new_expr("Chan", span)
+    expr.ty = ty
+    expr
+}
+
+fn new_map_entry(key: Expr, value: Expr) {
+    let entry = MapEntry()
+    entry.key = key
+    entry.value = value
+    entry
+}
+
+fn fstr_literal(text: String) {
+    let part = FStrPart()
+    part.kind = "Literal"
+    part.text = text
+    part
+}
+
+fn fstr_interp(expr: Expr) {
+    let part = FStrPart()
+    part.kind = "Interp"
+    part.expr = expr
+    part
+}
+
+fn match_arm_body_expr(expr: Expr) {
+    let body = MatchArmBody()
+    body.kind = "Expr"
+    body.expr = expr
+    body
+}
+
+fn match_arm_body_block(block: Block) {
+    let body = MatchArmBody()
+    body.kind = "Block"
+    body.block = block
+    body
+}
+
+fn new_match_arm(pattern: Expr, body: MatchArmBody, span: Span) {
+    let arm = MatchArm()
+    arm.pattern = pattern
+    arm.body = body
+    arm.span = span
+    arm
+}
+
+fn expr_push_item(expr: Expr, item: Expr) {
+    expr.items.push(item)
+    expr
+}
+
+fn expr_push_entry(expr: Expr, entry: MapEntry) {
+    expr.entries.push(entry)
+    expr
+}
+
+fn expr_push_arg(expr: Expr, arg: Expr) {
+    expr.args.push(arg)
+    expr
+}
+
+fn expr_push_param(expr: Expr, param: String) {
+    expr.params.push(param)
+    expr
+}
+
+fn expr_push_arm(expr: Expr, arm: MatchArm) {
+    expr.arms.push(arm)
+    expr
+}
+
+fn expr_push_part(expr: Expr, part: FStrPart) {
+    expr.parts.push(part)
+    expr
+}
+
+fn expr_span(expr: Expr) {
+    expr.span
+}
+
+fn expr_kind_is(expr: Expr, kind: String) {
+    str_eq_expr(expr.kind, kind)
+}
+
+fn fstr_part_kind_is(part: FStrPart, kind: String) {
+    str_eq_expr(part.kind, kind)
+}
+
+fn match_arm_body_kind_is(body: MatchArmBody, kind: String) {
+    str_eq_expr(body.kind, kind)
+}
+
+fn str_eq_expr(a: String, b: String) {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
 }
