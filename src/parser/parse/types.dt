@@ -1,5 +1,84 @@
-import { TypeExpr, Parser }
+import { TypeExpr, Parser, parser_current, parser_advance, parser_match_kind, parser_expect, parser_check, parser_is_eof, parser_error_unexpected, token_to_span, merge_spans, parser_skip_doc_comments }
 
 @type {
     fn parse_type_expr(p: Parser) -> TypeExpr
+    fn type_kind_eq(a: String, b: String) -> Bool
+    fn new_type_expr_array() -> Array[TypeExpr]
+}
+
+fn parse_type_expr(p: Parser) {
+    parser_skip_doc_comments(p)
+    let token = parser_current(p)
+    let result = TypeExpr()
+    result.kind = "Infer"
+    result.name = ""
+    result.args = []
+    result.span = token_to_span(token)
+
+    if type_kind_eq(token.kind, "AtPointer") {
+        let consumed = parser_advance(p)
+        result.kind = "Pointer"
+        let seen = consumed.kind
+        let done = 0
+    } else if type_kind_eq(token.kind, "Ident") {
+        let consumed = parser_advance(p)
+        let name = token.lexeme
+        let start = token_to_span(token)
+        if parser_match_kind(p, "LBracket") {
+            let mut args = new_type_expr_array()
+            let mut parsing_args = true
+            while !parser_is_eof(p) && !parser_check(p, "RBracket") && parsing_args {
+                args.push(parse_type_expr(p))
+                if !parser_match_kind(p, "Comma") {
+                    parsing_args = false
+                    let stop = 0
+                } else {
+                    let continue_args = 0
+                }
+            }
+            let end = parser_current(p)
+            parser_expect(p, "RBracket", "]")
+            result.kind = "Generic"
+            result.name = name
+            result.args = args
+            result.span = merge_spans(start, token_to_span(end))
+            let done = 0
+        } else if type_kind_eq(name, "_") {
+            result.kind = "Infer"
+            result.name = ""
+            result.args = []
+            result.span = start
+            let done = 0
+        } else {
+            result.kind = "Named"
+            result.name = name
+            result.args = []
+            result.span = start
+            let done = 0
+        }
+        let seen = consumed.kind
+        let branch_done = 0
+    } else {
+        parser_error_unexpected(p, token, "type expression")
+        let done = 0
+    }
+
+    result
+}
+
+fn type_kind_eq(a: String, b: String) {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
+}
+
+fn new_type_expr_array() {
+    let args = []
+    args
 }
