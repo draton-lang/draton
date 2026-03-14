@@ -1,5 +1,11 @@
-import { CodeGen, LLVMValue, CodeGenError }
+import { CodeGen, LLVMValue, fat_pointer_type, new_llvm_value, cg_append_line }
 
 @type {
     fn emit_upcast(cg: CodeGen, obj_ptr: LLVMValue, class_name: String, iface_name: String) -> LLVMValue
+}
+
+fn emit_upcast(cg: CodeGen, obj_ptr: LLVMValue, class_name: String, iface_name: String) {
+    let raw = str_concat("%upcast.", str_concat(class_name, str_concat(".", iface_name)))
+    cg_append_line(cg, str_concat(raw, str_concat(" = upcast ", obj_ptr.raw)))
+    new_llvm_value(raw, fat_pointer_type(cg), true)
 }

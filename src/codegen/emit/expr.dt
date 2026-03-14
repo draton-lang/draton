@@ -1,5 +1,8 @@
-import { CodeGen, LLVMValue, TypedExpr, TypedExprKind, TypedMatchArm, TypedMatchArmBody,
-         TypedFStrPart, Type, BinOp, UnOp, CodeGenError }
+import { CodeGen, LLVMValue, TypedExpr, TypedMatchArm, TypedFStrPart, Type, lower_type,
+         emit_direct_call, emit_virtual_call, emit_gc_alloc, emit_write_barrier, emit_safepoint,
+         emit_closure, class_field_ptr, new_llvm_value, new_llvm_type, cg_lookup_local,
+         cg_lookup_function, cg_lookup_function_type, cg_append_line, cg_fresh_name, str_eq_type,
+         llvm_value_exists, is_void_type, emit_block }
 
 @type {
     fn emit_expr(cg: CodeGen, expr: TypedExpr) -> LLVMValue
@@ -19,4 +22,283 @@ import { CodeGen, LLVMValue, TypedExpr, TypedExprKind, TypedMatchArm, TypedMatch
     fn emit_nullish(cg: CodeGen, lhs: TypedExpr, rhs: TypedExpr, ty: Type) -> LLVMValue
     fn emit_fstr(cg: CodeGen, parts: Array[TypedFStrPart]) -> LLVMValue
     fn emit_string_literal(cg: CodeGen, value: String) -> LLVMValue
+}
+
+fn emit_expr(cg: CodeGen, expr: TypedExpr) {
+    if str_eq_type(expr.tag, "IntLit") {
+        return new_llvm_value(int_to_string(expr.int_value), lower_type(cg, expr.expr_ty), true)
+    }
+    if str_eq_type(expr.tag, "FloatLit") {
+        let raw = str_concat("%float.", int_to_string(cg.temp_counter))
+        cg.temp_counter = cg.temp_counter + 1
+        cg_append_line(cg, str_concat(raw, " = float_lit"))
+        return new_llvm_value(raw, lower_type(cg, expr.expr_ty), true)
+    }
+    if str_eq_type(expr.tag, "BoolLit") {
+        let mut raw = "false"
+        if expr.bool_value {
+            raw = "true"
+        }
+        return new_llvm_value(raw, lower_type(cg, expr.expr_ty), true)
+    }
+    if str_eq_type(expr.tag, "StrLit") {
+        return emit_string_literal(cg, expr.string_value)
+    }
+    if str_eq_type(expr.tag, "FStrLit") {
+        return emit_fstr(cg, expr.fstr_parts)
+    }
+    if str_eq_type(expr.tag, "NoneLit") {
+        return new_llvm_value("none", lower_type(cg, expr.expr_ty), true)
+    }
+    if str_eq_type(expr.tag, "Ident") {
+        let local = cg_lookup_local(cg, expr.ident_name)
+        if llvm_value_exists(local) {
+            return new_llvm_value(str_concat("load ", local.raw), lower_type(cg, expr.expr_ty), true)
+        }
+        let fn_val = cg_lookup_function(cg, expr.ident_name)
+        if llvm_value_exists(fn_val) {
+            return fn_val
+        }
+        return new_llvm_value(str_concat("missing.", expr.ident_name), lower_type(cg, expr.expr_ty), false)
+    }
+    if str_eq_type(expr.tag, "Array") {
+        return emit_array_lit(cg, expr.expr_items, expr.expr_ty)
+    }
+    if str_eq_type(expr.tag, "Tuple") {
+        return emit_tuple_lit(cg, expr.expr_items, expr.expr_ty)
+    }
+    if str_eq_type(expr.tag, "Set") {
+        return emit_array_lit(cg, expr.expr_items, expr.expr_ty)
+    }
+    if str_eq_type(expr.tag, "Map") {
+        let raw = str_concat("%map.", int_to_string(cg.temp_counter))
+        cg.temp_counter = cg.temp_counter + 1
+        let mut i = 0
+        while i < expr.map_entries.len() {
+            let key = emit_expr(cg, expr.map_entries[i].entry_key)
+            let value = emit_expr(cg, expr.map_entries[i].entry_value)
+            cg_append_line(cg, str_concat(raw, str_concat(" insert ", str_concat(key.raw, str_concat(" ", value.raw)))))
+            i = i + 1
+        }
+        return new_llvm_value(raw, lower_type(cg, expr.expr_ty), true)
+    }
+    if str_eq_type(expr.tag, "BinOp") {
+        return emit_binop(cg, expr.bin_lhs, expr.bin_op, expr.bin_rhs, expr.expr_ty)
+    }
+    if str_eq_type(expr.tag, "UnOp") {
+        return emit_unop(cg, expr.un_op, expr.inner_expr)
+    }
+    if str_eq_type(expr.tag, "Call") {
+        return emit_call(cg, expr.call_callee, expr.call_args)
+    }
+    if str_eq_type(expr.tag, "MethodCall") {
+        return emit_method_call(cg, expr.access_target, expr.ident_name, expr.call_args)
+    }
+    if str_eq_type(expr.tag, "Field") {
+        return emit_field_access(cg, expr.access_target, expr.ident_name)
+    }
+    if str_eq_type(expr.tag, "Index") {
+        return emit_index(cg, expr.access_target, expr.index_expr)
+    }
+    if str_eq_type(expr.tag, "Lambda") {
+        return emit_closure(cg, expr.lambda_params, expr.lambda_body, expr.expr_ty)
+    }
+    if str_eq_type(expr.tag, "Cast") {
+        return emit_cast(cg, expr.inner_expr, expr.cast_ty)
+    }
+    if str_eq_type(expr.tag, "Match") {
+        return emit_match(cg, expr.match_subject, expr.match_arms, expr.expr_ty)
+    }
+    if str_eq_type(expr.tag, "Ok") {
+        return emit_result_ok(cg, expr.inner_expr, expr.expr_ty)
+    }
+    if str_eq_type(expr.tag, "Err") {
+        return emit_result_err(cg, expr.inner_expr, expr.expr_ty)
+    }
+    if str_eq_type(expr.tag, "Nullish") {
+        return emit_nullish(cg, expr.bin_lhs, expr.bin_rhs, expr.expr_ty)
+    }
+    if str_eq_type(expr.tag, "Chan") {
+        return new_llvm_value(str_concat("chan<", str_concat(lower_type(cg, expr.chan_ty).raw, ">")), lower_type(cg, expr.expr_ty), true)
+    }
+    if str_eq_type(expr.tag, "ClassNew") {
+        return emit_class_new(cg, expr)
+    }
+    new_llvm_value(str_concat("expr.", expr.tag), lower_type(cg, expr.expr_ty), false)
+}
+
+fn emit_binop(cg: CodeGen, lhs: TypedExpr, op: String, rhs: TypedExpr, result_ty: Type) {
+    let left = emit_expr(cg, lhs)
+    let right = emit_expr(cg, rhs)
+    let raw = str_concat("%bin.", int_to_string(cg.temp_counter))
+    cg.temp_counter = cg.temp_counter + 1
+    cg_append_line(cg, str_concat(raw, str_concat(" = ", str_concat(op, str_concat(" ", str_concat(left.raw, str_concat(" ", right.raw)))))))
+    new_llvm_value(raw, lower_type(cg, result_ty), true)
+}
+
+fn emit_unop(cg: CodeGen, op: String, expr: TypedExpr) {
+    let inner = emit_expr(cg, expr)
+    let raw = str_concat("%un.", int_to_string(cg.temp_counter))
+    cg.temp_counter = cg.temp_counter + 1
+    cg_append_line(cg, str_concat(raw, str_concat(" = ", str_concat(op, str_concat(" ", inner.raw)))))
+    new_llvm_value(raw, lower_type(cg, expr.expr_ty), true)
+}
+
+fn emit_call(cg: CodeGen, callee: TypedExpr, args: Array[TypedExpr]) {
+    let arg_values: Array[LLVMValue] = []
+    let mut i = 0
+    while i < args.len() {
+        arg_values.push(emit_expr(cg, args[i]))
+        i = i + 1
+    }
+    let mut result = new_llvm_value("", new_llvm_type("invalid", false, false), false)
+    if str_eq_type(callee.tag, "Ident") {
+        result = emit_direct_call(cg, callee.ident_name, arg_values, cg_fresh_name(cg, "call"))
+    } else {
+        let closure_value = emit_expr(cg, callee)
+        result = emit_virtual_call(cg, closure_value, 0, arg_values, cg_fresh_name(cg, "closure_call"))
+    }
+    emit_safepoint(cg)
+    result
+}
+
+fn emit_method_call(cg: CodeGen, target: TypedExpr, name: String, args: Array[TypedExpr]) {
+    let arg_values: Array[LLVMValue] = []
+    let recv = emit_expr(cg, target)
+    let mut i = 0
+    while i < args.len() {
+        arg_values.push(emit_expr(cg, args[i]))
+        i = i + 1
+    }
+    if str_eq_type(target.expr_ty.type_kind, "Named") {
+        let all_args: Array[LLVMValue] = [recv]
+        i = 0
+        while i < arg_values.len() {
+            all_args.push(arg_values[i])
+            i = i + 1
+        }
+        let symbol = str_concat(target.expr_ty.ty_name, str_concat(".", name))
+        let result = emit_direct_call(cg, symbol, all_args, cg_fresh_name(cg, "method"))
+        emit_safepoint(cg)
+        return result
+    }
+    let result = emit_virtual_call(cg, recv, 0, arg_values, cg_fresh_name(cg, "vmethod"))
+    emit_safepoint(cg)
+    result
+}
+
+fn emit_field_access(cg: CodeGen, target: TypedExpr, name: String) {
+    let recv = emit_expr(cg, target)
+    let field_ptr = class_field_ptr(cg, recv, target.expr_ty.ty_name, name)
+    new_llvm_value(str_concat("load ", field_ptr.raw), lower_type(cg, target.expr_ty), true)
+}
+
+fn emit_index(cg: CodeGen, target: TypedExpr, index: TypedExpr) {
+    let recv = emit_expr(cg, target)
+    let idx = emit_expr(cg, index)
+    new_llvm_value(str_concat(recv.raw, str_concat("[", str_concat(idx.raw, "]"))), lower_type(cg, target.expr_ty), true)
+}
+
+fn emit_cast(cg: CodeGen, expr: TypedExpr, target_ty: Type) {
+    let value = emit_expr(cg, expr)
+    let raw = str_concat("%cast.", int_to_string(cg.temp_counter))
+    cg.temp_counter = cg.temp_counter + 1
+    cg_append_line(cg, str_concat(raw, str_concat(" = cast ", str_concat(value.raw, str_concat(" to ", lower_type(cg, target_ty).raw)))))
+    new_llvm_value(raw, lower_type(cg, target_ty), true)
+}
+
+fn emit_match(cg: CodeGen, subject: TypedExpr, arms: Array[TypedMatchArm], result_ty: Type) {
+    let subject_value = emit_expr(cg, subject)
+    let raw = str_concat("%match.", int_to_string(cg.temp_counter))
+    cg.temp_counter = cg.temp_counter + 1
+    cg_append_line(cg, str_concat(raw, str_concat(" = match ", subject_value.raw)))
+    let mut i = 0
+    while i < arms.len() {
+        let pattern = emit_expr(cg, arms[i].arm_pattern)
+        if str_eq_type(arms[i].arm_body.tag, "Expr") {
+            let body = emit_expr(cg, arms[i].arm_body.body_expr)
+            cg_append_line(cg, str_concat("; arm ", str_concat(pattern.raw, str_concat(" => ", body.raw))))
+        } else {
+            let _arm_block = emit_block(cg, arms[i].arm_body.body_block)
+            cg_append_line(cg, str_concat("; arm-block ", pattern.raw))
+        }
+        i = i + 1
+    }
+    new_llvm_value(raw, lower_type(cg, result_ty), true)
+}
+
+fn emit_class_new(cg: CodeGen, expr: TypedExpr) {
+    let ctor_name = str_concat(expr.class_name, "_new")
+    let args: Array[LLVMValue] = []
+    let mut i = 0
+    while i < expr.field_values.len() {
+        args.push(emit_expr(cg, expr.field_values[i]))
+        i = i + 1
+    }
+    emit_direct_call(cg, ctor_name, args, cg_fresh_name(cg, "new"))
+}
+
+fn emit_array_lit(cg: CodeGen, items: Array[TypedExpr], ty: Type) {
+    let raw = str_concat("%array.", int_to_string(cg.temp_counter))
+    cg.temp_counter = cg.temp_counter + 1
+    let mut i = 0
+    while i < items.len() {
+        let value = emit_expr(cg, items[i])
+        cg_append_line(cg, str_concat(raw, str_concat(" push ", value.raw)))
+        i = i + 1
+    }
+    new_llvm_value(raw, lower_type(cg, ty), true)
+}
+
+fn emit_tuple_lit(cg: CodeGen, items: Array[TypedExpr], ty: Type) {
+    let raw = str_concat("%tuple.", int_to_string(cg.temp_counter))
+    cg.temp_counter = cg.temp_counter + 1
+    let mut i = 0
+    while i < items.len() {
+        let value = emit_expr(cg, items[i])
+        cg_append_line(cg, str_concat(raw, str_concat(" insert ", value.raw)))
+        i = i + 1
+    }
+    new_llvm_value(raw, lower_type(cg, ty), true)
+}
+
+fn emit_result_ok(cg: CodeGen, expr: TypedExpr, ty: Type) {
+    let value = emit_expr(cg, expr)
+    new_llvm_value(str_concat("ok(", str_concat(value.raw, ")")), lower_type(cg, ty), true)
+}
+
+fn emit_result_err(cg: CodeGen, expr: TypedExpr, ty: Type) {
+    let value = emit_expr(cg, expr)
+    new_llvm_value(str_concat("err(", str_concat(value.raw, ")")), lower_type(cg, ty), true)
+}
+
+fn emit_nullish(cg: CodeGen, lhs: TypedExpr, rhs: TypedExpr, ty: Type) {
+    let left = emit_expr(cg, lhs)
+    let right = emit_expr(cg, rhs)
+    let raw = str_concat("%nullish.", int_to_string(cg.temp_counter))
+    cg.temp_counter = cg.temp_counter + 1
+    cg_append_line(cg, str_concat(raw, str_concat(" = nullish ", str_concat(left.raw, str_concat(" ", right.raw)))))
+    new_llvm_value(raw, lower_type(cg, ty), true)
+}
+
+fn emit_fstr(cg: CodeGen, parts: Array[TypedFStrPart]) {
+    let mut rendered = ""
+    let mut i = 0
+    while i < parts.len() {
+        if str_eq_type(parts[i].tag, "Literal") {
+            rendered = str_concat(rendered, parts[i].part_text)
+        } else {
+            let value = emit_expr(cg, parts[i].part_expr)
+            rendered = str_concat(rendered, str_concat("{", str_concat(value.raw, "}")))
+        }
+        i = i + 1
+    }
+    emit_string_literal(cg, rendered)
+}
+
+fn emit_string_literal(cg: CodeGen, value: String) {
+    let raw = str_concat("@str.", int_to_string(cg.string_counter))
+    cg.string_counter = cg.string_counter + 1
+    cg_append_line(cg, str_concat(raw, str_concat(" = string ", value)))
+    new_llvm_value(raw, cg.string_type, true)
 }

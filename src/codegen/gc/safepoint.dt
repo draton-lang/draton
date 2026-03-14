@@ -1,5 +1,10 @@
-import { CodeGen, CodeGenError }
+import { CodeGen, cg_append_line }
 
 @type {
     fn emit_safepoint(cg: CodeGen)
+}
+
+fn emit_safepoint(cg: CodeGen) {
+    cg_append_line(cg, "; safepoint")
+    let _done = 0
 }

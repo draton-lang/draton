@@ -1,5 +1,14 @@
-import { CodeGen, LLVMValue, Type, CodeGenError }
+import { CodeGen, LLVMValue, Type, emit_type_descriptor, lower_type, llvm_pointer_type, new_llvm_value, cg_append_line, type_display }
 
 @type {
     fn emit_gc_alloc(cg: CodeGen, ty: Type, name: String) -> LLVMValue
+}
+
+fn emit_gc_alloc(cg: CodeGen, ty: Type, name: String) {
+    let lowered = lower_type(cg, ty)
+    let descriptor = emit_type_descriptor(cg, ty)
+    let raw = str_concat("%gc.", str_concat(name, str_concat(".", int_to_string(cg.temp_counter))))
+    cg.temp_counter = cg.temp_counter + 1
+    cg_append_line(cg, str_concat(raw, str_concat(" = gc_alloc ", str_concat(type_display(ty), str_concat(" ", descriptor.raw)))))
+    new_llvm_value(raw, llvm_pointer_type(lowered), true)
 }

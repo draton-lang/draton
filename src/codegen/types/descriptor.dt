@@ -1,4 +1,4 @@
-import { Type, CodeGen, LLVMValue }
+import { Type, CodeGen, LLVMValue, new_llvm_value, new_llvm_type, type_display }
 
 class TypeDescriptor {
     let mut size: Int
@@ -7,4 +7,10 @@ class TypeDescriptor {
 
 @type {
     fn emit_type_descriptor(cg: CodeGen, ty: Type) -> LLVMValue
+}
+
+fn emit_type_descriptor(cg: CodeGen, ty: Type) {
+    let raw = str_concat("typedesc(", str_concat(type_display(ty), str_concat("#", int_to_string(cg.string_counter))))
+    cg.string_counter = cg.string_counter + 1
+    new_llvm_value(str_concat(raw, ")"), new_llvm_type("i64", false, false), true)
 }

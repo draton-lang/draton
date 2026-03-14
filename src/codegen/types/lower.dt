@@ -1,6 +1,94 @@
-import { Type, CodeGen, LLVMType, CodeGenError }
+import { Type, CodeGen, LLVMType, new_llvm_type, llvm_pointer_type, cg_find_class_index, str_eq_type }
 
 @type {
     fn lower_type(cg: CodeGen, ty: Type) -> LLVMType
     fn is_void_type(ty: Type) -> Bool
+}
+
+fn lower_type(cg: CodeGen, ty: Type) {
+    if str_eq_type(ty.type_kind, "Int") || str_eq_type(ty.type_kind, "Int8") || str_eq_type(ty.type_kind, "Int16") || str_eq_type(ty.type_kind, "Int32") || str_eq_type(ty.type_kind, "Int64") || str_eq_type(ty.type_kind, "UInt8") || str_eq_type(ty.type_kind, "UInt16") || str_eq_type(ty.type_kind, "UInt32") || str_eq_type(ty.type_kind, "UInt64") {
+        return new_llvm_type("i64", false, false)
+    }
+    if str_eq_type(ty.type_kind, "Float") || str_eq_type(ty.type_kind, "Float32") || str_eq_type(ty.type_kind, "Float64") {
+        return new_llvm_type("f64", false, false)
+    }
+    if str_eq_type(ty.type_kind, "Bool") {
+        return new_llvm_type("i1", false, false)
+    }
+    if str_eq_type(ty.type_kind, "Char") {
+        return new_llvm_type("i8", false, false)
+    }
+    if str_eq_type(ty.type_kind, "String") {
+        return cg.string_type
+    }
+    if str_eq_type(ty.type_kind, "Unit") || str_eq_type(ty.type_kind, "Never") {
+        return new_llvm_type("void", true, false)
+    }
+    if str_eq_type(ty.type_kind, "Pointer") {
+        return llvm_pointer_type(lower_type(cg, ty.ty_inner))
+    }
+    if str_eq_type(ty.type_kind, "Named") {
+        if cg_find_class_index(cg, ty.ty_name) >= 0 {
+            return llvm_pointer_type(new_llvm_type(str_concat("%class.", ty.ty_name), false, false))
+        }
+        return new_llvm_type(ty.ty_name, false, false)
+    }
+    if str_eq_type(ty.type_kind, "Array") {
+        return new_llvm_type(str_concat("{i64,", str_concat(lower_type(cg, ty.ty_inner).raw, "*}")), false, false)
+    }
+    if str_eq_type(ty.type_kind, "Map") {
+        return llvm_pointer_type(new_llvm_type("map", false, false))
+    }
+    if str_eq_type(ty.type_kind, "Set") {
+        return llvm_pointer_type(new_llvm_type("set", false, false))
+    }
+    if str_eq_type(ty.type_kind, "Chan") {
+        return llvm_pointer_type(new_llvm_type("chan", false, false))
+    }
+    if str_eq_type(ty.type_kind, "Tuple") {
+        let mut rendered = "{"
+        let mut i = 0
+        while i < ty.ty_items.len() {
+            if i > 0 {
+                rendered = str_concat(rendered, ", ")
+            }
+            rendered = str_concat(rendered, lower_type(cg, ty.ty_items[i]).raw)
+            i = i + 1
+        }
+        rendered = str_concat(rendered, "}")
+        return new_llvm_type(rendered, false, false)
+    }
+    if str_eq_type(ty.type_kind, "Option") {
+        let inner = lower_type(cg, ty.ty_inner)
+        return new_llvm_type(str_concat("{i1,", str_concat(inner.raw, "}")), false, false)
+    }
+    if str_eq_type(ty.type_kind, "Result") {
+        let ok_ty = lower_type(cg, ty.ty_ok)
+        let err_ty = lower_type(cg, ty.ty_err)
+        return new_llvm_type(str_concat("{i1,", str_concat(ok_ty.raw, str_concat(", ", str_concat(err_ty.raw, "}")))), false, false)
+    }
+    if str_eq_type(ty.type_kind, "Fn") {
+        let mut rendered = "fn("
+        let mut i = 0
+        while i < ty.ty_params.len() {
+            if i > 0 {
+                rendered = str_concat(rendered, ", ")
+            }
+            rendered = str_concat(rendered, lower_type(cg, ty.ty_params[i]).raw)
+            i = i + 1
+        }
+        rendered = str_concat(rendered, str_concat(") -> ", lower_type(cg, ty.ty_ret).raw))
+        return new_llvm_type(rendered, false, false)
+    }
+    if str_eq_type(ty.type_kind, "Row") {
+        return new_llvm_type("row", false, false)
+    }
+    if str_eq_type(ty.type_kind, "Var") {
+        return new_llvm_type(str_concat("t", int_to_string(ty.ty_id)), false, false)
+    }
+    new_llvm_type(ty.type_kind, false, false)
+}
+
+fn is_void_type(ty: Type) {
+    str_eq_type(ty.type_kind, "Unit") || str_eq_type(ty.type_kind, "Never")
 }

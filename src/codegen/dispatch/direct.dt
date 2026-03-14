@@ -1,5 +1,26 @@
-import { CodeGen, LLVMValue, CodeGenError }
+import { CodeGen, LLVMValue, cg_lookup_function, cg_lookup_function_type, new_llvm_value, llvm_value_exists, cg_append_line }
 
 @type {
     fn emit_direct_call(cg: CodeGen, fn_name: String, args: Array[LLVMValue], result_name: String) -> LLVMValue
+}
+
+fn emit_direct_call(cg: CodeGen, fn_name: String, args: Array[LLVMValue], result_name: String) {
+    let fn_val = cg_lookup_function(cg, fn_name)
+    let fn_ty = cg_lookup_function_type(cg, fn_name)
+    let mut raw = result_name
+    if str_len(raw) == 0 {
+        raw = str_concat("%call.", int_to_string(cg.temp_counter))
+        cg.temp_counter = cg.temp_counter + 1
+    }
+    let mut rendered = str_concat(raw, str_concat(" = call ", fn_name))
+    let mut i = 0
+    while i < args.len() {
+        rendered = str_concat(rendered, str_concat(" ", args[i].raw))
+        i = i + 1
+    }
+    cg_append_line(cg, rendered)
+    if llvm_value_exists(fn_val) {
+        return new_llvm_value(raw, fn_ty, true)
+    }
+    new_llvm_value(str_concat("missing.", fn_name), fn_ty, false)
 }

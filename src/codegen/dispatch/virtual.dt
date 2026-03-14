@@ -1,5 +1,21 @@
-import { CodeGen, LLVMValue, CodeGenError }
+import { CodeGen, LLVMValue, new_llvm_value, cg_append_line }
 
 @type {
     fn emit_virtual_call(cg: CodeGen, fat_ptr: LLVMValue, method_index: Int, args: Array[LLVMValue], result_name: String) -> LLVMValue
+}
+
+fn emit_virtual_call(cg: CodeGen, fat_ptr: LLVMValue, method_index: Int, args: Array[LLVMValue], result_name: String) {
+    let mut raw = result_name
+    if str_len(raw) == 0 {
+        raw = str_concat("%vcall.", int_to_string(cg.temp_counter))
+        cg.temp_counter = cg.temp_counter + 1
+    }
+    let mut rendered = str_concat(raw, str_concat(" = vcall ", str_concat(fat_ptr.raw, str_concat(" #", int_to_string(method_index)))))
+    let mut i = 0
+    while i < args.len() {
+        rendered = str_concat(rendered, str_concat(" ", args[i].raw))
+        i = i + 1
+    }
+    cg_append_line(cg, rendered)
+    new_llvm_value(raw, fat_ptr.value_ty, true)
 }

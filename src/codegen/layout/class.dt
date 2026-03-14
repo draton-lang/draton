@@ -1,6 +1,60 @@
-import { TypedClassDef, CodeGen, ClassLayout, LLVMValue, CodeGenError }
+import { TypedClassDef, CodeGen, ClassLayout, LLVMValue, new_llvm_type, new_llvm_value, cg_register_class_layout, cg_lookup_class_layout, cg_find_class_index, cg_append_line, lower_type, llvm_pointer_type, str_eq_type }
 
 @type {
     fn build_class_layout(cg: CodeGen, class_def: TypedClassDef)
     fn class_field_ptr(cg: CodeGen, obj_ptr: LLVMValue, class_name: String, field_name: String) -> LLVMValue
+}
+
+fn build_class_layout(cg: CodeGen, class_def: TypedClassDef) {
+    let layout = ClassLayout()
+    let field_names: Array[String] = []
+    let field_indices: Array[Int] = []
+    let field_types: Array[LLVMType] = []
+    let method_names: Array[String] = []
+    let method_symbols: Array[String] = []
+    layout.layout_name = class_def.class_name
+    layout.struct_type = new_llvm_type(str_concat("%class.", class_def.class_name), false, false)
+    layout.field_names = field_names
+    layout.field_indices = field_indices
+    layout.field_types = field_types
+    layout.method_names = method_names
+    layout.method_symbols = method_symbols
+    let mut next_index = 0
+    if class_def.class_has_extends {
+        layout.field_names.push("__parent__")
+        layout.field_indices.push(0)
+        layout.field_types.push(llvm_pointer_type(new_llvm_type(str_concat("%class.", class_def.class_extends_name), false, false)))
+        next_index = 1
+    }
+    let mut i = 0
+    while i < class_def.class_fields.len() {
+        layout.field_names.push(class_def.class_fields[i].field_name)
+        layout.field_indices.push(next_index)
+        layout.field_types.push(lower_type(cg, class_def.class_fields[i].field_ty))
+        next_index = next_index + 1
+        i = i + 1
+    }
+    i = 0
+    while i < class_def.class_methods.len() {
+        layout.method_names.push(class_def.class_methods[i].fn_name)
+        layout.method_symbols.push(str_concat(class_def.class_name, str_concat(".", class_def.class_methods[i].fn_name)))
+        i = i + 1
+    }
+    cg_register_class_layout(cg, layout)
+    cg_append_line(cg, str_concat("; layout ", class_def.class_name))
+    let _done = 0
+}
+
+fn class_field_ptr(cg: CodeGen, obj_ptr: LLVMValue, class_name: String, field_name: String) {
+    let layout = cg_lookup_class_layout(cg, class_name)
+    let mut i = 0
+    while i < layout.field_names.len() {
+        if str_eq_type(layout.field_names[i], field_name) {
+            let ty = llvm_pointer_type(layout.field_types[i])
+            let raw = str_concat(obj_ptr.raw, str_concat(".", field_name))
+            return new_llvm_value(raw, ty, true)
+        }
+        i = i + 1
+    }
+    new_llvm_value(str_concat(obj_ptr.raw, str_concat(".missing.", field_name)), llvm_pointer_type(new_llvm_type("invalid", false, false)), false)
 }

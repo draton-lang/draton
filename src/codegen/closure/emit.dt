@@ -1,5 +1,22 @@
-import { CodeGen, LLVMValue, Type, TypedExpr, ClosureEnv, CodeGenError }
+import { CodeGen, LLVMValue, Type, TypedExpr, build_closure_env, collect_captures, lower_type, new_llvm_value, cg_append_line, cg_fresh_name, type_unit }
 
 @type {
     fn emit_closure(cg: CodeGen, params: Array[String], body: TypedExpr, closure_ty: Type) -> LLVMValue
+}
+
+fn emit_closure(cg: CodeGen, params: Array[String], body: TypedExpr, closure_ty: Type) {
+    let captures = collect_captures(body, params)
+    let capture_types: Array[Type] = []
+    let mut i = 0
+    while i < captures.len() {
+        capture_types.push(type_unit())
+        i = i + 1
+    }
+    let env = build_closure_env(cg, captures, capture_types)
+    let name = cg_fresh_name(cg, "closure")
+    let mut raw = str_concat("%", str_concat(name, " = lambda"))
+    raw = str_concat(raw, str_concat(" body=", body.tag))
+    raw = str_concat(raw, str_concat(" env=", env.env_ptr.raw))
+    cg_append_line(cg, raw)
+    new_llvm_value(str_concat("%", name), lower_type(cg, closure_ty), true)
 }
