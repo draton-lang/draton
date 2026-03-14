@@ -884,6 +884,29 @@ impl<'ctx> CodeGen<'ctx> {
                 self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
+            "host_type_dump" => {
+                let function = self
+                    .module
+                    .get_function("draton_host_type_dump")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_host_type_dump".to_string())
+                    })?;
+                let value = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "host_type_dump requires one argument".to_string(),
+                        )
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("host_type_dump arg missing value".to_string())
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[value.into()], "host.type_dump")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(Some(call.try_as_basic_value().left()))
+            }
             _ => Ok(None),
         }
     }

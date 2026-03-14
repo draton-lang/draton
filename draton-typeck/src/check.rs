@@ -2395,6 +2395,13 @@ impl TypeChecker {
             },
         );
         self.env.define(
+            "host_type_dump",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String], Box::new(Type::String)),
+            },
+        );
+        self.env.define(
             "read_file",
             Scheme {
                 quantified: Vec::new(),

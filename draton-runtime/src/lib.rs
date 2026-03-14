@@ -12,6 +12,7 @@ use std::sync::{Mutex, OnceLock};
 
 use draton_lexer::Lexer;
 use draton_parser::Parser;
+use draton_typeck::TypeChecker;
 use gc::config::GcConfig;
 use scheduler::channel::RawChan;
 
@@ -75,6 +76,46 @@ pub fn host_ast_dump_path(path: &Path) -> Result<String, String> {
             .join("\n"));
     }
     Ok(format!("{:#?}", parsed.program))
+}
+
+pub fn host_type_dump_path(path: &Path) -> Result<String, String> {
+    let source = fs::read_to_string(path)
+        .map_err(|error| format!("khong the doc {}: {error}", path.display()))?;
+    let lexed = Lexer::new(&source).tokenize();
+    if !lexed.errors.is_empty() {
+        return Err(lexed
+            .errors
+            .into_iter()
+            .map(|error| error.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"));
+    }
+    let parsed = Parser::new(lexed.tokens).parse();
+    if !parsed.errors.is_empty() {
+        return Err(parsed
+            .errors
+            .into_iter()
+            .map(|error| error.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"));
+    }
+    let typed = TypeChecker::new().check(parsed.program);
+    if !typed.errors.is_empty() {
+        return Err(typed
+            .errors
+            .into_iter()
+            .map(|error| error.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"));
+    }
+    Ok(format!("{:#?}", typed.typed_program))
+}
+
+#[no_mangle]
+pub extern "C" fn draton_host_type_dump(path: DratonString) -> DratonString {
+    let path_string = draton_string_to_owned(path);
+    let output = host_type_dump_path(Path::new(&path_string)).unwrap_or_else(|message| message);
+    owned_string(output.into_bytes())
 }
 
 /// Initializes the global runtime scheduler.

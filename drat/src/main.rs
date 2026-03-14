@@ -15,6 +15,7 @@ mod commands {
     pub mod repl;
     pub mod run;
     pub mod test;
+    pub mod type_dump;
     pub mod update;
 }
 
@@ -36,6 +37,7 @@ enum Command {
     Init { name: Option<String> },
     Build(BuildFlags),
     AstDump { path: PathBuf },
+    TypeDump { path: PathBuf },
     LexDump { path: PathBuf },
     Run(RunFlags),
     Test,
@@ -87,6 +89,7 @@ fn main() -> Result<()> {
             Ok(())
         }
         Command::AstDump { path } => commands::ast_dump::run(&path),
+        Command::TypeDump { path } => commands::type_dump::run(&path),
         Command::LexDump { path } => commands::lex_dump::run(&path),
         Command::Run(flags) => {
             let request = BuildRequest {

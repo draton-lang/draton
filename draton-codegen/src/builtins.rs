@@ -337,6 +337,13 @@ impl<'ctx> CodeGen<'ctx> {
                 None,
             );
         }
+        if self.module.get_function("draton_host_type_dump").is_none() {
+            self.module.add_function(
+                "draton_host_type_dump",
+                self.string_type.fn_type(&[self.string_type.into()], false),
+                None,
+            );
+        }
         Ok(())
     }
 

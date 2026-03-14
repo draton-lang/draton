@@ -414,6 +414,7 @@ dependencies = [
  "crossbeam",
  "draton-lexer",
  "draton-parser",
+ "draton-typeck",
  "io-uring",
  "libc",
  "pretty_assertions",
