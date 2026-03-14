@@ -1,12 +1,5 @@
 import { Type }
 
-enum SubjectKindTag {
-    Bool,
-    Enum,
-    Tuple,
-    Other,
-}
-
 class SubjectKind {
     let mut kind: String
     let mut name: String
@@ -16,4 +9,23 @@ class SubjectKind {
 
 @type {
     fn classify_type(ty: Type) -> SubjectKind
+}
+
+fn classify_type(ty: Type) {
+    let out = SubjectKind()
+    let variants: Array[String] = []
+    out.kind = "Other"
+    out.name = ""
+    out.variants = variants
+    out.arity = 0
+    if str_eq_type(ty.type_kind, "Bool") {
+        out.kind = "Bool"
+    } else if str_eq_type(ty.type_kind, "Tuple") {
+        out.kind = "Tuple"
+        out.arity = ty.ty_items.len()
+    } else if str_eq_type(ty.type_kind, "Named") {
+        out.kind = "Enum"
+        out.name = ty.ty_name
+    }
+    out
 }

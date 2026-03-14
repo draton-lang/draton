@@ -1,39 +1,19 @@
-enum TypeKind {
-    Int,
-    Float,
-    Bool,
-    String,
-    Unit,
-    Array,
-    Map,
-    Set,
-    Tuple,
-    Option,
-    Result,
-    Chan,
-    Fn,
-    Named,
-    Row,
-    Pointer,
-    Var,
-}
-
 class Type {
-    let mut kind: String
-    let mut inner: Type
-    let mut key: Type
-    let mut value: Type
-    let mut ok: Type
-    let mut err: Type
-    let mut items: Array[Type]
-    let mut params: Array[Type]
-    let mut ret: Type
-    let mut name: String
-    let mut args: Array[Type]
-    let mut row_fields: Map[String, Type]
-    let mut has_rest: Bool
-    let mut rest: Type
-    let mut id: Int
+    let mut type_kind: String
+    let mut ty_inner: Type
+    let mut ty_key: Type
+    let mut ty_value: Type
+    let mut ty_ok: Type
+    let mut ty_err: Type
+    let mut ty_items: Array[Type]
+    let mut ty_params: Array[Type]
+    let mut ty_ret: Type
+    let mut ty_name: String
+    let mut ty_args: Array[Type]
+    let mut ty_row_fields: Map[String, Type]
+    let mut ty_has_rest: Bool
+    let mut ty_rest: Type
+    let mut ty_id: Int
 }
 
 @type {
@@ -51,10 +31,230 @@ class Type {
     fn type_result(ok: Type, err: Type) -> Type
     fn type_chan(inner: Type) -> Type
     fn type_fn(params: Array[Type], ret: Type) -> Type
-    fn type_named(name: String, args: Array[Type]) -> Type
+    fn ty_named(name: String, args: Array[Type]) -> Type
     fn type_row(fields: Map[String, Type], has_rest: Bool, rest: Type) -> Type
-    fn type_pointer(inner: Type) -> Type
+    fn ty_pointer(inner: Type) -> Type
     fn type_var(id: Int) -> Type
     fn type_display(ty: Type) -> String
     fn type_eq(a: Type, b: Type) -> Bool
+    fn str_eq_type(a: String, b: String) -> Bool
+    fn join_type_array(items: Array[Type]) -> String
+}
+
+fn new_type(kind: String) {
+    let ty = Type()
+    let empty_items: Array[Type] = []
+    let empty_params: Array[Type] = []
+    let empty_args: Array[Type] = []
+    ty.type_kind = kind
+    ty.ty_items = empty_items
+    ty.ty_params = empty_params
+    ty.ty_args = empty_args
+    ty.ty_has_rest = false
+    ty.ty_id = 0
+    ty.ty_name = ""
+    ty
+}
+
+fn type_int() {
+    new_type("Int")
+}
+
+fn type_float() {
+    new_type("Float")
+}
+
+fn type_bool() {
+    new_type("Bool")
+}
+
+fn type_string() {
+    new_type("String")
+}
+
+fn type_unit() {
+    new_type("Unit")
+}
+
+fn type_array(inner: Type) {
+    let ty = new_type("Array")
+    ty.ty_inner = inner
+    ty
+}
+
+fn type_map(key: Type, value: Type) {
+    let ty = new_type("Map")
+    ty.ty_key = key
+    ty.ty_value = value
+    ty
+}
+
+fn type_set(inner: Type) {
+    let ty = new_type("Set")
+    ty.ty_inner = inner
+    ty
+}
+
+fn type_tuple(items: Array[Type]) {
+    let ty = new_type("Tuple")
+    ty.ty_items = items
+    ty
+}
+
+fn type_option(inner: Type) {
+    let ty = new_type("Option")
+    ty.ty_inner = inner
+    ty
+}
+
+fn type_result(ok: Type, err: Type) {
+    let ty = new_type("Result")
+    ty.ty_ok = ok
+    ty.ty_err = err
+    ty
+}
+
+fn type_chan(inner: Type) {
+    let ty = new_type("Chan")
+    ty.ty_inner = inner
+    ty
+}
+
+fn type_fn(params: Array[Type], ret: Type) {
+    let ty = new_type("Fn")
+    ty.ty_params = params
+    ty.ty_ret = ret
+    ty
+}
+
+fn ty_named(name: String, args: Array[Type]) {
+    let ty = new_type("Named")
+    ty.ty_name = name
+    ty.ty_args = args
+    ty
+}
+
+fn type_row(fields: Map[String, Type], has_rest: Bool, rest: Type) {
+    let ty = new_type("Row")
+    ty.ty_row_fields = fields
+    ty.ty_has_rest = has_rest
+    ty.ty_rest = rest
+    ty
+}
+
+fn ty_pointer(inner: Type) {
+    let ty = new_type("Pointer")
+    ty.ty_inner = inner
+    ty
+}
+
+fn type_var(id: Int) {
+    let ty = new_type("Var")
+    ty.ty_id = id
+    ty
+}
+
+fn type_display(ty: Type) {
+    let mut out = ty.type_kind
+    if str_eq_type(ty.type_kind, "Array") {
+        out = str_concat("Array(", str_concat(type_display(ty.ty_inner), ")"))
+    } else if str_eq_type(ty.type_kind, "Map") {
+        let inner = str_concat(type_display(ty.ty_key), str_concat(", ", type_display(ty.ty_value)))
+        out = str_concat("Map(", str_concat(inner, ")"))
+    } else if str_eq_type(ty.type_kind, "Set") {
+        out = str_concat("Set(", str_concat(type_display(ty.ty_inner), ")"))
+    } else if str_eq_type(ty.type_kind, "Tuple") {
+        out = str_concat("Tuple([", str_concat(join_type_array(ty.ty_items), "])"))
+    } else if str_eq_type(ty.type_kind, "Option") {
+        out = str_concat("Option(", str_concat(type_display(ty.ty_inner), ")"))
+    } else if str_eq_type(ty.type_kind, "Result") {
+        let inner = str_concat(type_display(ty.ty_ok), str_concat(", ", type_display(ty.ty_err)))
+        out = str_concat("Result(", str_concat(inner, ")"))
+    } else if str_eq_type(ty.type_kind, "Chan") {
+        out = str_concat("Chan(", str_concat(type_display(ty.ty_inner), ")"))
+    } else if str_eq_type(ty.type_kind, "Fn") {
+        let head = str_concat("Fn([", join_type_array(ty.ty_params))
+        let tail = str_concat("], ", str_concat(type_display(ty.ty_ret), ")"))
+        out = str_concat(head, tail)
+    } else if str_eq_type(ty.type_kind, "Named") {
+        let head = str_concat("Named(\"", str_concat(ty.ty_name, "\", ["))
+        let tail = str_concat(join_type_array(ty.ty_args), "])")
+        out = str_concat(head, tail)
+    } else if str_eq_type(ty.type_kind, "Pointer") {
+        out = str_concat("Pointer(", str_concat(type_display(ty.ty_inner), ")"))
+    } else if str_eq_type(ty.type_kind, "Var") {
+        out = str_concat("Var(", str_concat(int_to_string(ty.ty_id), ")"))
+    }
+    out
+}
+
+fn type_eq(a: Type, b: Type) {
+    let mut same = str_eq_type(a.type_kind, b.type_kind)
+    if same && str_eq_type(a.type_kind, "Array") {
+        same = type_eq(a.ty_inner, b.ty_inner)
+    } else if same && str_eq_type(a.type_kind, "Map") {
+        same = type_eq(a.ty_key, b.ty_key) && type_eq(a.ty_value, b.ty_value)
+    } else if same && str_eq_type(a.type_kind, "Set") {
+        same = type_eq(a.ty_inner, b.ty_inner)
+    } else if same && str_eq_type(a.type_kind, "Tuple") {
+        same = a.ty_items.len() == b.ty_items.len()
+        let mut i = 0
+        while same && i < a.ty_items.len() {
+            same = type_eq(a.ty_items[i], b.ty_items[i])
+            i = i + 1
+        }
+    } else if same && str_eq_type(a.type_kind, "Option") {
+        same = type_eq(a.ty_inner, b.ty_inner)
+    } else if same && str_eq_type(a.type_kind, "Result") {
+        same = type_eq(a.ty_ok, b.ty_ok) && type_eq(a.ty_err, b.ty_err)
+    } else if same && str_eq_type(a.type_kind, "Chan") {
+        same = type_eq(a.ty_inner, b.ty_inner)
+    } else if same && str_eq_type(a.type_kind, "Fn") {
+        same = a.ty_params.len() == b.ty_params.len()
+        let mut i = 0
+        while same && i < a.ty_params.len() {
+            same = type_eq(a.ty_params[i], b.ty_params[i])
+            i = i + 1
+        }
+        if same {
+            same = type_eq(a.ty_ret, b.ty_ret)
+        }
+    } else if same && str_eq_type(a.type_kind, "Named") {
+        same = str_eq_type(a.ty_name, b.ty_name) && a.ty_args.len() == b.ty_args.len()
+        let mut i = 0
+        while same && i < a.ty_args.len() {
+            same = type_eq(a.ty_args[i], b.ty_args[i])
+            i = i + 1
+        }
+    } else if same && str_eq_type(a.type_kind, "Pointer") {
+        same = type_eq(a.ty_inner, b.ty_inner)
+    } else if same && str_eq_type(a.type_kind, "Var") {
+        same = a.ty_id == b.ty_id
+    }
+    same
+}
+
+fn str_eq_type(a: String, b: String) {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
+}
+
+fn join_type_array(items: Array[Type]) {
+    let mut out = ""
+    let mut i = 0
+    while i < items.len() {
+        if i > 0 {
+            out = str_concat(out, ", ")
+        }
+        out = str_concat(out, type_display(items[i]))
+        i = i + 1
+    }
+    out
 }

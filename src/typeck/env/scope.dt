@@ -2,6 +2,8 @@ import { Scheme }
 
 class Scope {
     let mut bindings: Map[String, Scheme]
+    let mut names: Array[String]
+    let mut schemes: Array[Scheme]
 }
 
 @type {
@@ -11,4 +13,90 @@ class Scope {
     fn scope_remove(s: Scope, name: String) -> Scheme
     fn scope_contains(s: Scope, name: String) -> Bool
     fn scope_all_names(s: Scope) -> Array[String]
+    fn str_eq_scope(a: String, b: String) -> Bool
+}
+
+fn new_scope() {
+    let s = Scope()
+    let names: Array[String] = []
+    let schemes: Array[Scheme] = []
+    s.names = names
+    s.schemes = schemes
+    s
+}
+
+fn scope_define(s: Scope, name: String, scheme: Scheme) {
+    let mut i = 0
+    let mut done = false
+    while i < s.names.len() && !done {
+        if str_eq_scope(s.names[i], name) {
+            s.schemes[i] = scheme
+            done = true
+        }
+        i = i + 1
+    }
+    if !done {
+        s.names.push(name)
+        s.schemes.push(scheme)
+    }
+    let _done = 0
+}
+
+fn scope_lookup(s: Scope, name: String) {
+    let mut out = empty_scheme()
+    let mut i = 0
+    while i < s.names.len() && !out.exists {
+        if str_eq_scope(s.names[i], name) {
+            out = s.schemes[i]
+        }
+        i = i + 1
+    }
+    out
+}
+
+fn scope_remove(s: Scope, name: String) {
+    let mut out = empty_scheme()
+    let mut names: Array[String] = []
+    let mut schemes: Array[Scheme] = []
+    let mut i = 0
+    while i < s.names.len() {
+        if str_eq_scope(s.names[i], name) && !out.exists {
+            out = s.schemes[i]
+        } else {
+            names.push(s.names[i])
+            schemes.push(s.schemes[i])
+        }
+        i = i + 1
+    }
+    s.names = names
+    s.schemes = schemes
+    out
+}
+
+fn scope_contains(s: Scope, name: String) {
+    let mut found = false
+    let mut i = 0
+    while i < s.names.len() && !found {
+        if str_eq_scope(s.names[i], name) {
+            found = true
+        }
+        i = i + 1
+    }
+    found
+}
+
+fn scope_all_names(s: Scope) {
+    s.names
+}
+
+fn str_eq_scope(a: String, b: String) {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
 }

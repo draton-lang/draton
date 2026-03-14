@@ -2,14 +2,18 @@ import { Type, Scheme, TypeEnv, Substitution, TypedFnDef, TypedParam, TypedClass
          TypedInterfaceDef, TypedEnumDef, TypedErrorDef, TypedConstDef, TypedImportDef,
          TypedImportItem, TypedExternBlock, TypedTypeBlockDef, TypedTypeMember, TypedItem,
          TypedProgram, Item, FnDef, ClassDef, InterfaceDef, EnumDef, ErrorDef, ConstDef,
-         ImportDef, ExternBlock, TypeBlockDef, TypeMember, ClassMember, Program, TypeError, Span }
+         ImportDef, ExternBlock, TypeBlockDef, TypeMember, ClassMember, Program, TypeError, Span,
+         TypeExpr }
 
 class Checker {
     let mut env: TypeEnv
     let mut subst: Substitution
     let mut errors: Array[TypeError]
-    let mut class_fields: Map[String, Map[String, Type]]
-    let mut class_methods: Map[String, Map[String, Scheme]]
+    let mut class_names: Array[String]
+    let mut class_field_names: Array[Array[String]]
+    let mut class_field_types: Array[Array[Type]]
+    let mut class_method_names: Array[Array[String]]
+    let mut class_method_schemes: Array[Array[Scheme]]
     let mut current_return: Array[Type]
     let mut current_class: Array[String]
 }
@@ -37,4 +41,451 @@ class TypeCheckResult {
     fn checker_apply_subst(c: Checker, ty: Type) -> Type
     fn checker_fresh_var(c: Checker) -> Type
     fn checker_unify(c: Checker, a: Type, b: Type, span: Span) -> Type
+    fn find_class_index(c: Checker, name: String) -> Int
+    fn checker_define_class(c: Checker, name: String, field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme])
+}
+
+fn new_checker() {
+    let c = Checker()
+    let errors: Array[TypeError] = []
+    let class_names: Array[String] = []
+    let class_field_names: Array[Array[String]] = []
+    let class_field_types: Array[Array[Type]] = []
+    let class_method_names: Array[Array[String]] = []
+    let class_method_schemes: Array[Array[Scheme]] = []
+    let current_return: Array[Type] = []
+    let current_class: Array[String] = []
+    c.env = new_env()
+    c.subst = empty_subst()
+    c.errors = errors
+    c.class_names = class_names
+    c.class_field_names = class_field_names
+    c.class_field_types = class_field_types
+    c.class_method_names = class_method_names
+    c.class_method_schemes = class_method_schemes
+    c.current_return = current_return
+    c.current_class = current_class
+    install_builtins(c)
+    c
+}
+
+fn checker_run(c: Checker, program: Program) {
+    let out = TypeCheckResult()
+    let typed = empty_typed_program()
+    predeclare_items(c, program)
+    let mut i = 0
+    while i < program.items.len() {
+        typed.program_items.push(infer_item(c, program.items[i]))
+        i = i + 1
+    }
+    out.typed_program = typed
+    out.errors = c.errors
+    out
+}
+
+fn infer_item(c: Checker, item: Item) {
+    let out = TypedItem()
+    if item_kind_is(item, "Fn") {
+        out.tag = "Fn"
+        out.item_fn_def = infer_fn_def(c, item.fn_def, "")
+    } else if item_kind_is(item, "PanicHandler") {
+        out.tag = "PanicHandler"
+        out.item_panic_handler_def = infer_fn_def(c, item.panic_handler_def, "")
+    } else if item_kind_is(item, "OomHandler") {
+        out.tag = "OomHandler"
+        out.item_oom_handler_def = infer_fn_def(c, item.oom_handler_def, "")
+    } else if item_kind_is(item, "Class") {
+        out.tag = "Class"
+        out.item_class_def = infer_class_def(c, item.class_def)
+    } else if item_kind_is(item, "Interface") {
+        out.tag = "Interface"
+        out.item_interface_def = infer_interface_def(c, item.interface_def)
+    } else if item_kind_is(item, "Enum") {
+        let def = TypedEnumDef()
+        def.enum_name = item.enum_def.name
+        def.enum_variants = item.enum_def.variants
+        def.enum_span = item.enum_def.span
+        out.tag = "Enum"
+        out.item_enum_def = def
+    } else if item_kind_is(item, "Error") {
+        out.tag = "Error"
+        out.item_error_def = infer_error_def(c, item.error_def)
+    } else if item_kind_is(item, "Const") {
+        out.tag = "Const"
+        out.item_const_def = infer_const_def(c, item.const_def)
+    } else if item_kind_is(item, "Import") {
+        let def = TypedImportDef()
+        let items: Array[TypedImportItem] = []
+        def.import_items = items
+        def.import_span = item.import_def.span
+        let mut i = 0
+        while i < item.import_def.items.len() {
+            let typed_item = TypedImportItem()
+            typed_item.import_name = item.import_def.items[i].name
+            typed_item.import_has_alias = item.import_def.items[i].has_alias
+            typed_item.import_alias = item.import_def.items[i].alias
+            typed_item.import_span = item.import_def.items[i].span
+            def.import_items.push(typed_item)
+            i = i + 1
+        }
+        out.tag = "Import"
+        out.item_import_def = def
+    } else if item_kind_is(item, "Extern") {
+        out.tag = "Extern"
+        out.item_extern_block = infer_extern_block(c, item.extern_block)
+    } else if item_kind_is(item, "TypeBlock") {
+        out.tag = "TypeBlock"
+        out.item_type_block_def = infer_type_block(c, item.type_block_def)
+    }
+    out
+}
+
+fn infer_fn_def(c: Checker, fn_def: FnDef, current_class: String) {
+    env_push_scope(c.env)
+    let typed = TypedFnDef()
+    let params: Array[TypedParam] = []
+    let raw_param_types: Array[Type] = []
+    typed.fn_is_pub = fn_def.is_pub
+    typed.fn_name = fn_def.name
+    typed.fn_params = params
+    typed.fn_span = fn_def.span
+    typed.fn_has_body = false
+    if str_len(current_class) != 0 {
+        c.current_class.push(current_class)
+    }
+    let mut i = 0
+    while i < fn_def.params.len() {
+        let mut raw_ty = checker_fresh_var(c)
+        if fn_def.params[i].has_type_hint {
+            raw_ty = type_from_annotation(c, fn_def.params[i].type_hint)
+        }
+        raw_param_types.push(raw_ty)
+        env_define(c.env, fn_def.params[i].name, mono_scheme(raw_ty))
+        i = i + 1
+    }
+    let mut annotated_ret = checker_fresh_var(c)
+    if fn_def.has_ret_type {
+        annotated_ret = type_from_annotation(c, fn_def.ret_type)
+    }
+    c.current_return.push(annotated_ret)
+    if fn_def.has_body {
+        let block = infer_block(c, fn_def.body)
+        typed.fn_has_body = true
+        typed.fn_body = block
+        checker_unify(c, annotated_ret, block.block_result_ty, block.block_span)
+    }
+    typed.fn_ret_type = checker_apply_subst(c, annotated_ret)
+    i = 0
+    while i < fn_def.params.len() {
+        let param = TypedParam()
+        param.param_name = fn_def.params[i].name
+        param.param_ty = checker_apply_subst(c, raw_param_types[i])
+        param.param_span = fn_def.params[i].span
+        typed.fn_params.push(param)
+        i = i + 1
+    }
+    let fn_params: Array[Type] = []
+    i = 0
+    while i < typed.fn_params.len() {
+        fn_params.push(typed.fn_params[i].param_ty)
+        i = i + 1
+    }
+    typed.fn_ty = type_fn(fn_params, typed.fn_ret_type)
+    let mut returns: Array[Type] = []
+    i = 0
+    while i + 1 < c.current_return.len() {
+        returns.push(c.current_return[i])
+        i = i + 1
+    }
+    c.current_return = returns
+    if str_len(current_class) != 0 {
+        let mut classes: Array[String] = []
+        i = 0
+        while i + 1 < c.current_class.len() {
+            classes.push(c.current_class[i])
+            i = i + 1
+        }
+        c.current_class = classes
+    }
+    env_pop_scope(c.env)
+    typed
+}
+
+fn infer_class_def(c: Checker, def: ClassDef) {
+    let typed = TypedClassDef()
+    let fields: Array[TypedFieldDef] = []
+    let methods: Array[TypedFnDef] = []
+    let field_names: Array[String] = []
+    let field_types: Array[Type] = []
+    let method_names: Array[String] = []
+    let method_schemes: Array[Scheme] = []
+    typed.class_name = def.name
+    typed.class_has_extends = def.has_extends
+    typed.class_extends_name = def.extends_name
+    typed.class_implements_names = def.implements_names
+    typed.class_fields = fields
+    typed.class_methods = methods
+    typed.class_span = def.span
+    let mut i = 0
+    while i < def.members.len() {
+        if class_member_kind_is(def.members[i], "Field") {
+            let field = TypedFieldDef()
+            field.field_is_mut = def.members[i].field_def.is_mut
+            field.field_name = def.members[i].field_def.name
+            field.field_ty = checker_fresh_var(c)
+            if def.members[i].field_def.has_type_hint {
+                field.field_ty = type_from_annotation(c, def.members[i].field_def.type_hint)
+            }
+            field.field_span = def.members[i].field_def.span
+            typed.class_fields.push(field)
+            field_names.push(field.field_name)
+            field_types.push(field.field_ty)
+        } else if class_member_kind_is(def.members[i], "Method") {
+            let method = infer_fn_def(c, def.members[i].method_def, def.name)
+            typed.class_methods.push(method)
+            method_names.push(method.fn_name)
+            method_schemes.push(mono_scheme(method.fn_ty))
+        } else {
+            let mut j = 0
+            while j < def.members[i].layer_def.methods.len() {
+                let method = infer_fn_def(c, def.members[i].layer_def.methods[j], def.name)
+                typed.class_methods.push(method)
+                method_names.push(method.fn_name)
+                method_schemes.push(mono_scheme(method.fn_ty))
+                j = j + 1
+            }
+        }
+        i = i + 1
+    }
+    checker_define_class(c, def.name, field_names, field_types, method_names, method_schemes)
+    typed
+}
+
+fn infer_interface_def(c: Checker, def: InterfaceDef) {
+    let typed = TypedInterfaceDef()
+    let methods: Array[TypedFnDef] = []
+    typed.interface_name = def.name
+    typed.interface_methods = methods
+    typed.interface_span = def.span
+    let mut i = 0
+    while i < def.methods.len() {
+        typed.interface_methods.push(infer_fn_def(c, def.methods[i], ""))
+        i = i + 1
+    }
+    typed
+}
+
+fn infer_error_def(c: Checker, def: ErrorDef) {
+    let typed = TypedErrorDef()
+    let fields: Array[TypedParam] = []
+    typed.error_name = def.name
+    typed.error_fields = fields
+    typed.error_span = def.span
+    let mut i = 0
+    while i < def.fields.len() {
+        let field = TypedParam()
+        field.param_name = def.fields[i].name
+        field.param_ty = checker_fresh_var(c)
+        if def.fields[i].has_type_hint {
+            field.param_ty = type_from_annotation(c, def.fields[i].type_hint)
+        }
+        field.param_span = def.fields[i].span
+        typed.error_fields.push(field)
+        i = i + 1
+    }
+    typed
+}
+
+fn infer_const_def(c: Checker, def: ConstDef) {
+    let typed = TypedConstDef()
+    let value = infer_expr(c, def.value)
+    typed.const_name = def.name
+    typed.const_value = value
+    typed.const_ty = checker_apply_subst(c, value.expr_ty)
+    typed.const_span = def.span
+    env_define(c.env, def.name, mono_scheme(typed.const_ty))
+    typed
+}
+
+fn infer_extern_block(c: Checker, def: ExternBlock) {
+    let typed = TypedExternBlock()
+    let functions: Array[TypedFnDef] = []
+    typed.extern_abi = def.abi
+    typed.extern_functions = functions
+    typed.extern_span = def.span
+    let mut i = 0
+    while i < def.functions.len() {
+        typed.extern_functions.push(infer_fn_def(c, def.functions[i], ""))
+        i = i + 1
+    }
+    typed
+}
+
+fn infer_type_block(c: Checker, def: TypeBlockDef) {
+    let typed = TypedTypeBlockDef()
+    let members: Array[TypedTypeMember] = []
+    typed.type_members = members
+    typed.type_block_span = def.span
+    let mut i = 0
+    while i < def.members.len() {
+        let member = TypedTypeMember()
+        if type_member_kind_is(def.members[i], "Binding") {
+            member.tag = "Binding"
+            member.member_name = def.members[i].name
+            member.member_ty = type_from_annotation(c, def.members[i].type_expr)
+            member.member_span = def.members[i].span
+        } else {
+            member.tag = "Function"
+            member.member_def = infer_fn_def(c, def.members[i].def, "")
+            member.member_span = def.members[i].def.span
+        }
+        typed.type_members.push(member)
+        i = i + 1
+    }
+    typed
+}
+
+fn predeclare_items(c: Checker, program: Program) {
+    let mut i = 0
+    while i < program.items.len() {
+        if item_kind_is(program.items[i], "Fn") {
+            let params: Array[Type] = []
+            let mut j = 0
+            while j < program.items[i].fn_def.params.len() {
+                if program.items[i].fn_def.params[j].has_type_hint {
+                    params.push(type_from_annotation(c, program.items[i].fn_def.params[j].type_hint))
+                } else {
+                    params.push(checker_fresh_var(c))
+                }
+                j = j + 1
+            }
+            let mut ret = checker_fresh_var(c)
+            if program.items[i].fn_def.has_ret_type {
+                ret = type_from_annotation(c, program.items[i].fn_def.ret_type)
+            }
+            env_define(c.env, program.items[i].fn_def.name, mono_scheme(type_fn(params, ret)))
+        }
+        i = i + 1
+    }
+}
+
+fn install_builtins(c: Checker) {
+    let print_ty = checker_fresh_var(c)
+    let quant: Array[Int] = [print_ty.ty_id]
+    env_define(c.env, "print", new_scheme(quant, type_fn([print_ty], type_unit())))
+    env_define(c.env, "range", mono_scheme(type_fn([type_int(), type_int(), type_int()], type_array(type_int()))))
+    env_define(c.env, "str_len", mono_scheme(type_fn([type_string()], type_int())))
+    env_define(c.env, "str_byte_at", mono_scheme(type_fn([type_string(), type_int()], type_int())))
+    env_define(c.env, "str_slice", mono_scheme(type_fn([type_string(), type_int(), type_int()], type_string())))
+    env_define(c.env, "str_concat", mono_scheme(type_fn([type_string(), type_string()], type_string())))
+    env_define(c.env, "int_to_string", mono_scheme(type_fn([type_int()], type_string())))
+    env_define(c.env, "ascii_char", mono_scheme(type_fn([type_int()], type_string())))
+    let empty_cli_params: Array[Type] = []
+    env_define(c.env, "cli_argc", mono_scheme(type_fn(empty_cli_params, type_int())))
+    env_define(c.env, "cli_arg", mono_scheme(type_fn([type_int()], type_string())))
+    env_define(c.env, "read_file", mono_scheme(type_fn([type_string()], type_string())))
+}
+
+fn type_from_annotation(c: Checker, ty_expr: TypeExpr) {
+    if type_expr_kind_is(ty_expr, "Named") {
+        if str_eq_type(ty_expr.name, "Int") {
+            return type_int()
+        }
+        if str_eq_type(ty_expr.name, "Float") {
+            return type_float()
+        }
+        if str_eq_type(ty_expr.name, "Bool") {
+            return type_bool()
+        }
+        if str_eq_type(ty_expr.name, "String") {
+            return type_string()
+        }
+        if str_eq_type(ty_expr.name, "Unit") {
+            return type_unit()
+        }
+        let empty_named_args: Array[Type] = []
+        return ty_named(ty_expr.name, empty_named_args)
+    }
+    if type_expr_kind_is(ty_expr, "Generic") {
+        if str_eq_type(ty_expr.name, "Array") && ty_expr.args.len() == 1 {
+            return type_array(type_from_annotation(c, ty_expr.args[0]))
+        }
+        if str_eq_type(ty_expr.name, "Option") && ty_expr.args.len() == 1 {
+            return type_option(type_from_annotation(c, ty_expr.args[0]))
+        }
+        if str_eq_type(ty_expr.name, "Set") && ty_expr.args.len() == 1 {
+            return type_set(type_from_annotation(c, ty_expr.args[0]))
+        }
+        if str_eq_type(ty_expr.name, "Chan") && ty_expr.args.len() == 1 {
+            return type_chan(type_from_annotation(c, ty_expr.args[0]))
+        }
+        if str_eq_type(ty_expr.name, "Map") && ty_expr.args.len() == 2 {
+            return type_map(type_from_annotation(c, ty_expr.args[0]), type_from_annotation(c, ty_expr.args[1]))
+        }
+        if str_eq_type(ty_expr.name, "Result") && ty_expr.args.len() == 2 {
+            return type_result(type_from_annotation(c, ty_expr.args[0]), type_from_annotation(c, ty_expr.args[1]))
+        }
+        let args: Array[Type] = []
+        let mut i = 0
+        while i < ty_expr.args.len() {
+            args.push(type_from_annotation(c, ty_expr.args[i]))
+            i = i + 1
+        }
+        return ty_named(ty_expr.name, args)
+    }
+    if type_expr_kind_is(ty_expr, "Pointer") {
+        return ty_pointer(checker_fresh_var(c))
+    }
+    checker_fresh_var(c)
+}
+
+fn generalize(c: Checker, ty: Type) {
+    mono_scheme(checker_apply_subst(c, ty))
+}
+
+fn checker_apply_subst(c: Checker, ty: Type) {
+    subst_apply_type(c.subst, ty)
+}
+
+fn checker_fresh_var(c: Checker) {
+    env_fresh_var(c.env)
+}
+
+fn checker_unify(c: Checker, a: Type, b: Type, span: Span) {
+    let ty = unify(c.subst, a, b, span)
+    if type_error_has_value(c.subst.last_error) {
+        c.errors.push(c.subst.last_error)
+        subst_clear_error(c.subst)
+    }
+    checker_apply_subst(c, ty)
+}
+
+fn find_class_index(c: Checker, name: String) {
+    let mut i = 0
+    while i < c.class_names.len() {
+        if str_eq_type(c.class_names[i], name) {
+            return i
+        }
+        i = i + 1
+    }
+    -1
+}
+
+fn checker_define_class(c: Checker, name: String, field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme]) {
+    let idx = find_class_index(c, name)
+    if idx >= 0 {
+        c.class_field_names[idx] = field_names
+        c.class_field_types[idx] = field_types
+        c.class_method_names[idx] = method_names
+        c.class_method_schemes[idx] = method_schemes
+    } else {
+        c.class_names.push(name)
+        c.class_field_names.push(field_names)
+        c.class_field_types.push(field_types)
+        c.class_method_names.push(method_names)
+        c.class_method_schemes.push(method_schemes)
+    }
+    let empty_class_args: Array[Type] = []
+    env_define(c.env, name, mono_scheme(ty_named(name, empty_class_args)))
+    let _done = 0
 }

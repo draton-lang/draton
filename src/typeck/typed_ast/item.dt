@@ -1,125 +1,108 @@
 import { Span, Type }
 
-enum TypedItemKind {
-    Fn,
-    PanicHandler,
-    OomHandler,
-    Class,
-    Interface,
-    Enum,
-    Error,
-    Const,
-    Import,
-    TypeBlock,
-    Extern,
-}
 
 class TypedItem {
-    let mut kind: String
-    let mut fn_def: TypedFnDef
-    let mut panic_handler_def: TypedFnDef
-    let mut oom_handler_def: TypedFnDef
-    let mut class_def: TypedClassDef
-    let mut interface_def: TypedInterfaceDef
-    let mut enum_def: TypedEnumDef
-    let mut error_def: TypedErrorDef
-    let mut const_def: TypedConstDef
-    let mut import_def: TypedImportDef
-    let mut type_block_def: TypedTypeBlockDef
-    let mut extern_block: TypedExternBlock
+    let mut tag: String
+    let mut item_fn_def: TypedFnDef
+    let mut item_panic_handler_def: TypedFnDef
+    let mut item_oom_handler_def: TypedFnDef
+    let mut item_class_def: TypedClassDef
+    let mut item_interface_def: TypedInterfaceDef
+    let mut item_enum_def: TypedEnumDef
+    let mut item_error_def: TypedErrorDef
+    let mut item_const_def: TypedConstDef
+    let mut item_import_def: TypedImportDef
+    let mut item_type_block_def: TypedTypeBlockDef
+    let mut item_extern_block: TypedExternBlock
 }
 
 class TypedFnDef {
-    let mut is_pub: Bool
-    let mut name: String
-    let mut params: Array[TypedParam]
-    let mut ret_type: Type
-    let mut has_body: Bool
-    let mut body: TypedBlock
-    let mut ty: Type
-    let mut span: Span
+    let mut fn_is_pub: Bool
+    let mut fn_name: String
+    let mut fn_params: Array[TypedParam]
+    let mut fn_ret_type: Type
+    let mut fn_has_body: Bool
+    let mut fn_body: TypedBlock
+    let mut fn_ty: Type
+    let mut fn_span: Span
 }
 
 class TypedParam {
-    let mut name: String
-    let mut ty: Type
-    let mut span: Span
+    let mut param_name: String
+    let mut param_ty: Type
+    let mut param_span: Span
 }
 
 class TypedClassDef {
-    let mut name: String
-    let mut has_extends: Bool
-    let mut extends_name: String
-    let mut implements_names: Array[String]
-    let mut fields: Array[TypedFieldDef]
-    let mut methods: Array[TypedFnDef]
-    let mut span: Span
+    let mut class_name: String
+    let mut class_has_extends: Bool
+    let mut class_extends_name: String
+    let mut class_implements_names: Array[String]
+    let mut class_fields: Array[TypedFieldDef]
+    let mut class_methods: Array[TypedFnDef]
+    let mut class_span: Span
 }
 
 class TypedFieldDef {
-    let mut is_mut: Bool
-    let mut name: String
-    let mut ty: Type
-    let mut span: Span
+    let mut field_is_mut: Bool
+    let mut field_name: String
+    let mut field_ty: Type
+    let mut field_span: Span
 }
 
 class TypedInterfaceDef {
-    let mut name: String
-    let mut methods: Array[TypedFnDef]
-    let mut span: Span
+    let mut interface_name: String
+    let mut interface_methods: Array[TypedFnDef]
+    let mut interface_span: Span
 }
 
 class TypedEnumDef {
-    let mut name: String
-    let mut variants: Array[String]
-    let mut span: Span
+    let mut enum_name: String
+    let mut enum_variants: Array[String]
+    let mut enum_span: Span
 }
 
 class TypedErrorDef {
-    let mut name: String
-    let mut fields: Array[TypedParam]
-    let mut span: Span
+    let mut error_name: String
+    let mut error_fields: Array[TypedParam]
+    let mut error_span: Span
 }
 
 class TypedConstDef {
-    let mut name: String
-    let mut value: TypedExpr
-    let mut ty: Type
-    let mut span: Span
+    let mut const_name: String
+    let mut const_value: TypedExpr
+    let mut const_ty: Type
+    let mut const_span: Span
 }
 
 class TypedImportDef {
-    let mut items: Array[TypedImportItem]
-    let mut span: Span
+    let mut import_items: Array[TypedImportItem]
+    let mut import_span: Span
 }
 
 class TypedImportItem {
-    let mut name: String
-    let mut has_alias: Bool
-    let mut alias: String
-    let mut span: Span
+    let mut import_name: String
+    let mut import_has_alias: Bool
+    let mut import_alias: String
+    let mut import_span: Span
 }
 
 class TypedExternBlock {
-    let mut abi: String
-    let mut functions: Array[TypedFnDef]
-    let mut span: Span
+    let mut extern_abi: String
+    let mut extern_functions: Array[TypedFnDef]
+    let mut extern_span: Span
 }
 
 class TypedTypeBlockDef {
-    let mut members: Array[TypedTypeMember]
-    let mut span: Span
+    let mut type_members: Array[TypedTypeMember]
+    let mut type_block_span: Span
 }
 
-enum TypedTypeMemberKind {
-    Binding,
-    Function,
-}
 
 class TypedTypeMember {
-    let mut kind: String
-    let mut name: String
-    let mut ty: Type
-    let mut def: TypedFnDef
-    let mut span: Span
+    let mut tag: String
+    let mut member_name: String
+    let mut member_ty: Type
+    let mut member_def: TypedFnDef
+    let mut member_span: Span
 }

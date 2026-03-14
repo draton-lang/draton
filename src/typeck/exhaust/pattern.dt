@@ -1,13 +1,3 @@
-enum PatternKind {
-    Wildcard,
-    BoolLit,
-    IntLit,
-    StrLit,
-    EnumVariant,
-    Tuple,
-    Any,
-}
-
 class Pattern {
     let mut kind: String
     let mut bool_value: Bool

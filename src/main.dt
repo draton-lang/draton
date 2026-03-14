@@ -1,4 +1,5 @@
-import { tokenize, new_parser, parser_parse, ast_dump_program, lex_error_message, parse_error_message }
+import { tokenize, new_parser, parser_parse, ast_dump_program, lex_error_message, parse_error_message,
+         new_checker, checker_run, type_dump_program, type_error_message }
 
 class ParsedArgs {
     let mut source_path: String
@@ -22,7 +23,23 @@ fn main() -> Unit {
                 }
             }
         } else if str_eq_main(cmd, "type-dump") {
-            print(host_type_dump(cli_arg(2)))
+            let source = read_file(cli_arg(2))
+            let lexed = tokenize(source)
+            if lexed.errors.len() > 0 {
+                print(join_lex_errors(lexed.errors))
+            } else {
+                let parsed = parser_parse(new_parser(lexed.tokens))
+                if parsed.errors.len() > 0 {
+                    print(join_parse_errors(parsed.errors))
+                } else {
+                    let checked = checker_run(new_checker(), parsed.program)
+                    if checked.errors.len() > 0 {
+                        print(join_type_errors(checked.errors))
+                    } else {
+                        print(type_dump_program(checked.typed_program))
+                    }
+                }
+            }
         } else {
             print_usage()
         }
@@ -67,6 +84,21 @@ fn join_parse_errors(errors: Array[ParseError]) -> String {
     out
 }
 
+fn join_type_errors(errors: Array[TypeError]) -> String {
+    let mut out = ""
+    let mut i = 0
+    while i < errors.len() {
+        let line = type_error_message(errors[i])
+        if str_len(out) == 0 {
+            out = line
+        } else {
+            out = str_concat(str_concat(out, ascii_char(10)), line)
+        }
+        i = i + 1
+    }
+    out
+}
+
 fn str_eq_main(a: String, b: String) -> Bool {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
@@ -88,8 +120,8 @@ fn str_eq_main(a: String, b: String) -> Bool {
     fn cli_argc() -> Int
     fn cli_arg(index: Int) -> String
     fn read_file(path: String) -> String
-    fn host_type_dump(path: String) -> String
     fn join_lex_errors(errors: Array[LexError]) -> String
     fn join_parse_errors(errors: Array[ParseError]) -> String
+    fn join_type_errors(errors: Array[TypeError]) -> String
     fn str_eq_main(a: String, b: String) -> Bool
 }

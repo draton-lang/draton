@@ -1,7 +1,14 @@
 class TypedProgram {
-    let mut items: Array[TypedItem]
+    let mut program_items: Array[TypedItem]
 }
 
 @type {
     fn empty_typed_program() -> TypedProgram
+}
+
+fn empty_typed_program() {
+    let program = TypedProgram()
+    let items: Array[TypedItem] = []
+    program.program_items = items
+    program
 }

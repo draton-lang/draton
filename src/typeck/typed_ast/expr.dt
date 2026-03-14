@@ -1,59 +1,32 @@
 import { Span, Type, BinOp, UnOp, FStrPart, TypeExpr }
 
-enum TypedExprKind {
-    IntLit,
-    FloatLit,
-    StrLit,
-    FStrLit,
-    BoolLit,
-    NoneLit,
-    Ident,
-    Array,
-    Map,
-    Set,
-    Tuple,
-    BinOp,
-    UnOp,
-    Call,
-    MethodCall,
-    Field,
-    Index,
-    Lambda,
-    Cast,
-    Match,
-    Ok,
-    Err,
-    Nullish,
-    Chan,
-    ClassNew,
-}
 
 class TypedExpr {
-    let mut kind: String
-    let mut ty: Type
-    let mut span: Span
+    let mut tag: String
+    let mut expr_ty: Type
+    let mut expr_span: Span
     let mut int_value: Int
     let mut float_value: Float
     let mut string_value: String
     let mut bool_value: Bool
-    let mut name: String
-    let mut parts: Array[TypedFStrPart]
-    let mut items: Array[TypedExpr]
-    let mut entries: Array[TypedMapEntry]
-    let mut lhs: TypedExpr
-    let mut rhs: TypedExpr
+    let mut ident_name: String
+    let mut fstr_parts: Array[TypedFStrPart]
+    let mut expr_items: Array[TypedExpr]
+    let mut map_entries: Array[TypedMapEntry]
+    let mut bin_lhs: TypedExpr
+    let mut bin_rhs: TypedExpr
     let mut bin_op: String
     let mut un_op: String
-    let mut expr: TypedExpr
-    let mut callee: TypedExpr
-    let mut args: Array[TypedExpr]
-    let mut target: TypedExpr
-    let mut index: TypedExpr
-    let mut params: Array[String]
-    let mut body: TypedExpr
+    let mut inner_expr: TypedExpr
+    let mut call_callee: TypedExpr
+    let mut call_args: Array[TypedExpr]
+    let mut access_target: TypedExpr
+    let mut index_expr: TypedExpr
+    let mut lambda_params: Array[String]
+    let mut lambda_body: TypedExpr
     let mut cast_ty: Type
-    let mut subject: TypedExpr
-    let mut arms: Array[TypedMatchArm]
+    let mut match_subject: TypedExpr
+    let mut match_arms: Array[TypedMatchArm]
     let mut chan_ty: Type
     let mut class_name: String
     let mut field_names: Array[String]
@@ -61,35 +34,27 @@ class TypedExpr {
 }
 
 class TypedMapEntry {
-    let mut key: TypedExpr
-    let mut value: TypedExpr
+    let mut entry_key: TypedExpr
+    let mut entry_value: TypedExpr
 }
 
-enum TypedFStrPartKind {
-    Literal,
-    Interp,
-}
 
 class TypedFStrPart {
-    let mut kind: String
-    let mut text: String
-    let mut expr: TypedExpr
+    let mut tag: String
+    let mut part_text: String
+    let mut part_expr: TypedExpr
 }
 
 class TypedMatchArm {
-    let mut pattern: TypedExpr
-    let mut body: TypedMatchArmBody
-    let mut span: Span
+    let mut arm_pattern: TypedExpr
+    let mut arm_body: TypedMatchArmBody
+    let mut arm_span: Span
 }
 
-enum TypedMatchArmBodyKind {
-    Expr,
-    Block,
-}
 
 class TypedMatchArmBody {
-    let mut kind: String
-    let mut expr: TypedExpr
-    let mut block: TypedBlock
-    let mut span: Span
+    let mut tag: String
+    let mut body_expr: TypedExpr
+    let mut body_block: TypedBlock
+    let mut body_span: Span
 }

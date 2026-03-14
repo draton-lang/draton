@@ -1,19 +1,5 @@
 import { Span }
 
-enum TypeErrorKind {
-    UndefinedVar,
-    TypeMismatch,
-    InfiniteType,
-    ArityMismatch,
-    NotCallable,
-    UndefinedField,
-    UndefinedMethod,
-    NotIndexable,
-    CannotInfer,
-    NonExhaustiveMatch,
-    DuplicateVariant,
-}
-
 class TypeError {
     let mut kind: String
     let mut name: String
@@ -24,6 +10,8 @@ class TypeError {
     let mut method: String
     let mut var_name: String
     let mut missing: Array[String]
+    let mut expected_count: Int
+    let mut found_count: Int
     let mut line: Int
     let mut col: Int
 }
@@ -42,4 +30,210 @@ class TypeError {
     fn non_exhaustive_match_error(missing: Array[String], line: Int, col: Int) -> TypeError
     fn duplicate_variant_error(name: String, line: Int, col: Int) -> TypeError
     fn type_error_message(err: TypeError) -> String
+    fn type_error_has_value(err: TypeError) -> Bool
+    fn join_missing_patterns(items: Array[String]) -> String
+    fn str_eq_type_error(a: String, b: String) -> Bool
+}
+
+fn new_type_error(kind: String, line: Int, col: Int) {
+    let err = TypeError()
+    let empty_missing: Array[String] = []
+    err.kind = kind
+    err.name = ""
+    err.expected = ""
+    err.found = ""
+    err.ty = ""
+    err.field = ""
+    err.method = ""
+    err.var_name = ""
+    err.missing = empty_missing
+    err.expected_count = 0
+    err.found_count = 0
+    err.line = line
+    err.col = col
+    err
+}
+
+fn undefined_var_error(name: String, line: Int, col: Int) {
+    let err = new_type_error("UndefinedVar", line, col)
+    err.name = name
+    err
+}
+
+fn type_mismatch_error(expected: String, found: String, line: Int, col: Int) {
+    let err = new_type_error("TypeMismatch", line, col)
+    err.expected = expected
+    err.found = found
+    err
+}
+
+fn infinite_type_error(var_name: String, line: Int, col: Int) {
+    let err = new_type_error("InfiniteType", line, col)
+    err.var_name = var_name
+    err
+}
+
+fn arity_mismatch_error(expected: Int, found: Int, line: Int, col: Int) {
+    let err = new_type_error("ArityMismatch", line, col)
+    err.expected_count = expected
+    err.found_count = found
+    err
+}
+
+fn not_callable_error(ty: String, line: Int, col: Int) {
+    let err = new_type_error("NotCallable", line, col)
+    err.ty = ty
+    err
+}
+
+fn undefined_field_error(field: String, ty: String, line: Int, col: Int) {
+    let err = new_type_error("UndefinedField", line, col)
+    err.field = field
+    err.ty = ty
+    err
+}
+
+fn undefined_method_error(method: String, ty: String, line: Int, col: Int) {
+    let err = new_type_error("UndefinedMethod", line, col)
+    err.method = method
+    err.ty = ty
+    err
+}
+
+fn not_indexable_error(ty: String, line: Int, col: Int) {
+    let err = new_type_error("NotIndexable", line, col)
+    err.ty = ty
+    err
+}
+
+fn cannot_infer_error(line: Int, col: Int) {
+    let err = new_type_error("CannotInfer", line, col)
+    err.name = "expression"
+    err
+}
+
+fn non_exhaustive_match_error(missing: Array[String], line: Int, col: Int) {
+    let err = new_type_error("NonExhaustiveMatch", line, col)
+    err.missing = missing
+    err
+}
+
+fn duplicate_variant_error(name: String, line: Int, col: Int) {
+    let err = new_type_error("DuplicateVariant", line, col)
+    err.name = name
+    err
+}
+
+fn type_error_message(err: TypeError) {
+    let mut out = ""
+    if str_eq_type_error(err.kind, "UndefinedVar") {
+        let a = str_concat("undefined variable '", err.name)
+        let b = str_concat(a, "' at line ")
+        let c = str_concat(b, int_to_string(err.line))
+        let d = str_concat(c, ", col ")
+        out = str_concat(d, int_to_string(err.col))
+    } else if str_eq_type_error(err.kind, "TypeMismatch") {
+        let a = str_concat("type mismatch at line ", int_to_string(err.line))
+        let b = str_concat(a, ", col ")
+        let c = str_concat(b, int_to_string(err.col))
+        let d = str_concat(c, ascii_char(10))
+        let e = str_concat(d, "  expected: matching types")
+        let f = str_concat(e, ascii_char(10))
+        let g = str_concat("  found:    ", str_concat(err.expected, str_concat(" vs ", err.found)))
+        let h = str_concat(f, g)
+        let i = str_concat(h, ascii_char(10))
+        out = str_concat(i, "  hint:     make the operand and annotation types agree")
+    } else if str_eq_type_error(err.kind, "InfiniteType") {
+        let a = str_concat("infinite type detected involving '", err.var_name)
+        let b = str_concat(a, "' at line ")
+        let c = str_concat(b, int_to_string(err.line))
+        let d = str_concat(c, ", col ")
+        out = str_concat(d, int_to_string(err.col))
+    } else if str_eq_type_error(err.kind, "ArityMismatch") {
+        let a = str_concat("wrong number of arguments: expected ", int_to_string(err.expected_count))
+        let b = str_concat(a, ", got ")
+        let c = str_concat(b, int_to_string(err.found_count))
+        let d = str_concat(c, " at line ")
+        let e = str_concat(d, int_to_string(err.line))
+        let f = str_concat(e, ", col ")
+        out = str_concat(f, int_to_string(err.col))
+    } else if str_eq_type_error(err.kind, "NotCallable") {
+        let a = str_concat("value of type '", err.ty)
+        let b = str_concat(a, "' is not callable at line ")
+        let c = str_concat(b, int_to_string(err.line))
+        let d = str_concat(c, ", col ")
+        out = str_concat(d, int_to_string(err.col))
+    } else if str_eq_type_error(err.kind, "UndefinedField") {
+        let a = str_concat("field '", err.field)
+        let b = str_concat(a, "' not found on type '")
+        let c = str_concat(b, err.ty)
+        let d = str_concat(c, "' at line ")
+        let e = str_concat(d, int_to_string(err.line))
+        let f = str_concat(e, ", col ")
+        out = str_concat(f, int_to_string(err.col))
+    } else if str_eq_type_error(err.kind, "UndefinedMethod") {
+        let a = str_concat("method '", err.method)
+        let b = str_concat(a, "' not found on type '")
+        let c = str_concat(b, err.ty)
+        let d = str_concat(c, "' at line ")
+        let e = str_concat(d, int_to_string(err.line))
+        let f = str_concat(e, ", col ")
+        out = str_concat(f, int_to_string(err.col))
+    } else if str_eq_type_error(err.kind, "NotIndexable") {
+        let a = str_concat("type '", err.ty)
+        let b = str_concat(a, "' does not support indexing at line ")
+        let c = str_concat(b, int_to_string(err.line))
+        let d = str_concat(c, ", col ")
+        out = str_concat(d, int_to_string(err.col))
+    } else if str_eq_type_error(err.kind, "CannotInfer") {
+        let a = str_concat("cannot infer type for '", err.name)
+        let b = str_concat(a, "' at line ")
+        let c = str_concat(b, int_to_string(err.line))
+        let d = str_concat(c, ", col ")
+        let e = str_concat(d, int_to_string(err.col))
+        out = str_concat(e, " — add a @type annotation")
+    } else if str_eq_type_error(err.kind, "NonExhaustiveMatch") {
+        let a = str_concat("non-exhaustive match at line ", int_to_string(err.line))
+        let b = str_concat(a, ", col ")
+        let c = str_concat(b, int_to_string(err.col))
+        let d = str_concat(c, ascii_char(10))
+        let e = str_concat(d, "  missing patterns: ")
+        out = str_concat(e, join_missing_patterns(err.missing))
+    } else if str_eq_type_error(err.kind, "DuplicateVariant") {
+        let a = str_concat("duplicate variant '", err.name)
+        let b = str_concat(a, "' at line ")
+        let c = str_concat(b, int_to_string(err.line))
+        let d = str_concat(c, ", col ")
+        out = str_concat(d, int_to_string(err.col))
+    }
+    out
+}
+
+fn type_error_has_value(err: TypeError) {
+    str_len(err.kind) != 0
+}
+
+fn join_missing_patterns(items: Array[String]) {
+    let mut out = ""
+    let mut i = 0
+    while i < items.len() {
+        if i > 0 {
+            out = str_concat(out, ", ")
+        }
+        out = str_concat(out, items[i])
+        i = i + 1
+    }
+    out
+}
+
+fn str_eq_type_error(a: String, b: String) {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
 }

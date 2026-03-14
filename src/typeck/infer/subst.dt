@@ -2,6 +2,9 @@ import { Type, TypeError, Span }
 
 class Substitution {
     let mut map: Map[Int, Type]
+    let mut vars: Array[Int]
+    let mut values: Array[Type]
+    let mut last_error: TypeError
 }
 
 @type {
@@ -9,4 +12,154 @@ class Substitution {
     fn subst_bind(s: Substitution, var_id: Int, ty: Type) -> TypeError
     fn subst_apply_type(s: Substitution, ty: Type) -> Type
     fn occurs_check(var_id: Int, ty: Type) -> Bool
+    fn subst_clear_error(s: Substitution)
+}
+
+fn empty_subst() {
+    let s = Substitution()
+    let vars: Array[Int] = []
+    let values: Array[Type] = []
+    s.vars = vars
+    s.values = values
+    s.last_error = new_type_error("", 0, 0)
+    s
+}
+
+fn subst_bind(s: Substitution, var_id: Int, ty: Type) {
+    let applied = subst_apply_type(s, ty)
+    if str_eq_type(applied.type_kind, "Var") && applied.ty_id == var_id {
+        s.last_error = new_type_error("", 0, 0)
+        return s.last_error
+    }
+    if occurs_check(var_id, applied) {
+        let err = infinite_type_error(str_concat("t", int_to_string(var_id)), 0, 0)
+        s.last_error = err
+        return err
+    }
+    let mut i = 0
+    let mut updated = false
+    while i < s.vars.len() && !updated {
+        if s.vars[i] == var_id {
+            s.values[i] = applied
+            updated = true
+        }
+        i = i + 1
+    }
+    if !updated {
+        s.vars.push(var_id)
+        s.values.push(applied)
+    }
+    s.last_error = new_type_error("", 0, 0)
+    s.last_error
+}
+
+fn subst_apply_type(s: Substitution, ty: Type) {
+    if str_eq_type(ty.type_kind, "Var") {
+        let mut i = 0
+        while i < s.vars.len() {
+            if s.vars[i] == ty.ty_id {
+                return subst_apply_type(s, s.values[i])
+            }
+            i = i + 1
+        }
+        return ty
+    }
+    if str_eq_type(ty.type_kind, "Array") {
+        return type_array(subst_apply_type(s, ty.ty_inner))
+    }
+    if str_eq_type(ty.type_kind, "Map") {
+        return type_map(subst_apply_type(s, ty.ty_key), subst_apply_type(s, ty.ty_value))
+    }
+    if str_eq_type(ty.type_kind, "Set") {
+        return type_set(subst_apply_type(s, ty.ty_inner))
+    }
+    if str_eq_type(ty.type_kind, "Tuple") {
+        let mut items: Array[Type] = []
+        let mut i = 0
+        while i < ty.ty_items.len() {
+            items.push(subst_apply_type(s, ty.ty_items[i]))
+            i = i + 1
+        }
+        return type_tuple(items)
+    }
+    if str_eq_type(ty.type_kind, "Option") {
+        return type_option(subst_apply_type(s, ty.ty_inner))
+    }
+    if str_eq_type(ty.type_kind, "Result") {
+        return type_result(subst_apply_type(s, ty.ty_ok), subst_apply_type(s, ty.ty_err))
+    }
+    if str_eq_type(ty.type_kind, "Chan") {
+        return type_chan(subst_apply_type(s, ty.ty_inner))
+    }
+    if str_eq_type(ty.type_kind, "Fn") {
+        let mut params: Array[Type] = []
+        let mut i = 0
+        while i < ty.ty_params.len() {
+            params.push(subst_apply_type(s, ty.ty_params[i]))
+            i = i + 1
+        }
+        return type_fn(params, subst_apply_type(s, ty.ty_ret))
+    }
+    if str_eq_type(ty.type_kind, "Named") {
+        let mut args: Array[Type] = []
+        let mut i = 0
+        while i < ty.ty_args.len() {
+            args.push(subst_apply_type(s, ty.ty_args[i]))
+            i = i + 1
+        }
+        return ty_named(ty.ty_name, args)
+    }
+    if str_eq_type(ty.type_kind, "Pointer") {
+        return ty_pointer(subst_apply_type(s, ty.ty_inner))
+    }
+    ty
+}
+
+fn occurs_check(var_id: Int, ty: Type) {
+    if str_eq_type(ty.type_kind, "Var") {
+        return ty.ty_id == var_id
+    }
+    if str_eq_type(ty.type_kind, "Array") || str_eq_type(ty.type_kind, "Set") || str_eq_type(ty.type_kind, "Option") || str_eq_type(ty.type_kind, "Chan") || str_eq_type(ty.type_kind, "Pointer") {
+        return occurs_check(var_id, ty.ty_inner)
+    }
+    if str_eq_type(ty.type_kind, "Map") {
+        return occurs_check(var_id, ty.ty_key) || occurs_check(var_id, ty.ty_value)
+    }
+    if str_eq_type(ty.type_kind, "Result") {
+        return occurs_check(var_id, ty.ty_ok) || occurs_check(var_id, ty.ty_err)
+    }
+    if str_eq_type(ty.type_kind, "Tuple") {
+        let mut i = 0
+        while i < ty.ty_items.len() {
+            if occurs_check(var_id, ty.ty_items[i]) {
+                return true
+            }
+            i = i + 1
+        }
+    }
+    if str_eq_type(ty.type_kind, "Fn") {
+        let mut i = 0
+        while i < ty.ty_params.len() {
+            if occurs_check(var_id, ty.ty_params[i]) {
+                return true
+            }
+            i = i + 1
+        }
+        return occurs_check(var_id, ty.ty_ret)
+    }
+    if str_eq_type(ty.type_kind, "Named") {
+        let mut i = 0
+        while i < ty.ty_args.len() {
+            if occurs_check(var_id, ty.ty_args[i]) {
+                return true
+            }
+            i = i + 1
+        }
+    }
+    false
+}
+
+fn subst_clear_error(s: Substitution) {
+    s.last_error = new_type_error("", 0, 0)
+    let _done = 0
 }

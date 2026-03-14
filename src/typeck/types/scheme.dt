@@ -3,10 +3,38 @@ import { Type }
 class Scheme {
     let mut quantified: Array[Int]
     let mut ty: Type
+    let mut exists: Bool
 }
 
 @type {
     fn new_scheme(quantified: Array[Int], ty: Type) -> Scheme
     fn mono_scheme(ty: Type) -> Scheme
+    fn empty_scheme() -> Scheme
     fn scheme_is_generic(s: Scheme) -> Bool
+}
+
+fn new_scheme(quantified: Array[Int], ty: Type) {
+    let s = Scheme()
+    s.quantified = quantified
+    s.ty = ty
+    s.exists = true
+    s
+}
+
+fn mono_scheme(ty: Type) {
+    let vars: Array[Int] = []
+    new_scheme(vars, ty)
+}
+
+fn empty_scheme() {
+    let vars: Array[Int] = []
+    let s = Scheme()
+    s.quantified = vars
+    s.ty = type_unit()
+    s.exists = false
+    s
+}
+
+fn scheme_is_generic(s: Scheme) {
+    s.exists && s.quantified.len() > 0
 }
