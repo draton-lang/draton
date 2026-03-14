@@ -8,7 +8,7 @@ import { Expr, MatchArm, MatchArmBody, FStrPart, MapEntry, expr_int_lit, expr_fl
          parser_expect, parser_consume_ident, parser_check, parser_error_unexpected,
          parser_token_span, merge_spans, token_to_span, parser_is_eof, parser_skip_doc_comments,
          parser_previous, parse_type_expr, parse_block, invalid_expr_error, new_span,
-         Block, Token, Span }
+         Block, Token, Span, tokenize, new_parser, parser_parse_expression_only }
 
 @type {
     fn parse_expression(p: Parser) -> Expr
@@ -286,9 +286,7 @@ fn parse_arg_list(p: Parser) -> Array[Expr] {
             done = true
         }
     }
-    if !done {
-        let _rparen = parser_expect(p, "RParen", ")")
-    }
+    let _rparen = parser_expect(p, "RParen", ")")
     args
 }
 
@@ -373,8 +371,17 @@ fn parse_fstring(token: Token, p: Parser) -> Expr {
                 p.errors.push(invalid_expr_error(span.line, span.col))
                 done = true
             } else {
-                let expr_src = trim_string(str_slice(inner, start_i, i - 1))
-                parts.push(fstr_interp(parse_inline_fstring_expr(expr_src, span)))
+                let expr_src = str_slice(inner, start_i, i - 1)
+                let lexed = tokenize(expr_src)
+                let parsed = parser_parse_expression_only(new_parser(lexed.tokens))
+                let mut err_i = 0
+                while err_i < parsed.errors.len() {
+                    p.errors.push(parsed.errors[err_i])
+                    err_i = err_i + 1
+                }
+                if str_len(parsed.expr.kind) != 0 {
+                    parts.push(fstr_interp(parsed.expr))
+                }
             }
         } else {
             buffer = str_concat(buffer, ascii_char(code))
@@ -402,17 +409,17 @@ fn parse_array_literal(p: Parser) -> Expr {
     let _lbracket = parser_expect(p, "LBracket", "[")
     let mut items: Array[Expr] = []
     let mut done = false
+    let mut end = start
     while !parser_is_eof(p) && !parser_check(p, "RBracket") && !done {
         items.push(parse_expression(p))
         if !parser_match_kind(p, "Comma") {
-            let end = parser_token_span(p)
-            parser_expect(p, "RBracket", "]")
+            end = parser_token_span(p)
+            let _rbracket = parser_expect(p, "RBracket", "]")
             done = true
-            items = items
         }
     }
-    let end = parser_token_span(p)
     if !done {
+        end = parser_token_span(p)
         let _rbracket = parser_expect(p, "RBracket", "]")
     }
     expr_array(items, merge_spans(start, end))

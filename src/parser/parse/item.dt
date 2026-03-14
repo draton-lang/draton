@@ -179,10 +179,11 @@ fn parse_class_def(p: Parser) -> ClassDef {
             members.push(class_member_method(parse_fn_def(p, false, true)))
         } else if str_eq_item_parse(kind, "Pub") {
             let _advanced = parser_advance(p)
-            if str_eq_item_parse(parser_current_kind(p), "Let") {
-                members.push(class_member_field(parse_class_field(p)))
-            } else {
+            if str_eq_item_parse(parser_current_kind(p), "Fn") {
                 members.push(class_member_method(parse_fn_def(p, true, true)))
+            } else {
+                parser_error_unexpected(p, parser_current(p), "fn")
+                parser_sync_stmt(p)
             }
         } else if str_eq_item_parse(kind, "Layer") {
             members.push(class_member_layer(parse_layer(p)))
@@ -265,10 +266,13 @@ fn parse_enum_def(p: Parser) -> EnumDef {
     let name_token = parser_consume_ident(p, "enum name")
     let _lbrace = parser_expect(p, "LBrace", "{")
     let mut variants: Array[String] = []
-    while !parser_is_eof(p) && !parser_check(p, "RBrace") {
+    let mut done = false
+    while !parser_is_eof(p) && !parser_check(p, "RBrace") && !done {
         parser_skip_doc_comments(p)
         variants.push(parser_consume_ident(p, "variant name").lexeme)
-        let _comma = parser_match_kind(p, "Comma")
+        if !parser_match_kind(p, "Comma") {
+            done = true
+        }
     }
     let end = parser_token_span(p)
     let _rbrace = parser_expect(p, "RBrace", "}")

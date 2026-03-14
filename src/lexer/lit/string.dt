@@ -20,8 +20,30 @@ fn make_string_result(kind: String, lexeme: String, has_error: Bool, err: LexErr
 }
 
 fn lex_string(c: Cursor, is_fstring: Bool, start: Int, line: Int, col: Int) {
-    let a = str_concat("string literal support is not enabled in phase 1 at line ", int_to_string(line))
-    let b = str_concat(a, ", col ")
-    let err = new_lex_error(str_concat(b, int_to_string(col)))
-    make_string_result("StrLit", "", true, err)
+    if is_fstring {
+        cursor_advance(c)
+    }
+
+    cursor_advance(c)
+    while !cursor_at_end(c) {
+        let code = cursor_peek_code(c)
+        if code == 34 {
+            cursor_advance(c)
+            let mut kind = "StrLit"
+            if is_fstring {
+                kind = "FStrLit"
+            }
+            return make_string_result(kind, cursor_slice(c, start, c.pos), false, new_lex_error(""))
+        } else if code == 10 || code == 13 {
+            return make_string_result("StrLit", "", true, unterminated_string_error(line, col))
+        } else if code == 92 {
+            cursor_advance(c)
+            if !cursor_at_end(c) {
+                cursor_advance(c)
+            }
+        } else {
+            cursor_advance(c)
+        }
+    }
+    make_string_result("StrLit", "", true, unterminated_string_error(line, col))
 }

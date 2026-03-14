@@ -1,14 +1,12 @@
 @type {
     fn new_lex_error(message: String) -> LexError
+    fn unexpected_char_error(found: String, line: Int, col: Int) -> LexError
+    fn unterminated_string_error(line: Int, col: Int) -> LexError
+    fn unterminated_block_comment_error(line: Int, col: Int) -> LexError
+    fn invalid_numeric_literal_error(lexeme: String, line: Int, col: Int) -> LexError
     fn lex_error_message(err: LexError) -> String
 }
 
-enum LexErrorKind {
-    UnexpectedChar,
-    UnterminatedString,
-    UnterminatedBlockComment,
-    InvalidNumericLiteral,
-}
 
 class LexError {
     let mut message: String
@@ -18,6 +16,34 @@ fn new_lex_error(message: String) {
     let err = LexError()
     err.message = message
     err
+}
+
+fn unexpected_char_error(found: String, line: Int, col: Int) {
+    let a = str_concat("unexpected character '", found)
+    let b = str_concat(a, "' at line ")
+    let c = str_concat(b, int_to_string(line))
+    let d = str_concat(c, ", col ")
+    new_lex_error(str_concat(d, int_to_string(col)))
+}
+
+fn unterminated_string_error(line: Int, col: Int) {
+    let a = str_concat("unterminated string literal starting at line ", int_to_string(line))
+    let b = str_concat(a, ", col ")
+    new_lex_error(str_concat(b, int_to_string(col)))
+}
+
+fn unterminated_block_comment_error(line: Int, col: Int) {
+    let a = str_concat("unterminated block comment starting at line ", int_to_string(line))
+    let b = str_concat(a, ", col ")
+    new_lex_error(str_concat(b, int_to_string(col)))
+}
+
+fn invalid_numeric_literal_error(lexeme: String, line: Int, col: Int) {
+    let a = str_concat("invalid numeric literal '", lexeme)
+    let b = str_concat(a, "' at line ")
+    let c = str_concat(b, int_to_string(line))
+    let d = str_concat(c, ", col ")
+    new_lex_error(str_concat(d, int_to_string(col)))
 }
 
 fn lex_error_message(err: LexError) {

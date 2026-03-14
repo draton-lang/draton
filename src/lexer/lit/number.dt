@@ -40,5 +40,73 @@ fn is_hex_code(code: Int) {
 }
 
 fn lex_number(c: Cursor, start: Int) {
-    make_number_result("IntLit", cursor_slice(c, start, c.pos), false)
+    let mut kind = "IntLit"
+    let mut invalid = false
+
+    if cursor_peek_code(c) == 48 {
+        if cursor_peek_next_code(c) == 120 || cursor_peek_next_code(c) == 88 {
+            kind = "HexLit"
+            cursor_advance(c)
+            cursor_advance(c)
+            let digits_start = c.pos
+            while cursor_peek_code(c) >= 0 && is_ident_continue_code(cursor_peek_code(c)) {
+                if !is_hex_code(cursor_peek_code(c)) {
+                    invalid = true
+                }
+                cursor_advance(c)
+            }
+            if c.pos == digits_start {
+                invalid = true
+            }
+            if is_ident_continue_code(cursor_peek_code(c)) {
+                invalid = true
+                while is_ident_continue_code(cursor_peek_code(c)) {
+                    cursor_advance(c)
+                }
+            }
+            return make_number_result(kind, cursor_slice(c, start, c.pos), invalid)
+        } else if cursor_peek_next_code(c) == 98 || cursor_peek_next_code(c) == 66 {
+            kind = "BinLit"
+            cursor_advance(c)
+            cursor_advance(c)
+            let digits_start = c.pos
+            while cursor_peek_code(c) >= 0 && is_ident_continue_code(cursor_peek_code(c)) {
+                if cursor_peek_code(c) != 48 && cursor_peek_code(c) != 49 {
+                    invalid = true
+                }
+                cursor_advance(c)
+            }
+            if c.pos == digits_start {
+                invalid = true
+            }
+            if is_ident_continue_code(cursor_peek_code(c)) {
+                invalid = true
+                while is_ident_continue_code(cursor_peek_code(c)) {
+                    cursor_advance(c)
+                }
+            }
+            return make_number_result(kind, cursor_slice(c, start, c.pos), invalid)
+        }
+    }
+
+    while is_digit_code(cursor_peek_code(c)) {
+        cursor_advance(c)
+    }
+
+    if cursor_peek_code(c) == 46 && is_digit_code(cursor_peek_next_code(c)) {
+        kind = "FloatLit"
+        cursor_advance(c)
+        while is_digit_code(cursor_peek_code(c)) {
+            cursor_advance(c)
+        }
+    }
+
+    if is_ident_continue_code(cursor_peek_code(c)) {
+        invalid = true
+        while is_ident_continue_code(cursor_peek_code(c)) {
+            cursor_advance(c)
+        }
+    }
+
+    make_number_result(kind, cursor_slice(c, start, c.pos), invalid)
 }

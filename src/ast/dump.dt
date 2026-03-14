@@ -1,0 +1,1051 @@
+import { Program, Item, FnDef, Param, ClassDef, ClassMember, LayerDef, FieldDef, InterfaceDef,
+         EnumDef, ErrorDef, ConstDef, ImportDef, ImportItem, ExternBlock, TypeBlockDef,
+         TypeMember, Stmt, Block, LetStmt, AssignStmt, ReturnStmt, IfStmt, ElseBranch, ForStmt,
+         WhileStmt, SpawnStmt, SpawnBody, IfCompileStmt, GcConfigStmt, GcConfigEntry, Expr,
+         FStrPart, MatchArm, MatchArmBody, MapEntry, TypeExpr, Span }
+
+@type {
+    fn ast_dump_program(program: Program) -> String
+    fn dump_item(item: Item, level: Int) -> String
+    fn dump_stmt(stmt: Stmt, level: Int) -> String
+    fn dump_expr(expr: Expr, level: Int) -> String
+    fn dump_type_expr(ty: TypeExpr, level: Int) -> String
+    fn dump_span(span: Span, level: Int) -> String
+    fn dump_indent(level: Int) -> String
+    fn dump_line(level: Int, text: String) -> String
+    fn dump_append(out: String, block: String) -> String
+    fn dump_first_newline(text: String) -> Int
+    fn dump_last_newline(text: String) -> Int
+    fn dump_prefix_first(prefix: String, text: String) -> String
+    fn dump_suffix_last(text: String, suffix: String) -> String
+    fn dump_field(name: String, value: String, level: Int) -> String
+    fn dump_bool(value: Bool) -> String
+    fn dump_string(value: String) -> String
+    fn dump_escape_pair(letter: String) -> String
+    fn dump_string_list(values: Array[String], level: Int) -> String
+    fn dump_item_list(items: Array[Item], level: Int) -> String
+    fn dump_param_list(items: Array[Param], level: Int) -> String
+    fn dump_class_member_list(items: Array[ClassMember], level: Int) -> String
+    fn dump_fndef_list(items: Array[FnDef], level: Int) -> String
+    fn dump_stmt_list(items: Array[Stmt], level: Int) -> String
+    fn dump_expr_list(items: Array[Expr], level: Int) -> String
+    fn dump_map_entry_list(items: Array[MapEntry], level: Int) -> String
+    fn dump_fstr_part_list(items: Array[FStrPart], level: Int) -> String
+    fn dump_match_arm_list(items: Array[MatchArm], level: Int) -> String
+    fn dump_import_item_list(items: Array[ImportItem], level: Int) -> String
+    fn dump_type_member_list(items: Array[TypeMember], level: Int) -> String
+    fn dump_gc_entry_list(items: Array[GcConfigEntry], level: Int) -> String
+    fn dump_type_expr_list(items: Array[TypeExpr], level: Int) -> String
+    fn dump_option_string(has_value: Bool, value: String, level: Int) -> String
+    fn dump_option_type_expr(has_value: Bool, value: TypeExpr, level: Int) -> String
+    fn dump_option_expr(has_value: Bool, value: Expr, level: Int) -> String
+    fn dump_option_block(has_value: Bool, value: Block, level: Int) -> String
+    fn dump_option_else_branch(has_value: Bool, value: ElseBranch, level: Int) -> String
+    fn dump_else_branch(branch: ElseBranch, level: Int) -> String
+    fn dump_spawn_body(body: SpawnBody, level: Int) -> String
+    fn dump_match_arm_body(body: MatchArmBody, level: Int) -> String
+    fn dump_fstr_part(part: FStrPart, level: Int) -> String
+    fn dump_type_member(member: TypeMember, level: Int) -> String
+    fn dump_class_member(member: ClassMember, level: Int) -> String
+    fn dump_bin_op(name: String, level: Int) -> String
+    fn dump_un_op(name: String, level: Int) -> String
+    fn dump_assign_op(name: String, level: Int) -> String
+    fn str_eq_dump(a: String, b: String) -> Bool
+}
+
+fn ast_dump_program(program: Program) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(0, "Program {"))
+    out = dump_append(out, dump_field("items", dump_item_list(program.items, 1), 1))
+    out = dump_append(out, dump_line(0, "}"))
+    out
+}
+
+fn dump_item(item: Item, level: Int) -> String {
+    let mut out = ""
+    if str_eq_dump(item.kind, "Fn") {
+        out = dump_append(out, dump_line(level, "Fn("))
+        out = dump_append(out, dump_suffix_last(dump_fn_def(item.fn_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(item.kind, "PanicHandler") {
+        out = dump_append(out, dump_line(level, "PanicHandler("))
+        out = dump_append(out, dump_suffix_last(dump_fn_def(item.panic_handler_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(item.kind, "OomHandler") {
+        out = dump_append(out, dump_line(level, "OomHandler("))
+        out = dump_append(out, dump_suffix_last(dump_fn_def(item.oom_handler_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(item.kind, "Class") {
+        out = dump_append(out, dump_line(level, "Class("))
+        out = dump_append(out, dump_suffix_last(dump_class_def(item.class_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(item.kind, "Interface") {
+        out = dump_append(out, dump_line(level, "Interface("))
+        out = dump_append(out, dump_suffix_last(dump_interface_def(item.interface_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(item.kind, "Enum") {
+        out = dump_append(out, dump_line(level, "Enum("))
+        out = dump_append(out, dump_suffix_last(dump_enum_def(item.enum_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(item.kind, "Error") {
+        out = dump_append(out, dump_line(level, "Error("))
+        out = dump_append(out, dump_suffix_last(dump_error_def(item.error_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(item.kind, "Const") {
+        out = dump_append(out, dump_line(level, "Const("))
+        out = dump_append(out, dump_suffix_last(dump_const_def(item.const_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(item.kind, "Import") {
+        out = dump_append(out, dump_line(level, "Import("))
+        out = dump_append(out, dump_suffix_last(dump_import_def(item.import_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(item.kind, "Extern") {
+        out = dump_append(out, dump_line(level, "Extern("))
+        out = dump_append(out, dump_suffix_last(dump_extern_block(item.extern_block, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(item.kind, "TypeBlock") {
+        out = dump_append(out, dump_line(level, "TypeBlock("))
+        out = dump_append(out, dump_suffix_last(dump_type_block(item.type_block_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    }
+    out
+}
+
+fn dump_fn_def(def: FnDef, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "FnDef {"))
+    out = dump_append(out, dump_field("is_pub", dump_bool(def.is_pub), level + 1))
+    out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
+    out = dump_append(out, dump_field("params", dump_param_list(def.params, level + 1), level + 1))
+    out = dump_append(out, dump_field("ret_type", dump_option_type_expr(def.has_ret_type, def.ret_type, level + 1), level + 1))
+    out = dump_append(out, dump_field("body", dump_option_block(def.has_body, def.body, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_param(param: Param, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "Param {"))
+    out = dump_append(out, dump_field("name", dump_string(param.name), level + 1))
+    out = dump_append(out, dump_field("type_hint", dump_option_type_expr(param.has_type_hint, param.type_hint, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(param.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_class_def(def: ClassDef, level: Int) -> String {
+    let mut out = ""
+    let empty_type_params: Array[String] = []
+    out = dump_append(out, dump_line(level, "ClassDef {"))
+    out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
+    out = dump_append(out, dump_field("type_params", dump_string_list(empty_type_params, level + 1), level + 1))
+    out = dump_append(out, dump_field("extends", dump_option_string(def.has_extends, def.extends_name, level + 1), level + 1))
+    out = dump_append(out, dump_field("implements", dump_string_list(def.implements_names, level + 1), level + 1))
+    out = dump_append(out, dump_field("members", dump_class_member_list(def.members, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_class_member(member: ClassMember, level: Int) -> String {
+    let mut out = ""
+    if str_eq_dump(member.kind, "Field") {
+        out = dump_append(out, dump_line(level, "Field("))
+        out = dump_append(out, dump_suffix_last(dump_field_def(member.field_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(member.kind, "Method") {
+        out = dump_append(out, dump_line(level, "Method("))
+        out = dump_append(out, dump_suffix_last(dump_fn_def(member.method_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else {
+        out = dump_append(out, dump_line(level, "Layer("))
+        out = dump_append(out, dump_suffix_last(dump_layer_def(member.layer_def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    }
+    out
+}
+
+fn dump_layer_def(def: LayerDef, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "LayerDef {"))
+    out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
+    out = dump_append(out, dump_field("methods", dump_fndef_list(def.methods, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_field_def(def: FieldDef, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "FieldDef {"))
+    out = dump_append(out, dump_field("is_mut", dump_bool(def.is_mut), level + 1))
+    out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
+    out = dump_append(out, dump_field("type_hint", dump_option_type_expr(def.has_type_hint, def.type_hint, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_interface_def(def: InterfaceDef, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "InterfaceDef {"))
+    out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
+    out = dump_append(out, dump_field("methods", dump_fndef_list(def.methods, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_enum_def(def: EnumDef, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "EnumDef {"))
+    out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
+    out = dump_append(out, dump_field("variants", dump_string_list(def.variants, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_error_def(def: ErrorDef, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "ErrorDef {"))
+    out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
+    out = dump_append(out, dump_field("fields", dump_param_list(def.fields, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_const_def(def: ConstDef, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "ConstDef {"))
+    out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
+    out = dump_append(out, dump_field("value", dump_expr(def.value, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_import_def(def: ImportDef, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "ImportDef {"))
+    out = dump_append(out, dump_field("items", dump_import_item_list(def.items, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_import_item(item: ImportItem, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "ImportItem {"))
+    out = dump_append(out, dump_field("name", dump_string(item.name), level + 1))
+    out = dump_append(out, dump_field("alias", dump_option_string(item.has_alias, item.alias, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(item.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_extern_block(def: ExternBlock, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "ExternBlock {"))
+    out = dump_append(out, dump_field("abi", dump_string(def.abi), level + 1))
+    out = dump_append(out, dump_field("functions", dump_fndef_list(def.functions, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_type_block(def: TypeBlockDef, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "TypeBlock {"))
+    out = dump_append(out, dump_field("members", dump_type_member_list(def.members, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_type_member(member: TypeMember, level: Int) -> String {
+    let mut out = ""
+    if str_eq_dump(member.kind, "Binding") {
+        out = dump_append(out, dump_line(level, "Binding {"))
+        out = dump_append(out, dump_field("name", dump_string(member.name), level + 1))
+        out = dump_append(out, dump_field("type_expr", dump_type_expr(member.type_expr, level + 1), level + 1))
+        out = dump_append(out, dump_field("span", dump_span(member.span, level + 1), level + 1))
+        out = dump_append(out, dump_line(level, "}"))
+    } else {
+        out = dump_append(out, dump_line(level, "Function("))
+        out = dump_append(out, dump_suffix_last(dump_fn_def(member.def, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    }
+    out
+}
+
+fn dump_stmt(stmt: Stmt, level: Int) -> String {
+    let mut out = ""
+    if str_eq_dump(stmt.kind, "Let") {
+        out = dump_append(out, dump_line(level, "Let("))
+        out = dump_append(out, dump_suffix_last(dump_let_stmt(stmt.let_stmt, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "Assign") {
+        out = dump_append(out, dump_line(level, "Assign("))
+        out = dump_append(out, dump_suffix_last(dump_assign_stmt(stmt.assign_stmt, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "Return") {
+        out = dump_append(out, dump_line(level, "Return("))
+        out = dump_append(out, dump_suffix_last(dump_return_stmt(stmt.return_stmt, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "Expr") {
+        out = dump_append(out, dump_line(level, "Expr("))
+        out = dump_append(out, dump_suffix_last(dump_expr(stmt.expr, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "If") {
+        out = dump_append(out, dump_line(level, "If("))
+        out = dump_append(out, dump_suffix_last(dump_if_stmt(stmt.if_stmt, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "For") {
+        out = dump_append(out, dump_line(level, "For("))
+        out = dump_append(out, dump_suffix_last(dump_for_stmt(stmt.for_stmt, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "While") {
+        out = dump_append(out, dump_line(level, "While("))
+        out = dump_append(out, dump_suffix_last(dump_while_stmt(stmt.while_stmt, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "Spawn") {
+        out = dump_append(out, dump_line(level, "Spawn("))
+        out = dump_append(out, dump_suffix_last(dump_spawn_stmt(stmt.spawn_stmt, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "Block") || str_eq_dump(stmt.kind, "UnsafeBlock") || str_eq_dump(stmt.kind, "PointerBlock") || str_eq_dump(stmt.kind, "ComptimeBlock") {
+        out = dump_append(out, dump_line(level, str_concat(stmt.kind, "(")))
+        out = dump_append(out, dump_suffix_last(dump_block(stmt.block, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "AsmBlock") {
+        out = dump_append(out, dump_line(level, "AsmBlock("))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, dump_string(stmt.code)), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(stmt.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "IfCompile") {
+        out = dump_append(out, dump_line(level, "IfCompile("))
+        out = dump_append(out, dump_suffix_last(dump_if_compile_stmt(stmt.if_compile_stmt, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(stmt.kind, "GcConfig") {
+        out = dump_append(out, dump_line(level, "GcConfig("))
+        out = dump_append(out, dump_suffix_last(dump_gc_config_stmt(stmt.gc_config_stmt, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    }
+    out
+}
+
+fn dump_block(block: Block, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "Block {"))
+    out = dump_append(out, dump_field("stmts", dump_stmt_list(block.stmts, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(block.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_let_stmt(stmt: LetStmt, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "LetStmt {"))
+    out = dump_append(out, dump_field("is_mut", dump_bool(stmt.is_mut), level + 1))
+    out = dump_append(out, dump_field("name", dump_string(stmt.name), level + 1))
+    out = dump_append(out, dump_field("type_hint", dump_option_type_expr(stmt.has_type_hint, stmt.type_hint, level + 1), level + 1))
+    out = dump_append(out, dump_field("value", dump_option_expr(stmt.has_value, stmt.value, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(stmt.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_assign_stmt(stmt: AssignStmt, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "AssignStmt {"))
+    out = dump_append(out, dump_field("target", dump_expr(stmt.target, level + 1), level + 1))
+    out = dump_append(out, dump_field("op", dump_assign_op(stmt.op, level + 1), level + 1))
+    out = dump_append(out, dump_field("value", dump_option_expr(stmt.has_value, stmt.value, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(stmt.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_return_stmt(stmt: ReturnStmt, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "ReturnStmt {"))
+    out = dump_append(out, dump_field("value", dump_option_expr(stmt.has_value, stmt.value, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(stmt.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_if_stmt(stmt: IfStmt, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "IfStmt {"))
+    out = dump_append(out, dump_field("condition", dump_expr(stmt.condition, level + 1), level + 1))
+    out = dump_append(out, dump_field("then_branch", dump_block(stmt.then_branch, level + 1), level + 1))
+    out = dump_append(out, dump_field("else_branch", dump_option_else_branch(stmt.has_else_branch, stmt.else_branch, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(stmt.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_for_stmt(stmt: ForStmt, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "ForStmt {"))
+    out = dump_append(out, dump_field("name", dump_string(stmt.binding), level + 1))
+    out = dump_append(out, dump_field("iter", dump_expr(stmt.iter, level + 1), level + 1))
+    out = dump_append(out, dump_field("body", dump_block(stmt.body, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(stmt.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_while_stmt(stmt: WhileStmt, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "WhileStmt {"))
+    out = dump_append(out, dump_field("condition", dump_expr(stmt.condition, level + 1), level + 1))
+    out = dump_append(out, dump_field("body", dump_block(stmt.body, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(stmt.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_spawn_stmt(stmt: SpawnStmt, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "SpawnStmt {"))
+    out = dump_append(out, dump_field("body", dump_spawn_body(stmt.body, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(stmt.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_if_compile_stmt(stmt: IfCompileStmt, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "IfCompileStmt {"))
+    out = dump_append(out, dump_field("condition", dump_expr(stmt.condition, level + 1), level + 1))
+    out = dump_append(out, dump_field("body", dump_block(stmt.body, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(stmt.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_gc_config_stmt(stmt: GcConfigStmt, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "GcConfigStmt {"))
+    out = dump_append(out, dump_field("entries", dump_gc_entry_list(stmt.entries, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(stmt.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_gc_entry(entry: GcConfigEntry, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "GcConfigEntry {"))
+    out = dump_append(out, dump_field("key", dump_string(entry.key), level + 1))
+    out = dump_append(out, dump_field("value", dump_expr(entry.value, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(entry.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_expr(expr: Expr, level: Int) -> String {
+    let mut out = ""
+    if str_eq_dump(expr.kind, "IntLit") {
+        out = dump_append(out, dump_line(level, "IntLit("))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, int_to_string(expr.int_value)), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "FloatLit") {
+        out = dump_append(out, dump_line(level, "FloatLit("))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, "0.0"), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "StrLit") {
+        out = dump_append(out, dump_line(level, "StrLit("))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, dump_string(expr.string_value)), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "FStrLit") {
+        out = dump_append(out, dump_line(level, "FStrLit("))
+        out = dump_append(out, dump_suffix_last(dump_fstr_part_list(expr.parts, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "BoolLit") {
+        out = dump_append(out, dump_line(level, "BoolLit("))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, dump_bool(expr.bool_value)), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "NoneLit") {
+        out = dump_append(out, dump_line(level, "NoneLit("))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Ident") {
+        out = dump_append(out, dump_line(level, "Ident("))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, dump_string(expr.name)), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Array") {
+        out = dump_append(out, dump_line(level, "Array("))
+        out = dump_append(out, dump_suffix_last(dump_expr_list(expr.items, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Map") {
+        out = dump_append(out, dump_line(level, "Map("))
+        out = dump_append(out, dump_suffix_last(dump_map_entry_list(expr.entries, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Set") {
+        out = dump_append(out, dump_line(level, "Set("))
+        out = dump_append(out, dump_suffix_last(dump_expr_list(expr.items, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Tuple") {
+        out = dump_append(out, dump_line(level, "Tuple("))
+        out = dump_append(out, dump_suffix_last(dump_expr_list(expr.items, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "BinOp") {
+        out = dump_append(out, dump_line(level, "BinOp("))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.lhs, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_bin_op(expr.bin_op, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.rhs, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "UnOp") {
+        out = dump_append(out, dump_line(level, "UnOp("))
+        out = dump_append(out, dump_suffix_last(dump_un_op(expr.un_op, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.expr, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Call") {
+        out = dump_append(out, dump_line(level, "Call("))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.callee, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_expr_list(expr.args, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "MethodCall") {
+        out = dump_append(out, dump_line(level, "MethodCall("))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.target, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, dump_string(expr.name)), ","))
+        out = dump_append(out, dump_suffix_last(dump_expr_list(expr.args, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Field") {
+        out = dump_append(out, dump_line(level, "Field("))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.target, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, dump_string(expr.name)), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Index") {
+        out = dump_append(out, dump_line(level, "Index("))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.target, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.index, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Lambda") {
+        out = dump_append(out, dump_line(level, "Lambda("))
+        out = dump_append(out, dump_suffix_last(dump_string_list(expr.params, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.body, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Cast") {
+        out = dump_append(out, dump_line(level, "Cast("))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.expr, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_type_expr(expr.ty, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Match") {
+        out = dump_append(out, dump_line(level, "Match("))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.subject, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_match_arm_list(expr.arms, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Ok") {
+        out = dump_append(out, dump_line(level, "Ok("))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.expr, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Err") {
+        out = dump_append(out, dump_line(level, "Err("))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.expr, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Nullish") {
+        out = dump_append(out, dump_line(level, "Nullish("))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.lhs, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_expr(expr.rhs, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(expr.kind, "Chan") {
+        out = dump_append(out, dump_line(level, "Chan("))
+        out = dump_append(out, dump_suffix_last(dump_type_expr(expr.ty, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(expr.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    }
+    out
+}
+
+fn dump_type_expr(ty: TypeExpr, level: Int) -> String {
+    let mut out = ""
+    if str_eq_dump(ty.kind, "Named") {
+        out = dump_append(out, dump_line(level, "Named("))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, dump_string(ty.name)), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(ty.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(ty.kind, "Generic") {
+        out = dump_append(out, dump_line(level, "Generic("))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, dump_string(ty.name)), ","))
+        out = dump_append(out, dump_suffix_last(dump_type_expr_list(ty.args, level + 1), ","))
+        out = dump_append(out, dump_suffix_last(dump_span(ty.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else if str_eq_dump(ty.kind, "Pointer") {
+        out = dump_append(out, dump_line(level, "Pointer("))
+        out = dump_append(out, dump_suffix_last(dump_span(ty.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else {
+        out = dump_append(out, dump_line(level, "Infer("))
+        out = dump_append(out, dump_suffix_last(dump_span(ty.span, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    }
+    out
+}
+
+fn dump_span(span: Span, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "Span {"))
+    out = dump_append(out, dump_field("start", int_to_string(span.start), level + 1))
+    out = dump_append(out, dump_field("end", int_to_string(span.end), level + 1))
+    out = dump_append(out, dump_field("line", int_to_string(span.line), level + 1))
+    out = dump_append(out, dump_field("col", int_to_string(span.col), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_indent(level: Int) -> String {
+    let mut out = ""
+    let mut i = 0
+    while i < level {
+        out = str_concat(out, "    ")
+        i = i + 1
+    }
+    out
+}
+
+fn dump_line(level: Int, text: String) -> String {
+    str_concat(dump_indent(level), text)
+}
+
+fn dump_append(out: String, block: String) -> String {
+    let mut next = out
+    if str_len(out) == 0 {
+        next = block
+    } else {
+        next = str_concat(str_concat(out, ascii_char(10)), block)
+    }
+    next
+}
+
+fn dump_first_newline(text: String) -> Int {
+    let mut i = 0
+    let mut idx = -1
+    while idx < 0 && i < str_len(text) {
+        if str_byte_at(text, i) == 10 {
+            idx = i
+        }
+        i = i + 1
+    }
+    idx
+}
+
+fn dump_last_newline(text: String) -> Int {
+    let mut i = 0
+    let mut idx = -1
+    while i < str_len(text) {
+        if str_byte_at(text, i) == 10 {
+            idx = i
+        }
+        i = i + 1
+    }
+    idx
+}
+
+fn dump_prefix_first(prefix: String, text: String) -> String {
+    let idx = dump_first_newline(text)
+    let mut out = ""
+    if idx < 0 {
+        out = str_concat(prefix, text)
+    } else {
+        let head = str_slice(text, 0, idx)
+        let tail = str_slice(text, idx + 1, str_len(text))
+        out = dump_append(str_concat(prefix, head), tail)
+    }
+    out
+}
+
+fn dump_suffix_last(text: String, suffix: String) -> String {
+    let idx = dump_last_newline(text)
+    let mut out = ""
+    if idx < 0 {
+        out = str_concat(text, suffix)
+    } else {
+        let head = str_slice(text, 0, idx)
+        let tail = str_slice(text, idx + 1, str_len(text))
+        out = dump_append(head, str_concat(tail, suffix))
+    }
+    out
+}
+
+fn dump_field(name: String, value: String, level: Int) -> String {
+    let idx = dump_first_newline(value)
+    let prefix = dump_line(level, str_concat(name, ": "))
+    let mut out = ""
+    if idx < 0 {
+        out = str_concat(prefix, value)
+    } else {
+        let first = str_slice(value, 0, idx)
+        let rest = str_slice(value, idx + 1, str_len(value))
+        let field_indent = dump_indent(level)
+        let mut trimmed_first = first
+        if str_len(first) >= str_len(field_indent) && str_eq_dump(str_slice(first, 0, str_len(field_indent)), field_indent) {
+            trimmed_first = str_slice(first, str_len(field_indent), str_len(first))
+        }
+        out = dump_append(str_concat(prefix, trimmed_first), rest)
+    }
+    dump_suffix_last(out, ",")
+}
+
+fn dump_bool(value: Bool) -> String {
+    let mut out = "false"
+    if value {
+        out = "true"
+    }
+    out
+}
+
+fn dump_string(value: String) -> String {
+    let mut out = ascii_char(34)
+    let mut i = 0
+    while i < str_len(value) {
+        let code = str_byte_at(value, i)
+        if code == 34 {
+            out = str_concat(out, dump_escape_pair(ascii_char(34)))
+        } else if code == 92 {
+            out = str_concat(out, dump_escape_pair(ascii_char(92)))
+        } else if code == 10 {
+            out = str_concat(out, dump_escape_pair("n"))
+        } else if code == 13 {
+            out = str_concat(out, dump_escape_pair("r"))
+        } else if code == 9 {
+            out = str_concat(out, dump_escape_pair("t"))
+        } else {
+            out = str_concat(out, ascii_char(code))
+        }
+        i = i + 1
+    }
+    str_concat(out, ascii_char(34))
+}
+
+fn dump_escape_pair(letter: String) -> String {
+    str_concat(ascii_char(92), letter)
+}
+
+fn dump_string_list(values: Array[String], level: Int) -> String {
+    if values.len() == 0 {
+        return "[]"
+    }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < values.len() {
+        out = dump_append(out, dump_line(level + 1, dump_string(values[i])))
+        out = dump_suffix_last(out, ",")
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_item_list(items: Array[Item], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_item(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_param_list(items: Array[Param], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_param(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_class_member_list(items: Array[ClassMember], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_class_member(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_fndef_list(items: Array[FnDef], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_fn_def(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_stmt_list(items: Array[Stmt], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_stmt(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_expr_list(items: Array[Expr], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_expr(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_map_entry(entry: MapEntry, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "("))
+    out = dump_append(out, dump_suffix_last(dump_expr(entry.key, level + 1), ","))
+    out = dump_append(out, dump_suffix_last(dump_expr(entry.value, level + 1), ","))
+    out = dump_append(out, dump_line(level, ")"))
+    out
+}
+
+fn dump_map_entry_list(items: Array[MapEntry], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_map_entry(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_fstr_part(part: FStrPart, level: Int) -> String {
+    let mut out = ""
+    if str_eq_dump(part.kind, "Literal") {
+        out = dump_append(out, dump_line(level, "Literal("))
+        out = dump_append(out, dump_suffix_last(dump_line(level + 1, dump_string(part.text)), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else {
+        out = dump_append(out, dump_line(level, "Interp("))
+        out = dump_append(out, dump_suffix_last(dump_expr(part.expr, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    }
+    out
+}
+
+fn dump_fstr_part_list(items: Array[FStrPart], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_fstr_part(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_match_arm(arm: MatchArm, level: Int) -> String {
+    let mut out = ""
+    out = dump_append(out, dump_line(level, "MatchArm {"))
+    out = dump_append(out, dump_field("pattern", dump_expr(arm.pattern, level + 1), level + 1))
+    out = dump_append(out, dump_field("body", dump_match_arm_body(arm.body, level + 1), level + 1))
+    out = dump_append(out, dump_field("span", dump_span(arm.span, level + 1), level + 1))
+    out = dump_append(out, dump_line(level, "}"))
+    out
+}
+
+fn dump_match_arm_list(items: Array[MatchArm], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_match_arm(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_import_item_list(items: Array[ImportItem], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_import_item(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_type_member_list(items: Array[TypeMember], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_type_member(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_gc_entry_list(items: Array[GcConfigEntry], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_gc_entry(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_type_expr_list(items: Array[TypeExpr], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_type_expr(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_option_string(has_value: Bool, value: String, level: Int) -> String {
+    if !has_value {
+        return "None"
+    }
+    let mut out = "Some("
+    out = dump_append(out, dump_line(level + 1, dump_string(value)))
+    out = dump_suffix_last(out, ",")
+    dump_append(out, dump_line(level, ")"))
+}
+
+fn dump_option_type_expr(has_value: Bool, value: TypeExpr, level: Int) -> String {
+    if !has_value {
+        return "None"
+    }
+    let mut out = "Some("
+    out = dump_append(out, dump_suffix_last(dump_type_expr(value, level + 1), ","))
+    dump_append(out, dump_line(level, ")"))
+}
+
+fn dump_option_expr(has_value: Bool, value: Expr, level: Int) -> String {
+    if !has_value {
+        return "None"
+    }
+    let mut out = "Some("
+    out = dump_append(out, dump_suffix_last(dump_expr(value, level + 1), ","))
+    dump_append(out, dump_line(level, ")"))
+}
+
+fn dump_option_block(has_value: Bool, value: Block, level: Int) -> String {
+    if !has_value {
+        return "None"
+    }
+    let mut out = "Some("
+    out = dump_append(out, dump_suffix_last(dump_block(value, level + 1), ","))
+    dump_append(out, dump_line(level, ")"))
+}
+
+fn dump_option_else_branch(has_value: Bool, value: ElseBranch, level: Int) -> String {
+    if !has_value {
+        return "None"
+    }
+    let mut out = "Some("
+    out = dump_append(out, dump_suffix_last(dump_else_branch(value, level + 1), ","))
+    dump_append(out, dump_line(level, ")"))
+}
+
+fn dump_else_branch(branch: ElseBranch, level: Int) -> String {
+    let mut out = ""
+    if str_eq_dump(branch.kind, "If") {
+        out = dump_append(out, dump_line(level, "If("))
+        out = dump_append(out, dump_suffix_last(dump_if_stmt(branch.stmt, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else {
+        out = dump_append(out, dump_line(level, "Block("))
+        out = dump_append(out, dump_suffix_last(dump_block(branch.block, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    }
+    out
+}
+
+fn dump_spawn_body(body: SpawnBody, level: Int) -> String {
+    let mut out = ""
+    if str_eq_dump(body.kind, "Expr") {
+        out = dump_append(out, dump_line(level, "Expr("))
+        out = dump_append(out, dump_suffix_last(dump_expr(body.expr, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else {
+        out = dump_append(out, dump_line(level, "Block("))
+        out = dump_append(out, dump_suffix_last(dump_block(body.block, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    }
+    out
+}
+
+fn dump_match_arm_body(body: MatchArmBody, level: Int) -> String {
+    let mut out = ""
+    if str_eq_dump(body.kind, "Expr") {
+        out = dump_append(out, dump_line(level, "Expr("))
+        out = dump_append(out, dump_suffix_last(dump_expr(body.expr, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    } else {
+        out = dump_append(out, dump_line(level, "Block("))
+        out = dump_append(out, dump_suffix_last(dump_block(body.block, level + 1), ","))
+        out = dump_append(out, dump_line(level, ")"))
+    }
+    out
+}
+
+fn dump_bin_op(name: String, level: Int) -> String {
+    dump_line(level, name)
+}
+
+fn dump_un_op(name: String, level: Int) -> String {
+    dump_line(level, name)
+}
+
+fn dump_assign_op(name: String, level: Int) -> String {
+    dump_line(level, name)
+}
+
+fn str_eq_dump(a: String, b: String) -> Bool {
+    let mut same = str_len(a) == str_len(b)
+    let mut i = 0
+    while same && i < str_len(a) {
+        if str_byte_at(a, i) != str_byte_at(b, i) {
+            same = false
+        }
+        i = i + 1
+    }
+    same
+}
