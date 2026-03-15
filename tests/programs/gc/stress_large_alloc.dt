@@ -1,0 +1,26 @@
+// GC stress: large objects — array of arrays
+class BigObj {
+    pub let data: Array[Int]
+    pub let id:   Int
+}
+
+fn make_big(id: Int, size: Int) -> BigObj {
+    let mut arr: Array[Int] = []
+    let mut i = 0
+    while i < size {
+        arr.push(id * 1000 + i)
+        i++
+    }
+    BigObj { data: arr, id: id }
+}
+
+fn main() -> Int {
+    let mut objs: Array[BigObj] = []
+    let mut i = 0
+    while i < 100 {
+        objs.push(make_big(i, 1000))
+        i++
+    }
+    let last = objs[99]
+    last.data[999] % 100
+}
