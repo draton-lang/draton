@@ -1,6 +1,6 @@
 // RUN: jit
 // EXPECT: 120
-@type { fn fact(n: Int) -> Int }
+@type { fact: (Int) -> Int }
 fn fact(n) {
     let mut out = 1
     if (n <= 1) { out = 1 } else { out = n * fact(n - 1) }

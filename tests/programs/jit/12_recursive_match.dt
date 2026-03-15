@@ -1,6 +1,6 @@
 // RUN: jit
 // EXPECT: 5
-@type { fn recur(n: Int) -> Int }
+@type { recur: (Int) -> Int }
 fn recur(n) {
     match n {
         0 => 0

@@ -12,17 +12,26 @@ pub enum JsonValue {
     Object(Map[String, JsonValue]),
 }
 
+@type {
+    __draton_std_json_parse: (String) -> Result[JsonValue, JsonError]
+    __draton_std_json_stringify: (JsonValue) -> String
+    __draton_std_json_pretty: (JsonValue) -> String
+    parse: (String) -> Result[JsonValue, JsonError]
+    stringify: (JsonValue) -> String
+    pretty: (JsonValue) -> String
+}
+
 @extern "C" {
-    fn __draton_std_json_parse(s: String) -> Result[JsonValue, JsonError]
-    fn __draton_std_json_stringify(val: JsonValue) -> String
-    fn __draton_std_json_pretty(val: JsonValue) -> String
+    fn __draton_std_json_parse(s)
+    fn __draton_std_json_stringify(val)
+    fn __draton_std_json_pretty(val)
 }
 
 /// Parses JSON text.
-pub fn parse(s: String) -> Result[JsonValue, JsonError] { __draton_std_json_parse(s) }
+pub fn parse(s) { return __draton_std_json_parse(s) }
 
 /// Serializes JSON compactly.
-pub fn stringify(val: JsonValue) -> String { __draton_std_json_stringify(val) }
+pub fn stringify(val) { return __draton_std_json_stringify(val) }
 
 /// Serializes JSON with indentation.
-pub fn pretty(val: JsonValue) -> String { __draton_std_json_pretty(val) }
+pub fn pretty(val) { return __draton_std_json_pretty(val) }

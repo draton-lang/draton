@@ -1,9 +1,15 @@
+@type {
+    make_list: (Int) -> Node??
+    sum_list: (Node??) -> Int
+    main: () -> Int
+}
+
 class Node {
     pub let value: Int
     pub let next: Node??
 }
 
-fn make_list(n: Int) -> Node?? {
+fn make_list(n) {
     let mut head: Node?? = None
     let mut i = 0
     while i < n {
@@ -13,7 +19,7 @@ fn make_list(n: Int) -> Node?? {
     head
 }
 
-fn sum_list(node: Node??) -> Int {
+fn sum_list(node) {
     let mut s = 0
     let mut cur = node
     while cur != None {
@@ -25,6 +31,6 @@ fn sum_list(node: Node??) -> Int {
     s
 }
 
-fn main() -> Int {
+fn main() {
     sum_list(make_list(100)) % 100
 }

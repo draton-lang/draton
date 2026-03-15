@@ -5,5 +5,5 @@ class A {
 class B extends A {
     fn value() { 2 }
 }
-@type { fn main(b: B) -> Int }
+@type { main: (B) -> Int }
 fn main(b) { b.value() }

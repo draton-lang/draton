@@ -1,6 +1,6 @@
 // RUN: jit
 // EXPECT: 1
-@type { fn main() -> Int }
+@type { main: () -> Int }
 fn main() {
     let mut out = 0
     if (3 < 4 && 5 >= 5) { out = 1 } else { out = 0 }

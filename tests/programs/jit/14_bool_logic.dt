@@ -1,6 +1,6 @@
 // RUN: jit
 // EXPECT: 1
-@type { fn main() -> Int }
+@type { main: () -> Int }
 fn main() {
     let a = true
     let b = false

@@ -1,5 +1,5 @@
 // RUN: compile
-@type { fn compute() -> Result[Int, Int] fn main() -> Int }
+@type { compute: () -> Result[Int, Int] main: () -> Int }
 fn compute() {
     Ok(42)
 }

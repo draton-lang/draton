@@ -1,5 +1,9 @@
 // GC stress: nhiều alloc nhỏ bằng fstring trong loop
-fn main() -> Int {
+@type {
+    main: () -> Int
+}
+
+fn main() {
     let mut i = 0
     let mut s = 0
     while (i < 10000) {

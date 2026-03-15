@@ -3,5 +3,5 @@ class Stack[T] {
     let items: Array[T]
     fn len() { 0 }
 }
-@type { fn main(s: Stack[String]) -> Int }
+@type { main: (Stack[String]) -> Int }
 fn main(s) { s.len() }

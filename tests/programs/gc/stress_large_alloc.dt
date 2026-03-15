@@ -1,5 +1,9 @@
 // GC stress: alloc array literals lớn nhiều lần
-fn main() -> Int {
+@type {
+    main: () -> Int
+}
+
+fn main() {
     let mut i = 0
     let mut s = 0
     while (i < 5000) {

@@ -2,45 +2,66 @@
 
 error FsError(msg: String)
 
+@type {
+    __draton_std_fs_read: (String) -> Result[String, FsError]
+    __draton_std_fs_write: (String, String) -> Result[Unit, FsError]
+    __draton_std_fs_append: (String, String) -> Result[Unit, FsError]
+    __draton_std_fs_delete: (String) -> Result[Unit, FsError]
+    __draton_std_fs_exists: (String) -> Bool
+    __draton_std_fs_mkdir: (String) -> Result[Unit, FsError]
+    __draton_std_fs_readdir: (String) -> Result[Array[String], FsError]
+    __draton_std_fs_copy: (String, String) -> Result[Unit, FsError]
+    __draton_std_fs_move: (String, String) -> Result[Unit, FsError]
+    read: (String) -> Result[String, FsError]
+    write: (String, String) -> Result[Unit, FsError]
+    append: (String, String) -> Result[Unit, FsError]
+    delete: (String) -> Result[Unit, FsError]
+    exists: (String) -> Bool
+    mkdir: (String) -> Result[Unit, FsError]
+    readdir: (String) -> Result[Array[String], FsError]
+    copy: (String, String) -> Result[Unit, FsError]
+    move: (String, String) -> Result[Unit, FsError]
+}
+
 @extern "C" {
-    fn __draton_std_fs_read(path: String) -> Result[String, FsError]
-    fn __draton_std_fs_write(path: String, content: String) -> Result[Unit, FsError]
-    fn __draton_std_fs_append(path: String, content: String) -> Result[Unit, FsError]
-    fn __draton_std_fs_delete(path: String) -> Result[Unit, FsError]
-    fn __draton_std_fs_exists(path: String) -> Bool
-    fn __draton_std_fs_mkdir(path: String) -> Result[Unit, FsError]
-    fn __draton_std_fs_readdir(path: String) -> Result[Array[String], FsError]
-    fn __draton_std_fs_copy(src: String, dst: String) -> Result[Unit, FsError]
-    fn __draton_std_fs_move(src: String, dst: String) -> Result[Unit, FsError]
+    fn __draton_std_fs_read(path)
+    fn __draton_std_fs_write(path, content)
+    fn __draton_std_fs_append(path, content)
+    fn __draton_std_fs_delete(path)
+    fn __draton_std_fs_exists(path)
+    fn __draton_std_fs_mkdir(path)
+    fn __draton_std_fs_readdir(path)
+    fn __draton_std_fs_copy(src, dst)
+    fn __draton_std_fs_move(src, dst)
 }
 
 /// Reads a UTF-8 file.
-pub fn read(path: String) -> Result[String, FsError] { __draton_std_fs_read(path) }
+pub fn read(path) { return __draton_std_fs_read(path) }
 
 /// Writes a UTF-8 file.
-pub fn write(path: String, content: String) -> Result[Unit, FsError] {
-    __draton_std_fs_write(path, content)
+pub fn write(path, content) {
+    return __draton_std_fs_write(path, content)
 }
 
 /// Appends to a UTF-8 file.
-pub fn append(path: String, content: String) -> Result[Unit, FsError] {
-    __draton_std_fs_append(path, content)
+pub fn append(path, content) {
+    return __draton_std_fs_append(path, content)
 }
 
 /// Deletes a file or directory.
-pub fn delete(path: String) -> Result[Unit, FsError] { __draton_std_fs_delete(path) }
+pub fn delete(path) { return __draton_std_fs_delete(path) }
 
 /// Checks whether a path exists.
-pub fn exists(path: String) -> Bool { __draton_std_fs_exists(path) }
+pub fn exists(path) { return __draton_std_fs_exists(path) }
 
 /// Creates a directory recursively.
-pub fn mkdir(path: String) -> Result[Unit, FsError] { __draton_std_fs_mkdir(path) }
+pub fn mkdir(path) { return __draton_std_fs_mkdir(path) }
 
 /// Reads directory entries.
-pub fn readdir(path: String) -> Result[Array[String], FsError] { __draton_std_fs_readdir(path) }
+pub fn readdir(path) { return __draton_std_fs_readdir(path) }
 
 /// Copies a file.
-pub fn copy(src: String, dst: String) -> Result[Unit, FsError] { __draton_std_fs_copy(src, dst) }
+pub fn copy(src, dst) { return __draton_std_fs_copy(src, dst) }
 
 /// Moves a file or directory.
-pub fn move(src: String, dst: String) -> Result[Unit, FsError] { __draton_std_fs_move(src, dst) }
+pub fn move(src, dst) { return __draton_std_fs_move(src, dst) }

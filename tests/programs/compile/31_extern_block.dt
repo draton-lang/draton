@@ -1,5 +1,9 @@
 // RUN: compile
+@type {
+    puts: (String) -> Unit
+}
+
 @extern "C" {
-    fn puts(msg: String)
+    fn puts(msg)
 }
 fn main() { 0 }

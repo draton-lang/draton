@@ -1,28 +1,43 @@
 /// Crypto standard library module.
 
+@type {
+    __draton_std_crypto_sha256: (String) -> String
+    __draton_std_crypto_sha512: (String) -> String
+    __draton_std_crypto_md5: (String) -> String
+    __draton_std_crypto_uuid: () -> String
+    __draton_std_crypto_random_bytes: (Int) -> Array[UInt8]
+    __draton_std_crypto_random_int: (Int, Int) -> Int
+    sha256: (String) -> String
+    sha512: (String) -> String
+    md5: (String) -> String
+    uuid: () -> String
+    random_bytes: (Int) -> Array[UInt8]
+    random_int: (Int, Int) -> Int
+}
+
 @extern "C" {
-    fn __draton_std_crypto_sha256(data: String) -> String
-    fn __draton_std_crypto_sha512(data: String) -> String
-    fn __draton_std_crypto_md5(data: String) -> String
-    fn __draton_std_crypto_uuid() -> String
-    fn __draton_std_crypto_random_bytes(n: Int) -> Array[UInt8]
-    fn __draton_std_crypto_random_int(min: Int, max: Int) -> Int
+    fn __draton_std_crypto_sha256(data)
+    fn __draton_std_crypto_sha512(data)
+    fn __draton_std_crypto_md5(data)
+    fn __draton_std_crypto_uuid()
+    fn __draton_std_crypto_random_bytes(n)
+    fn __draton_std_crypto_random_int(min, max)
 }
 
 /// Returns the SHA-256 hex digest.
-pub fn sha256(data: String) -> String { __draton_std_crypto_sha256(data) }
+pub fn sha256(data) { return __draton_std_crypto_sha256(data) }
 
 /// Returns the SHA-512 hex digest.
-pub fn sha512(data: String) -> String { __draton_std_crypto_sha512(data) }
+pub fn sha512(data) { return __draton_std_crypto_sha512(data) }
 
 /// Returns the MD5 hex digest.
-pub fn md5(data: String) -> String { __draton_std_crypto_md5(data) }
+pub fn md5(data) { return __draton_std_crypto_md5(data) }
 
 /// Returns a UUID v4 string.
-pub fn uuid() -> String { __draton_std_crypto_uuid() }
+pub fn uuid() { return __draton_std_crypto_uuid() }
 
 /// Returns random bytes.
-pub fn random_bytes(n: Int) -> Array[UInt8] { __draton_std_crypto_random_bytes(n) }
+pub fn random_bytes(n) { return __draton_std_crypto_random_bytes(n) }
 
 /// Returns a random integer.
-pub fn random_int(min: Int, max: Int) -> Int { __draton_std_crypto_random_int(min, max) }
+pub fn random_int(min, max) { return __draton_std_crypto_random_int(min, max) }

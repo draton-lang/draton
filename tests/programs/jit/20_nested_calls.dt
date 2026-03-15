@@ -1,6 +1,6 @@
 // RUN: jit
 // EXPECT: 13
-@type { fn add(a: Int, b: Int) -> Int fn mul(a: Int, b: Int) -> Int }
+@type { add: (Int, Int) -> Int mul: (Int, Int) -> Int }
 fn add(a, b) { a + b }
 fn mul(a, b) { a * b }
 fn main() { add(mul(2, 3), 7) }

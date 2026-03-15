@@ -1,36 +1,55 @@
 /// Operating system standard library module.
 
+@type {
+    __draton_std_os_env: (String) -> Option[String]
+    __draton_std_os_set_env: (String, String) -> Unit
+    __draton_std_os_args: () -> Array[String]
+    __draton_std_os_exit: (Int) -> Unit
+    __draton_std_os_pid: () -> Int
+    __draton_std_os_platform: () -> String
+    __draton_std_os_arch: () -> String
+    __draton_std_os_hostname: () -> String
+    env: (String) -> Option[String]
+    set_env: (String, String) -> Unit
+    args: () -> Array[String]
+    exit: (Int) -> Unit
+    pid: () -> Int
+    platform: () -> String
+    arch: () -> String
+    hostname: () -> String
+}
+
 @extern "C" {
-    fn __draton_std_os_env(key: String) -> Option[String]
-    fn __draton_std_os_set_env(key: String, val: String)
-    fn __draton_std_os_args() -> Array[String]
-    fn __draton_std_os_exit(code: Int)
-    fn __draton_std_os_pid() -> Int
-    fn __draton_std_os_platform() -> String
-    fn __draton_std_os_arch() -> String
-    fn __draton_std_os_hostname() -> String
+    fn __draton_std_os_env(key)
+    fn __draton_std_os_set_env(key, val)
+    fn __draton_std_os_args()
+    fn __draton_std_os_exit(code)
+    fn __draton_std_os_pid()
+    fn __draton_std_os_platform()
+    fn __draton_std_os_arch()
+    fn __draton_std_os_hostname()
 }
 
 /// Returns an environment variable.
-pub fn env(key: String) -> Option[String] { __draton_std_os_env(key) }
+pub fn env(key) { return __draton_std_os_env(key) }
 
 /// Sets an environment variable.
-pub fn set_env(key: String, val: String) { __draton_std_os_set_env(key, val) }
+pub fn set_env(key, val) { __draton_std_os_set_env(key, val) }
 
 /// Returns CLI arguments.
-pub fn args() -> Array[String] { __draton_std_os_args() }
+pub fn args() { return __draton_std_os_args() }
 
 /// Exits the process.
-pub fn exit(code: Int) { __draton_std_os_exit(code) }
+pub fn exit(code) { __draton_std_os_exit(code) }
 
 /// Returns the process id.
-pub fn pid() -> Int { __draton_std_os_pid() }
+pub fn pid() { return __draton_std_os_pid() }
 
 /// Returns the current platform.
-pub fn platform() -> String { __draton_std_os_platform() }
+pub fn platform() { return __draton_std_os_platform() }
 
 /// Returns the current architecture.
-pub fn arch() -> String { __draton_std_os_arch() }
+pub fn arch() { return __draton_std_os_arch() }
 
 /// Returns the hostname.
-pub fn hostname() -> String { __draton_std_os_hostname() }
+pub fn hostname() { return __draton_std_os_hostname() }
