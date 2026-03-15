@@ -65,6 +65,8 @@ struct BuildFlags {
     fast: bool,
     #[arg(long)]
     target: Option<String>,
+    #[arg(long = "strict-syntax", alias = "deny-deprecated-syntax")]
+    strict_syntax: bool,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -80,6 +82,8 @@ struct RunFlags {
     fast: bool,
     #[arg(long)]
     target: Option<String>,
+    #[arg(long = "strict-syntax", alias = "deny-deprecated-syntax")]
+    strict_syntax: bool,
     #[arg(trailing_var_arg = true)]
     args: Vec<String>,
 }
@@ -93,9 +97,12 @@ fn main() -> Result<()> {
             let request = BuildRequest {
                 profile: Profile::from_flags(flags.release, flags.size, flags.fast)?,
                 target: flags.target.clone(),
+                strict_syntax: flags.strict_syntax,
             };
             let output = match flags.input.as_deref() {
-                Some(input) => commands::build::run_file(&cwd, input, flags.output.as_deref(), &request)?,
+                Some(input) => {
+                    commands::build::run_file(&cwd, input, flags.output.as_deref(), &request)?
+                }
                 None => commands::build::run(&cwd, &request)?,
             };
             println!("{}", output.binary_path.display());
@@ -110,6 +117,7 @@ fn main() -> Result<()> {
             let request = BuildRequest {
                 profile: Profile::from_flags(flags.release, flags.size, flags.fast)?,
                 target: flags.target,
+                strict_syntax: flags.strict_syntax,
             };
             match flags.input.as_deref() {
                 Some(input) => commands::run::run_file(

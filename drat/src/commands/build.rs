@@ -10,7 +10,7 @@ use draton_codegen::{BuildMode, CodeGen};
 use draton_lexer::{LexError, Lexer};
 use draton_parser::{ParseError, Parser};
 use draton_stdlib::modules as bundled_stdlib_modules;
-use draton_typeck::{Type, TypeChecker, TypeError, TypedItem, TypedProgram};
+use draton_typeck::{DeprecatedSyntaxMode, Type, TypeChecker, TypeError, TypedItem, TypedProgram};
 use inkwell::context::Context as LlvmContext;
 use inkwell::AddressSpace;
 
@@ -41,6 +41,7 @@ pub(crate) enum Profile {
 pub(crate) struct BuildRequest {
     pub profile: Profile,
     pub target: Option<String>,
+    pub strict_syntax: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +68,7 @@ pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOu
     }
 
     let entry_path = config.entry_path(project_root);
-    let compiled = compile_project(&entry_path)?;
+    let compiled = compile_project(&entry_path, request.strict_syntax)?;
     let Some(main_return_type) = compiled.main_return_type.clone() else {
         bail!("khong tim thay fn main trong {}", entry_path.display());
     };
@@ -161,9 +162,9 @@ pub(crate) fn run_file(
     })
 }
 
-pub(crate) fn compile_project(entry_path: &Path) -> Result<CompiledProject> {
+pub(crate) fn compile_project(entry_path: &Path, strict_syntax: bool) -> Result<CompiledProject> {
     let program = load_project_program(entry_path)?;
-    let typed = TypeChecker::new().check(program);
+    let typed = type_checker_for(strict_syntax).check(program);
     if !typed.errors.is_empty() {
         bail!(
             "{}",
@@ -374,7 +375,7 @@ pub(crate) fn compile_snippet(source: &str) -> Result<CompiledProject> {
         );
     }
     items.extend(parsed.program.items);
-    let typed = TypeChecker::new().check(Program { items });
+    let typed = type_checker_for(false).check(Program { items });
     if !typed.errors.is_empty() {
         bail!("{}", render_type_errors(&synthetic, source, &typed.errors));
     }
@@ -396,6 +397,15 @@ pub(crate) fn compile_snippet(source: &str) -> Result<CompiledProject> {
         typed_program: typed.typed_program,
         main_return_type,
     })
+}
+
+fn type_checker_for(strict_syntax: bool) -> TypeChecker {
+    let mode = if strict_syntax {
+        DeprecatedSyntaxMode::Deny
+    } else {
+        DeprecatedSyntaxMode::Warn
+    };
+    TypeChecker::new().with_deprecated_syntax_mode(mode)
 }
 
 fn load_bundled_stdlib_items() -> Result<Vec<draton_ast::Item>> {

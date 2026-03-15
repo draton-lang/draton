@@ -1,17 +1,32 @@
 /// File and console I/O helpers for single-file programs.
 
-@extern "C" {
-    fn __draton_std_io_eprintln(s: String)
-    fn __draton_std_io_read_line() -> String
-    fn __draton_std_io_read_file(path: String) -> String
-    fn __draton_std_io_write_file(path: String, content: String) -> Bool
-    fn __draton_std_io_append_file(path: String, content: String) -> Bool
-    fn __draton_std_io_file_exists(path: String) -> Bool
+@type {
+    __draton_std_io_eprintln: (String) -> Unit
+    __draton_std_io_read_line: () -> String
+    __draton_std_io_read_file: (String) -> String
+    __draton_std_io_write_file: (String, String) -> Bool
+    __draton_std_io_append_file: (String, String) -> Bool
+    __draton_std_io_file_exists: (String) -> Bool
+    eprintln: (String) -> Unit
+    read_line: () -> String
+    read_file: (String) -> String
+    write_file: (String, String) -> Bool
+    append_file: (String, String) -> Bool
+    file_exists: (String) -> Bool
 }
 
-pub fn eprintln(s: String) { __draton_std_io_eprintln(s) }
-pub fn read_line() -> String { __draton_std_io_read_line() }
-pub fn read_file(path: String) -> String { __draton_std_io_read_file(path) }
-pub fn write_file(path: String, content: String) -> Bool { __draton_std_io_write_file(path, content) }
-pub fn append_file(path: String, content: String) -> Bool { __draton_std_io_append_file(path, content) }
-pub fn file_exists(path: String) -> Bool { __draton_std_io_file_exists(path) }
+@extern "C" {
+    fn __draton_std_io_eprintln(s)
+    fn __draton_std_io_read_line()
+    fn __draton_std_io_read_file(path)
+    fn __draton_std_io_write_file(path, content)
+    fn __draton_std_io_append_file(path, content)
+    fn __draton_std_io_file_exists(path)
+}
+
+pub fn eprintln(s) { __draton_std_io_eprintln(s) }
+pub fn read_line() { return __draton_std_io_read_line() }
+pub fn read_file(path) { return __draton_std_io_read_file(path) }
+pub fn write_file(path, content) { return __draton_std_io_write_file(path, content) }
+pub fn append_file(path, content) { return __draton_std_io_append_file(path, content) }
+pub fn file_exists(path) { return __draton_std_io_file_exists(path) }

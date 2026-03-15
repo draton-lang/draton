@@ -8,7 +8,7 @@ pub mod infer;
 pub mod typed_ast;
 pub mod unify;
 
-pub use check::{TypeCheckResult, TypeChecker};
+pub use check::{DeprecatedSyntaxMode, TypeCheckResult, TypeChecker};
 pub use env::{Scheme, TypeEnv};
 pub use error::TypeError;
 pub use infer::Substitution;

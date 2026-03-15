@@ -1,8 +1,15 @@
 use draton_lexer::Lexer;
 use draton_parser::Parser;
-use draton_typeck::{TypeChecker, TypeError};
+use draton_typeck::{DeprecatedSyntaxMode, TypeChecker, TypeError};
 
 fn parse_and_check(source: &str) -> draton_typeck::TypeCheckResult {
+    parse_and_check_with_mode(source, DeprecatedSyntaxMode::Warn)
+}
+
+fn parse_and_check_with_mode(
+    source: &str,
+    deprecated_syntax_mode: DeprecatedSyntaxMode,
+) -> draton_typeck::TypeCheckResult {
     let lexed = Lexer::new(source).tokenize();
     assert!(lexed.errors.is_empty(), "lexer errors: {:?}", lexed.errors);
     let parsed = Parser::new(lexed.tokens).parse();
@@ -11,7 +18,9 @@ fn parse_and_check(source: &str) -> draton_typeck::TypeCheckResult {
         "parser errors: {:?}",
         parsed.errors
     );
-    TypeChecker::new().check(parsed.program)
+    TypeChecker::new()
+        .with_deprecated_syntax_mode(deprecated_syntax_mode)
+        .check(parsed.program)
 }
 
 #[test]
@@ -302,6 +311,36 @@ fn add(a: Int) -> Int {
     )));
     assert!(result.warnings.iter().any(|warning| matches!(
         warning,
+        TypeError::DeprecatedSyntax { syntax, .. } if syntax.contains("let type")
+    )));
+}
+
+#[test]
+fn denies_legacy_inline_type_syntax_in_strict_mode() {
+    let result = parse_and_check_with_mode(
+        r#"
+fn add(a: Int) -> Int {
+    let value: Int = a
+    return value
+}
+"#,
+        DeprecatedSyntaxMode::Deny,
+    );
+    assert!(
+        result.warnings.is_empty(),
+        "warnings: {:?}",
+        result.warnings
+    );
+    assert!(result.errors.iter().any(|error| matches!(
+        error,
+        TypeError::DeprecatedSyntax { syntax, .. } if syntax.contains("parameter")
+    )));
+    assert!(result.errors.iter().any(|error| matches!(
+        error,
+        TypeError::DeprecatedSyntax { syntax, .. } if syntax.contains("return type")
+    )));
+    assert!(result.errors.iter().any(|error| matches!(
+        error,
         TypeError::DeprecatedSyntax { syntax, .. } if syntax.contains("let type")
     )));
 }

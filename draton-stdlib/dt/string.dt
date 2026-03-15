@@ -1,43 +1,82 @@
 /// String standard library module.
 
-@extern "C" {
-    fn __draton_std_string_split(s: String, sep: String) -> Array[String]
-    fn __draton_std_string_trim(s: String) -> String
-    fn __draton_std_string_trim_start(s: String) -> String
-    fn __draton_std_string_trim_end(s: String) -> String
-    fn __draton_std_string_to_upper(s: String) -> String
-    fn __draton_std_string_to_lower(s: String) -> String
-    fn __draton_std_string_parse_int(s: String) -> Option[Int]
-    fn __draton_std_string_parse_float(s: String) -> Option[Float]
-    fn __draton_std_string_join(parts: Array[String], sep: String) -> String
-    fn __draton_std_string_repeat(s: String, n: Int) -> String
-    fn __draton_std_string_index_of(s: String, sub: String) -> Int
-    fn __draton_std_string_ends_with(s: String, suffix: String) -> Bool
-    fn __draton_std_string_contains(s: String, sub: String) -> Bool
-    fn __draton_std_string_starts_with(s: String, prefix: String) -> Bool
-    fn __draton_std_string_replace(s: String, needle: String, replacement: String) -> String
-    fn __draton_std_string_slice(s: String, start: Int, end: Int) -> String
-    fn __draton_std_int_to_string(n: Int) -> String
-    fn __draton_std_float_to_string(f: Float) -> String
+@type {
+    __draton_std_string_split: (String, String) -> Array[String]
+    __draton_std_string_trim: (String) -> String
+    __draton_std_string_trim_start: (String) -> String
+    __draton_std_string_trim_end: (String) -> String
+    __draton_std_string_to_upper: (String) -> String
+    __draton_std_string_to_lower: (String) -> String
+    __draton_std_string_parse_int: (String) -> Option[Int]
+    __draton_std_string_parse_float: (String) -> Option[Float]
+    __draton_std_string_join: (Array[String], String) -> String
+    __draton_std_string_repeat: (String, Int) -> String
+    __draton_std_string_index_of: (String, String) -> Int
+    __draton_std_string_ends_with: (String, String) -> Bool
+    __draton_std_string_contains: (String, String) -> Bool
+    __draton_std_string_starts_with: (String, String) -> Bool
+    __draton_std_string_replace: (String, String, String) -> String
+    __draton_std_string_slice: (String, Int, Int) -> String
+    __draton_std_int_to_string: (Int) -> String
+    __draton_std_float_to_string: (Float) -> String
+    split: (String, String) -> Array[String]
+    trim: (String) -> String
+    trim_start: (String) -> String
+    trim_end: (String) -> String
+    to_upper: (String) -> String
+    to_lower: (String) -> String
+    parse_int: (String) -> Option[Int]
+    parse_float: (String) -> Option[Float]
+    join: (Array[String], String) -> String
+    repeat: (String, Int) -> String
+    index_of: (String, String) -> Int
+    ends_with: (String, String) -> Bool
+    contains: (String, String) -> Bool
+    starts_with: (String, String) -> Bool
+    replace: (String, String, String) -> String
+    slice: (String, Int, Int) -> String
+    int_to_string: (Int) -> String
+    float_to_string: (Float) -> String
 }
 
-pub fn split(s: String, sep: String) -> Array[String] { __draton_std_string_split(s, sep) }
-pub fn trim(s: String) -> String { __draton_std_string_trim(s) }
-pub fn trim_start(s: String) -> String { __draton_std_string_trim_start(s) }
-pub fn trim_end(s: String) -> String { __draton_std_string_trim_end(s) }
-pub fn to_upper(s: String) -> String { __draton_std_string_to_upper(s) }
-pub fn to_lower(s: String) -> String { __draton_std_string_to_lower(s) }
-pub fn parse_int(s: String) -> Option[Int] { __draton_std_string_parse_int(s) }
-pub fn parse_float(s: String) -> Option[Float] { __draton_std_string_parse_float(s) }
-pub fn join(parts: Array[String], sep: String) -> String { __draton_std_string_join(parts, sep) }
-pub fn repeat(s: String, n: Int) -> String { __draton_std_string_repeat(s, n) }
-pub fn index_of(s: String, sub: String) -> Int { __draton_std_string_index_of(s, sub) }
-pub fn ends_with(s: String, suffix: String) -> Bool { __draton_std_string_ends_with(s, suffix) }
-pub fn contains(s: String, sub: String) -> Bool { __draton_std_string_contains(s, sub) }
-pub fn starts_with(s: String, prefix: String) -> Bool { __draton_std_string_starts_with(s, prefix) }
-pub fn replace(s: String, needle: String, replacement: String) -> String {
-    __draton_std_string_replace(s, needle, replacement)
+@extern "C" {
+    fn __draton_std_string_split(s, sep)
+    fn __draton_std_string_trim(s)
+    fn __draton_std_string_trim_start(s)
+    fn __draton_std_string_trim_end(s)
+    fn __draton_std_string_to_upper(s)
+    fn __draton_std_string_to_lower(s)
+    fn __draton_std_string_parse_int(s)
+    fn __draton_std_string_parse_float(s)
+    fn __draton_std_string_join(parts, sep)
+    fn __draton_std_string_repeat(s, n)
+    fn __draton_std_string_index_of(s, sub)
+    fn __draton_std_string_ends_with(s, suffix)
+    fn __draton_std_string_contains(s, sub)
+    fn __draton_std_string_starts_with(s, prefix)
+    fn __draton_std_string_replace(s, needle, replacement)
+    fn __draton_std_string_slice(s, start, end)
+    fn __draton_std_int_to_string(n)
+    fn __draton_std_float_to_string(f)
 }
-pub fn slice(s: String, start: Int, end: Int) -> String { __draton_std_string_slice(s, start, end) }
-pub fn int_to_string(n: Int) -> String { __draton_std_int_to_string(n) }
-pub fn float_to_string(f: Float) -> String { __draton_std_float_to_string(f) }
+
+pub fn split(s, sep) { return __draton_std_string_split(s, sep) }
+pub fn trim(s) { return __draton_std_string_trim(s) }
+pub fn trim_start(s) { return __draton_std_string_trim_start(s) }
+pub fn trim_end(s) { return __draton_std_string_trim_end(s) }
+pub fn to_upper(s) { return __draton_std_string_to_upper(s) }
+pub fn to_lower(s) { return __draton_std_string_to_lower(s) }
+pub fn parse_int(s) { return __draton_std_string_parse_int(s) }
+pub fn parse_float(s) { return __draton_std_string_parse_float(s) }
+pub fn join(parts, sep) { return __draton_std_string_join(parts, sep) }
+pub fn repeat(s, n) { return __draton_std_string_repeat(s, n) }
+pub fn index_of(s, sub) { return __draton_std_string_index_of(s, sub) }
+pub fn ends_with(s, suffix) { return __draton_std_string_ends_with(s, suffix) }
+pub fn contains(s, sub) { return __draton_std_string_contains(s, sub) }
+pub fn starts_with(s, prefix) { return __draton_std_string_starts_with(s, prefix) }
+pub fn replace(s, needle, replacement) {
+    return __draton_std_string_replace(s, needle, replacement)
+}
+pub fn slice(s, start, end) { return __draton_std_string_slice(s, start, end) }
+pub fn int_to_string(n) { return __draton_std_int_to_string(n) }
+pub fn float_to_string(f) { return __draton_std_float_to_string(f) }

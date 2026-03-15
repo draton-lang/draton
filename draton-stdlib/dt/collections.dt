@@ -1,15 +1,28 @@
 /// Array-focused collection helpers.
 
-@extern "C" {
-    fn __draton_std_collections_sum(arr: Array[Int]) -> Int
-    fn __draton_std_collections_product(arr: Array[Int]) -> Int
-    fn __draton_std_collections_reverse_int(arr: Array[Int]) -> Array[Int]
-    fn __draton_std_collections_sort_int(arr: Array[Int]) -> Array[Int]
-    fn __draton_std_collections_unique_int(arr: Array[Int]) -> Array[Int]
+@type {
+    __draton_std_collections_sum: (Array[Int]) -> Int
+    __draton_std_collections_product: (Array[Int]) -> Int
+    __draton_std_collections_reverse_int: (Array[Int]) -> Array[Int]
+    __draton_std_collections_sort_int: (Array[Int]) -> Array[Int]
+    __draton_std_collections_unique_int: (Array[Int]) -> Array[Int]
+    sum: (Array[Int]) -> Int
+    product: (Array[Int]) -> Int
+    reverse_int: (Array[Int]) -> Array[Int]
+    sort_int: (Array[Int]) -> Array[Int]
+    unique_int: (Array[Int]) -> Array[Int]
 }
 
-pub fn sum(arr: Array[Int]) -> Int { __draton_std_collections_sum(arr) }
-pub fn product(arr: Array[Int]) -> Int { __draton_std_collections_product(arr) }
-pub fn reverse_int(arr: Array[Int]) -> Array[Int] { __draton_std_collections_reverse_int(arr) }
-pub fn sort_int(arr: Array[Int]) -> Array[Int] { __draton_std_collections_sort_int(arr) }
-pub fn unique_int(arr: Array[Int]) -> Array[Int] { __draton_std_collections_unique_int(arr) }
+@extern "C" {
+    fn __draton_std_collections_sum(arr)
+    fn __draton_std_collections_product(arr)
+    fn __draton_std_collections_reverse_int(arr)
+    fn __draton_std_collections_sort_int(arr)
+    fn __draton_std_collections_unique_int(arr)
+}
+
+pub fn sum(arr) { return __draton_std_collections_sum(arr) }
+pub fn product(arr) { return __draton_std_collections_product(arr) }
+pub fn reverse_int(arr) { return __draton_std_collections_reverse_int(arr) }
+pub fn sort_int(arr) { return __draton_std_collections_sort_int(arr) }
+pub fn unique_int(arr) { return __draton_std_collections_unique_int(arr) }

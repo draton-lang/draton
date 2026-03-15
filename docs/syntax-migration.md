@@ -17,7 +17,12 @@ This repository now documents and tests the following syntax as canonical:
 
 These forms remain temporarily to avoid breaking existing projects, but they are no longer the documented style.
 
-In the Rust compiler/tooling path, legacy inline type syntax now emits deprecation warnings that point to the equivalent `@type` form.
+In the Rust compiler/tooling path:
+
+- default mode keeps legacy inline type syntax working and emits deprecation warnings
+- `drat build --strict-syntax` and `drat run --strict-syntax` turn the same deprecated forms into hard errors
+
+The self-host mirror has parser and AST parity for the main canonical forms, but it still does not have full semantic parity for every `@type`-driven workflow.
 
 ## Canonical replacements
 

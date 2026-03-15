@@ -31,6 +31,12 @@ pub struct TypeCheckResult {
     pub warnings: Vec<TypeError>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeprecatedSyntaxMode {
+    Warn,
+    Deny,
+}
+
 /// The Draton type checker.
 pub struct TypeChecker {
     env: TypeEnv,
@@ -56,6 +62,7 @@ pub struct TypeChecker {
     current_effect: Vec<Option<Type>>,
     current_class: Vec<String>,
     type_param_scopes: Vec<HashMap<String, Type>>,
+    deprecated_syntax_mode: DeprecatedSyntaxMode,
 }
 
 impl TypeChecker {
@@ -86,9 +93,15 @@ impl TypeChecker {
             current_effect: Vec::new(),
             current_class: Vec::new(),
             type_param_scopes: Vec::new(),
+            deprecated_syntax_mode: DeprecatedSyntaxMode::Warn,
         };
         checker.install_builtins();
         checker
+    }
+
+    pub fn with_deprecated_syntax_mode(mut self, mode: DeprecatedSyntaxMode) -> Self {
+        self.deprecated_syntax_mode = mode;
+        self
     }
 
     /// Type-checks a full program.
@@ -2566,12 +2579,16 @@ impl TypeChecker {
         replacement: String,
         span: draton_ast::Span,
     ) {
-        self.warnings.push(TypeError::DeprecatedSyntax {
+        let diagnostic = TypeError::DeprecatedSyntax {
             syntax,
             replacement,
             line: span.line,
             col: span.col,
-        });
+        };
+        match self.deprecated_syntax_mode {
+            DeprecatedSyntaxMode::Warn => self.warnings.push(diagnostic),
+            DeprecatedSyntaxMode::Deny => self.errors.push(diagnostic),
+        }
     }
 
     fn collect_type_hints(&mut self, program: &Program) {

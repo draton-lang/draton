@@ -164,6 +164,19 @@ import { connect, listen } from std.net
 import { http as nethttp } from std.net
 ```
 
+### Compatibility vs strict syntax
+
+By default, the Rust frontend still accepts legacy inline type syntax for compatibility and emits deprecation warnings that point to the canonical `@type` form.
+
+Use strict mode to reject deprecated syntax:
+
+```sh
+drat build --strict-syntax examples/hello.dt
+drat run --strict-syntax examples/hello.dt
+```
+
+Strict mode currently targets the Rust frontend/tooling path. The self-host mirror is closer to canonical syntax than before, but it does not yet have full semantic parity for every `@type` workflow.
+
 ### Enums and pattern matching
 
 ```draton
@@ -262,8 +275,10 @@ fn read_pointer() {
 |---|---|
 | `drat init [name]` | Scaffold a new project |
 | `drat build` | Compile in debug mode |
+| `drat build --strict-syntax` | Reject deprecated inline type syntax |
 | `drat build --release` | Compile with optimizations |
 | `drat run` | Build and run |
+| `drat run --strict-syntax` | Build and run with canonical syntax enforcement |
 | `drat test` | Run tests |
 | `drat fmt` | Format source files |
 | `drat lint` | Lint source files |
