@@ -33,6 +33,18 @@ pub struct DratonOptionI64 {
     pub value: i64,
 }
 
+#[repr(C)]
+pub struct DratonOptionF64 {
+    pub is_some: bool,
+    pub value: f64,
+}
+
+#[repr(C)]
+pub struct DratonStringArray {
+    pub len: i64,
+    pub ptr: *mut DratonString,
+}
+
 fn string_bytes(value: DratonString) -> &'static [u8] {
     if value.ptr.is_null() || value.len <= 0 {
         &[]
@@ -66,6 +78,47 @@ fn option_i64(value: Option<i64>) -> DratonOptionI64 {
             is_some: false,
             value: 0,
         },
+    }
+}
+
+fn option_f64(value: Option<f64>) -> DratonOptionF64 {
+    match value {
+        Some(value) => DratonOptionF64 {
+            is_some: true,
+            value,
+        },
+        None => DratonOptionF64 {
+            is_some: false,
+            value: 0.0,
+        },
+    }
+}
+
+fn string_array_to_owned(values: DratonStringArray) -> Vec<String> {
+    if values.ptr.is_null() || values.len <= 0 {
+        return Vec::new();
+    }
+    let slice = unsafe { slice::from_raw_parts(values.ptr, values.len as usize) };
+    slice
+        .iter()
+        .map(|value| draton_string_to_owned(DratonString {
+            len: value.len,
+            ptr: value.ptr,
+        }))
+        .collect()
+}
+
+fn owned_string_array(values: Vec<String>) -> DratonStringArray {
+    let len = values.len();
+    let items = values
+        .into_iter()
+        .map(|value| owned_string(value.into_bytes()))
+        .collect::<Vec<_>>();
+    let boxed = items.into_boxed_slice();
+    let ptr = Box::into_raw(boxed) as *mut DratonString;
+    DratonStringArray {
+        len: len as i64,
+        ptr,
     }
 }
 
@@ -616,6 +669,12 @@ pub extern "C" fn draton_str_starts_with(value: DratonString, prefix: DratonStri
     draton_string_to_owned(value).starts_with(&draton_string_to_owned(prefix))
 }
 
+/// Returns true when two Draton strings are byte-equal.
+#[no_mangle]
+pub extern "C" fn draton_str_eq(lhs: DratonString, rhs: DratonString) -> bool {
+    string_bytes(lhs) == string_bytes(rhs)
+}
+
 /// Replaces all occurrences of `from` with `to`.
 #[no_mangle]
 pub extern "C" fn draton_str_replace(
@@ -672,6 +731,129 @@ pub extern "C" fn draton_string_parse_float(value: DratonString) -> f64 {
     draton_string_to_owned(value)
         .parse::<f64>()
         .unwrap_or(0.0)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_split(
+    value: DratonString,
+    sep: DratonString,
+) -> DratonStringArray {
+    owned_string_array(stdlib::string::split(
+        draton_string_to_owned(value),
+        draton_string_to_owned(sep),
+    ))
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_trim(value: DratonString) -> DratonString {
+    owned_string(stdlib::string::trim(draton_string_to_owned(value)).into_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_trim_start(value: DratonString) -> DratonString {
+    owned_string(stdlib::string::trim_start(draton_string_to_owned(value)).into_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_trim_end(value: DratonString) -> DratonString {
+    owned_string(stdlib::string::trim_end(draton_string_to_owned(value)).into_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_to_upper(value: DratonString) -> DratonString {
+    owned_string(stdlib::string::upper(draton_string_to_owned(value)).into_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_to_lower(value: DratonString) -> DratonString {
+    owned_string(stdlib::string::lower(draton_string_to_owned(value)).into_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_parse_int(value: DratonString) -> DratonOptionI64 {
+    option_i64(stdlib::string::to_int(draton_string_to_owned(value)).ok())
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_parse_float(value: DratonString) -> DratonOptionF64 {
+    option_f64(stdlib::string::to_float(draton_string_to_owned(value)).ok())
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_join(
+    parts: DratonStringArray,
+    sep: DratonString,
+) -> DratonString {
+    owned_string(
+        stdlib::string::join(&string_array_to_owned(parts), draton_string_to_owned(sep))
+            .into_bytes(),
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_repeat(value: DratonString, n: i64) -> DratonString {
+    owned_string(stdlib::string::repeat(draton_string_to_owned(value), n).into_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_index_of(value: DratonString, sub: DratonString) -> i64 {
+    stdlib::string::index_of(draton_string_to_owned(value), draton_string_to_owned(sub))
+        .unwrap_or(-1)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_ends_with(value: DratonString, suffix: DratonString) -> bool {
+    stdlib::string::ends_with(draton_string_to_owned(value), draton_string_to_owned(suffix))
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_contains(value: DratonString, sub: DratonString) -> bool {
+    stdlib::string::contains(draton_string_to_owned(value), draton_string_to_owned(sub))
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_starts_with(
+    value: DratonString,
+    prefix: DratonString,
+) -> bool {
+    stdlib::string::starts_with(draton_string_to_owned(value), draton_string_to_owned(prefix))
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_replace(
+    value: DratonString,
+    from: DratonString,
+    to: DratonString,
+) -> DratonString {
+    owned_string(
+        stdlib::string::replace(
+            draton_string_to_owned(value),
+            draton_string_to_owned(from),
+            draton_string_to_owned(to),
+        )
+        .into_bytes(),
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_string_slice(
+    value: DratonString,
+    start: i64,
+    end: i64,
+) -> DratonString {
+    owned_string(
+        stdlib::string::slice(draton_string_to_owned(value), start, end).into_bytes(),
+    )
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_int_to_string(value: i64) -> DratonString {
+    draton_int_to_string(value)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_float_to_string(value: f64) -> DratonString {
+    owned_string(value.to_string().into_bytes())
 }
 
 #[no_mangle]

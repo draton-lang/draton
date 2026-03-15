@@ -270,6 +270,34 @@ impl<'ctx> CodeGen<'ctx> {
         let rhs_value = self
             .emit_expr(rhs)?
             .ok_or_else(|| CodeGenError::UnsupportedExpr("binop rhs missing value".to_string()))?;
+        if matches!(op, BinOp::Eq | BinOp::Ne)
+            && matches!((&lhs.ty, &rhs.ty), (Type::String, Type::String))
+        {
+            let function = self
+                .module
+                .get_function("draton_str_eq")
+                .ok_or_else(|| CodeGenError::MissingSymbol("draton_str_eq".to_string()))?;
+            let equal = self
+                .builder
+                .build_call(
+                    function,
+                    &[lhs_value.into(), rhs_value.into()],
+                    if op == BinOp::Eq { "str.eq" } else { "str.ne.eq" },
+                )
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                .try_as_basic_value()
+                .left()
+                .ok_or_else(|| CodeGenError::Llvm("draton_str_eq returned void".to_string()))?
+                .into_int_value();
+            let value = if op == BinOp::Eq {
+                equal
+            } else {
+                self.builder
+                    .build_not(equal, "str.ne")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+            };
+            return Ok(Some(value.into()));
+        }
         let uses_float_ops = matches!(
             (&lhs.ty, &rhs.ty),
             (

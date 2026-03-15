@@ -1,0 +1,35 @@
+fn main() -> Int {
+    let parts = split("a,b,c", ",")
+    if parts.len() != 3 { return 1 }
+    if parts[0] != "a" { return 1 }
+
+    if trim("  hello  ") != "hello" { return 1 }
+    if trim_start("  hello") != "hello" { return 1 }
+    if trim_end("hello  ") != "hello" { return 1 }
+
+    match parse_int("42") {
+        Some(n) => { if n != 42 { return 1 } }
+        None => { return 1 }
+    }
+
+    match parse_float("3.14") {
+        Some(f) => { if f < 3.0 || f > 3.2 { return 1 } }
+        None => { return 1 }
+    }
+
+    let words = ["foo", "bar", "baz"]
+    if join(words, "-") != "foo-bar-baz" { return 1 }
+
+    if to_upper("hello") != "HELLO" { return 1 }
+    if to_lower("WORLD") != "world" { return 1 }
+    if !ends_with("foobar", "bar") { return 1 }
+    if !contains("foobar", "oba") { return 1 }
+    if !starts_with("foobar", "foo") { return 1 }
+    if replace("foo bar", "foo", "baz") != "baz bar" { return 1 }
+    if slice("hello world", 6, 11) != "world" { return 1 }
+    if repeat("ha", 3) != "hahaha" { return 1 }
+    if index_of("foobar", "oba") != 2 { return 1 }
+    if int_to_string(123) != "123" { return 1 }
+
+    0
+}

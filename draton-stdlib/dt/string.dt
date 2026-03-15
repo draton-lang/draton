@@ -1,92 +1,41 @@
 /// String standard library module.
 
-error ParseError(msg: String)
-
 @extern "C" {
-    fn __draton_std_string_upper(s: String) -> String
-    fn __draton_std_string_lower(s: String) -> String
+    fn __draton_std_string_split(s: String, sep: String) -> Array[String]
     fn __draton_std_string_trim(s: String) -> String
     fn __draton_std_string_trim_start(s: String) -> String
     fn __draton_std_string_trim_end(s: String) -> String
-    fn __draton_std_string_split(s: String, sep: String) -> Array[String]
+    fn __draton_std_string_to_upper(s: String) -> String
+    fn __draton_std_string_to_lower(s: String) -> String
+    fn __draton_std_string_parse_int(s: String) -> Option[Int]
+    fn __draton_std_string_parse_float(s: String) -> Option[Float]
     fn __draton_std_string_join(parts: Array[String], sep: String) -> String
+    fn __draton_std_string_repeat(s: String, n: Int) -> String
+    fn __draton_std_string_index_of(s: String, sub: String) -> Int
+    fn __draton_std_string_ends_with(s: String, suffix: String) -> Bool
     fn __draton_std_string_contains(s: String, sub: String) -> Bool
     fn __draton_std_string_starts_with(s: String, prefix: String) -> Bool
-    fn __draton_std_string_ends_with(s: String, suffix: String) -> Bool
     fn __draton_std_string_replace(s: String, from: String, to: String) -> String
-    fn __draton_std_string_replace_all(s: String, from: String, to: String) -> String
-    fn __draton_std_string_len(s: String) -> Int
-    fn __draton_std_string_chars(s: String) -> Array[Char]
-    fn __draton_std_string_to_int(s: String) -> Result[Int, ParseError]
-    fn __draton_std_string_to_float(s: String) -> Result[Float, ParseError]
-    fn __draton_std_string_repeat(s: String, n: Int) -> String
-    fn __draton_std_string_index_of(s: String, sub: String) -> Option[Int]
     fn __draton_std_string_slice(s: String, start: Int, end: Int) -> String
+    fn __draton_std_int_to_string(n: Int) -> String
+    fn __draton_std_float_to_string(f: Float) -> String
 }
 
-/// Uppercases a string.
-pub fn upper(s: String) -> String { __draton_std_string_upper(s) }
-
-/// Lowercases a string.
-pub fn lower(s: String) -> String { __draton_std_string_lower(s) }
-
-/// Trims both sides.
-pub fn trim(s: String) -> String { __draton_std_string_trim(s) }
-
-/// Trims the left side.
-pub fn trim_start(s: String) -> String { __draton_std_string_trim_start(s) }
-
-/// Trims the right side.
-pub fn trim_end(s: String) -> String { __draton_std_string_trim_end(s) }
-
-/// Splits a string.
 pub fn split(s: String, sep: String) -> Array[String] { __draton_std_string_split(s, sep) }
-
-/// Joins parts.
+pub fn trim(s: String) -> String { __draton_std_string_trim(s) }
+pub fn trim_start(s: String) -> String { __draton_std_string_trim_start(s) }
+pub fn trim_end(s: String) -> String { __draton_std_string_trim_end(s) }
+pub fn to_upper(s: String) -> String { __draton_std_string_to_upper(s) }
+pub fn to_lower(s: String) -> String { __draton_std_string_to_lower(s) }
+pub fn parse_int(s: String) -> Option[Int] { __draton_std_string_parse_int(s) }
+pub fn parse_float(s: String) -> Option[Float] { __draton_std_string_parse_float(s) }
 pub fn join(parts: Array[String], sep: String) -> String { __draton_std_string_join(parts, sep) }
-
-/// Checks substring membership.
-pub fn contains(s: String, sub: String) -> Bool { __draton_std_string_contains(s, sub) }
-
-/// Checks a prefix.
-pub fn starts_with(s: String, prefix: String) -> Bool {
-    __draton_std_string_starts_with(s, prefix)
-}
-
-/// Checks a suffix.
-pub fn ends_with(s: String, suffix: String) -> Bool {
-    __draton_std_string_ends_with(s, suffix)
-}
-
-/// Replaces the first occurrence.
-pub fn replace(s: String, from: String, to: String) -> String {
-    __draton_std_string_replace(s, from, to)
-}
-
-/// Replaces every occurrence.
-pub fn replace_all(s: String, from: String, to: String) -> String {
-    __draton_std_string_replace_all(s, from, to)
-}
-
-/// Returns Unicode scalar length.
-pub fn len(s: String) -> Int { __draton_std_string_len(s) }
-
-/// Returns characters.
-pub fn chars(s: String) -> Array[Char] { __draton_std_string_chars(s) }
-
-/// Parses an integer.
-pub fn to_int(s: String) -> Result[Int, ParseError] { __draton_std_string_to_int(s) }
-
-/// Parses a float.
-pub fn to_float(s: String) -> Result[Float, ParseError] { __draton_std_string_to_float(s) }
-
-/// Repeats a string.
 pub fn repeat(s: String, n: Int) -> String { __draton_std_string_repeat(s, n) }
-
-/// Returns the first character index of a substring.
-pub fn index_of(s: String, sub: String) -> Option[Int] { __draton_std_string_index_of(s, sub) }
-
-/// Returns a character slice.
-pub fn slice(s: String, start: Int, end: Int) -> String {
-    __draton_std_string_slice(s, start, end)
-}
+pub fn index_of(s: String, sub: String) -> Int { __draton_std_string_index_of(s, sub) }
+pub fn ends_with(s: String, suffix: String) -> Bool { __draton_std_string_ends_with(s, suffix) }
+pub fn contains(s: String, sub: String) -> Bool { __draton_std_string_contains(s, sub) }
+pub fn starts_with(s: String, prefix: String) -> Bool { __draton_std_string_starts_with(s, prefix) }
+pub fn replace(s: String, from: String, to: String) -> String { __draton_std_string_replace(s, from, to) }
+pub fn slice(s: String, start: Int, end: Int) -> String { __draton_std_string_slice(s, start, end) }
+pub fn int_to_string(n: Int) -> String { __draton_std_int_to_string(n) }
+pub fn float_to_string(f: Float) -> String { __draton_std_float_to_string(f) }

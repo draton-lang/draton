@@ -259,6 +259,15 @@ impl<'ctx> CodeGen<'ctx> {
                 None,
             );
         }
+        if self.module.get_function("draton_str_eq").is_none() {
+            self.module.add_function(
+                "draton_str_eq",
+                self.context
+                    .bool_type()
+                    .fn_type(&[self.string_type.into(), self.string_type.into()], false),
+                None,
+            );
+        }
         if self.module.get_function("draton_str_replace").is_none() {
             self.module.add_function(
                 "draton_str_replace",
