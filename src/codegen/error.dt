@@ -10,11 +10,11 @@ class CodeGenError {
 }
 
 @type {
-    fn new_codegen_error(kind: String, message: String) -> CodeGenError
-    fn codegen_error_message(err: CodeGenError) -> String
+    new_codegen_error: (String, String) -> CodeGenError
+    codegen_error_message: (CodeGenError) -> String
 }
 
-fn new_codegen_error(kind: String, message: String) {
+fn new_codegen_error(kind, message) {
     let err = CodeGenError()
     err.kind = kind
     err.message = message
@@ -24,7 +24,7 @@ fn new_codegen_error(kind: String, message: String) {
     err
 }
 
-fn codegen_error_message(err: CodeGenError) {
+fn codegen_error_message(err) {
     if str_eq_type(err.kind, "Llvm") {
         return str_concat("LLVM error: ", err.message)
     }

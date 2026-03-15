@@ -1,9 +1,9 @@
 @type {
-    fn new_token(kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) -> Token
-    fn keyword_kind(word: String) -> String
-    fn at_keyword_kind(word: String) -> String
-    fn is_known_at_keyword(word: String) -> Bool
-    fn token_line(token: Token) -> String
+    new_token: (String, String, Int, Int, Int, Int) -> Token
+    keyword_kind: (String) -> String
+    at_keyword_kind: (String) -> String
+    is_known_at_keyword: (String) -> Bool
+    token_line: (Token) -> String
 }
 
 class Token {
@@ -14,7 +14,7 @@ class Token {
 
 
 
-fn new_token(kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) {
+fn new_token(kind, lexeme, start, end, line, col) {
     let token = Token()
     token.kind = kind
     token.lexeme = lexeme
@@ -22,7 +22,7 @@ fn new_token(kind: String, lexeme: String, start: Int, end: Int, line: Int, col:
     token
 }
 
-fn keyword_kind(word: String) {
+fn keyword_kind(word) {
     match word {
         "let" => "Let"
         "mut" => "Mut"
@@ -57,7 +57,7 @@ fn keyword_kind(word: String) {
     }
 }
 
-fn at_keyword_kind(word: String) {
+fn at_keyword_kind(word) {
     match word {
         "@type" => "AtType"
         "@unsafe" => "AtUnsafe"
@@ -73,7 +73,7 @@ fn at_keyword_kind(word: String) {
     }
 }
 
-fn is_known_at_keyword(word: String) {
+fn is_known_at_keyword(word) {
     match word {
         "@type" => true
         "@unsafe" => true
@@ -89,7 +89,7 @@ fn is_known_at_keyword(word: String) {
     }
 }
 
-fn token_line(token: Token) {
+fn token_line(token) {
     let a = str_concat(token.kind, ascii_char(9))
     let b = str_concat(a, token.lexeme)
     let c = str_concat(b, ascii_char(9))

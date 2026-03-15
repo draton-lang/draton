@@ -1,6 +1,6 @@
 @type {
-    fn make_source_file(path: String, content: String) -> SourceFile
-    fn demo_source_file() -> SourceFile
+    make_source_file: (String, String) -> SourceFile
+    demo_source_file: () -> SourceFile
 }
 
 class SourceFile {
@@ -8,7 +8,7 @@ class SourceFile {
     let mut content: String
 }
 
-fn make_source_file(path: String, content: String) {
+fn make_source_file(path, content) {
     let file = SourceFile()
     file.path = path
     file.content = content

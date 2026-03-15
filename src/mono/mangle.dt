@@ -1,17 +1,17 @@
 import { Type, str_eq_type }
 
 @type {
-    fn mangle_type(ty: Type) -> String
-    fn mangle_class(class_name: String, type_args: Array[Type]) -> String
-    fn mangle_fn(fn_name: String, has_class_name: Bool, class_name: String, type_args: Array[Type]) -> String
-    fn mangle_name(base_name: String, type_args: Array[Type]) -> String
-    fn is_generic_name(name: String) -> Bool
-    fn sanitize_mangled(value: String) -> String
-    fn has_double_underscore(value: String) -> Bool
-    fn join_mangled_types(items: Array[Type]) -> String
+    mangle_type: (Type) -> String
+    mangle_class: (String, Array[Type]) -> String
+    mangle_fn: (String, Bool, String, Array[Type]) -> String
+    mangle_name: (String, Array[Type]) -> String
+    is_generic_name: (String) -> Bool
+    sanitize_mangled: (String) -> String
+    has_double_underscore: (String) -> Bool
+    join_mangled_types: (Array[Type]) -> String
 }
 
-fn mangle_type(ty: Type) {
+fn mangle_type(ty) {
     if str_eq_type(ty.type_kind, "Int") || str_eq_type(ty.type_kind, "Float") || str_eq_type(ty.type_kind, "Bool") || str_eq_type(ty.type_kind, "String") || str_eq_type(ty.type_kind, "Unit") {
         return ty.type_kind
     }
@@ -73,7 +73,7 @@ fn mangle_type(ty: Type) {
     ty.type_kind
 }
 
-fn mangle_class(class_name: String, type_args: Array[Type]) {
+fn mangle_class(class_name, type_args) {
     let base = sanitize_mangled(class_name)
     if type_args.len() == 0 {
         return base
@@ -81,7 +81,7 @@ fn mangle_class(class_name: String, type_args: Array[Type]) {
     str_concat(base, str_concat("__", join_mangled_types(type_args)))
 }
 
-fn mangle_fn(fn_name: String, has_class_name: Bool, class_name: String, type_args: Array[Type]) {
+fn mangle_fn(fn_name, has_class_name, class_name, type_args) {
     let mut base = sanitize_mangled(fn_name)
     if has_class_name {
         base = str_concat(sanitize_mangled(class_name), str_concat(".", sanitize_mangled(fn_name)))
@@ -92,15 +92,15 @@ fn mangle_fn(fn_name: String, has_class_name: Bool, class_name: String, type_arg
     str_concat(base, str_concat("__", join_mangled_types(type_args)))
 }
 
-fn mangle_name(base_name: String, type_args: Array[Type]) {
+fn mangle_name(base_name, type_args) {
     mangle_class(base_name, type_args)
 }
 
-fn is_generic_name(name: String) {
+fn is_generic_name(name) {
     has_double_underscore(name)
 }
 
-fn sanitize_mangled(value: String) {
+fn sanitize_mangled(value) {
     let mut out = ""
     let mut i = 0
     while i < str_len(value) {
@@ -115,7 +115,7 @@ fn sanitize_mangled(value: String) {
     out
 }
 
-fn has_double_underscore(value: String) {
+fn has_double_underscore(value) {
     let mut i = 0
     while i + 1 < str_len(value) {
         if str_byte_at(value, i) == 95 && str_byte_at(value, i + 1) == 95 {
@@ -126,7 +126,7 @@ fn has_double_underscore(value: String) {
     false
 }
 
-fn join_mangled_types(items: Array[Type]) {
+fn join_mangled_types(items) {
     let mut out = ""
     let mut i = 0
     while i < items.len() {
