@@ -40,6 +40,7 @@ class TypedClassDef {
     let mut class_implements_names: Array[String]
     let mut class_fields: Array[TypedFieldDef]
     let mut class_methods: Array[TypedFnDef]
+    let mut class_type_blocks: Array[TypedTypeBlockDef]
     let mut class_span: Span
 }
 
@@ -76,6 +77,7 @@ class TypedConstDef {
 }
 
 class TypedImportDef {
+    let mut import_module: Array[String]
     let mut import_items: Array[TypedImportItem]
     let mut import_span: Span
 }

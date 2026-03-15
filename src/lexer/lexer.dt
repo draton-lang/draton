@@ -114,6 +114,8 @@ fn keyword_kind_runtime(word: String) {
         kind = "Pub"
     } else if str_eq(word, "import") {
         kind = "Import"
+    } else if str_eq(word, "from") {
+        kind = "From"
     } else if str_eq(word, "as") {
         kind = "As"
     } else if str_eq(word, "spawn") {

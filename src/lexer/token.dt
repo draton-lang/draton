@@ -44,6 +44,7 @@ fn keyword_kind(word: String) {
         "error" => "Error"
         "pub" => "Pub"
         "import" => "Import"
+        "from" => "From"
         "as" => "As"
         "spawn" => "Spawn"
         "chan" => "Chan"

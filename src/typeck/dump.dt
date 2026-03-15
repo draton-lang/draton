@@ -56,6 +56,7 @@ import { TypedProgram, TypedItem, TypedFnDef, TypedParam, TypedClassDef, TypedFi
     fn type_dump_import_item_list(items: Array[TypedImportItem], level: Int) -> String
     fn type_dump_import_item(item: TypedImportItem, level: Int) -> String
     fn type_dump_type_member_list(items: Array[TypedTypeMember], level: Int) -> String
+    fn type_dump_type_block_list(items: Array[TypedTypeBlockDef], level: Int) -> String
     fn type_dump_type_member(item: TypedTypeMember, level: Int) -> String
     fn type_dump_gc_entry_list(items: Array[TypedGcConfigEntry], level: Int) -> String
     fn type_dump_map_entry_list(items: Array[TypedMapEntry], level: Int) -> String
@@ -162,6 +163,7 @@ fn type_dump_class_def(def: TypedClassDef, level: Int) {
     out = type_dump_append(out, type_dump_field("implements", type_dump_string_list(def.class_implements_names, level + 1), level + 1))
     out = type_dump_append(out, type_dump_field("fields", type_dump_field_def_list(def.class_fields, level + 1), level + 1))
     out = type_dump_append(out, type_dump_field("methods", type_dump_fndef_list(def.class_methods, level + 1), level + 1))
+    out = type_dump_append(out, type_dump_field("type_blocks", type_dump_type_block_list(def.class_type_blocks, level + 1), level + 1))
     out = type_dump_append(out, type_dump_field("span", type_dump_span(def.class_span, level + 1), level + 1))
     out = type_dump_append(out, type_dump_line(level, "}"))
     out
@@ -211,6 +213,7 @@ fn type_dump_const_def(def: TypedConstDef, level: Int) {
 fn type_dump_import_def(def: TypedImportDef, level: Int) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedImportDef {"))
+    out = type_dump_append(out, type_dump_field("module", type_dump_string_list(def.import_module, level + 1), level + 1))
     out = type_dump_append(out, type_dump_field("items", type_dump_import_item_list(def.import_items, level + 1), level + 1))
     out = type_dump_append(out, type_dump_field("span", type_dump_span(def.import_span, level + 1), level + 1))
     out = type_dump_append(out, type_dump_line(level, "}"))
@@ -811,6 +814,21 @@ fn type_dump_type_member_list(items: Array[TypedTypeMember], level: Int) {
     let mut i = 0
     while i < items.len() {
         out = type_dump_append(out, type_dump_suffix_last(type_dump_type_member(items[i], level + 1), ","))
+        i = i + 1
+    }
+    out = type_dump_append(out, type_dump_line(level, "]"))
+    out
+}
+
+fn type_dump_type_block_list(items: Array[TypedTypeBlockDef], level: Int) {
+    if items.len() == 0 {
+        return type_dump_line(level, "[]")
+    }
+    let mut out = ""
+    out = type_dump_append(out, type_dump_line(level, "["))
+    let mut i = 0
+    while i < items.len() {
+        out = type_dump_append(out, type_dump_suffix_last(type_dump_type_block(items[i], level + 1), ","))
         i = i + 1
     }
     out = type_dump_append(out, type_dump_line(level, "]"))

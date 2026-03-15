@@ -93,6 +93,7 @@ impl TypeChecker {
 
     /// Type-checks a full program.
     pub fn check(mut self, program: Program) -> TypeCheckResult {
+        self.collect_deprecated_syntax(&program);
         self.collect_type_hints(&program);
         self.predeclare_items(&program);
 
@@ -285,14 +286,17 @@ impl TypeChecker {
                     _ => None,
                 })
                 .unwrap_or(Type::Var(id)),
-            Type::Array(inner) => Type::Array(Box::new(self.replace_type_params(*inner, params, args))),
+            Type::Array(inner) => {
+                Type::Array(Box::new(self.replace_type_params(*inner, params, args)))
+            }
             Type::Map(key, value) => Type::Map(
                 Box::new(self.replace_type_params(*key, params, args)),
                 Box::new(self.replace_type_params(*value, params, args)),
             ),
             Type::Set(inner) => Type::Set(Box::new(self.replace_type_params(*inner, params, args))),
             Type::Tuple(items) => Type::Tuple(
-                items.into_iter()
+                items
+                    .into_iter()
                     .map(|item| self.replace_type_params(item, params, args))
                     .collect(),
             ),
@@ -303,9 +307,12 @@ impl TypeChecker {
                 Box::new(self.replace_type_params(*ok, params, args)),
                 Box::new(self.replace_type_params(*err, params, args)),
             ),
-            Type::Chan(inner) => Type::Chan(Box::new(self.replace_type_params(*inner, params, args))),
+            Type::Chan(inner) => {
+                Type::Chan(Box::new(self.replace_type_params(*inner, params, args)))
+            }
             Type::Fn(items, ret) => Type::Fn(
-                items.into_iter()
+                items
+                    .into_iter()
                     .map(|item| self.replace_type_params(item, params, args))
                     .collect(),
                 Box::new(self.replace_type_params(*ret, params, args)),
@@ -452,14 +459,11 @@ impl TypeChecker {
         let ty = self
             .lookup_field_ty(&class_def.name, &field.name)
             .unwrap_or_else(|| {
-                let field_hint = field
-                    .type_hint
-                    .clone()
-                    .or_else(|| {
-                        self.class_binding_hints
-                            .get(&class_def.name)
-                            .and_then(|hints| hints.get(&field.name).cloned())
-                    });
+                let field_hint = field.type_hint.clone().or_else(|| {
+                    self.class_binding_hints
+                        .get(&class_def.name)
+                        .and_then(|hints| hints.get(&field.name).cloned())
+                });
                 field_hint
                     .as_ref()
                     .map(|hint| self.type_from_annotation(hint))
@@ -1387,25 +1391,27 @@ impl TypeChecker {
         span: draton_ast::Span,
     ) -> (TypedExpr, Type) {
         let (typed_lhs, lhs_ty, typed_rhs, rhs_ty) = match op {
-            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => match (lhs, rhs) {
-                (Expr::NoneLit(_), _) => {
-                    let (typed_rhs, rhs_ty) = self.infer_expr(rhs);
-                    let (typed_lhs, lhs_ty) =
-                        self.infer_expr_with_expected(lhs, Some(rhs_ty.clone()));
-                    (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
+            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+                match (lhs, rhs) {
+                    (Expr::NoneLit(_), _) => {
+                        let (typed_rhs, rhs_ty) = self.infer_expr(rhs);
+                        let (typed_lhs, lhs_ty) =
+                            self.infer_expr_with_expected(lhs, Some(rhs_ty.clone()));
+                        (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
+                    }
+                    (_, Expr::NoneLit(_)) => {
+                        let (typed_lhs, lhs_ty) = self.infer_expr(lhs);
+                        let (typed_rhs, rhs_ty) =
+                            self.infer_expr_with_expected(rhs, Some(lhs_ty.clone()));
+                        (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
+                    }
+                    _ => {
+                        let (typed_lhs, lhs_ty) = self.infer_expr(lhs);
+                        let (typed_rhs, rhs_ty) = self.infer_expr(rhs);
+                        (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
+                    }
                 }
-                (_, Expr::NoneLit(_)) => {
-                    let (typed_lhs, lhs_ty) = self.infer_expr(lhs);
-                    let (typed_rhs, rhs_ty) =
-                        self.infer_expr_with_expected(rhs, Some(lhs_ty.clone()));
-                    (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
-                }
-                _ => {
-                    let (typed_lhs, lhs_ty) = self.infer_expr(lhs);
-                    let (typed_rhs, rhs_ty) = self.infer_expr(rhs);
-                    (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
-                }
-            },
+            }
             _ => {
                 let (typed_lhs, lhs_ty) = self.infer_expr(lhs);
                 let (typed_rhs, rhs_ty) = self.infer_expr(rhs);
@@ -1507,17 +1513,19 @@ impl TypeChecker {
                             Expr::StrLit(name, _) => name.clone(),
                             _ => String::new(),
                         };
-                        let expected = self.lookup_field_ty(&class_name, &field_name).map(|field_ty| {
-                            if explicit_type_args.is_empty() {
-                                field_ty
-                            } else {
-                                self.substitute_class_type_args(
-                                    &class_name,
-                                    field_ty,
-                                    &explicit_type_args,
-                                )
-                            }
-                        });
+                        let expected =
+                            self.lookup_field_ty(&class_name, &field_name)
+                                .map(|field_ty| {
+                                    if explicit_type_args.is_empty() {
+                                        field_ty
+                                    } else {
+                                        self.substitute_class_type_args(
+                                            &class_name,
+                                            field_ty,
+                                            &explicit_type_args,
+                                        )
+                                    }
+                                });
                         let (typed_value, value_ty) =
                             self.infer_expr_with_expected(value, expected.clone());
                         if let Some(field_ty) = expected {
@@ -1625,15 +1633,13 @@ impl TypeChecker {
             .map(|(index, arg)| {
                 self.infer_expr_with_expected(
                     arg,
-                    expected_params
-                        .as_ref()
-                        .and_then(|params| {
-                            if target_is_named {
-                                params.get(index + 1).cloned()
-                            } else {
-                                params.get(index).cloned()
-                            }
-                        }),
+                    expected_params.as_ref().and_then(|params| {
+                        if target_is_named {
+                            params.get(index + 1).cloned()
+                        } else {
+                            params.get(index).cloned()
+                        }
+                    }),
                 )
             })
             .collect::<Vec<_>>();
@@ -2274,11 +2280,7 @@ impl TypeChecker {
                     } else {
                         Scheme {
                             quantified: scheme.quantified,
-                            ty: self.substitute_class_type_args(
-                                &class_name,
-                                scheme.ty,
-                                &type_args,
-                            ),
+                            ty: self.substitute_class_type_args(&class_name, scheme.ty, &type_args),
                         }
                     }
                 })
@@ -2380,7 +2382,10 @@ impl TypeChecker {
             }),
             "pop" => Some(Scheme {
                 quantified: Vec::new(),
-                ty: Type::Fn(Vec::new(), Box::new(Type::Option(Box::new(item_ty.clone())))),
+                ty: Type::Fn(
+                    Vec::new(),
+                    Box::new(Type::Option(Box::new(item_ty.clone()))),
+                ),
             }),
             "contains" => Some(Scheme {
                 quantified: Vec::new(),
@@ -2444,6 +2449,131 @@ impl TypeChecker {
         }
     }
 
+    fn collect_deprecated_syntax(&mut self, program: &Program) {
+        for item in &program.items {
+            self.collect_deprecated_item(item);
+        }
+    }
+
+    fn collect_deprecated_item(&mut self, item: &Item) {
+        match item {
+            Item::Fn(function) | Item::PanicHandler(function) | Item::OomHandler(function) => {
+                self.collect_deprecated_fn(function);
+            }
+            Item::Class(class_def) => {
+                for member in &class_def.members {
+                    match member {
+                        ClassMember::Field(_) => {}
+                        ClassMember::Method(function) => self.collect_deprecated_fn(function),
+                        ClassMember::Layer(layer) => {
+                            for function in &layer.methods {
+                                self.collect_deprecated_fn(function);
+                            }
+                        }
+                    }
+                }
+            }
+            Item::Interface(interface_def) => {
+                for function in &interface_def.methods {
+                    self.collect_deprecated_fn(function);
+                }
+            }
+            Item::Error(_) => {}
+            Item::Extern(extern_block) => {
+                for function in &extern_block.functions {
+                    self.collect_deprecated_fn(function);
+                }
+            }
+            Item::Enum(_) | Item::Const(_) | Item::Import(_) | Item::TypeBlock(_) => {}
+        }
+    }
+
+    fn collect_deprecated_fn(&mut self, function: &FnDef) {
+        for param in &function.params {
+            if param.type_hint.is_some() {
+                self.push_deprecated_warning(
+                    format!(
+                        "inline function parameter type annotation '{}: ...'",
+                        param.name
+                    ),
+                    format!("@type {{ {}: (...) -> ReturnType }}", function.name),
+                    param.span,
+                );
+            }
+        }
+        if function.ret_type.is_some() {
+            self.push_deprecated_warning(
+                format!("inline return type annotation for '{}'", function.name),
+                format!("@type {{ {}: (...) -> ReturnType }}", function.name),
+                function.span,
+            );
+        }
+        if let Some(body) = &function.body {
+            self.collect_deprecated_block(body);
+        }
+    }
+
+    fn collect_deprecated_block(&mut self, block: &Block) {
+        for stmt in &block.stmts {
+            self.collect_deprecated_stmt(stmt);
+        }
+    }
+
+    fn collect_deprecated_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Let(let_stmt) => {
+                if let_stmt.type_hint.is_some() {
+                    self.push_deprecated_warning(
+                        format!("inline let type annotation '{}: ...'", let_stmt.name),
+                        format!("@type {{ {}: Type }}", let_stmt.name),
+                        let_stmt.span,
+                    );
+                }
+            }
+            Stmt::If(if_stmt) => {
+                self.collect_deprecated_block(&if_stmt.then_branch);
+                if let Some(else_branch) = &if_stmt.else_branch {
+                    match else_branch {
+                        ElseBranch::If(inner) => self.collect_deprecated_block(&inner.then_branch),
+                        ElseBranch::Block(block) => self.collect_deprecated_block(block),
+                    }
+                }
+            }
+            Stmt::For(for_stmt) => self.collect_deprecated_block(&for_stmt.body),
+            Stmt::While(while_stmt) => self.collect_deprecated_block(&while_stmt.body),
+            Stmt::Spawn(spawn_stmt) => {
+                if let SpawnBody::Block(block) = &spawn_stmt.body {
+                    self.collect_deprecated_block(block);
+                }
+            }
+            Stmt::Block(block)
+            | Stmt::UnsafeBlock(block)
+            | Stmt::PointerBlock(block)
+            | Stmt::ComptimeBlock(block) => self.collect_deprecated_block(block),
+            Stmt::IfCompile(if_compile) => self.collect_deprecated_block(&if_compile.body),
+            Stmt::Assign(_)
+            | Stmt::Return(_)
+            | Stmt::Expr(_)
+            | Stmt::LetDestructure(_)
+            | Stmt::AsmBlock(_, _)
+            | Stmt::GcConfig(_) => {}
+        }
+    }
+
+    fn push_deprecated_warning(
+        &mut self,
+        syntax: String,
+        replacement: String,
+        span: draton_ast::Span,
+    ) {
+        self.warnings.push(TypeError::DeprecatedSyntax {
+            syntax,
+            replacement,
+            line: span.line,
+            col: span.col,
+        });
+    }
+
     fn collect_type_hints(&mut self, program: &Program) {
         for item in &program.items {
             match item {
@@ -2504,11 +2634,7 @@ impl TypeChecker {
         }
     }
 
-    fn function_type_param_hint(
-        &self,
-        hint: Option<&TypeExpr>,
-        index: usize,
-    ) -> Option<TypeExpr> {
+    fn function_type_param_hint(&self, hint: Option<&TypeExpr>, index: usize) -> Option<TypeExpr> {
         match hint {
             Some(TypeExpr::Fn(params, _, _)) => params.get(index).cloned(),
             _ => None,

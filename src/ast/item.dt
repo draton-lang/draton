@@ -41,6 +41,7 @@ class ClassDef {
     let mut extends_name: String
     let mut implements_names: Array[String]
     let mut members: Array[ClassMember]
+    let mut type_blocks: Array[TypeBlockDef]
     let mut span: Span
 }
 
@@ -54,6 +55,7 @@ class ClassMember {
 class LayerDef {
     let mut name: String
     let mut methods: Array[FnDef]
+    let mut type_blocks: Array[TypeBlockDef]
     let mut span: Span
 }
 
@@ -90,6 +92,7 @@ class ConstDef {
 }
 
 class ImportDef {
+    let mut module: Array[String]
     let mut items: Array[ImportItem]
     let mut span: Span
 }
@@ -135,14 +138,16 @@ class TypeMember {
     fn new_fn_def(is_pub: Bool, name: String, type_params: Array[String], params: Array[Param], has_ret_type: Bool, ret_type: TypeExpr, has_body: Bool, body: Block, span: Span) -> FnDef
     fn fn_def_push_param(def: FnDef, param: Param) -> FnDef
     fn new_param(name: String, has_type_hint: Bool, type_hint: TypeExpr, span: Span) -> Param
-    fn new_class_def(name: String, type_params: Array[String], has_extends: Bool, extends_name: String, implements_names: Array[String], members: Array[ClassMember], span: Span) -> ClassDef
+    fn new_class_def(name: String, type_params: Array[String], has_extends: Bool, extends_name: String, implements_names: Array[String], members: Array[ClassMember], type_blocks: Array[TypeBlockDef], span: Span) -> ClassDef
     fn class_def_push_implements(def: ClassDef, iface_name: String) -> ClassDef
     fn class_def_push_member(def: ClassDef, member: ClassMember) -> ClassDef
+    fn class_def_push_type_block(def: ClassDef, block: TypeBlockDef) -> ClassDef
     fn class_member_field(def: FieldDef) -> ClassMember
     fn class_member_method(def: FnDef) -> ClassMember
     fn class_member_layer(def: LayerDef) -> ClassMember
-    fn new_layer_def(name: String, methods: Array[FnDef], span: Span) -> LayerDef
+    fn new_layer_def(name: String, methods: Array[FnDef], type_blocks: Array[TypeBlockDef], span: Span) -> LayerDef
     fn layer_def_push_method(def: LayerDef, method: FnDef) -> LayerDef
+    fn layer_def_push_type_block(def: LayerDef, block: TypeBlockDef) -> LayerDef
     fn new_field_def(is_mut: Bool, name: String, has_type_hint: Bool, type_hint: TypeExpr, span: Span) -> FieldDef
     fn new_interface_def(name: String, methods: Array[FnDef], span: Span) -> InterfaceDef
     fn interface_def_push_method(def: InterfaceDef, method: FnDef) -> InterfaceDef
@@ -151,8 +156,9 @@ class TypeMember {
     fn new_error_def(name: String, fields: Array[Param], span: Span) -> ErrorDef
     fn error_def_push_field(def: ErrorDef, field: Param) -> ErrorDef
     fn new_const_def(name: String, value: Expr, span: Span) -> ConstDef
-    fn new_import_def(items: Array[ImportItem], span: Span) -> ImportDef
+    fn new_import_def(module: Array[String], items: Array[ImportItem], span: Span) -> ImportDef
     fn import_def_push_item(def: ImportDef, item: ImportItem) -> ImportDef
+    fn import_def_push_module_part(def: ImportDef, part: String) -> ImportDef
     fn new_import_item(name: String, has_alias: Bool, alias: String, span: Span) -> ImportItem
     fn new_extern_block(abi: String, functions: Array[FnDef], span: Span) -> ExternBlock
     fn extern_block_push_function(def: ExternBlock, function: FnDef) -> ExternBlock
@@ -271,7 +277,7 @@ fn new_param(name: String, has_type_hint: Bool, type_hint: TypeExpr, span: Span)
     param
 }
 
-fn new_class_def(name: String, type_params: Array[String], has_extends: Bool, extends_name: String, implements_names: Array[String], members: Array[ClassMember], span: Span) {
+fn new_class_def(name: String, type_params: Array[String], has_extends: Bool, extends_name: String, implements_names: Array[String], members: Array[ClassMember], type_blocks: Array[TypeBlockDef], span: Span) {
     let def = ClassDef()
     def.name = name
     def.type_params = type_params
@@ -279,6 +285,7 @@ fn new_class_def(name: String, type_params: Array[String], has_extends: Bool, ex
     def.extends_name = extends_name
     def.implements_names = implements_names
     def.members = members
+    def.type_blocks = type_blocks
     def.span = span
     def
 }
@@ -290,6 +297,11 @@ fn class_def_push_implements(def: ClassDef, iface_name: String) {
 
 fn class_def_push_member(def: ClassDef, member: ClassMember) {
     def.members.push(member)
+    def
+}
+
+fn class_def_push_type_block(def: ClassDef, block: TypeBlockDef) {
+    def.type_blocks.push(block)
     def
 }
 
@@ -314,16 +326,22 @@ fn class_member_layer(def: LayerDef) {
     member
 }
 
-fn new_layer_def(name: String, methods: Array[FnDef], span: Span) {
+fn new_layer_def(name: String, methods: Array[FnDef], type_blocks: Array[TypeBlockDef], span: Span) {
     let def = LayerDef()
     def.name = name
     def.methods = methods
+    def.type_blocks = type_blocks
     def.span = span
     def
 }
 
 fn layer_def_push_method(def: LayerDef, method: FnDef) {
     def.methods.push(method)
+    def
+}
+
+fn layer_def_push_type_block(def: LayerDef, block: TypeBlockDef) {
+    def.type_blocks.push(block)
     def
 }
 
@@ -384,8 +402,9 @@ fn new_const_def(name: String, value: Expr, span: Span) {
     def
 }
 
-fn new_import_def(items: Array[ImportItem], span: Span) {
+fn new_import_def(module: Array[String], items: Array[ImportItem], span: Span) {
     let def = ImportDef()
+    def.module = module
     def.items = items
     def.span = span
     def
@@ -393,6 +412,11 @@ fn new_import_def(items: Array[ImportItem], span: Span) {
 
 fn import_def_push_item(def: ImportDef, item: ImportItem) {
     def.items.push(item)
+    def
+}
+
+fn import_def_push_module_part(def: ImportDef, part: String) {
+    def.module.push(part)
     def
 }
 

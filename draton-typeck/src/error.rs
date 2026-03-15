@@ -124,4 +124,12 @@ pub enum TypeError {
         line: usize,
         col: usize,
     },
+
+    #[error("deprecated syntax '{syntax}' at line {line}, col {col}\n  use: {replacement}")]
+    DeprecatedSyntax {
+        syntax: String,
+        replacement: String,
+        line: usize,
+        col: usize,
+    },
 }

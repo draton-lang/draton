@@ -17,6 +17,8 @@ This repository now documents and tests the following syntax as canonical:
 
 These forms remain temporarily to avoid breaking existing projects, but they are no longer the documented style.
 
+In the Rust compiler/tooling path, legacy inline type syntax now emits deprecation warnings that point to the equivalent `@type` form.
+
 ## Canonical replacements
 
 Variable declaration:

@@ -34,6 +34,7 @@ import { Program, Item, FnDef, Param, ClassDef, ClassMember, LayerDef, FieldDef,
     fn dump_match_arm_list(items: Array[MatchArm], level: Int) -> String
     fn dump_import_item_list(items: Array[ImportItem], level: Int) -> String
     fn dump_type_member_list(items: Array[TypeMember], level: Int) -> String
+    fn dump_type_block_list(items: Array[TypeBlockDef], level: Int) -> String
     fn dump_gc_entry_list(items: Array[GcConfigEntry], level: Int) -> String
     fn dump_type_expr_list(items: Array[TypeExpr], level: Int) -> String
     fn dump_option_string(has_value: Bool, value: String, level: Int) -> String
@@ -143,6 +144,7 @@ fn dump_class_def(def: ClassDef, level: Int) -> String {
     out = dump_append(out, dump_field("extends", dump_option_string(def.has_extends, def.extends_name, level + 1), level + 1))
     out = dump_append(out, dump_field("implements", dump_string_list(def.implements_names, level + 1), level + 1))
     out = dump_append(out, dump_field("members", dump_class_member_list(def.members, level + 1), level + 1))
+    out = dump_append(out, dump_field("type_blocks", dump_type_block_list(def.type_blocks, level + 1), level + 1))
     out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
     out = dump_append(out, dump_line(level, "}"))
     out
@@ -171,6 +173,7 @@ fn dump_layer_def(def: LayerDef, level: Int) -> String {
     out = dump_append(out, dump_line(level, "LayerDef {"))
     out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
     out = dump_append(out, dump_field("methods", dump_fndef_list(def.methods, level + 1), level + 1))
+    out = dump_append(out, dump_field("type_blocks", dump_type_block_list(def.type_blocks, level + 1), level + 1))
     out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
     out = dump_append(out, dump_line(level, "}"))
     out
@@ -230,6 +233,7 @@ fn dump_const_def(def: ConstDef, level: Int) -> String {
 fn dump_import_def(def: ImportDef, level: Int) -> String {
     let mut out = ""
     out = dump_append(out, dump_line(level, "ImportDef {"))
+    out = dump_append(out, dump_field("module", dump_string_list(def.module, level + 1), level + 1))
     out = dump_append(out, dump_field("items", dump_import_item_list(def.items, level + 1), level + 1))
     out = dump_append(out, dump_field("span", dump_span(def.span, level + 1), level + 1))
     out = dump_append(out, dump_line(level, "}"))
@@ -911,6 +915,17 @@ fn dump_type_member_list(items: Array[TypeMember], level: Int) -> String {
     let mut i = 0
     while i < items.len() {
         out = dump_append(out, dump_suffix_last(dump_type_member(items[i], level + 1), ","))
+        i = i + 1
+    }
+    dump_append(out, dump_line(level, "]"))
+}
+
+fn dump_type_block_list(items: Array[TypeBlockDef], level: Int) -> String {
+    if items.len() == 0 { return "[]" }
+    let mut out = dump_line(level, "[")
+    let mut i = 0
+    while i < items.len() {
+        out = dump_append(out, dump_suffix_last(dump_type_block(items[i], level + 1), ","))
         i = i + 1
     }
     dump_append(out, dump_line(level, "]"))

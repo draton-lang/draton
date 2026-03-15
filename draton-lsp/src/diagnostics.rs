@@ -58,7 +58,8 @@ pub fn collect_diagnostics(result: &AnalysisResult) -> Value {
             | draton_typeck::TypeError::CircularInheritance { line, col, .. }
             | draton_typeck::TypeError::UndefinedParent { line, col, .. }
             | draton_typeck::TypeError::NonExhaustiveMatch { line, col, .. }
-            | draton_typeck::TypeError::RedundantPattern { line, col, .. } => (*line, *col),
+            | draton_typeck::TypeError::RedundantPattern { line, col, .. }
+            | draton_typeck::TypeError::DeprecatedSyntax { line, col, .. } => (*line, *col),
         };
         diags.push(make_diag(
             line.saturating_sub(1),

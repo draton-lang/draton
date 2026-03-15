@@ -11,7 +11,7 @@
     fn cursor_advance(c: Cursor) -> String
     fn cursor_advance_newline(c: Cursor, bytes: Int) -> Unit
     fn cursor_consume_if(c: Cursor, expected_code: Int) -> Bool
-    fn cursor_slice(c: Cursor, from: Int, to: Int) -> String
+    fn cursor_slice(c: Cursor, start_idx: Int, end_idx: Int) -> String
 }
 
 class Cursor {
@@ -107,6 +107,6 @@ fn cursor_consume_if(c: Cursor, expected_code: Int) {
     matched
 }
 
-fn cursor_slice(c: Cursor, from: Int, to: Int) {
-    str_slice(c.source, from, to)
+fn cursor_slice(c: Cursor, start_idx: Int, end_idx: Int) {
+    str_slice(c.source, start_idx, end_idx)
 }

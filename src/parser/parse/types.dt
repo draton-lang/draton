@@ -29,6 +29,26 @@ fn parse_type_expr(p: Parser) -> TypeExpr {
         let _arrow = parser_expect(p, "Arrow", "->")
         let ret = parse_type_expr(p)
         ty = type_fn_expr(params, ret, merge_spans(start, type_expr_span(ret)))
+    } else if str_eq_type_kind(token.kind, "LParen") {
+        let start = token_to_span(token)
+        let _advanced = parser_advance(p)
+        let params: Array[TypeExpr] = []
+        let mut done = false
+        while !parser_is_eof(p) && !parser_check(p, "RParen") && !done {
+            params.push(parse_type_expr(p))
+            if !parser_match_kind(p, "Comma") {
+                done = true
+            }
+        }
+        let _rparen = parser_expect(p, "RParen", ")")
+        if parser_match_kind(p, "Arrow") {
+            let ret = parse_type_expr(p)
+            ty = type_fn_expr(params, ret, merge_spans(start, type_expr_span(ret)))
+        } else if params.len() == 1 {
+            ty = params[0]
+        } else {
+            parser_error_unexpected(p, parser_current(p), "-> after parenthesized parameter types")
+        }
     } else if str_eq_type_kind(token.kind, "AtPointer") {
         let _advanced = parser_advance(p)
         ty = type_pointer(token_to_span(token))

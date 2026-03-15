@@ -2,6 +2,7 @@ import { Type, TypedExpr, TypedMapEntry, TypedMatchArm, TypedMatchArmBody, Typed
          TypedStmt, TypedLetStmt, TypedAssignStmt, TypedIfStmt, TypedElseBranch, TypedForStmt,
          TypedWhileStmt, TypedBlock, TypedReturnStmt, TypedSpawnStmt, TypedSpawnBody,
          TypedIfCompileStmt, TypedGcConfigStmt, TypedGcConfigEntry, TypedFnDef, TypedParam,
+         TypedTypeBlockDef,
          TypedClassDef, TypedFieldDef, TypedItem, Span, mangle_class, str_eq_type, type_array,
          type_map, type_set, type_tuple, type_option, type_result, type_chan, type_fn, ty_named,
          type_row, ty_pointer, type_var, type_unit }
@@ -205,12 +206,14 @@ fn specialize_class(class_def: TypedClassDef, subst: TypeVarSubst, mangled_name:
     let typed = TypedClassDef()
     let fields: Array[TypedFieldDef] = []
     let methods: Array[TypedFnDef] = []
+    let type_blocks: Array[TypedTypeBlockDef] = []
     typed.class_name = mangled_name
     typed.class_has_extends = class_def.class_has_extends
     typed.class_extends_name = class_def.class_extends_name
     typed.class_implements_names = class_def.class_implements_names
     typed.class_fields = fields
     typed.class_methods = methods
+    typed.class_type_blocks = type_blocks
     typed.class_span = class_def.class_span
     let mut i = 0
     while i < class_def.class_fields.len() {
@@ -225,6 +228,11 @@ fn specialize_class(class_def: TypedClassDef, subst: TypeVarSubst, mangled_name:
     i = 0
     while i < class_def.class_methods.len() {
         typed.class_methods.push(specialize_function(class_def.class_methods[i], subst, true, class_def.class_name, mangled_name, false, ""))
+        i = i + 1
+    }
+    i = 0
+    while i < class_def.class_type_blocks.len() {
+        typed.class_type_blocks.push(class_def.class_type_blocks[i])
         i = i + 1
     }
     typed

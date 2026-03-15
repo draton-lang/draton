@@ -27,6 +27,7 @@ const HOST_TARGET: &str = if cfg!(target_os = "linux") && cfg!(target_arch = "x8
 } else {
     "unknown"
 };
+const MAX_RENDERED_TYPE_WARNINGS: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Profile {
@@ -198,11 +199,9 @@ fn render_type_errors_without_source(path: &Path, errors: &[TypeError]) -> Strin
 }
 
 fn render_type_warnings_without_source(path: &Path, warnings: &[TypeError]) -> String {
-    warnings
-        .iter()
-        .map(|warning| format!("type warning in {}:\n{}", path.display(), warning))
-        .collect::<Vec<_>>()
-        .join("\n\n")
+    render_limited_warnings(warnings, |warning| {
+        Some(format!("type warning in {}:\n{}", path.display(), warning))
+    })
 }
 
 fn load_project_program(entry_path: &Path) -> Result<Program> {
@@ -316,7 +315,9 @@ fn find_project_root(source_path: &Path) -> Option<PathBuf> {
 
 fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<()> {
     fs::create_dir_all(dest).with_context(|| format!("khong the tao {}", dest.display()))?;
-    for entry in fs::read_dir(source).with_context(|| format!("khong the doc {}", source.display()))? {
+    for entry in
+        fs::read_dir(source).with_context(|| format!("khong the doc {}", source.display()))?
+    {
         let entry = entry?;
         let source_path = entry.path();
         let dest_path = dest.join(entry.file_name());
@@ -337,7 +338,8 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<()> {
 
 fn copy_build_output(source: &Path, dest: &Path) -> Result<()> {
     if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("khong the tao {}", parent.display()))?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("khong the tao {}", parent.display()))?;
     }
     fs::copy(source, dest)
         .with_context(|| format!("khong the copy {} -> {}", source.display(), dest.display()))?;
@@ -406,7 +408,11 @@ fn load_bundled_stdlib_items() -> Result<Vec<draton_ast::Item>> {
         if !lexed.errors.is_empty() {
             bail!(
                 "{}",
-                render_lex_errors(&PathBuf::from(format!("<stdlib:{}>", module.name)), module.source, &lexed.errors)
+                render_lex_errors(
+                    &PathBuf::from(format!("<stdlib:{}>", module.name)),
+                    module.source,
+                    &lexed.errors
+                )
             );
         }
         let parsed = Parser::new(lexed.tokens).parse();
@@ -1027,29 +1033,79 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 Vec::new(),
                 Some("hint:     pattern nay khong bao gio duoc match".to_string()),
             ),
+            TypeError::DeprecatedSyntax {
+                syntax,
+                replacement,
+                line,
+                col,
+            } => render_diagnostic(
+                "W002",
+                &format!("deprecated syntax '{syntax}'"),
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("replacement: {replacement}")],
+                Some("hint:     move the type declaration into an @type block".to_string()),
+            ),
         })
         .collect::<Vec<_>>()
         .join("\n\n")
 }
 
 fn render_type_warnings(path: &Path, source: &str, warnings: &[TypeError]) -> String {
-    warnings
-        .iter()
-        .filter_map(|warning| match warning {
-            TypeError::RedundantPattern { pattern, line, col } => Some(render_warning_diagnostic(
-                "W001",
-                &format!("redundant pattern '{pattern}'"),
-                path,
-                source,
-                *line,
-                *col,
-                Vec::new(),
-                Some("hint:     pattern nay khong bao gio duoc match".to_string()),
-            )),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n")
+    render_limited_warnings(warnings, |warning| match warning {
+        TypeError::RedundantPattern { pattern, line, col } => Some(render_warning_diagnostic(
+            "W001",
+            &format!("redundant pattern '{pattern}'"),
+            path,
+            source,
+            *line,
+            *col,
+            Vec::new(),
+            Some("hint:     pattern nay khong bao gio duoc match".to_string()),
+        )),
+        TypeError::DeprecatedSyntax {
+            syntax,
+            replacement,
+            line,
+            col,
+        } => Some(render_warning_diagnostic(
+            "W002",
+            &format!("deprecated syntax '{syntax}'"),
+            path,
+            source,
+            *line,
+            *col,
+            vec![format!("replacement: {replacement}")],
+            Some("hint:     move the type declaration into an @type block".to_string()),
+        )),
+        _ => None,
+    })
+}
+
+fn render_limited_warnings(
+    warnings: &[TypeError],
+    render: impl Fn(&TypeError) -> Option<String>,
+) -> String {
+    let mut rendered = Vec::new();
+    let mut suppressed = 0usize;
+    for warning in warnings {
+        let Some(text) = render(warning) else {
+            continue;
+        };
+        if rendered.len() < MAX_RENDERED_TYPE_WARNINGS {
+            rendered.push(text);
+        } else {
+            suppressed += 1;
+        }
+    }
+    if suppressed > 0 {
+        rendered.push(format!(
+            "warning: suppressed {suppressed} additional type warnings to keep output readable"
+        ));
+    }
+    rendered.join("\n\n")
 }
 
 #[allow(clippy::too_many_arguments)]

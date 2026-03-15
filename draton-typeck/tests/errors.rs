@@ -280,3 +280,28 @@ fn main() {
         .iter()
         .any(|warning| matches!(warning, TypeError::RedundantPattern { .. })));
 }
+
+#[test]
+fn warns_for_legacy_inline_type_syntax() {
+    let result = parse_and_check(
+        r#"
+fn add(a: Int) -> Int {
+    let value: Int = a
+    return value
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+    assert!(result.warnings.iter().any(|warning| matches!(
+        warning,
+        TypeError::DeprecatedSyntax { syntax, .. } if syntax.contains("parameter")
+    )));
+    assert!(result.warnings.iter().any(|warning| matches!(
+        warning,
+        TypeError::DeprecatedSyntax { syntax, .. } if syntax.contains("return type")
+    )));
+    assert!(result.warnings.iter().any(|warning| matches!(
+        warning,
+        TypeError::DeprecatedSyntax { syntax, .. } if syntax.contains("let type")
+    )));
+}

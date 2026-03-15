@@ -318,9 +318,16 @@ fn infer_item(c: Checker, item: Item) {
         out.item_const_def = infer_const_def(c, item.const_def)
     } else if item_kind_is(item, "Import") {
         let def = TypedImportDef()
+        let module: Array[String] = []
         let items: Array[TypedImportItem] = []
+        def.import_module = module
         def.import_items = items
         def.import_span = item.import_def.span
+        let mut module_i = 0
+        while module_i < item.import_def.module.len() {
+            def.import_module.push(item.import_def.module[module_i])
+            module_i = module_i + 1
+        }
         let mut i = 0
         while i < item.import_def.items.len() {
             let typed_item = TypedImportItem()
@@ -472,6 +479,7 @@ fn infer_class_def(c: Checker, def: ClassDef) {
     let typed = TypedClassDef()
     let fields: Array[TypedFieldDef] = []
     let methods: Array[TypedFnDef] = []
+    let type_blocks: Array[TypedTypeBlockDef] = []
     let implements_names: Array[String] = []
     let field_names: Array[String] = []
     let field_types: Array[Type] = []
@@ -483,7 +491,13 @@ fn infer_class_def(c: Checker, def: ClassDef) {
     typed.class_implements_names = def.implements_names
     typed.class_fields = fields
     typed.class_methods = methods
+    typed.class_type_blocks = type_blocks
     typed.class_span = def.span
+    let mut type_block_i = 0
+    while type_block_i < def.type_blocks.len() {
+        typed.class_type_blocks.push(infer_type_block(c, def.type_blocks[type_block_i]))
+        type_block_i = type_block_i + 1
+    }
     if def.has_extends {
         let parent_idx = find_class_index(c, def.extends_name)
         if parent_idx >= 0 {
@@ -537,6 +551,11 @@ fn infer_class_def(c: Checker, def: ClassDef) {
                 typed.class_methods.push(method)
                 method_names.push(method.fn_name)
                 method_schemes.push(mono_scheme(method.fn_ty))
+                j = j + 1
+            }
+            j = 0
+            while j < def.members[i].layer_def.type_blocks.len() {
+                typed.class_type_blocks.push(infer_type_block(c, def.members[i].layer_def.type_blocks[j]))
                 j = j + 1
             }
         }
