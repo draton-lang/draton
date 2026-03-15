@@ -1,4 +1,7 @@
-use draton_ast::Span;
+use draton_ast::{
+    Block, ClassMember, DestructureBinding, ElseBranch, Expr, FStrPart, FnDef, Item, MatchArmBody,
+    Param, Program, Span, Stmt, TypeMember,
+};
 use draton_lexer::{LexError, Lexer};
 use draton_parser::{ParseError, Parser};
 use draton_typeck::{
@@ -30,8 +33,12 @@ pub struct SpanType {
 
 #[derive(Debug, Clone)]
 pub struct DefEntry {
+    pub start_offset: usize,
+    pub end_offset: usize,
     pub ref_line: usize,
     pub ref_col: usize,
+    pub ref_end_line: usize,
+    pub ref_end_col: usize,
     pub def_line: usize,
     pub def_col: usize,
     pub def_uri: String,
@@ -62,6 +69,8 @@ pub fn analyze(text: &str) -> AnalysisResult {
         };
     }
 
+    let ast_program = parse_result.program.clone();
+
     let TypeCheckResult {
         typed_program,
         errors,
@@ -69,6 +78,7 @@ pub fn analyze(text: &str) -> AnalysisResult {
     } = TypeChecker::new().check(parse_result.program);
 
     let span_type_map = build_span_type_map(text, &typed_program);
+    let def_map = build_def_map(text, &ast_program);
 
     AnalysisResult {
         lex_errors: Vec::new(),
@@ -76,7 +86,7 @@ pub fn analyze(text: &str) -> AnalysisResult {
         type_errors: errors,
         typed_program: Some(typed_program),
         span_type_map,
-        def_map: Vec::new(),
+        def_map,
     }
 }
 
@@ -312,4 +322,326 @@ fn offset_to_position(text: &str, offset: usize) -> (usize, usize) {
         }
     }
     (line, col)
+}
+
+fn build_def_map(text: &str, program: &Program) -> Vec<DefEntry> {
+    let mut collector = DefCollector::new(text);
+    collector.predeclare(program);
+    collector.collect_program(program);
+    collector.entries
+}
+
+#[derive(Clone)]
+struct DefLocation {
+    span: Span,
+}
+
+struct DefCollector<'a> {
+    text: &'a str,
+    globals: std::collections::HashMap<String, DefLocation>,
+    scopes: Vec<std::collections::HashMap<String, DefLocation>>,
+    entries: Vec<DefEntry>,
+}
+
+impl<'a> DefCollector<'a> {
+    fn new(text: &'a str) -> Self {
+        Self {
+            text,
+            globals: std::collections::HashMap::new(),
+            scopes: Vec::new(),
+            entries: Vec::new(),
+        }
+    }
+
+    fn predeclare(&mut self, program: &Program) {
+        for item in &program.items {
+            match item {
+                Item::Fn(def) | Item::PanicHandler(def) | Item::OomHandler(def) => {
+                    self.globals
+                        .insert(def.name.clone(), DefLocation { span: def.span });
+                }
+                Item::Class(def) => {
+                    self.globals
+                        .insert(def.name.clone(), DefLocation { span: def.span });
+                }
+                Item::Interface(def) => {
+                    self.globals
+                        .insert(def.name.clone(), DefLocation { span: def.span });
+                }
+                Item::Enum(def) => {
+                    self.globals
+                        .insert(def.name.clone(), DefLocation { span: def.span });
+                }
+                Item::Error(def) => {
+                    self.globals
+                        .insert(def.name.clone(), DefLocation { span: def.span });
+                }
+                Item::Const(def) => {
+                    self.globals
+                        .insert(def.name.clone(), DefLocation { span: def.span });
+                }
+                Item::Import(_) | Item::Extern(_) | Item::TypeBlock(_) => {}
+            }
+        }
+    }
+
+    fn collect_program(&mut self, program: &Program) {
+        for item in &program.items {
+            self.collect_item(item);
+        }
+    }
+
+    fn collect_item(&mut self, item: &Item) {
+        match item {
+            Item::Fn(def) | Item::PanicHandler(def) | Item::OomHandler(def) => {
+                self.collect_fn(def);
+            }
+            Item::Class(def) => {
+                for member in &def.members {
+                    if let ClassMember::Method(method) = member {
+                        self.collect_fn(method);
+                    } else if let ClassMember::Layer(layer) = member {
+                        for method in &layer.methods {
+                            self.collect_fn(method);
+                        }
+                    }
+                }
+            }
+            Item::Interface(def) => {
+                for method in &def.methods {
+                    self.collect_fn(method);
+                }
+            }
+            Item::Const(def) => self.collect_expr(&def.value),
+            Item::Extern(def) => {
+                for function in &def.functions {
+                    self.collect_fn(function);
+                }
+            }
+            Item::TypeBlock(def) => {
+                for member in &def.members {
+                    if let TypeMember::Function(function) = member {
+                        self.collect_fn(function);
+                    }
+                }
+            }
+            Item::Enum(_) | Item::Error(_) | Item::Import(_) => {}
+        }
+    }
+
+    fn collect_fn(&mut self, def: &FnDef) {
+        self.push_scope();
+        for Param { name, span, .. } in &def.params {
+            self.define(name.clone(), *span);
+        }
+        if let Some(body) = &def.body {
+            self.collect_block(body);
+        }
+        self.pop_scope();
+    }
+
+    fn collect_block(&mut self, block: &Block) {
+        self.push_scope();
+        for stmt in &block.stmts {
+            self.collect_stmt(stmt);
+        }
+        self.pop_scope();
+    }
+
+    fn collect_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Let(inner) => {
+                if let Some(value) = &inner.value {
+                    self.collect_expr(value);
+                }
+                self.define(inner.name.clone(), inner.span);
+            }
+            Stmt::LetDestructure(inner) => {
+                self.collect_expr(&inner.value);
+                for binding in &inner.names {
+                    if let DestructureBinding::Name(name) = binding {
+                        self.define(name.clone(), inner.span);
+                    }
+                }
+            }
+            Stmt::Assign(inner) => {
+                self.collect_expr(&inner.target);
+                if let Some(value) = &inner.value {
+                    self.collect_expr(value);
+                }
+            }
+            Stmt::Return(inner) => {
+                if let Some(value) = &inner.value {
+                    self.collect_expr(value);
+                }
+            }
+            Stmt::Expr(expr) => self.collect_expr(expr),
+            Stmt::If(inner) => {
+                self.collect_expr(&inner.condition);
+                self.collect_block(&inner.then_branch);
+                if let Some(else_branch) = &inner.else_branch {
+                    self.collect_else(else_branch);
+                }
+            }
+            Stmt::For(inner) => {
+                self.collect_expr(&inner.iter);
+                self.push_scope();
+                self.define(inner.name.clone(), inner.span);
+                self.collect_block(&inner.body);
+                self.pop_scope();
+            }
+            Stmt::While(inner) => {
+                self.collect_expr(&inner.condition);
+                self.collect_block(&inner.body);
+            }
+            Stmt::Spawn(inner) => match &inner.body {
+                draton_ast::SpawnBody::Expr(expr) => self.collect_expr(expr),
+                draton_ast::SpawnBody::Block(block) => self.collect_block(block),
+            },
+            Stmt::Block(block)
+            | Stmt::UnsafeBlock(block)
+            | Stmt::PointerBlock(block)
+            | Stmt::ComptimeBlock(block) => self.collect_block(block),
+            Stmt::IfCompile(inner) => {
+                self.collect_expr(&inner.condition);
+                self.collect_block(&inner.body);
+            }
+            Stmt::GcConfig(inner) => {
+                for entry in &inner.entries {
+                    self.collect_expr(&entry.value);
+                }
+            }
+            Stmt::AsmBlock(_, _) => {}
+        }
+    }
+
+    fn collect_else(&mut self, branch: &ElseBranch) {
+        match branch {
+            ElseBranch::If(inner) => {
+                self.collect_expr(&inner.condition);
+                self.collect_block(&inner.then_branch);
+                if let Some(else_branch) = &inner.else_branch {
+                    self.collect_else(else_branch);
+                }
+            }
+            ElseBranch::Block(block) => self.collect_block(block),
+        }
+    }
+
+    fn collect_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Ident(name, span) => self.record_ref(name, *span),
+            Expr::Array(items, _) | Expr::Set(items, _) | Expr::Tuple(items, _) => {
+                for item in items {
+                    self.collect_expr(item);
+                }
+            }
+            Expr::Map(entries, _) => {
+                for (key, value) in entries {
+                    self.collect_expr(key);
+                    self.collect_expr(value);
+                }
+            }
+            Expr::BinOp(lhs, _, rhs, _) | Expr::Nullish(lhs, rhs, _) => {
+                self.collect_expr(lhs);
+                self.collect_expr(rhs);
+            }
+            Expr::UnOp(_, inner, _) | Expr::Ok(inner, _) | Expr::Err(inner, _) => {
+                self.collect_expr(inner);
+            }
+            Expr::Call(callee, args, _) => {
+                self.collect_expr(callee);
+                for arg in args {
+                    self.collect_expr(arg);
+                }
+            }
+            Expr::MethodCall(target, _, args, _) => {
+                self.collect_expr(target);
+                for arg in args {
+                    self.collect_expr(arg);
+                }
+            }
+            Expr::Field(target, _, _) => self.collect_expr(target),
+            Expr::Index(target, index, _) => {
+                self.collect_expr(target);
+                self.collect_expr(index);
+            }
+            Expr::Lambda(params, body, _) => {
+                self.push_scope();
+                for name in params {
+                    self.define(name.clone(), body.span());
+                }
+                self.collect_expr(body);
+                self.pop_scope();
+            }
+            Expr::Cast(inner, _, _) => self.collect_expr(inner),
+            Expr::Match(subject, arms, _) => {
+                self.collect_expr(subject);
+                for arm in arms {
+                    self.collect_expr(&arm.pattern);
+                    match &arm.body {
+                        MatchArmBody::Expr(expr) => self.collect_expr(expr),
+                        MatchArmBody::Block(block) => self.collect_block(block),
+                    }
+                }
+            }
+            Expr::FStrLit(parts, _) => {
+                for part in parts {
+                    if let FStrPart::Interp(expr) = part {
+                        self.collect_expr(expr);
+                    }
+                }
+            }
+            Expr::IntLit(_, _)
+            | Expr::FloatLit(_, _)
+            | Expr::StrLit(_, _)
+            | Expr::BoolLit(_, _)
+            | Expr::NoneLit(_)
+            | Expr::Chan(_, _) => {}
+        }
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(std::collections::HashMap::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn define(&mut self, name: String, span: Span) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, DefLocation { span });
+        }
+    }
+
+    fn record_ref(&mut self, name: &str, span: Span) {
+        let Some(location) = self.lookup(name).cloned() else {
+            return;
+        };
+        let (ref_line, ref_col) = offset_to_position(self.text, span.start);
+        let ref_end = span.end.max(span.start + 1).min(self.text.len());
+        let (ref_end_line, ref_end_col) = offset_to_position(self.text, ref_end);
+        let (def_line, def_col) = offset_to_position(self.text, location.span.start);
+        self.entries.push(DefEntry {
+            start_offset: span.start,
+            end_offset: ref_end,
+            ref_line,
+            ref_col,
+            ref_end_line,
+            ref_end_col,
+            def_line,
+            def_col,
+            def_uri: String::new(),
+        });
+    }
+
+    fn lookup(&self, name: &str) -> Option<&DefLocation> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(location) = scope.get(name) {
+                return Some(location);
+            }
+        }
+        self.globals.get(name)
+    }
 }

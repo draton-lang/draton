@@ -154,6 +154,42 @@ impl LspServer {
                         .unwrap_or(Value::Null),
                 )]
             }
+            "textDocument/definition" => {
+                let Some(uri) = msg
+                    .get("params")
+                    .and_then(|params| params.get("textDocument"))
+                    .and_then(|doc| doc.get("uri"))
+                    .and_then(Value::as_str)
+                else {
+                    return Ok(Vec::new());
+                };
+                let Some(line) = msg
+                    .get("params")
+                    .and_then(|params| params.get("position"))
+                    .and_then(|position| position.get("line"))
+                    .and_then(Value::as_u64)
+                else {
+                    return Ok(Vec::new());
+                };
+                let Some(character) = msg
+                    .get("params")
+                    .and_then(|params| params.get("position"))
+                    .and_then(|position| position.get("character"))
+                    .and_then(Value::as_u64)
+                else {
+                    return Ok(Vec::new());
+                };
+                vec![self.respond(
+                    id,
+                    crate::goto_def::goto_definition(
+                        &self.docs,
+                        uri,
+                        line as usize,
+                        character as usize,
+                    )
+                    .unwrap_or(Value::Null),
+                )]
+            }
             _ => {
                 if let Some(request_id) = id {
                     vec![self.respond(Some(request_id), Value::Null)]
