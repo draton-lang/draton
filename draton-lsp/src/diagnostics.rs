@@ -1,8 +1,7 @@
-use crate::analysis::analyze;
+use crate::analysis::AnalysisResult;
 use serde_json::{json, Value};
 
-pub fn collect_diagnostics(text: &str) -> Value {
-    let result = analyze(text);
+pub fn collect_diagnostics(result: &AnalysisResult) -> Value {
     let mut diags = Vec::new();
 
     for error in &result.lex_errors {
@@ -73,6 +72,10 @@ pub fn collect_diagnostics(text: &str) -> Value {
     }
 
     json!(diags)
+}
+
+pub fn empty_diagnostics() -> Value {
+    json!([])
 }
 
 fn make_diag(

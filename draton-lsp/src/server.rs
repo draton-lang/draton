@@ -57,6 +57,72 @@ impl LspServer {
             "exit" => {
                 std::process::exit(if self.shutdown_requested { 0 } else { 1 });
             }
+            "textDocument/didOpen" => {
+                let Some(uri) = msg
+                    .get("params")
+                    .and_then(|params| params.get("textDocument"))
+                    .and_then(|doc| doc.get("uri"))
+                    .and_then(Value::as_str)
+                else {
+                    return Ok(Vec::new());
+                };
+                let Some(text) = msg
+                    .get("params")
+                    .and_then(|params| params.get("textDocument"))
+                    .and_then(|doc| doc.get("text"))
+                    .and_then(Value::as_str)
+                else {
+                    return Ok(Vec::new());
+                };
+                let version = msg
+                    .get("params")
+                    .and_then(|params| params.get("textDocument"))
+                    .and_then(|doc| doc.get("version"))
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                self.docs.open(uri.to_string(), text.to_string(), version);
+                vec![self.publish_diagnostics(uri)]
+            }
+            "textDocument/didChange" => {
+                let Some(uri) = msg
+                    .get("params")
+                    .and_then(|params| params.get("textDocument"))
+                    .and_then(|doc| doc.get("uri"))
+                    .and_then(Value::as_str)
+                else {
+                    return Ok(Vec::new());
+                };
+                let version = msg
+                    .get("params")
+                    .and_then(|params| params.get("textDocument"))
+                    .and_then(|doc| doc.get("version"))
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                let Some(text) = msg
+                    .get("params")
+                    .and_then(|params| params.get("contentChanges"))
+                    .and_then(Value::as_array)
+                    .and_then(|changes| changes.last())
+                    .and_then(|change| change.get("text"))
+                    .and_then(Value::as_str)
+                else {
+                    return Ok(Vec::new());
+                };
+                self.docs.update(uri.to_string(), text.to_string(), version);
+                vec![self.publish_diagnostics(uri)]
+            }
+            "textDocument/didClose" => {
+                let Some(uri) = msg
+                    .get("params")
+                    .and_then(|params| params.get("textDocument"))
+                    .and_then(|doc| doc.get("uri"))
+                    .and_then(Value::as_str)
+                else {
+                    return Ok(Vec::new());
+                };
+                self.docs.close(uri);
+                vec![self.publish_empty_diagnostics(uri)]
+            }
             _ => {
                 if let Some(request_id) = id {
                     vec![self.respond(Some(request_id), Value::Null)]
@@ -74,6 +140,34 @@ impl LspServer {
             "jsonrpc": "2.0",
             "id": id.unwrap_or(Value::Null),
             "result": result,
+        })
+    }
+
+    fn publish_diagnostics(&self, uri: &str) -> Value {
+        let diagnostics = self
+            .docs
+            .get(uri)
+            .and_then(|doc| doc.analysis.as_ref())
+            .map(crate::diagnostics::collect_diagnostics)
+            .unwrap_or_else(crate::diagnostics::empty_diagnostics);
+        json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": uri,
+                "diagnostics": diagnostics,
+            }
+        })
+    }
+
+    fn publish_empty_diagnostics(&self, uri: &str) -> Value {
+        json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": uri,
+                "diagnostics": crate::diagnostics::empty_diagnostics(),
+            }
         })
     }
 }
