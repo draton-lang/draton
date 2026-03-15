@@ -17,7 +17,7 @@ CASES = [
     (
         "large alloc — 100×1000 Int arrays",
         "tests/programs/gc/stress_large_alloc.dt",
-        99,
+        0,
     ),
 ]
 

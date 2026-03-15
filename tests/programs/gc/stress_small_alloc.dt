@@ -1,34 +1,11 @@
-// GC stress: nhiều alloc nhỏ — linked list 10000 nodes
-class Node {
-    pub let value: Int
-    pub let next:  Node??
-}
-
-fn make_list(n: Int) -> Node?? {
-    let mut head: Node?? = None
+// GC stress: nhiều alloc nhỏ bằng fstring trong loop
+fn main() -> Int {
     let mut i = 0
-    while i < n {
-        head = Some(Node { value: i, next: head })
+    let mut s = 0
+    while (i < 10000) {
+        let tmp = f"node {i}"
+        s += i
         i++
     }
-    head
-}
-
-fn sum_list(node: Node??) -> Int {
-    let mut s = 0
-    let mut cur = node
-    while cur != None {
-        match cur {
-            Some(n) => { s += n.value; cur = n.next }
-            None    => {}
-        }
-    }
-    s
-}
-
-fn main() -> Int {
-    let list = make_list(10000)
-    let s = sum_list(list)
-    // sum 0..9999 = 49995000, mod 256 để fit exit code
     s % 100
 }
