@@ -1,0 +1,18 @@
+fn main() -> Int {
+    let arr = [1, 2, 3, 4, 5]
+    if sum(arr) != 15 { return 1 }
+    if product(arr) != 120 { return 1 }
+
+    let reversed = reverse_int(arr)
+    if reversed[0] != 5 || reversed[4] != 1 { return 1 }
+
+    let unsorted = [3, 1, 4, 1, 5, 9, 2, 6]
+    let sorted = sort_int(unsorted)
+    if sorted[0] != 1 || sorted[7] != 9 { return 1 }
+
+    let unique = unique_int(unsorted)
+    if unique.len() != 7 { return 1 }
+    if unique[0] != 1 || unique[6] != 9 { return 1 }
+
+    0
+}

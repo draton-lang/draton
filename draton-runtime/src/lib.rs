@@ -45,6 +45,12 @@ pub struct DratonStringArray {
     pub ptr: *mut DratonString,
 }
 
+#[repr(C)]
+pub struct DratonIntArray {
+    pub len: i64,
+    pub ptr: *mut i64,
+}
+
 fn string_bytes(value: DratonString) -> &'static [u8] {
     if value.ptr.is_null() || value.len <= 0 {
         &[]
@@ -117,6 +123,24 @@ fn owned_string_array(values: Vec<String>) -> DratonStringArray {
     let boxed = items.into_boxed_slice();
     let ptr = Box::into_raw(boxed) as *mut DratonString;
     DratonStringArray {
+        len: len as i64,
+        ptr,
+    }
+}
+
+fn int_array_to_owned(values: DratonIntArray) -> Vec<i64> {
+    if values.ptr.is_null() || values.len <= 0 {
+        return Vec::new();
+    }
+    let slice = unsafe { slice::from_raw_parts(values.ptr, values.len as usize) };
+    slice.to_vec()
+}
+
+fn owned_int_array(values: Vec<i64>) -> DratonIntArray {
+    let len = values.len();
+    let boxed = values.into_boxed_slice();
+    let ptr = Box::into_raw(boxed) as *mut i64;
+    DratonIntArray {
         len: len as i64,
         ptr,
     }
@@ -901,6 +925,38 @@ pub extern "C" fn __draton_std_io_append_file(
 #[no_mangle]
 pub extern "C" fn __draton_std_io_file_exists(path: DratonString) -> bool {
     stdlib::fs::exists(draton_string_to_owned(path))
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_collections_sum(values: DratonIntArray) -> i64 {
+    int_array_to_owned(values).into_iter().sum()
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_collections_product(values: DratonIntArray) -> i64 {
+    int_array_to_owned(values).into_iter().product()
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_collections_reverse_int(values: DratonIntArray) -> DratonIntArray {
+    let mut values = int_array_to_owned(values);
+    values.reverse();
+    owned_int_array(values)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_collections_sort_int(values: DratonIntArray) -> DratonIntArray {
+    let mut values = int_array_to_owned(values);
+    values.sort();
+    owned_int_array(values)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_collections_unique_int(values: DratonIntArray) -> DratonIntArray {
+    let mut values = int_array_to_owned(values);
+    values.sort();
+    values.dedup();
+    owned_int_array(values)
 }
 
 #[no_mangle]

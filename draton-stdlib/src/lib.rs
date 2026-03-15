@@ -64,6 +64,10 @@ pub fn modules() -> &'static [StdlibModule] {
             source: include_str!("../dt/math.dt"),
         },
         StdlibModule {
+            name: "collections",
+            source: include_str!("../dt/collections.dt"),
+        },
+        StdlibModule {
             name: "crypto",
             source: include_str!("../dt/crypto.dt"),
         },
