@@ -14,6 +14,7 @@ colored = "2"
 draton-ast = { path = "../draton-ast" }
 draton-codegen = { path = "../draton-codegen" }
 draton-lexer = { path = "../draton-lexer" }
+draton-lsp = { path = "../draton-lsp" }
 draton-parser = { path = "../draton-parser" }
 draton-runtime = { path = "../draton-runtime" }
 draton-typeck = { path = "../draton-typeck" }
