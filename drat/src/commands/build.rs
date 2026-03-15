@@ -104,6 +104,61 @@ pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOu
     })
 }
 
+pub(crate) fn run_file(
+    cwd: &Path,
+    input_path: &Path,
+    output_path: Option<&Path>,
+    request: &BuildRequest,
+) -> Result<BuildOutput> {
+    let source_path = if input_path.is_absolute() {
+        input_path.to_path_buf()
+    } else {
+        cwd.join(input_path)
+    };
+    if !source_path.exists() {
+        bail!("khong tim thay source file {}", source_path.display());
+    }
+
+    let temp_root = prepare_temp_project(&source_path)?;
+    let old_disable_gcroot = env::var_os("DRATON_DISABLE_GCROOT");
+    let old_multi_defs = env::var_os("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS");
+    env::set_var("DRATON_DISABLE_GCROOT", "1");
+    env::set_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", "1");
+    let built = run(&temp_root, request);
+    match old_disable_gcroot {
+        Some(value) => env::set_var("DRATON_DISABLE_GCROOT", value),
+        None => env::remove_var("DRATON_DISABLE_GCROOT"),
+    }
+    match old_multi_defs {
+        Some(value) => env::set_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", value),
+        None => env::remove_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS"),
+    }
+    let built = built?;
+
+    let final_binary = match output_path {
+        Some(path) if path.is_absolute() => path.to_path_buf(),
+        Some(path) => cwd.join(path),
+        None => {
+            let stem = source_path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("output");
+            cwd.join(stem)
+        }
+    };
+    let final_object = final_binary.with_extension("o");
+    let final_ir = final_binary.with_extension("ll");
+    copy_build_output(&built.binary_path, &final_binary)?;
+    copy_build_output(&built.object_path, &final_object)?;
+    copy_build_output(&built.ir_path, &final_ir)?;
+
+    Ok(BuildOutput {
+        binary_path: final_binary,
+        object_path: final_object,
+        ir_path: final_ir,
+    })
+}
+
 pub(crate) fn compile_project(entry_path: &Path) -> Result<CompiledProject> {
     let program = load_project_program(entry_path)?;
     let typed = TypeChecker::new().check(program);
@@ -180,6 +235,110 @@ fn collect_project_sources(entry_path: &Path) -> Result<Vec<PathBuf>> {
         files.push(entry_path.to_path_buf());
     }
     Ok(files)
+}
+
+fn prepare_temp_project(source_path: &Path) -> Result<PathBuf> {
+    let temp_root = workspace_root()
+        .join("build")
+        .join("phase5_cli")
+        .join(format!(
+            "tmp_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|value| value.as_nanos())
+                .unwrap_or(0)
+        ));
+    fs::create_dir_all(&temp_root)
+        .with_context(|| format!("khong the tao {}", temp_root.display()))?;
+
+    let entry = if let Some(project_root) = find_project_root(source_path) {
+        let src_root = project_root.join("src");
+        if source_path.starts_with(&src_root) {
+            copy_dir_recursive(&src_root, &temp_root.join("src"))?;
+            source_path
+                .strip_prefix(&project_root)
+                .map(|value| value.to_string_lossy().replace('\\', "/"))
+                .with_context(|| {
+                    format!(
+                        "khong the tinh relative entry cho {}",
+                        source_path.display()
+                    )
+                })?
+        } else {
+            let temp_src = temp_root.join("src");
+            fs::create_dir_all(&temp_src)
+                .with_context(|| format!("khong the tao {}", temp_src.display()))?;
+            let dest = temp_src.join("main.dt");
+            fs::copy(source_path, &dest).with_context(|| {
+                format!(
+                    "khong the copy {} -> {}",
+                    source_path.display(),
+                    dest.display()
+                )
+            })?;
+            "src/main.dt".to_string()
+        }
+    } else {
+        let temp_src = temp_root.join("src");
+        fs::create_dir_all(&temp_src)
+            .with_context(|| format!("khong the tao {}", temp_src.display()))?;
+        let dest = temp_src.join("main.dt");
+        fs::copy(source_path, &dest).with_context(|| {
+            format!(
+                "khong the copy {} -> {}",
+                source_path.display(),
+                dest.display()
+            )
+        })?;
+        "src/main.dt".to_string()
+    };
+
+    let config = format!(
+        "[project]\nname = \"phase5_cli\"\nversion = \"0.1.0\"\nentry = \"{}\"\n",
+        entry
+    );
+    let config_path = temp_root.join("draton.toml");
+    fs::write(&config_path, config)
+        .with_context(|| format!("khong the ghi {}", config_path.display()))?;
+    Ok(temp_root)
+}
+
+fn find_project_root(source_path: &Path) -> Option<PathBuf> {
+    source_path
+        .ancestors()
+        .find(|ancestor| ancestor.join("draton.toml").exists())
+        .map(Path::to_path_buf)
+}
+
+fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest).with_context(|| format!("khong the tao {}", dest.display()))?;
+    for entry in fs::read_dir(source).with_context(|| format!("khong the doc {}", source.display()))? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_dir_recursive(&source_path, &dest_path)?;
+        } else {
+            fs::copy(&source_path, &dest_path).with_context(|| {
+                format!(
+                    "khong the copy {} -> {}",
+                    source_path.display(),
+                    dest_path.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_build_output(source: &Path, dest: &Path) -> Result<()> {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("khong the tao {}", parent.display()))?;
+    }
+    fs::copy(source, dest)
+        .with_context(|| format!("khong the copy {} -> {}", source.display(), dest.display()))?;
+    Ok(())
 }
 
 fn collect_dt_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
@@ -344,9 +503,17 @@ fn link_binary(
         command.arg("-Wl,--allow-multiple-definition");
     }
     if cfg!(target_os = "linux") {
-        command.args(["-no-pie", "-ldl", "-lpthread", "-lm", "-lrt", "-lutil"]);
+        command.args([
+            "-no-pie",
+            "-ldl",
+            "-lpthread",
+            "-lm",
+            "-lrt",
+            "-lutil",
+            "-lstdc++",
+        ]);
     } else if cfg!(target_os = "macos") {
-        command.args(["-ldl", "-lpthread", "-lm"]);
+        command.args(["-ldl", "-lpthread", "-lm", "-lc++"]);
     }
     let output = command
         .output()

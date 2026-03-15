@@ -1,56 +1,326 @@
 import { tokenize, new_parser, parser_parse, ast_dump_program, lex_error_message, parse_error_message,
-         new_checker, checker_run, type_dump_program, type_error_message }
+         new_checker, checker_run, type_dump_program, type_error_message, CompileSession,
+         build_mode_debug, build_mode_release, build_mode_size, build_mode_fast,
+         new_compile_session, run_pipeline, run_check_only, pipeline_exec_binary, PipelineError,
+         str_eq_type }
 
 class ParsedArgs {
     let mut source_path: String
+    let mut positional: Array[String]
     let mut flags: Array[String]
+    let mut named_keys: Array[String]
+    let mut named_values: Array[String]
 }
 
-fn main() -> Unit {
-    if cli_argc() >= 3 {
-        let cmd = cli_arg(1)
-        if str_eq_main(cmd, "ast-dump") {
-            let source = read_file(cli_arg(2))
-            let lexed = tokenize(source)
-            if lexed.errors.len() > 0 {
-                print(join_lex_errors(lexed.errors))
-            } else {
-                let parsed = parser_parse(new_parser(lexed.tokens))
-                if parsed.errors.len() > 0 {
-                    print(join_parse_errors(parsed.errors))
-                } else {
-                    print(ast_dump_program(parsed.program))
-                }
-            }
-        } else if str_eq_main(cmd, "type-dump") {
-            let source = read_file(cli_arg(2))
-            let lexed = tokenize(source)
-            if lexed.errors.len() > 0 {
-                print(join_lex_errors(lexed.errors))
-            } else {
-                let parsed = parser_parse(new_parser(lexed.tokens))
-                if parsed.errors.len() > 0 {
-                    print(join_parse_errors(parsed.errors))
-                } else {
-                    let checked = checker_run(new_checker(), parsed.program)
-                    if checked.errors.len() > 0 {
-                        print(join_type_errors(checked.errors))
-                    } else {
-                        print(type_dump_program(checked.typed_program))
-                    }
-                }
-            }
-        } else {
-            print_usage()
-        }
-    } else {
+@type {
+    fn main() -> Int
+    fn cmd_build(args: Array[String]) -> Int
+    fn cmd_run(args: Array[String]) -> Int
+    fn cmd_check(args: Array[String]) -> Int
+    fn cmd_ast_dump(path: String) -> Int
+    fn cmd_type_dump(path: String) -> Int
+    fn parse_args(args: Array[String]) -> ParsedArgs
+    fn parsed_args_has_flag(opts: ParsedArgs, flag: String) -> Bool
+    fn parsed_args_flag_value(opts: ParsedArgs, key: String) -> String
+    fn parsed_args_trailing_args(opts: ParsedArgs) -> Array[String]
+    fn collect_cli_args(start: Int) -> Array[String]
+    fn print_pipeline_error(err: PipelineError)
+    fn print_usage() -> Unit
+    fn join_lex_errors(errors: Array[LexError]) -> String
+    fn join_parse_errors(errors: Array[ParseError]) -> String
+    fn join_type_errors(errors: Array[TypeError]) -> String
+    fn str_eq_main(a: String, b: String) -> Bool
+    fn str_starts_with_main(value: String, prefix: String) -> Bool
+    fn arg_takes_value(arg: String) -> Bool
+    fn cli_argc() -> Int
+    fn cli_arg(index: Int) -> String
+    fn read_file(path: String) -> String
+}
+
+fn main() -> Int {
+    if cli_argc() < 2 {
         print_usage()
+        return 1
     }
-    let _done = 0
+    let cmd = cli_arg(1)
+    if str_eq_main(cmd, "build") {
+        return cmd_build(collect_cli_args(2))
+    }
+    if str_eq_main(cmd, "run") {
+        return cmd_run(collect_cli_args(2))
+    }
+    if str_eq_main(cmd, "check") {
+        return cmd_check(collect_cli_args(2))
+    }
+    if str_eq_main(cmd, "ast-dump") {
+        if cli_argc() < 3 {
+            print("error: no source file specified")
+            return 1
+        }
+        return cmd_ast_dump(cli_arg(2))
+    }
+    if str_eq_main(cmd, "type-dump") {
+        if cli_argc() < 3 {
+            print("error: no source file specified")
+            return 1
+        }
+        return cmd_type_dump(cli_arg(2))
+    }
+    if str_eq_main(cmd, "--help") || str_eq_main(cmd, "-h") {
+        print_usage()
+        return 0
+    }
+    print(str_concat("error: unknown subcommand '", str_concat(cmd, "'")))
+    print_usage()
+    1
+}
+
+fn cmd_build(args: Array[String]) -> Int {
+    let opts = parse_args(args)
+    if str_len(opts.source_path) == 0 {
+        print("error: no source file specified")
+        return 1
+    }
+    let mut mode = build_mode_debug()
+    if parsed_args_has_flag(opts, "--release") {
+        mode = build_mode_release()
+    } else if parsed_args_has_flag(opts, "--size") {
+        mode = build_mode_size()
+    } else if parsed_args_has_flag(opts, "--fast") {
+        mode = build_mode_fast()
+    }
+
+    let mut output_dir = "."
+    let out_dir_flag = parsed_args_flag_value(opts, "--out-dir")
+    if str_len(out_dir_flag) != 0 {
+        output_dir = out_dir_flag
+    }
+
+    let mut output_name = "output"
+    let mut has_output_name = true
+    let output_flag = parsed_args_flag_value(opts, "-o")
+    if str_len(output_flag) != 0 {
+        output_name = output_flag
+    }
+
+    let target_flag = parsed_args_flag_value(opts, "--target")
+    let has_target = str_len(target_flag) != 0
+    let emit_ir = parsed_args_has_flag(opts, "--emit-ir")
+    let session = new_compile_session(
+        opts.source_path,
+        output_dir,
+        output_name,
+        has_output_name,
+        mode,
+        target_flag,
+        has_target,
+        emit_ir
+    )
+    let result = run_pipeline(session)
+    if result.ok {
+        print(str_concat("compiled: ", result.output.binary_path))
+        return 0
+    }
+    print_pipeline_error(result.pipeline_error)
+    1
+}
+
+fn cmd_run(args: Array[String]) -> Int {
+    let opts = parse_args(args)
+    if str_len(opts.source_path) == 0 {
+        print("error: no source file specified")
+        return 1
+    }
+    let mut mode = build_mode_debug()
+    if parsed_args_has_flag(opts, "--release") {
+        mode = build_mode_release()
+    }
+    let session = new_compile_session(
+        opts.source_path,
+        "/tmp",
+        "_draton_run_tmp",
+        true,
+        mode,
+        "",
+        false,
+        false
+    )
+    let result = run_pipeline(session)
+    if !result.ok {
+        print_pipeline_error(result.pipeline_error)
+        return 1
+    }
+    pipeline_exec_binary(result.output.binary_path, parsed_args_trailing_args(opts))
+}
+
+fn cmd_check(args: Array[String]) -> Int {
+    let opts = parse_args(args)
+    if str_len(opts.source_path) == 0 {
+        print("error: no source file specified")
+        return 1
+    }
+    let session = new_compile_session(
+        opts.source_path,
+        ".",
+        "output",
+        true,
+        build_mode_debug(),
+        "",
+        false,
+        false
+    )
+    let result = run_check_only(session)
+    if result.ok {
+        print("ok")
+        return 0
+    }
+    print_pipeline_error(result.pipeline_error)
+    1
+}
+
+fn cmd_ast_dump(path: String) -> Int {
+    let source = read_file(path)
+    let lexed = tokenize(source)
+    if lexed.errors.len() > 0 {
+        print(join_lex_errors(lexed.errors))
+        return 1
+    }
+    let parsed = parser_parse(new_parser(lexed.tokens))
+    if parsed.errors.len() > 0 {
+        print(join_parse_errors(parsed.errors))
+        return 1
+    }
+    print(ast_dump_program(parsed.program))
+    0
+}
+
+fn cmd_type_dump(path: String) -> Int {
+    let source = read_file(path)
+    let lexed = tokenize(source)
+    if lexed.errors.len() > 0 {
+        print(join_lex_errors(lexed.errors))
+        return 1
+    }
+    let parsed = parser_parse(new_parser(lexed.tokens))
+    if parsed.errors.len() > 0 {
+        print(join_parse_errors(parsed.errors))
+        return 1
+    }
+    let checked = checker_run(new_checker(), parsed.program)
+    if checked.errors.len() > 0 {
+        print(join_type_errors(checked.errors))
+        return 1
+    }
+    print(type_dump_program(checked.typed_program))
+    0
+}
+
+fn parse_args(args: Array[String]) {
+    let parsed = ParsedArgs()
+    let positional: Array[String] = []
+    let flags: Array[String] = []
+    let named_keys: Array[String] = []
+    let named_values: Array[String] = []
+    parsed.source_path = ""
+    parsed.positional = positional
+    parsed.flags = flags
+    parsed.named_keys = named_keys
+    parsed.named_values = named_values
+
+    let mut i = 0
+    while i < args.len() {
+        let arg = args[i]
+        if arg_takes_value(arg) {
+            if i + 1 < args.len() {
+                parsed.named_keys.push(arg)
+                parsed.named_values.push(args[i + 1])
+                i = i + 2
+            } else {
+                parsed.flags.push(arg)
+                i = i + 1
+            }
+        } else if str_starts_with_main(arg, "-") {
+            parsed.flags.push(arg)
+            i = i + 1
+        } else {
+            parsed.positional.push(arg)
+            i = i + 1
+        }
+    }
+
+    if parsed.positional.len() > 0 {
+        parsed.source_path = parsed.positional[0]
+    }
+    parsed
+}
+
+fn parsed_args_has_flag(opts: ParsedArgs, flag: String) {
+    let mut i = 0
+    while i < opts.flags.len() {
+        if str_eq_main(opts.flags[i], flag) {
+            return true
+        }
+        i = i + 1
+    }
+    false
+}
+
+fn parsed_args_flag_value(opts: ParsedArgs, key: String) {
+    let mut i = 0
+    while i < opts.named_keys.len() {
+        if str_eq_main(opts.named_keys[i], key) {
+            return opts.named_values[i]
+        }
+        i = i + 1
+    }
+    ""
+}
+
+fn parsed_args_trailing_args(opts: ParsedArgs) {
+    let out: Array[String] = []
+    let mut i = 1
+    while i < opts.positional.len() {
+        out.push(opts.positional[i])
+        i = i + 1
+    }
+    out
+}
+
+fn collect_cli_args(start: Int) {
+    let out: Array[String] = []
+    let mut i = start
+    while i < cli_argc() {
+        out.push(cli_arg(i))
+        i = i + 1
+    }
+    out
+}
+
+fn print_pipeline_error(err: PipelineError) {
+    if str_eq_main(err.kind, "Io") || str_eq_main(err.kind, "CodeGen") || str_eq_main(err.kind, "Link") {
+        print(str_concat(err.kind, str_concat(": ", err.message)))
+        return
+    }
+    let mut i = 0
+    while i < err.errors.len() {
+        if str_eq_main(err.kind, "Lex") {
+            print(str_concat("lex error: ", err.errors[i]))
+        } else if str_eq_main(err.kind, "Parse") {
+            print(str_concat("parse error: ", err.errors[i]))
+        } else if str_eq_main(err.kind, "TypeCheck") {
+            print(str_concat("type error: ", err.errors[i]))
+        } else {
+            print(err.errors[i])
+        }
+        i = i + 1
+    }
 }
 
 fn print_usage() -> Unit {
-    print("usage: draton-selfhost-phase1 ast-dump|type-dump <file>")
+    print("usage: draton-selfhost build|run|check|ast-dump|type-dump [options] <file.dt>")
+    print("  build <file.dt> [-o output] [--out-dir dir] [--emit-ir] [--release|--size|--fast]")
+    print("  run <file.dt> [program args...]")
+    print("  check <file.dt>")
     let _done = 0
 }
 
@@ -111,17 +381,20 @@ fn str_eq_main(a: String, b: String) -> Bool {
     same
 }
 
-@type {
-    fn main_with_args(args: Array[String]) -> Int
-    fn cmd_build(args: Array[String]) -> Int
-    fn cmd_run(args: Array[String]) -> Int
-    fn cmd_check(args: Array[String]) -> Int
-    fn parse_args(args: Array[String]) -> ParsedArgs
-    fn cli_argc() -> Int
-    fn cli_arg(index: Int) -> String
-    fn read_file(path: String) -> String
-    fn join_lex_errors(errors: Array[LexError]) -> String
-    fn join_parse_errors(errors: Array[ParseError]) -> String
-    fn join_type_errors(errors: Array[TypeError]) -> String
-    fn str_eq_main(a: String, b: String) -> Bool
+fn str_starts_with_main(value: String, prefix: String) {
+    if str_len(prefix) > str_len(value) {
+        return false
+    }
+    let mut i = 0
+    while i < str_len(prefix) {
+        if str_byte_at(value, i) != str_byte_at(prefix, i) {
+            return false
+        }
+        i = i + 1
+    }
+    true
+}
+
+fn arg_takes_value(arg: String) {
+    str_eq_main(arg, "-o") || str_eq_main(arg, "--out-dir") || str_eq_main(arg, "--target")
 }

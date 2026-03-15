@@ -1,13 +1,7 @@
-import { CompileSession, CompileOutput }
-
-enum PipelineErrorKind {
-    Io,
-    Lex,
-    Parse,
-    TypeCheck,
-    CodeGen,
-    Link,
-}
+import { tokenize, new_parser, parser_parse, lex_error_message, parse_error_message,
+         new_checker, checker_run, type_error_message, CompileSession, CompileOutput,
+         BuildMode, new_compile_output, session_ir_path, session_object_path,
+         session_binary_path, str_eq_type }
 
 class PipelineError {
     let mut kind: String
@@ -22,6 +16,179 @@ class PipelineResult {
 }
 
 @type {
+    fn new_pipeline_error(kind: String, message: String, errors: Array[String]) -> PipelineError
+    fn pipeline_ok(output: CompileOutput) -> PipelineResult
+    fn pipeline_fail(err: PipelineError) -> PipelineResult
+    fn pipeline_empty_output() -> CompileOutput
     fn run_pipeline(session: CompileSession) -> PipelineResult
-    fn link_object(obj_path: String, bin_path: String) -> String
+    fn run_check_only(session: CompileSession) -> PipelineResult
+    fn pipeline_exec_binary(binary_path: String, args: Array[String]) -> Int
+    fn pipeline_collect_lex_errors(errors: Array[LexError]) -> Array[String]
+    fn pipeline_collect_parse_errors(errors: Array[ParseError]) -> Array[String]
+    fn pipeline_collect_type_errors(errors: Array[TypeError]) -> Array[String]
+    fn pipeline_join_shell_command(path: String, args: Array[String]) -> String
+    fn pipeline_quote_shell_arg(value: String) -> String
+    fn pipeline_bool_to_int(value: Bool) -> Int
+}
+
+@extern "C" {
+    fn draton_host_build_source(source_path: String, ir_path: String, object_path: String, binary_path: String, mode: String, emit_ir: Int) -> String
+    fn draton_shell_run(cmd: String) -> Int
+}
+
+fn new_pipeline_error(kind: String, message: String, errors: Array[String]) {
+    let err = PipelineError()
+    err.kind = kind
+    err.message = message
+    err.errors = errors
+    err
+}
+
+fn pipeline_ok(output: CompileOutput) {
+    let result = PipelineResult()
+    result.ok = true
+    result.output = output
+    result.pipeline_error = new_pipeline_error("", "", [])
+    result
+}
+
+fn pipeline_fail(err: PipelineError) {
+    let result = PipelineResult()
+    result.ok = false
+    result.output = pipeline_empty_output()
+    result.pipeline_error = err
+    result
+}
+
+fn pipeline_empty_output() {
+    new_compile_output("", false, "", "")
+}
+
+fn run_pipeline(session: CompileSession) {
+    let source = read_file(session.source_path)
+    if str_len(source) == 0 {
+        return pipeline_fail(new_pipeline_error("Io", str_concat("khong the doc ", session.source_path), []))
+    }
+
+    let lexed = tokenize(source)
+    if lexed.errors.len() > 0 {
+        return pipeline_fail(new_pipeline_error("Lex", "", pipeline_collect_lex_errors(lexed.errors)))
+    }
+
+    let parsed = parser_parse(new_parser(lexed.tokens))
+    if parsed.errors.len() > 0 {
+        return pipeline_fail(new_pipeline_error("Parse", "", pipeline_collect_parse_errors(parsed.errors)))
+    }
+
+    let checked = checker_run(new_checker(), parsed.program)
+    if checked.errors.len() > 0 {
+        return pipeline_fail(new_pipeline_error("TypeCheck", "", pipeline_collect_type_errors(checked.errors)))
+    }
+
+    let ir_path = session_ir_path(session)
+    let obj_path = session_object_path(session)
+    let bin_path = session_binary_path(session)
+    let build_error = draton_host_build_source(
+        session.source_path,
+        ir_path,
+        obj_path,
+        bin_path,
+        session.mode.kind,
+        pipeline_bool_to_int(session.emit_ir)
+    )
+    if str_len(build_error) != 0 {
+        return pipeline_fail(new_pipeline_error("CodeGen", build_error, []))
+    }
+
+    pipeline_ok(new_compile_output(ir_path, session.emit_ir, obj_path, bin_path))
+}
+
+fn run_check_only(session: CompileSession) {
+    let source = read_file(session.source_path)
+    if str_len(source) == 0 {
+        return pipeline_fail(new_pipeline_error("Io", str_concat("khong the doc ", session.source_path), []))
+    }
+
+    let lexed = tokenize(source)
+    if lexed.errors.len() > 0 {
+        return pipeline_fail(new_pipeline_error("Lex", "", pipeline_collect_lex_errors(lexed.errors)))
+    }
+
+    let parsed = parser_parse(new_parser(lexed.tokens))
+    if parsed.errors.len() > 0 {
+        return pipeline_fail(new_pipeline_error("Parse", "", pipeline_collect_parse_errors(parsed.errors)))
+    }
+
+    let checked = checker_run(new_checker(), parsed.program)
+    if checked.errors.len() > 0 {
+        return pipeline_fail(new_pipeline_error("TypeCheck", "", pipeline_collect_type_errors(checked.errors)))
+    }
+
+    pipeline_ok(pipeline_empty_output())
+}
+
+fn pipeline_exec_binary(binary_path: String, args: Array[String]) {
+    draton_shell_run(pipeline_join_shell_command(binary_path, args))
+}
+
+fn pipeline_collect_lex_errors(errors: Array[LexError]) {
+    let out: Array[String] = []
+    let mut i = 0
+    while i < errors.len() {
+        out.push(lex_error_message(errors[i]))
+        i = i + 1
+    }
+    out
+}
+
+fn pipeline_collect_parse_errors(errors: Array[ParseError]) {
+    let out: Array[String] = []
+    let mut i = 0
+    while i < errors.len() {
+        out.push(parse_error_message(errors[i]))
+        i = i + 1
+    }
+    out
+}
+
+fn pipeline_collect_type_errors(errors: Array[TypeError]) {
+    let out: Array[String] = []
+    let mut i = 0
+    while i < errors.len() {
+        out.push(type_error_message(errors[i]))
+        i = i + 1
+    }
+    out
+}
+
+fn pipeline_join_shell_command(path: String, args: Array[String]) {
+    let mut cmd = pipeline_quote_shell_arg(path)
+    let mut i = 0
+    while i < args.len() {
+        cmd = str_concat(cmd, str_concat(" ", pipeline_quote_shell_arg(args[i])))
+        i = i + 1
+    }
+    cmd
+}
+
+fn pipeline_quote_shell_arg(value: String) {
+    let mut out = "'"
+    let mut i = 0
+    while i < str_len(value) {
+        let byte = str_byte_at(value, i)
+        if byte == 39 {
+            out = str_concat(out, "'\"'\"'")
+        } else {
+            out = str_concat(out, ascii_char(byte))
+        }
+        i = i + 1
+    }
+    str_concat(out, "'")
+}
+
+fn pipeline_bool_to_int(value: Bool) {
+    if value {
+        return 1
+    }
+    0
 }

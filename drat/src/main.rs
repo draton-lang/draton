@@ -54,6 +54,9 @@ enum Command {
 
 #[derive(Debug, Clone, Args)]
 struct BuildFlags {
+    input: Option<PathBuf>,
+    #[arg(short = 'o', long = "output")]
+    output: Option<PathBuf>,
     #[arg(long)]
     release: bool,
     #[arg(long)]
@@ -80,9 +83,12 @@ fn main() -> Result<()> {
         Command::Build(flags) => {
             let request = BuildRequest {
                 profile: Profile::from_flags(flags.release, flags.size, flags.fast)?,
-                target: flags.target,
+                target: flags.target.clone(),
             };
-            let output = commands::build::run(&cwd, &request)?;
+            let output = match flags.input.as_deref() {
+                Some(input) => commands::build::run_file(&cwd, input, flags.output.as_deref(), &request)?,
+                None => commands::build::run(&cwd, &request)?,
+            };
             println!("{}", output.binary_path.display());
             println!("{}", output.object_path.display());
             println!("{}", output.ir_path.display());

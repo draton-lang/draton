@@ -5,10 +5,14 @@ pub mod panic;
 pub mod scheduler;
 
 use std::fs;
+use std::env;
 use std::path::Path;
+use std::path::PathBuf;
 use std::ptr;
 use std::slice;
+use std::process::Command;
 use std::sync::{Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use draton_lexer::Lexer;
 use draton_parser::Parser;
@@ -111,11 +115,267 @@ pub fn host_type_dump_path(path: &Path) -> Result<String, String> {
     Ok(format!("{:#?}", typed.typed_program))
 }
 
+fn runtime_workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+}
+
+fn runtime_target_dir() -> PathBuf {
+    env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| runtime_workspace_root().join("target"))
+}
+
+fn runtime_ensure_host_drat() -> Result<PathBuf, String> {
+    let manifest = runtime_workspace_root().join("drat/Cargo.toml");
+    let exe_name = if cfg!(windows) { "drat.exe" } else { "drat" };
+    let path = runtime_target_dir().join("debug").join(exe_name);
+    if path.exists() {
+        return Ok(path);
+    }
+    let mut command = Command::new("cargo");
+    command
+        .arg("build")
+        .arg("-p")
+        .arg("drat")
+        .arg("--manifest-path")
+        .arg(manifest);
+    if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+        command.env("CARGO_TARGET_DIR", target_dir);
+    }
+    let output = command
+        .output()
+        .map_err(|error| format!("khong the build drat: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "build drat that bai:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    if !path.exists() {
+        return Err(format!("khong tim thay host drat tai {}", path.display()));
+    }
+    Ok(path)
+}
+
+fn runtime_profile_dir(mode: &str) -> &'static str {
+    match mode {
+        "Release" => "release",
+        "Size" => "size",
+        "Fast" => "fast",
+        _ => "debug",
+    }
+}
+
+fn runtime_find_project_root(source_path: &Path) -> Option<PathBuf> {
+    for ancestor in source_path.ancestors() {
+        if ancestor.join("draton.toml").exists() {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+    None
+}
+
+fn runtime_copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
+    fs::create_dir_all(dest)
+        .map_err(|error| format!("khong the tao {}: {error}", dest.display()))?;
+    for entry in fs::read_dir(source)
+        .map_err(|error| format!("khong the doc {}: {error}", source.display()))?
+    {
+        let entry = entry.map_err(|error| format!("khong the doc entry: {error}"))?;
+        let source_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        if source_path.is_dir() {
+            runtime_copy_dir_recursive(&source_path, &dest_path)?;
+        } else {
+            fs::copy(&source_path, &dest_path).map_err(|error| {
+                format!(
+                    "khong the copy {} -> {}: {error}",
+                    source_path.display(),
+                    dest_path.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn runtime_temp_project_root() -> PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or(0);
+    runtime_workspace_root()
+        .join("build")
+        .join("phase5_host")
+        .join(format!("tmp_{}_{}", std::process::id(), stamp))
+}
+
+fn runtime_build_mode_flag(mode: &str) -> Option<&'static str> {
+    match mode {
+        "Release" => Some("--release"),
+        "Size" => Some("--size"),
+        "Fast" => Some("--fast"),
+        _ => None,
+    }
+}
+
+fn runtime_prepare_temp_project(source_path: &Path, temp_root: &Path) -> Result<String, String> {
+    fs::create_dir_all(temp_root)
+        .map_err(|error| format!("khong the tao {}: {error}", temp_root.display()))?;
+    if let Some(project_root) = runtime_find_project_root(source_path) {
+        let src_root = project_root.join("src");
+        if source_path.starts_with(&src_root) {
+            runtime_copy_dir_recursive(&src_root, &temp_root.join("src"))?;
+            let rel = source_path
+                .strip_prefix(&project_root)
+                .map_err(|error| format!("khong the tinh relative entry: {error}"))?;
+            return Ok(rel.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    let temp_src = temp_root.join("src");
+    fs::create_dir_all(&temp_src)
+        .map_err(|error| format!("khong the tao {}: {error}", temp_src.display()))?;
+    let dest = temp_src.join("main.dt");
+    fs::copy(source_path, &dest).map_err(|error| {
+        format!(
+            "khong the copy {} -> {}: {error}",
+            source_path.display(),
+            dest.display()
+        )
+    })?;
+    Ok("src/main.dt".to_string())
+}
+
+fn runtime_copy_output(source: &Path, dest: &Path) -> Result<(), String> {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("khong the tao {}: {error}", parent.display()))?;
+    }
+    fs::copy(source, dest).map_err(|error| {
+        format!(
+            "khong the copy {} -> {}: {error}",
+            source.display(),
+            dest.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn host_build_source_impl(
+    source_path: &Path,
+    ir_path: &Path,
+    object_path: &Path,
+    binary_path: &Path,
+    mode: &str,
+    emit_ir: bool,
+) -> Result<(), String> {
+    let host_drat = runtime_ensure_host_drat()?;
+    let temp_root = runtime_temp_project_root();
+    let entry = runtime_prepare_temp_project(source_path, &temp_root)?;
+    let project_name = "phase5_bootstrap";
+    let config_path = temp_root.join("draton.toml");
+    let config = format!(
+        "[project]\nname = \"{project_name}\"\nversion = \"0.1.0\"\nentry = \"{entry}\"\n"
+    );
+    fs::write(&config_path, config)
+        .map_err(|error| format!("khong the ghi {}: {error}", config_path.display()))?;
+
+    let mut command = Command::new(host_drat);
+    command.current_dir(&temp_root).arg("build");
+    command.env("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", "1");
+    command.env("DRATON_DISABLE_GCROOT", "1");
+    if let Some(flag) = runtime_build_mode_flag(mode) {
+        command.arg(flag);
+    }
+    let output = command
+        .output()
+        .map_err(|error| format!("khong the chay host drat build: {error}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut message = String::new();
+        if !stderr.trim().is_empty() {
+            message.push_str(&stderr);
+        }
+        if !stdout.trim().is_empty() {
+            if !message.is_empty() {
+                message.push('\n');
+            }
+            message.push_str(&stdout);
+        }
+        if message.trim().is_empty() {
+            message = "host drat build that bai".to_string();
+        }
+        return Err(message);
+    }
+
+    let build_dir = temp_root.join("build").join(runtime_profile_dir(mode));
+    let exe_name = if cfg!(windows) {
+        format!("{project_name}.exe")
+    } else {
+        project_name.to_string()
+    };
+    let built_ir = build_dir.join(format!("{project_name}.ll"));
+    let built_obj = build_dir.join(format!("{project_name}.o"));
+    let built_bin = build_dir.join(exe_name);
+    runtime_copy_output(&built_obj, object_path)?;
+    runtime_copy_output(&built_bin, binary_path)?;
+    if emit_ir {
+        runtime_copy_output(&built_ir, ir_path)?;
+    }
+    Ok(())
+}
+
 #[no_mangle]
 pub extern "C" fn draton_host_type_dump(path: DratonString) -> DratonString {
     let path_string = draton_string_to_owned(path);
     let output = host_type_dump_path(Path::new(&path_string)).unwrap_or_else(|message| message);
     owned_string(output.into_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn draton_host_build_source(
+    source_path: DratonString,
+    ir_path: DratonString,
+    object_path: DratonString,
+    binary_path: DratonString,
+    mode: DratonString,
+    emit_ir: i64,
+) -> DratonString {
+    let source_path = draton_string_to_owned(source_path);
+    let ir_path = draton_string_to_owned(ir_path);
+    let object_path = draton_string_to_owned(object_path);
+    let binary_path = draton_string_to_owned(binary_path);
+    let mode = draton_string_to_owned(mode);
+    let output = match host_build_source_impl(
+        Path::new(&source_path),
+        Path::new(&ir_path),
+        Path::new(&object_path),
+        Path::new(&binary_path),
+        &mode,
+        emit_ir != 0,
+    ) {
+        Ok(()) => String::new(),
+        Err(message) => message,
+    };
+    owned_string(output.into_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn draton_shell_run(cmd: DratonString) -> i64 {
+    let cmd = draton_string_to_owned(cmd);
+    let output = if cfg!(windows) {
+        Command::new("cmd").args(["/C", &cmd]).status()
+    } else {
+        Command::new("sh").args(["-c", &cmd]).status()
+    };
+    match output {
+        Ok(status) => status.code().unwrap_or(1) as i64,
+        Err(_) => 1,
+    }
 }
 
 /// Initializes the global runtime scheduler.
