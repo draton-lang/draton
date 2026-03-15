@@ -195,6 +195,12 @@ draton/
 └── draton-stdlib/      # Standard library
 ```
 
+## Maintainers
+
+This project is currently developed and maintained by:
+
+* **Lê Hùng Quang Minh** (@lehungquangminh) — Lead Architect (Core Compiler, LLVM Backend)
+
 ## Contributing
 
 Contributions are welcome — bug reports, feature requests, documentation improvements, and code are all appreciated. Please read [CONTRIBUTING](.github/CONTRIBUTING.md) before opening a pull request, and follow our [Code of Conduct](.github/CODE_OF_CONDUCT.md).
