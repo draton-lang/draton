@@ -58,6 +58,9 @@ pub struct TypeChecker {
     binding_hints: HashMap<String, TypeExpr>,
     class_function_hints: HashMap<String, HashMap<String, FnDef>>,
     class_binding_hints: HashMap<String, HashMap<String, TypeExpr>>,
+    interface_function_hints: HashMap<String, HashMap<String, FnDef>>,
+    interface_binding_hints: HashMap<String, HashMap<String, TypeExpr>>,
+    local_binding_hints: Vec<HashMap<String, TypeExpr>>,
     current_return: Vec<Type>,
     current_effect: Vec<Option<Type>>,
     current_class: Vec<String>,
@@ -89,6 +92,9 @@ impl TypeChecker {
             binding_hints: HashMap::new(),
             class_function_hints: HashMap::new(),
             class_binding_hints: HashMap::new(),
+            interface_function_hints: HashMap::new(),
+            interface_binding_hints: HashMap::new(),
+            local_binding_hints: Vec::new(),
             current_return: Vec::new(),
             current_effect: Vec::new(),
             current_class: Vec::new(),
@@ -180,6 +186,95 @@ impl TypeChecker {
 
     fn pop_type_params(&mut self) {
         let _ = self.type_param_scopes.pop();
+    }
+
+    fn push_local_binding_hints(&mut self, hints: HashMap<String, TypeExpr>) {
+        self.local_binding_hints.push(hints);
+    }
+
+    fn pop_local_binding_hints(&mut self) {
+        let _ = self.local_binding_hints.pop();
+    }
+
+    fn lookup_local_binding_hint(&self, name: &str) -> Option<TypeExpr> {
+        self.local_binding_hints
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).cloned())
+    }
+
+    fn collect_function_binding_hints(&self, block: &Block) -> HashMap<String, TypeExpr> {
+        let mut hints = HashMap::new();
+        self.collect_function_binding_hints_from_block(block, &mut hints);
+        hints
+    }
+
+    fn collect_function_binding_hints_from_block(
+        &self,
+        block: &Block,
+        hints: &mut HashMap<String, TypeExpr>,
+    ) {
+        for stmt in &block.stmts {
+            self.collect_function_binding_hints_from_stmt(stmt, hints);
+        }
+    }
+
+    fn collect_function_binding_hints_from_stmt(
+        &self,
+        stmt: &Stmt,
+        hints: &mut HashMap<String, TypeExpr>,
+    ) {
+        match stmt {
+            Stmt::TypeBlock(type_block) => {
+                for member in &type_block.members {
+                    if let TypeMember::Binding {
+                        name, type_expr, ..
+                    } = member
+                    {
+                        hints.insert(name.clone(), type_expr.clone());
+                    }
+                }
+            }
+            Stmt::If(if_stmt) => {
+                self.collect_function_binding_hints_from_block(&if_stmt.then_branch, hints);
+                if let Some(else_branch) = &if_stmt.else_branch {
+                    match else_branch {
+                        ElseBranch::If(inner) => self
+                            .collect_function_binding_hints_from_block(&inner.then_branch, hints),
+                        ElseBranch::Block(block) => {
+                            self.collect_function_binding_hints_from_block(block, hints)
+                        }
+                    }
+                }
+            }
+            Stmt::For(for_stmt) => {
+                self.collect_function_binding_hints_from_block(&for_stmt.body, hints)
+            }
+            Stmt::While(while_stmt) => {
+                self.collect_function_binding_hints_from_block(&while_stmt.body, hints)
+            }
+            Stmt::Spawn(spawn_stmt) => {
+                if let SpawnBody::Block(block) = &spawn_stmt.body {
+                    self.collect_function_binding_hints_from_block(block, hints);
+                }
+            }
+            Stmt::Block(block)
+            | Stmt::UnsafeBlock(block)
+            | Stmt::PointerBlock(block)
+            | Stmt::ComptimeBlock(block) => {
+                self.collect_function_binding_hints_from_block(block, hints)
+            }
+            Stmt::IfCompile(if_compile) => {
+                self.collect_function_binding_hints_from_block(&if_compile.body, hints)
+            }
+            Stmt::Let(_)
+            | Stmt::LetDestructure(_)
+            | Stmt::Assign(_)
+            | Stmt::Return(_)
+            | Stmt::Expr(_)
+            | Stmt::AsmBlock(_, _)
+            | Stmt::GcConfig(_) => {}
+        }
     }
 
     fn lookup_type_param(&self, name: &str) -> Option<Type> {
@@ -501,13 +596,34 @@ impl TypeChecker {
                 .iter()
                 .map(|method| self.infer_interface_method(&interface_def.name, method))
                 .collect(),
+            type_blocks: interface_def
+                .type_blocks
+                .iter()
+                .map(|block| self.infer_type_block(block))
+                .collect(),
             span: interface_def.span,
         }
     }
 
     fn infer_interface_method(&mut self, interface_name: &str, function: &FnDef) -> TypedFnDef {
         self.push_type_params(&function.type_params);
-        let hint = self.function_hints.get(&function.name).cloned();
+        let has_explicit_self = function
+            .params
+            .first()
+            .map(|param| param.name == "self")
+            .unwrap_or(false);
+        let hint = self
+            .interface_function_hints
+            .get(interface_name)
+            .and_then(|hints| hints.get(&function.name))
+            .cloned()
+            .or_else(|| self.function_hints.get(&function.name).cloned());
+        let binding_hint = self
+            .interface_binding_hints
+            .get(interface_name)
+            .and_then(|hints| hints.get(&function.name))
+            .cloned()
+            .or_else(|| self.binding_hints.get(&function.name).cloned());
         let params = function
             .params
             .iter()
@@ -516,25 +632,39 @@ impl TypeChecker {
                 if param.name == "self" {
                     return self.class_instance_type(interface_name);
                 }
-                param
+                let selected_hint = param
                     .type_hint
-                    .as_ref()
+                    .clone()
                     .or_else(|| {
                         hint.as_ref().and_then(|fn_hint| {
                             fn_hint
                                 .params
                                 .get(index)
-                                .and_then(|value| value.type_hint.as_ref())
+                                .and_then(|value| value.type_hint.clone())
                         })
                     })
+                    .or_else(|| self.function_type_param_hint(binding_hint.as_ref(), index));
+                selected_hint
+                    .as_ref()
                     .map(|type_expr| self.type_from_annotation(type_expr))
                     .unwrap_or_else(|| self.fresh_var())
             })
             .collect::<Vec<_>>();
-        let ret_type = function
+        let params = if has_explicit_self {
+            params
+        } else {
+            let mut with_self = Vec::with_capacity(params.len() + 1);
+            with_self.push(self.class_instance_type(interface_name));
+            with_self.extend(params);
+            with_self
+        };
+        let ret_hint = function
             .ret_type
+            .clone()
+            .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.clone()))
+            .or_else(|| self.function_type_ret_hint(binding_hint.as_ref()));
+        let ret_type = ret_hint
             .as_ref()
-            .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.as_ref()))
             .map(|type_expr| self.type_from_annotation(type_expr))
             .unwrap_or(Type::Unit);
         let full_ty = Type::Fn(params.clone(), Box::new(ret_type.clone()));
@@ -705,6 +835,11 @@ impl TypeChecker {
             .as_ref()
             .map(|type_expr| self.type_from_annotation(type_expr))
             .unwrap_or_else(|| self.fresh_var());
+        let local_binding_hints = function
+            .body
+            .as_ref()
+            .map(|body| self.collect_function_binding_hints(body))
+            .unwrap_or_default();
 
         if let Some(existing) = placeholder {
             let expected = Type::Fn(param_types.clone(), Box::new(ret_type.clone()));
@@ -735,6 +870,7 @@ impl TypeChecker {
                 },
             );
         }
+        self.push_local_binding_hints(local_binding_hints);
 
         self.current_return.push(ret_type.clone());
         self.current_effect.push(None);
@@ -757,6 +893,7 @@ impl TypeChecker {
         });
         let effect = self.current_effect.pop().unwrap_or(None);
         let _ = self.current_return.pop();
+        self.pop_local_binding_hints();
         self.env.pop_scope();
 
         let resolved_params = param_types
@@ -905,6 +1042,8 @@ impl TypeChecker {
             Stmt::Let(let_stmt) => {
                 let hinted = let_stmt
                     .type_hint
+                    .clone()
+                    .or_else(|| self.lookup_local_binding_hint(&let_stmt.name))
                     .as_ref()
                     .map(|type_hint| self.type_from_annotation(type_hint));
                 let (typed_value, mut ty) = if let Some(expr) = &let_stmt.value {
@@ -1126,6 +1265,10 @@ impl TypeChecker {
                     kind: TypedStmtKind::GcConfig(typed),
                 }
             }
+            Stmt::TypeBlock(type_block) => TypedStmt {
+                span: type_block.span,
+                kind: TypedStmtKind::TypeBlock(self.infer_type_block(type_block)),
+            },
         }
     }
 
@@ -2564,6 +2707,7 @@ impl TypeChecker {
             | Stmt::PointerBlock(block)
             | Stmt::ComptimeBlock(block) => self.collect_deprecated_block(block),
             Stmt::IfCompile(if_compile) => self.collect_deprecated_block(&if_compile.body),
+            Stmt::TypeBlock(_) => {}
             Stmt::Assign(_)
             | Stmt::Return(_)
             | Stmt::Expr(_)
@@ -2607,6 +2751,11 @@ impl TypeChecker {
                         }
                     }
                 }
+                Item::Interface(interface_def) => {
+                    for type_block in &interface_def.type_blocks {
+                        self.collect_interface_type_block_hints(type_block, &interface_def.name);
+                    }
+                }
                 _ => {}
             }
         }
@@ -2646,6 +2795,33 @@ impl TypeChecker {
                             .entry(function.name.clone())
                             .or_insert_with(|| function.clone());
                     }
+                }
+            }
+        }
+    }
+
+    fn collect_interface_type_block_hints(
+        &mut self,
+        type_block: &draton_ast::TypeBlock,
+        interface_name: &str,
+    ) {
+        for member in &type_block.members {
+            match member {
+                TypeMember::Binding {
+                    name, type_expr, ..
+                } => {
+                    self.interface_binding_hints
+                        .entry(interface_name.to_string())
+                        .or_default()
+                        .entry(name.clone())
+                        .or_insert_with(|| type_expr.clone());
+                }
+                TypeMember::Function(function) => {
+                    self.interface_function_hints
+                        .entry(interface_name.to_string())
+                        .or_default()
+                        .entry(function.name.clone())
+                        .or_insert_with(|| function.clone());
                 }
             }
         }
@@ -2878,7 +3054,23 @@ impl TypeChecker {
 
     fn interface_method_placeholder(&mut self, interface_name: &str, function: &FnDef) -> Type {
         self.push_type_params(&function.type_params);
-        let hint = self.function_hints.get(&function.name).cloned();
+        let has_explicit_self = function
+            .params
+            .first()
+            .map(|param| param.name == "self")
+            .unwrap_or(false);
+        let hint = self
+            .interface_function_hints
+            .get(interface_name)
+            .and_then(|hints| hints.get(&function.name))
+            .cloned()
+            .or_else(|| self.function_hints.get(&function.name).cloned());
+        let binding_hint = self
+            .interface_binding_hints
+            .get(interface_name)
+            .and_then(|hints| hints.get(&function.name))
+            .cloned()
+            .or_else(|| self.binding_hints.get(&function.name).cloned());
         let params = function
             .params
             .iter()
@@ -2887,25 +3079,39 @@ impl TypeChecker {
                 if param.name == "self" {
                     return self.class_instance_type(interface_name);
                 }
-                param
+                let selected_hint = param
                     .type_hint
-                    .as_ref()
+                    .clone()
                     .or_else(|| {
                         hint.as_ref().and_then(|fn_hint| {
                             fn_hint
                                 .params
                                 .get(index)
-                                .and_then(|value| value.type_hint.as_ref())
+                                .and_then(|value| value.type_hint.clone())
                         })
                     })
+                    .or_else(|| self.function_type_param_hint(binding_hint.as_ref(), index));
+                selected_hint
+                    .as_ref()
                     .map(|type_expr| self.type_from_annotation(type_expr))
                     .unwrap_or_else(|| self.fresh_var())
             })
             .collect::<Vec<_>>();
-        let ret = function
+        let params = if has_explicit_self {
+            params
+        } else {
+            let mut with_self = Vec::with_capacity(params.len() + 1);
+            with_self.push(self.class_instance_type(interface_name));
+            with_self.extend(params);
+            with_self
+        };
+        let ret_hint = function
             .ret_type
+            .clone()
+            .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.clone()))
+            .or_else(|| self.function_type_ret_hint(binding_hint.as_ref()));
+        let ret = ret_hint
             .as_ref()
-            .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.as_ref()))
             .map(|type_expr| self.type_from_annotation(type_expr))
             .unwrap_or(Type::Unit);
         let out = Type::Fn(params, Box::new(ret));
@@ -3591,13 +3797,25 @@ impl TypeChecker {
                 vars
             }
             TypedItem::Interface(interface_def) => {
-                interface_def
-                    .methods
-                    .iter()
-                    .fold(BTreeSet::new(), |mut vars, method| {
-                        vars.extend(free_type_vars(&method.ty));
-                        vars
-                    })
+                let mut vars =
+                    interface_def
+                        .methods
+                        .iter()
+                        .fold(BTreeSet::new(), |mut vars, method| {
+                            vars.extend(free_type_vars(&method.ty));
+                            vars
+                        });
+                for type_block in &interface_def.type_blocks {
+                    for member in &type_block.members {
+                        match member {
+                            TypedTypeMember::Binding { ty, .. } => vars.extend(free_type_vars(ty)),
+                            TypedTypeMember::Function(function) => {
+                                vars.extend(free_type_vars(&function.ty))
+                            }
+                        }
+                    }
+                }
+                vars
             }
             TypedItem::Error(_) | TypedItem::Const(_) => BTreeSet::new(),
             TypedItem::Extern(extern_block) => {
@@ -3664,6 +3882,9 @@ impl TypeChecker {
                 for method in &interface_def.methods {
                     self.visit_typed_fn(method, allowed, seen);
                 }
+                for type_block in &interface_def.type_blocks {
+                    self.visit_typed_type_block(type_block, allowed, seen);
+                }
             }
             TypedItem::Error(error_def) => {
                 for field in &error_def.fields {
@@ -3671,18 +3892,27 @@ impl TypeChecker {
                 }
             }
             TypedItem::TypeBlock(type_block) => {
-                for member in &type_block.members {
-                    match member {
-                        TypedTypeMember::Binding { name, ty, span } => {
-                            self.report_unresolved_type(ty, name, *span, allowed, seen);
-                        }
-                        TypedTypeMember::Function(function) => {
-                            self.visit_typed_fn(function, allowed, seen);
-                        }
-                    }
-                }
+                self.visit_typed_type_block(type_block, allowed, seen);
             }
             TypedItem::Import(_) | TypedItem::Enum(_) => {}
+        }
+    }
+
+    fn visit_typed_type_block(
+        &mut self,
+        type_block: &TypedTypeBlock,
+        allowed: &BTreeSet<u32>,
+        seen: &mut BTreeSet<u32>,
+    ) {
+        for member in &type_block.members {
+            match member {
+                TypedTypeMember::Binding { name, ty, span } => {
+                    self.report_unresolved_type(ty, name, *span, allowed, seen);
+                }
+                TypedTypeMember::Function(function) => {
+                    self.visit_typed_fn(function, allowed, seen);
+                }
+            }
         }
     }
 
@@ -3805,6 +4035,9 @@ impl TypeChecker {
             TypedStmtKind::AsmBlock(_)
             | TypedStmtKind::IfCompile(_)
             | TypedStmtKind::GcConfig(_) => {}
+            TypedStmtKind::TypeBlock(type_block) => {
+                self.visit_typed_type_block(type_block, allowed, seen)
+            }
         }
     }
 

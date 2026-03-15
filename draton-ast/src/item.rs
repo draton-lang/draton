@@ -101,6 +101,7 @@ pub struct FieldDef {
 pub struct InterfaceDef {
     pub name: String,
     pub methods: Vec<FnDef>,
+    pub type_blocks: Vec<TypeBlock>,
     pub span: Span,
 }
 

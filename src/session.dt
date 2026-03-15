@@ -1,24 +1,46 @@
 
 class BuildMode {
-    let mut kind: String
+    let mut kind
+
+    @type {
+        kind: String
+    }
 }
 
 class CompileSession {
-    let mut source_path: String
-    let mut output_dir: String
-    let mut output_name: String
-    let mut has_output_name: Bool
-    let mut mode: BuildMode
-    let mut target: String
-    let mut has_target: Bool
-    let mut emit_ir: Bool
+    let mut source_path
+    let mut output_dir
+    let mut output_name
+    let mut has_output_name
+    let mut mode
+    let mut target
+    let mut has_target
+    let mut emit_ir
+
+    @type {
+        source_path: String
+        output_dir: String
+        output_name: String
+        has_output_name: Bool
+        mode: BuildMode
+        target: String
+        has_target: Bool
+        emit_ir: Bool
+    }
 }
 
 class CompileOutput {
-    let mut ir_path: String
-    let mut has_ir_path: Bool
-    let mut object_path: String
-    let mut binary_path: String
+    let mut ir_path
+    let mut has_ir_path
+    let mut object_path
+    let mut binary_path
+
+    @type {
+        ir_path: String
+        has_ir_path: Bool
+        object_path: String
+        binary_path: String
+    }
 }
 
 @type {

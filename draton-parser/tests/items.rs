@@ -1,4 +1,4 @@
-use draton_ast::{ClassMember, Item, TypeMember};
+use draton_ast::{ClassMember, Item, Stmt, TypeMember};
 use draton_lexer::Lexer;
 use draton_parser::{ParseError, Parser};
 use pretty_assertions::assert_eq;
@@ -19,16 +19,14 @@ fn parses_functions_with_binding_style_type_blocks_and_pub() {
         result.errors
     );
     assert_eq!(result.program.items.len(), 2);
-    assert!(
-        matches!(
-            &result.program.items[0],
-            Item::TypeBlock(block)
-                if matches!(
-                    &block.members[0],
-                    TypeMember::Binding { name, .. } if name == "add"
-                )
-        )
-    );
+    assert!(matches!(
+        &result.program.items[0],
+        Item::TypeBlock(block)
+            if matches!(
+                &block.members[0],
+                TypeMember::Binding { name, .. } if name == "add"
+            )
+    ));
     assert!(
         matches!(&result.program.items[1], Item::Fn(function) if function.is_pub && function.name == "add")
     );
@@ -62,15 +60,13 @@ const MAX = 100
         "parser errors: {:?}",
         result.errors
     );
-    assert!(
-        matches!(
-            &result.program.items[0],
-            Item::Class(class_def)
-                if class_def.extends.as_deref() == Some("Animal")
-                    && class_def.implements == vec!["Drawable".to_string()]
-                    && class_def.type_blocks.len() == 1
-        )
-    );
+    assert!(matches!(
+        &result.program.items[0],
+        Item::Class(class_def)
+            if class_def.extends.as_deref() == Some("Animal")
+                && class_def.implements == vec!["Drawable".to_string()]
+                && class_def.type_blocks.len() == 1
+    ));
     assert!(matches!(&result.program.items[1], Item::Interface(_)));
     assert!(
         matches!(&result.program.items[2], Item::Enum(enum_def) if enum_def.variants.len() == 3)
@@ -99,15 +95,13 @@ import {
         "parser errors: {:?}",
         result.errors
     );
-    assert!(
-        matches!(
-            &result.program.items[0],
-            Item::Import(import)
-                if import.items.len() == 2
-                    && import.items[0].alias.as_deref() == Some("f")
-                    && import.module == vec!["std".to_string(), "io".to_string()]
-        )
-    );
+    assert!(matches!(
+        &result.program.items[0],
+        Item::Import(import)
+            if import.items.len() == 2
+                && import.items[0].alias.as_deref() == Some("f")
+                && import.module == vec!["std".to_string(), "io".to_string()]
+    ));
     assert!(
         matches!(&result.program.items[1], Item::Extern(ext) if ext.abi == "C" && ext.functions.len() == 2)
     );
@@ -246,7 +240,11 @@ fn parses_top_level_import_with_module_path_and_aliases() {
 import { connect, listen as serve } from net.http
 "#;
     let result = parse_program(source);
-    assert!(result.errors.is_empty(), "parser errors: {:?}", result.errors);
+    assert!(
+        result.errors.is_empty(),
+        "parser errors: {:?}",
+        result.errors
+    );
     let Item::Import(import) = &result.program.items[0] else {
         panic!("expected import");
     };
@@ -274,7 +272,11 @@ class User {
 }
 "#;
     let result = parse_program(source);
-    assert!(result.errors.is_empty(), "parser errors: {:?}", result.errors);
+    assert!(
+        result.errors.is_empty(),
+        "parser errors: {:?}",
+        result.errors
+    );
     let Item::Class(class_def) = &result.program.items[0] else {
         panic!("expected class");
     };
@@ -288,4 +290,51 @@ class User {
         })
         .expect("expected layer");
     assert_eq!(layer.type_blocks.len(), 1);
+}
+
+#[test]
+fn parses_interface_type_blocks() {
+    let source = r#"
+interface Drawable {
+    fn draw()
+    @type {
+        draw: () -> Int
+    }
+}
+"#;
+    let result = parse_program(source);
+    assert!(
+        result.errors.is_empty(),
+        "parser errors: {:?}",
+        result.errors
+    );
+    let Item::Interface(interface_def) = &result.program.items[0] else {
+        panic!("expected interface");
+    };
+    assert_eq!(interface_def.methods.len(), 1);
+    assert_eq!(interface_def.type_blocks.len(), 1);
+}
+
+#[test]
+fn parses_function_scope_type_blocks() {
+    let source = r#"
+fn main() {
+    @type {
+        head: Node??
+    }
+    let head = None
+    return head
+}
+"#;
+    let result = parse_program(source);
+    assert!(
+        result.errors.is_empty(),
+        "parser errors: {:?}",
+        result.errors
+    );
+    let Item::Fn(function) = &result.program.items[0] else {
+        panic!("expected function");
+    };
+    let body = function.body.as_ref().expect("expected body");
+    assert!(matches!(body.stmts.first(), Some(Stmt::TypeBlock(_))));
 }

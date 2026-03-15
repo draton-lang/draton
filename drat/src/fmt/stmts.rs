@@ -131,6 +131,7 @@ impl Printer {
                     self.write("}");
                 }
             }
+            Stmt::TypeBlock(type_block) => self.fmt_type_block(type_block),
         }
     }
 

@@ -84,11 +84,33 @@ import { http as nethttp } from std.net
 - file/module scope
 - class scope
 - layer scope
+- interface scope
+- function scope
 
 Each scope uses the same declaration shape:
 
 ```draton
 @type {
     name: Type
+}
+```
+
+Canonical examples for the newly supported scopes:
+
+```draton
+fn parse_head() {
+    @type {
+        head: Node??
+    }
+    let head = None
+    return head
+}
+
+interface Drawable {
+    fn draw()
+
+    @type {
+        draw: () -> Int
+    }
 }
 ```

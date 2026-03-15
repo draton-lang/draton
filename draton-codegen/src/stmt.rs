@@ -66,7 +66,8 @@ impl<'ctx> CodeGen<'ctx> {
             },
             TypedStmtKind::AsmBlock(_)
             | TypedStmtKind::IfCompile(_)
-            | TypedStmtKind::GcConfig(_) => Ok(None),
+            | TypedStmtKind::GcConfig(_)
+            | TypedStmtKind::TypeBlock(_) => Ok(None),
         }
     }
 
@@ -239,7 +240,10 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    fn emit_if_stmt(&mut self, stmt: &TypedIfStmt) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+    fn emit_if_stmt(
+        &mut self,
+        stmt: &TypedIfStmt,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
         let function = self.current_function()?;
         let cond = self.emit_expr(&stmt.condition)?.ok_or_else(|| {
             CodeGenError::UnsupportedStmt("if condition without value".to_string())

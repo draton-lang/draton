@@ -4,7 +4,8 @@ use draton_typeck::{
     typed_ast::{
         TypedClassDef, TypedDestructureBinding, TypedElseBranch, TypedForStmt, TypedGcConfigEntry,
         TypedGcConfigStmt, TypedIfCompileStmt, TypedIfStmt, TypedLetDestructureStmt, TypedLetStmt,
-        TypedMatchArm, TypedReturnStmt, TypedSpawnBody, TypedSpawnStmt, TypedWhileStmt,
+        TypedMatchArm, TypedReturnStmt, TypedSpawnBody, TypedSpawnStmt, TypedTypeBlock,
+        TypedTypeMember, TypedWhileStmt,
     },
     Type, TypedBlock, TypedExpr, TypedExprKind, TypedFStrPart, TypedFnDef, TypedItem,
     TypedMatchArmBody, TypedParam, TypedProgram, TypedStmt, TypedStmtKind,
@@ -236,7 +237,8 @@ impl MonoCollector {
             | TypedStmtKind::ComptimeBlock(block) => self.visit_block(block, subst),
             TypedStmtKind::AsmBlock(_)
             | TypedStmtKind::IfCompile(_)
-            | TypedStmtKind::GcConfig(_) => {}
+            | TypedStmtKind::GcConfig(_)
+            | TypedStmtKind::TypeBlock(_) => {}
         }
     }
 
@@ -730,10 +732,37 @@ fn substitute_stmt(
                 .collect(),
             span: config.span,
         }),
+        TypedStmtKind::TypeBlock(type_block) => {
+            TypedStmtKind::TypeBlock(substitute_type_block(type_block, subst, self_class))
+        }
     };
     TypedStmt {
         kind,
         span: stmt.span,
+    }
+}
+
+fn substitute_type_block(
+    type_block: &TypedTypeBlock,
+    subst: &HashMap<u32, Type>,
+    self_class: Option<(&str, &str)>,
+) -> TypedTypeBlock {
+    TypedTypeBlock {
+        members: type_block
+            .members
+            .iter()
+            .map(|member| match member {
+                TypedTypeMember::Binding { name, ty, span } => TypedTypeMember::Binding {
+                    name: name.clone(),
+                    ty: materialize_type(ty, subst, self_class),
+                    span: *span,
+                },
+                TypedTypeMember::Function(function) => TypedTypeMember::Function(
+                    specialize_function(function, subst, self_class, None),
+                ),
+            })
+            .collect(),
+        span: type_block.span,
     }
 }
 

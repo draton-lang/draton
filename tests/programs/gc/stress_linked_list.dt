@@ -10,7 +10,10 @@ class Node {
 }
 
 fn make_list(n) {
-    let mut head: Node?? = None
+    @type {
+        head: Node??
+    }
+    let mut head = None
     let mut i = 0
     while i < n {
         head = Some(Node { value: i, next: head })

@@ -1,4 +1,5 @@
 use crate::expr::Expr;
+use crate::item::TypeBlock;
 use crate::Span;
 use crate::TypeExpr;
 
@@ -37,6 +38,8 @@ pub enum Stmt {
     IfCompile(IfCompileStmt),
     /// A GC configuration block.
     GcConfig(GcConfigStmt),
+    /// A local `@type` block.
+    TypeBlock(TypeBlock),
 }
 
 /// A block of statements.

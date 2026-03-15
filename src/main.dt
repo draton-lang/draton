@@ -5,39 +5,47 @@ import { tokenize, new_parser, parser_parse, ast_dump_program, lex_error_message
          str_eq_type }
 
 class ParsedArgs {
-    let mut source_path: String
-    let mut positional: Array[String]
-    let mut flags: Array[String]
-    let mut named_keys: Array[String]
-    let mut named_values: Array[String]
+    let mut source_path
+    let mut positional
+    let mut flags
+    let mut named_keys
+    let mut named_values
+
+    @type {
+        source_path: String
+        positional: Array[String]
+        flags: Array[String]
+        named_keys: Array[String]
+        named_values: Array[String]
+    }
 }
 
 @type {
-    fn main() -> Int
-    fn cmd_build(args: Array[String]) -> Int
-    fn cmd_run(args: Array[String]) -> Int
-    fn cmd_check(args: Array[String]) -> Int
-    fn cmd_ast_dump(path: String) -> Int
-    fn cmd_type_dump(path: String) -> Int
-    fn parse_args(args: Array[String]) -> ParsedArgs
-    fn parsed_args_has_flag(opts: ParsedArgs, flag: String) -> Bool
-    fn parsed_args_flag_value(opts: ParsedArgs, key: String) -> String
-    fn parsed_args_trailing_args(opts: ParsedArgs) -> Array[String]
-    fn collect_cli_args(start: Int) -> Array[String]
-    fn print_pipeline_error(err: PipelineError)
-    fn print_usage() -> Unit
-    fn join_lex_errors(errors: Array[LexError]) -> String
-    fn join_parse_errors(errors: Array[ParseError]) -> String
-    fn join_type_errors(errors: Array[TypeError]) -> String
-    fn str_eq_main(a: String, b: String) -> Bool
-    fn str_starts_with_main(value: String, prefix: String) -> Bool
-    fn arg_takes_value(arg: String) -> Bool
-    fn cli_argc() -> Int
-    fn cli_arg(index: Int) -> String
-    fn read_file(path: String) -> String
+    main: () -> Int
+    cmd_build: (Array[String]) -> Int
+    cmd_run: (Array[String]) -> Int
+    cmd_check: (Array[String]) -> Int
+    cmd_ast_dump: (String) -> Int
+    cmd_type_dump: (String) -> Int
+    parse_args: (Array[String]) -> ParsedArgs
+    parsed_args_has_flag: (ParsedArgs, String) -> Bool
+    parsed_args_flag_value: (ParsedArgs, String) -> String
+    parsed_args_trailing_args: (ParsedArgs) -> Array[String]
+    collect_cli_args: (Int) -> Array[String]
+    print_pipeline_error: (PipelineError) -> Unit
+    print_usage: () -> Unit
+    join_lex_errors: (Array[LexError]) -> String
+    join_parse_errors: (Array[ParseError]) -> String
+    join_type_errors: (Array[TypeError]) -> String
+    str_eq_main: (String, String) -> Bool
+    str_starts_with_main: (String, String) -> Bool
+    arg_takes_value: (String) -> Bool
+    cli_argc: () -> Int
+    cli_arg: (Int) -> String
+    read_file: (String) -> String
 }
 
-fn main() -> Int {
+fn main() {
     if cli_argc() < 2 {
         print_usage()
         return 1
@@ -75,7 +83,7 @@ fn main() -> Int {
     1
 }
 
-fn cmd_build(args: Array[String]) -> Int {
+fn cmd_build(args) {
     let opts = parse_args(args)
     if str_len(opts.source_path) == 0 {
         print("error: no source file specified")
@@ -125,7 +133,7 @@ fn cmd_build(args: Array[String]) -> Int {
     1
 }
 
-fn cmd_run(args: Array[String]) -> Int {
+fn cmd_run(args) {
     let opts = parse_args(args)
     if str_len(opts.source_path) == 0 {
         print("error: no source file specified")
@@ -153,7 +161,7 @@ fn cmd_run(args: Array[String]) -> Int {
     pipeline_exec_binary(result.output.binary_path, parsed_args_trailing_args(opts))
 }
 
-fn cmd_check(args: Array[String]) -> Int {
+fn cmd_check(args) {
     let opts = parse_args(args)
     if str_len(opts.source_path) == 0 {
         print("error: no source file specified")
@@ -178,7 +186,7 @@ fn cmd_check(args: Array[String]) -> Int {
     1
 }
 
-fn cmd_ast_dump(path: String) -> Int {
+fn cmd_ast_dump(path) {
     let source = read_file(path)
     let lexed = tokenize(source)
     if lexed.errors.len() > 0 {
@@ -194,7 +202,7 @@ fn cmd_ast_dump(path: String) -> Int {
     0
 }
 
-fn cmd_type_dump(path: String) -> Int {
+fn cmd_type_dump(path) {
     let source = read_file(path)
     let lexed = tokenize(source)
     if lexed.errors.len() > 0 {
@@ -215,12 +223,18 @@ fn cmd_type_dump(path: String) -> Int {
     0
 }
 
-fn parse_args(args: Array[String]) {
+fn parse_args(args) {
+    @type {
+        positional: Array[String]
+        flags: Array[String]
+        named_keys: Array[String]
+        named_values: Array[String]
+    }
     let parsed = ParsedArgs()
-    let positional: Array[String] = []
-    let flags: Array[String] = []
-    let named_keys: Array[String] = []
-    let named_values: Array[String] = []
+    let positional = []
+    let flags = []
+    let named_keys = []
+    let named_values = []
     parsed.source_path = ""
     parsed.positional = positional
     parsed.flags = flags
@@ -254,7 +268,7 @@ fn parse_args(args: Array[String]) {
     parsed
 }
 
-fn parsed_args_has_flag(opts: ParsedArgs, flag: String) {
+fn parsed_args_has_flag(opts, flag) {
     let mut i = 0
     while i < opts.flags.len() {
         if str_eq_main(opts.flags[i], flag) {
@@ -265,7 +279,7 @@ fn parsed_args_has_flag(opts: ParsedArgs, flag: String) {
     false
 }
 
-fn parsed_args_flag_value(opts: ParsedArgs, key: String) {
+fn parsed_args_flag_value(opts, key) {
     let mut i = 0
     while i < opts.named_keys.len() {
         if str_eq_main(opts.named_keys[i], key) {
@@ -276,8 +290,11 @@ fn parsed_args_flag_value(opts: ParsedArgs, key: String) {
     ""
 }
 
-fn parsed_args_trailing_args(opts: ParsedArgs) {
-    let out: Array[String] = []
+fn parsed_args_trailing_args(opts) {
+    @type {
+        out: Array[String]
+    }
+    let out = []
     let mut i = 1
     while i < opts.positional.len() {
         out.push(opts.positional[i])
@@ -286,8 +303,11 @@ fn parsed_args_trailing_args(opts: ParsedArgs) {
     out
 }
 
-fn collect_cli_args(start: Int) {
-    let out: Array[String] = []
+fn collect_cli_args(start) {
+    @type {
+        out: Array[String]
+    }
+    let out = []
     let mut i = start
     while i < cli_argc() {
         out.push(cli_arg(i))
@@ -296,7 +316,7 @@ fn collect_cli_args(start: Int) {
     out
 }
 
-fn print_pipeline_error(err: PipelineError) {
+fn print_pipeline_error(err) {
     if str_eq_main(err.kind, "Io") || str_eq_main(err.kind, "CodeGen") || str_eq_main(err.kind, "Link") {
         print(str_concat(err.kind, str_concat(": ", err.message)))
         return
@@ -316,7 +336,7 @@ fn print_pipeline_error(err: PipelineError) {
     }
 }
 
-fn print_usage() -> Unit {
+fn print_usage() {
     print("usage: draton-selfhost build|run|check|ast-dump|type-dump [options] <file.dt>")
     print("  build <file.dt> [-o output] [--out-dir dir] [--emit-ir] [--release|--size|--fast]")
     print("  run <file.dt> [program args...]")
@@ -324,7 +344,7 @@ fn print_usage() -> Unit {
     let _done = 0
 }
 
-fn join_lex_errors(errors: Array[LexError]) -> String {
+fn join_lex_errors(errors) {
     let mut out = ""
     let mut i = 0
     while i < errors.len() {
@@ -339,7 +359,7 @@ fn join_lex_errors(errors: Array[LexError]) -> String {
     out
 }
 
-fn join_parse_errors(errors: Array[ParseError]) -> String {
+fn join_parse_errors(errors) {
     let mut out = ""
     let mut i = 0
     while i < errors.len() {
@@ -354,7 +374,7 @@ fn join_parse_errors(errors: Array[ParseError]) -> String {
     out
 }
 
-fn join_type_errors(errors: Array[TypeError]) -> String {
+fn join_type_errors(errors) {
     let mut out = ""
     let mut i = 0
     while i < errors.len() {
@@ -369,7 +389,7 @@ fn join_type_errors(errors: Array[TypeError]) -> String {
     out
 }
 
-fn str_eq_main(a: String, b: String) -> Bool {
+fn str_eq_main(a, b) {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {
@@ -381,7 +401,7 @@ fn str_eq_main(a: String, b: String) -> Bool {
     same
 }
 
-fn str_starts_with_main(value: String, prefix: String) {
+fn str_starts_with_main(value, prefix) {
     if str_len(prefix) > str_len(value) {
         return false
     }
@@ -395,6 +415,6 @@ fn str_starts_with_main(value: String, prefix: String) {
     true
 }
 
-fn arg_takes_value(arg: String) {
+fn arg_takes_value(arg) {
     str_eq_main(arg, "-o") || str_eq_main(arg, "--out-dir") || str_eq_main(arg, "--target")
 }

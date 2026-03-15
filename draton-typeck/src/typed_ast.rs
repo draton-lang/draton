@@ -82,6 +82,7 @@ pub struct TypedFieldDef {
 pub struct TypedInterfaceDef {
     pub name: String,
     pub methods: Vec<TypedFnDef>,
+    pub type_blocks: Vec<TypedTypeBlock>,
     pub span: Span,
 }
 
@@ -199,6 +200,8 @@ pub enum TypedStmtKind {
     IfCompile(TypedIfCompileStmt),
     /// A typed GC config block.
     GcConfig(TypedGcConfigStmt),
+    /// A typed local `@type` block.
+    TypeBlock(TypedTypeBlock),
 }
 
 /// A typed let statement.

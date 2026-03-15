@@ -54,6 +54,7 @@ impl Parser {
             TokenKind::AtAsm => self.parse_asm_block(),
             TokenKind::AtIf => self.parse_if_compile_stmt().map(Stmt::IfCompile),
             TokenKind::AtGcConfig => self.parse_gc_config_stmt().map(Stmt::GcConfig),
+            TokenKind::AtType => self.parse_type_block().map(Stmt::TypeBlock),
             TokenKind::LBrace => self.parse_block().map(Stmt::Block),
             _ => self.parse_expr_stmt_or_assignment(),
         }

@@ -344,3 +344,52 @@ fn add(a: Int) -> Int {
         TypeError::DeprecatedSyntax { syntax, .. } if syntax.contains("let type")
     )));
 }
+
+#[test]
+fn function_scope_type_block_guides_local_bindings() {
+    let result = parse_and_check(
+        r#"
+class Node {
+    let next
+    @type {
+        next: Node??
+    }
+}
+@type {
+    main: () -> Int
+}
+fn main() {
+    @type {
+        head: Node??
+    }
+    let head
+    return 0
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+}
+
+#[test]
+fn interface_type_block_defines_canonical_contracts() {
+    let result = parse_and_check(
+        r#"
+interface Drawable {
+    fn draw()
+    @type {
+        draw: () -> Int
+    }
+}
+class Rect implements Drawable {
+    fn draw() { return 1 }
+}
+@type {
+    render: (Drawable) -> Int
+}
+fn render(d) {
+    return d.draw()
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+}

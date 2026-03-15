@@ -378,12 +378,30 @@ impl Parser {
         }
 
         let mut methods = Vec::new();
+        let mut type_blocks = Vec::new();
         while !self.is_eof() && !self.check(TokenKind::RBrace) {
-            if let Some(method) = self.parse_fn_def(false, false) {
-                methods.push(method);
-                self.optional_semicolon();
-            } else {
-                self.synchronize_stmt();
+            self.skip_doc_comments();
+            match self.current_kind() {
+                TokenKind::Fn => {
+                    if let Some(method) = self.parse_fn_def(false, false) {
+                        methods.push(method);
+                        self.optional_semicolon();
+                    } else {
+                        self.synchronize_stmt();
+                    }
+                }
+                TokenKind::AtType => {
+                    if let Some(type_block) = self.parse_type_block() {
+                        type_blocks.push(type_block);
+                    } else {
+                        self.synchronize_stmt();
+                    }
+                }
+                _ => {
+                    let token = self.current_token().clone();
+                    self.error_unexpected(&token, "interface member");
+                    self.synchronize_stmt();
+                }
             }
         }
 
@@ -392,6 +410,7 @@ impl Parser {
         Some(InterfaceDef {
             name,
             methods,
+            type_blocks,
             span: self.merge_spans(start, end),
         })
     }
@@ -544,7 +563,7 @@ impl Parser {
         })
     }
 
-    fn parse_type_block(&mut self) -> Option<TypeBlock> {
+    pub(crate) fn parse_type_block(&mut self) -> Option<TypeBlock> {
         let start = self.token_span();
         if !self.expect(TokenKind::AtType, "@type") {
             return None;
@@ -671,7 +690,11 @@ impl Parser {
         let _ = self.expect(TokenKind::Arrow, "->");
         let ret = self.parse_type_expr()?;
         let end = ret.span();
-        Some(TypeExpr::Fn(params, Box::new(ret), self.merge_spans(start, end)))
+        Some(TypeExpr::Fn(
+            params,
+            Box::new(ret),
+            self.merge_spans(start, end),
+        ))
     }
 
     fn parse_paren_type_expr(&mut self, start: Span) -> Option<TypeExpr> {
@@ -689,7 +712,11 @@ impl Parser {
         if self.match_kind(TokenKind::Arrow) {
             let ret = self.parse_type_expr()?;
             let end = ret.span();
-            return Some(TypeExpr::Fn(params, Box::new(ret), self.merge_spans(start, end)));
+            return Some(TypeExpr::Fn(
+                params,
+                Box::new(ret),
+                self.merge_spans(start, end),
+            ));
         }
         match params.as_slice() {
             [single] => Some(single.clone()),

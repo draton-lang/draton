@@ -238,7 +238,7 @@ impl Printer {
         self.write("}");
     }
 
-    fn fmt_type_block(&mut self, type_block: &TypeBlock) {
+    pub(crate) fn fmt_type_block(&mut self, type_block: &TypeBlock) {
         self.write("@type {");
         self.newline();
         self.push_indent();

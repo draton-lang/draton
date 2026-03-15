@@ -179,6 +179,8 @@ drat run --strict-syntax examples/hello.dt
 
 Strict mode currently targets the Rust frontend/tooling path. The self-host mirror is closer to canonical syntax than before, but it does not yet have full semantic parity for every `@type` workflow.
 
+Canonical `@type` blocks are currently supported at file, class, layer, interface, and function scope in the Rust frontend/tooling path.
+
 ### Enums and pattern matching
 
 ```draton

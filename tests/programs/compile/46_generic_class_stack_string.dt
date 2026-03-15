@@ -1,6 +1,10 @@
 // RUN: compile
 class Stack[T] {
-    let items: Array[T]
+    let items
+    @type {
+        items: Array[T]
+        len: () -> Int
+    }
     fn len() { 0 }
 }
 @type { main: (Stack[String]) -> Int }

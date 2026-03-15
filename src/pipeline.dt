@@ -4,39 +4,53 @@ import { tokenize, new_parser, parser_parse, lex_error_message, parse_error_mess
          session_binary_path, str_eq_type }
 
 class PipelineError {
-    let mut kind: String
-    let mut message: String
-    let mut errors: Array[String]
+    let mut kind
+    let mut message
+    let mut errors
+
+    @type {
+        kind: String
+        message: String
+        errors: Array[String]
+    }
 }
 
 class PipelineResult {
-    let mut ok: Bool
-    let mut output: CompileOutput
-    let mut pipeline_error: PipelineError
+    let mut ok
+    let mut output
+    let mut pipeline_error
+
+    @type {
+        ok: Bool
+        output: CompileOutput
+        pipeline_error: PipelineError
+    }
 }
 
 @type {
-    fn new_pipeline_error(kind: String, message: String, errors: Array[String]) -> PipelineError
-    fn pipeline_ok(output: CompileOutput) -> PipelineResult
-    fn pipeline_fail(err: PipelineError) -> PipelineResult
-    fn pipeline_empty_output() -> CompileOutput
-    fn run_pipeline(session: CompileSession) -> PipelineResult
-    fn run_check_only(session: CompileSession) -> PipelineResult
-    fn pipeline_exec_binary(binary_path: String, args: Array[String]) -> Int
-    fn pipeline_collect_lex_errors(errors: Array[LexError]) -> Array[String]
-    fn pipeline_collect_parse_errors(errors: Array[ParseError]) -> Array[String]
-    fn pipeline_collect_type_errors(errors: Array[TypeError]) -> Array[String]
-    fn pipeline_join_shell_command(path: String, args: Array[String]) -> String
-    fn pipeline_quote_shell_arg(value: String) -> String
-    fn pipeline_bool_to_int(value: Bool) -> Int
+    new_pipeline_error: (String, String, Array[String]) -> PipelineError
+    pipeline_ok: (CompileOutput) -> PipelineResult
+    pipeline_fail: (PipelineError) -> PipelineResult
+    pipeline_empty_output: () -> CompileOutput
+    run_pipeline: (CompileSession) -> PipelineResult
+    run_check_only: (CompileSession) -> PipelineResult
+    pipeline_exec_binary: (String, Array[String]) -> Int
+    pipeline_collect_lex_errors: (Array[LexError]) -> Array[String]
+    pipeline_collect_parse_errors: (Array[ParseError]) -> Array[String]
+    pipeline_collect_type_errors: (Array[TypeError]) -> Array[String]
+    pipeline_join_shell_command: (String, Array[String]) -> String
+    pipeline_quote_shell_arg: (String) -> String
+    pipeline_bool_to_int: (Bool) -> Int
+    draton_host_build_source: (String, String, String, String, String, Int) -> String
+    draton_shell_run: (String) -> Int
 }
 
 @extern "C" {
-    fn draton_host_build_source(source_path: String, ir_path: String, object_path: String, binary_path: String, mode: String, emit_ir: Int) -> String
-    fn draton_shell_run(cmd: String) -> Int
+    fn draton_host_build_source(source_path, ir_path, object_path, binary_path, mode, emit_ir)
+    fn draton_shell_run(cmd)
 }
 
-fn new_pipeline_error(kind: String, message: String, errors: Array[String]) {
+fn new_pipeline_error(kind, message, errors) {
     let err = PipelineError()
     err.kind = kind
     err.message = message
@@ -44,7 +58,7 @@ fn new_pipeline_error(kind: String, message: String, errors: Array[String]) {
     err
 }
 
-fn pipeline_ok(output: CompileOutput) {
+fn pipeline_ok(output) {
     let result = PipelineResult()
     result.ok = true
     result.output = output
@@ -52,7 +66,7 @@ fn pipeline_ok(output: CompileOutput) {
     result
 }
 
-fn pipeline_fail(err: PipelineError) {
+fn pipeline_fail(err) {
     let result = PipelineResult()
     result.ok = false
     result.output = pipeline_empty_output()
@@ -64,7 +78,7 @@ fn pipeline_empty_output() {
     new_compile_output("", false, "", "")
 }
 
-fn run_pipeline(session: CompileSession) {
+fn run_pipeline(session) {
     let source = read_file(session.source_path)
     if str_len(source) == 0 {
         return pipeline_fail(new_pipeline_error("Io", str_concat("khong the doc ", session.source_path), []))
@@ -103,7 +117,7 @@ fn run_pipeline(session: CompileSession) {
     pipeline_ok(new_compile_output(ir_path, session.emit_ir, obj_path, bin_path))
 }
 
-fn run_check_only(session: CompileSession) {
+fn run_check_only(session) {
     let source = read_file(session.source_path)
     if str_len(source) == 0 {
         return pipeline_fail(new_pipeline_error("Io", str_concat("khong the doc ", session.source_path), []))
@@ -127,12 +141,15 @@ fn run_check_only(session: CompileSession) {
     pipeline_ok(pipeline_empty_output())
 }
 
-fn pipeline_exec_binary(binary_path: String, args: Array[String]) {
+fn pipeline_exec_binary(binary_path, args) {
     draton_shell_run(pipeline_join_shell_command(binary_path, args))
 }
 
-fn pipeline_collect_lex_errors(errors: Array[LexError]) {
-    let out: Array[String] = []
+fn pipeline_collect_lex_errors(errors) {
+    @type {
+        out: Array[String]
+    }
+    let out = []
     let mut i = 0
     while i < errors.len() {
         out.push(lex_error_message(errors[i]))
@@ -141,8 +158,11 @@ fn pipeline_collect_lex_errors(errors: Array[LexError]) {
     out
 }
 
-fn pipeline_collect_parse_errors(errors: Array[ParseError]) {
-    let out: Array[String] = []
+fn pipeline_collect_parse_errors(errors) {
+    @type {
+        out: Array[String]
+    }
+    let out = []
     let mut i = 0
     while i < errors.len() {
         out.push(parse_error_message(errors[i]))
@@ -151,8 +171,11 @@ fn pipeline_collect_parse_errors(errors: Array[ParseError]) {
     out
 }
 
-fn pipeline_collect_type_errors(errors: Array[TypeError]) {
-    let out: Array[String] = []
+fn pipeline_collect_type_errors(errors) {
+    @type {
+        out: Array[String]
+    }
+    let out = []
     let mut i = 0
     while i < errors.len() {
         out.push(type_error_message(errors[i]))
@@ -161,7 +184,7 @@ fn pipeline_collect_type_errors(errors: Array[TypeError]) {
     out
 }
 
-fn pipeline_join_shell_command(path: String, args: Array[String]) {
+fn pipeline_join_shell_command(path, args) {
     let mut cmd = pipeline_quote_shell_arg(path)
     let mut i = 0
     while i < args.len() {
@@ -171,7 +194,7 @@ fn pipeline_join_shell_command(path: String, args: Array[String]) {
     cmd
 }
 
-fn pipeline_quote_shell_arg(value: String) {
+fn pipeline_quote_shell_arg(value) {
     let mut out = "'"
     let mut i = 0
     while i < str_len(value) {
@@ -186,7 +209,7 @@ fn pipeline_quote_shell_arg(value: String) {
     str_concat(out, "'")
 }
 
-fn pipeline_bool_to_int(value: Bool) {
+fn pipeline_bool_to_int(value) {
     if value {
         return 1
     }

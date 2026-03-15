@@ -6,8 +6,8 @@ use draton_lexer::{LexError, Lexer};
 use draton_parser::{ParseError, Parser};
 use draton_typeck::{
     typed_ast::{TypedElseBranch, TypedSpawnBody, TypedTypeMember},
-    TypeCheckResult, TypeChecker, TypedBlock, TypedExpr, TypedExprKind, TypedFStrPart,
-    TypedFnDef, TypedItem, TypedMatchArmBody, TypedProgram, TypedStmt, TypedStmtKind,
+    TypeCheckResult, TypeChecker, TypedBlock, TypedExpr, TypedExprKind, TypedFStrPart, TypedFnDef,
+    TypedItem, TypedMatchArmBody, TypedProgram, TypedStmt, TypedStmtKind,
 };
 
 #[derive(Debug)]
@@ -126,9 +126,7 @@ fn collect_item_spans(text: &str, item: &TypedItem, out: &mut Vec<SpanType>) {
                 }
             }
         }
-        TypedItem::Enum(_)
-        | TypedItem::Error(_)
-        | TypedItem::Import(_) => {}
+        TypedItem::Enum(_) | TypedItem::Error(_) | TypedItem::Import(_) => {}
     }
 }
 
@@ -201,7 +199,7 @@ fn collect_stmt_spans(text: &str, stmt: &TypedStmt, out: &mut Vec<SpanType>) {
                 collect_expr_spans(text, &entry.value, out);
             }
         }
-        TypedStmtKind::AsmBlock(_) => {}
+        TypedStmtKind::AsmBlock(_) | TypedStmtKind::TypeBlock(_) => {}
     }
 }
 
@@ -228,9 +226,7 @@ fn collect_expr_spans(text: &str, expr: &TypedExpr, out: &mut Vec<SpanType>) {
                 }
             }
         }
-        TypedExprKind::Array(items)
-        | TypedExprKind::Set(items)
-        | TypedExprKind::Tuple(items) => {
+        TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
             for item in items {
                 collect_expr_spans(text, item, out);
             }
@@ -241,8 +237,7 @@ fn collect_expr_spans(text: &str, expr: &TypedExpr, out: &mut Vec<SpanType>) {
                 collect_expr_spans(text, value, out);
             }
         }
-        TypedExprKind::BinOp(lhs, _, rhs)
-        | TypedExprKind::Nullish(lhs, rhs) => {
+        TypedExprKind::BinOp(lhs, _, rhs) | TypedExprKind::Nullish(lhs, rhs) => {
             collect_expr_spans(text, lhs, out);
             collect_expr_spans(text, rhs, out);
         }
@@ -250,8 +245,7 @@ fn collect_expr_spans(text: &str, expr: &TypedExpr, out: &mut Vec<SpanType>) {
         | TypedExprKind::Cast(inner, _)
         | TypedExprKind::Ok(inner)
         | TypedExprKind::Err(inner) => collect_expr_spans(text, inner, out),
-        TypedExprKind::Call(callee, args)
-        | TypedExprKind::MethodCall(callee, _, args) => {
+        TypedExprKind::Call(callee, args) | TypedExprKind::MethodCall(callee, _, args) => {
             collect_expr_spans(text, callee, out);
             for arg in args {
                 collect_expr_spans(text, arg, out);
@@ -511,7 +505,7 @@ impl<'a> DefCollector<'a> {
                     self.collect_expr(&entry.value);
                 }
             }
-            Stmt::AsmBlock(_, _) => {}
+            Stmt::AsmBlock(_, _) | Stmt::TypeBlock(_) => {}
         }
     }
 

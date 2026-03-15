@@ -254,7 +254,8 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_struct_gep(env_ptr, index as u32, &format!("env.{}", capture.name))
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-            let captured_value = self.build_load(capture.storage, &format!("capture.{}", capture.name))?;
+            let captured_value =
+                self.build_load(capture.storage, &format!("capture.{}", capture.name))?;
             self.build_store(field_ptr, captured_value)?;
         }
         Ok(env_ptr)
@@ -307,7 +308,8 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_struct_gep(env_ptr, index as u32, &format!("env.load.{}", capture.name))
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                let captured_value = self.build_load(field_ptr, &format!("capture.{}", capture.name))?;
+                let captured_value =
+                    self.build_load(field_ptr, &format!("capture.{}", capture.name))?;
                 let storage = self.create_entry_alloca(
                     function,
                     captured_value.get_type(),
@@ -685,6 +687,6 @@ fn collect_captures_stmt<'ctx>(
                 collect_captures_expr(value, params, outer_locals, captures, seen);
             }
         }
-        TypedStmtKind::AsmBlock(_) => {}
+        TypedStmtKind::AsmBlock(_) | TypedStmtKind::TypeBlock(_) => {}
     }
 }

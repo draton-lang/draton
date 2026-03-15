@@ -1,37 +1,59 @@
 /// Time standard library module.
 
 pub class Timestamp {
-    raw: Int64
+    let raw
+
+    @type {
+        raw: Int64
+        unix: () -> Int64
+        format: (String) -> String
+    }
 
     /// Returns Unix epoch milliseconds.
-    pub fn unix() -> Int64 { self.raw }
+    pub fn unix() { return self.raw }
 
     /// Formats the timestamp using a strftime-like pattern.
-    pub fn format(fmt: String) -> String { __draton_std_time_format(self.raw, fmt) }
+    pub fn format(fmt) { return __draton_std_time_format(self.raw, fmt) }
 }
 
 pub class Duration {
-    raw: Int64
+    let raw
+
+    @type {
+        raw: Int64
+        ms: () -> Int64
+        seconds: () -> Float
+    }
 
     /// Returns milliseconds.
-    pub fn ms() -> Int64 { self.raw }
+    pub fn ms() { return self.raw }
 
     /// Returns seconds.
-    pub fn seconds() -> Float { self.raw as Float / 1000.0 }
+    pub fn seconds() { return self.raw as Float / 1000.0 }
+}
+
+@type {
+    __draton_std_time_now: () -> Timestamp
+    __draton_std_time_sleep: (Int) -> Unit
+    __draton_std_time_since: (Timestamp) -> Duration
+    __draton_std_time_format: (Int64, String) -> String
+    now: () -> Timestamp
+    sleep: (Int) -> Unit
+    since: (Timestamp) -> Duration
 }
 
 @extern "C" {
-    fn __draton_std_time_now() -> Timestamp
-    fn __draton_std_time_sleep(ms: Int)
-    fn __draton_std_time_since(ts: Timestamp) -> Duration
-    fn __draton_std_time_format(unix_ms: Int64, fmt: String) -> String
+    fn __draton_std_time_now()
+    fn __draton_std_time_sleep(ms)
+    fn __draton_std_time_since(ts)
+    fn __draton_std_time_format(unix_ms, fmt)
 }
 
 /// Returns the current timestamp.
-pub fn now() -> Timestamp { __draton_std_time_now() }
+pub fn now() { return __draton_std_time_now() }
 
 /// Sleeps for a number of milliseconds.
-pub fn sleep(ms: Int) { __draton_std_time_sleep(ms) }
+pub fn sleep(ms) { return __draton_std_time_sleep(ms) }
 
 /// Returns the time since a timestamp.
-pub fn since(ts: Timestamp) -> Duration { __draton_std_time_since(ts) }
+pub fn since(ts) { return __draton_std_time_since(ts) }
