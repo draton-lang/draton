@@ -361,6 +361,29 @@ fn main() -> Int {
 )
 
 case(
+    "fn type param",
+    """fn apply(f: fn(Int) -> Int, x: Int) -> Int { f(x) }
+fn main() -> Int {
+    apply(lambda x => x * 2, 21)
+}""",
+    exit=42,
+)
+
+case(
+    "fn type higher order",
+    """fn compose(f: fn(Int) -> Int, g: fn(Int) -> Int) -> fn(Int) -> Int {
+    lambda x => f(g(x))
+}
+fn main() -> Int {
+    let add1 = lambda x => x + 1
+    let mul2 = lambda x => x * 2
+    let f = compose(add1, mul2)
+    f(20)
+}""",
+    exit=41,
+)
+
+case(
     "print literal stdout",
     """fn main() {
     print("hello")

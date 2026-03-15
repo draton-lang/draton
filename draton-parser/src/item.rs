@@ -572,6 +572,25 @@ impl Parser {
         self.skip_doc_comments();
         let token = self.current_token().clone();
         match token.kind {
+            TokenKind::Fn => {
+                self.advance();
+                let start = self.convert_span(token.span);
+                let _ = self.expect(TokenKind::LParen, "(");
+                let mut params = Vec::new();
+                while !self.is_eof() && !self.check(TokenKind::RParen) {
+                    if let Some(param) = self.parse_type_expr() {
+                        params.push(param);
+                    }
+                    if !self.match_kind(TokenKind::Comma) {
+                        break;
+                    }
+                }
+                let _ = self.expect(TokenKind::RParen, ")");
+                let _ = self.expect(TokenKind::Arrow, "->");
+                let ret = self.parse_type_expr()?;
+                let end = ret.span();
+                Some(TypeExpr::Fn(params, Box::new(ret), self.merge_spans(start, end)))
+            }
             TokenKind::AtPointer => {
                 self.advance();
                 Some(TypeExpr::Pointer(self.convert_span(token.span)))

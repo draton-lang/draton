@@ -317,7 +317,9 @@ fn parse_class_literal_call(p: Parser, ident: Expr) -> Expr {
     }
     let end = parser_token_span(p)
     let _rbrace = parser_expect(p, "RBrace", "}")
-    expr_call(ident, [expr_map(entries, merge_spans(start, end))], merge_spans(start, end))
+    let args: Array[Expr] = []
+    args.push(expr_map(entries, merge_spans(start, end)))
+    expr_call(ident, args, merge_spans(start, end))
 }
 
 fn parse_arg_list(p: Parser) -> Array[Expr] {

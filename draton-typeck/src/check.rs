@@ -2894,6 +2894,14 @@ impl TypeChecker {
                     other => Type::Named(other.to_string(), resolved),
                 }
             }
+            TypeExpr::Fn(params, ret, _) => {
+                let resolved_params = params
+                    .iter()
+                    .map(|param| self.type_from_annotation(param))
+                    .collect::<Vec<_>>();
+                let resolved_ret = self.type_from_annotation(ret);
+                Type::Fn(resolved_params, Box::new(resolved_ret))
+            }
             TypeExpr::Pointer(_) => Type::Pointer(Box::new(self.fresh_var())),
             TypeExpr::Infer(_) => self.fresh_var(),
         }

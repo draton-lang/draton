@@ -231,10 +231,15 @@ fn infer_unop(c: Checker, op: String, expr: Expr, span: Span) {
 }
 
 fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) {
-    if expr_kind_is(callee, "Ident") && args.len() == 1 && expr_kind_is(args[0], "Map") && find_class_index(c, callee.name) >= 0 {
-        return infer_class_literal_call(c, callee.name, args[0], span)
-    }
     let callee_typed = infer_expr(c, callee)
+    if expr_kind_is(callee, "Ident") && args.len() == 1 && expr_kind_is(args[0], "Map") {
+        if str_eq_type(callee_typed.expr_ty.type_kind, "Named") {
+            return infer_class_literal_call(c, callee_typed.expr_ty.ty_name, args[0], span)
+        }
+        if find_class_index(c, callee.name) >= 0 {
+            return infer_class_literal_call(c, callee.name, args[0], span)
+        }
+    }
     let out = make_typed("Call", checker_fresh_var(c), span)
     let typed_args: Array[TypedExpr] = []
     let arg_types: Array[Type] = []
@@ -262,46 +267,75 @@ fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) {
 }
 
 fn infer_class_literal_call(c: Checker, class_name: String, field_map: Expr, span: Span) {
-    let out = make_typed("Call", ty_named(class_name, []), span)
-    out.call_callee = make_typed("Ident", ty_named(class_name, []), expr_span(field_map))
-    out.call_callee.ident_name = class_name
-    let map_arg = make_typed("Map", type_unit(), expr_span(field_map))
-    let entries: Array[TypedMapEntry] = []
-    map_arg.map_entries = entries
+    let empty_class_args: Array[Type] = []
+    let out = make_typed("ClassNew", ty_named(class_name, empty_class_args), span)
+    let field_names: Array[String] = []
+    let field_values: Array[TypedExpr] = []
+    out.class_name = class_name
+    out.field_names = field_names
+    out.field_values = field_values
     let idx = find_class_index(c, class_name)
     let raw_entries = field_map.entries
+    let mut matched: Array[Bool] = []
     let mut i = 0
     while i < raw_entries.len() {
-        let entry = TypedMapEntry()
-        let key_expr = raw_entries[i].key
-        let key_typed = infer_expr(c, key_expr)
-        entry.entry_key = key_typed
-        let mut field_name = ""
-        if expr_kind_is(key_expr, "StrLit") {
-            field_name = key_expr.string_value
-        }
-        let value_typed = infer_expr(c, raw_entries[i].value)
-        entry.entry_value = value_typed
-        if idx >= 0 {
-            let mut field_i = 0
+        matched.push(false)
+        i = i + 1
+    }
+    if idx >= 0 {
+        let mut field_i = 0
+        while field_i < c.class_field_names[idx].len() {
+            let field_name = c.class_field_names[idx][field_i]
+            let mut raw_i = 0
             let mut found = false
-            while field_i < c.class_field_names[idx].len() {
-                if str_eq_type(c.class_field_names[idx][field_i], field_name) {
+            while raw_i < raw_entries.len() {
+                let key_expr = raw_entries[raw_i].key
+                let mut key_name = ""
+                if expr_kind_is(key_expr, "StrLit") {
+                    key_name = key_expr.string_value
+                }
+                if str_eq_type(field_name, key_name) {
+                    let value_typed = infer_expr(c, raw_entries[raw_i].value)
                     checker_unify(c, value_typed.expr_ty, c.class_field_types[idx][field_i], span)
+                    out.field_names.push(field_name)
+                    out.field_values.push(value_typed)
+                    matched[raw_i] = true
                     found = true
-                    field_i = c.class_field_names[idx].len()
+                    raw_i = raw_entries.len()
                 } else {
-                    field_i = field_i + 1
+                    raw_i = raw_i + 1
                 }
             }
             if !found {
                 c.errors.push(undefined_field_error(field_name, class_name, span.line, span.col))
             }
+            field_i = field_i + 1
         }
-        map_arg.map_entries.push(entry)
-        i = i + 1
+        i = 0
+        while i < raw_entries.len() {
+            if !matched[i] {
+                let key_expr = raw_entries[i].key
+                let mut key_name = ""
+                if expr_kind_is(key_expr, "StrLit") {
+                    key_name = key_expr.string_value
+                }
+                c.errors.push(undefined_field_error(key_name, class_name, span.line, span.col))
+            }
+            i = i + 1
+        }
+    } else {
+        i = 0
+        while i < raw_entries.len() {
+            let key_expr = raw_entries[i].key
+            let mut field_name = ""
+            if expr_kind_is(key_expr, "StrLit") {
+                field_name = key_expr.string_value
+            }
+            out.field_names.push(field_name)
+            out.field_values.push(infer_expr(c, raw_entries[i].value))
+            i = i + 1
+        }
     }
-    out.call_args.push(map_arg)
     out
 }
 

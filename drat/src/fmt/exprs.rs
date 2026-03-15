@@ -21,6 +21,17 @@ impl Printer {
                 }
                 self.write("]");
             }
+            TypeExpr::Fn(params, ret, _) => {
+                self.write("fn(");
+                for (index, param) in params.iter().enumerate() {
+                    if index > 0 {
+                        self.write(", ");
+                    }
+                    self.fmt_type_expr(param);
+                }
+                self.write(") -> ");
+                self.fmt_type_expr(ret);
+            }
             TypeExpr::Pointer(_) => self.write("@pointer"),
             TypeExpr::Infer(_) => self.write("_"),
         }

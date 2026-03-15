@@ -1,4 +1,4 @@
-import { TypeExpr, type_named, type_generic, type_pointer, type_infer, Parser,
+import { TypeExpr, type_named, type_generic, type_fn_expr, type_pointer, type_infer, Parser,
          parser_current, parser_advance, parser_match_kind, parser_expect, parser_error_unexpected,
          parser_token_span, merge_spans, token_to_span, parser_is_eof, parser_check,
          parser_skip_doc_comments }
@@ -13,7 +13,23 @@ fn parse_type_expr(p: Parser) -> TypeExpr {
     let token = parser_current(p)
     let mut ty = type_infer(token_to_span(token))
 
-    if str_eq_type_kind(token.kind, "AtPointer") {
+    if str_eq_type_kind(token.kind, "Fn") {
+        let start = token_to_span(token)
+        let _advanced = parser_advance(p)
+        let _lparen = parser_expect(p, "LParen", "(")
+        let params: Array[TypeExpr] = []
+        let mut done = false
+        while !parser_is_eof(p) && !parser_check(p, "RParen") && !done {
+            params.push(parse_type_expr(p))
+            if !parser_match_kind(p, "Comma") {
+                done = true
+            }
+        }
+        let _rparen = parser_expect(p, "RParen", ")")
+        let _arrow = parser_expect(p, "Arrow", "->")
+        let ret = parse_type_expr(p)
+        ty = type_fn_expr(params, ret, merge_spans(start, type_expr_span(ret)))
+    } else if str_eq_type_kind(token.kind, "AtPointer") {
         let _advanced = parser_advance(p)
         ty = type_pointer(token_to_span(token))
     } else if str_eq_type_kind(token.kind, "Ident") {

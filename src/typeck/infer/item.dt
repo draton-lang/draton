@@ -47,6 +47,76 @@ class TypeCheckResult {
     fn checker_define_class(c: Checker, name: String, field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme])
 }
 
+fn predeclare_fn_scheme(c: Checker, fn_def: FnDef, current_class: String) -> Scheme {
+    let params: Array[Type] = []
+    let empty_class_args: Array[Type] = []
+    let mut i = 0
+    while i < fn_def.params.len() {
+        let param = fn_def.params[i]
+        if str_len(current_class) != 0 && str_eq_type(param.name, "self") {
+            params.push(ty_named(current_class, empty_class_args))
+        } else if param.has_type_hint {
+            params.push(type_from_annotation(c, param.type_hint))
+        } else {
+            params.push(checker_fresh_var(c))
+        }
+        i = i + 1
+    }
+    let mut ret = checker_fresh_var(c)
+    if fn_def.has_ret_type {
+        ret = type_from_annotation(c, fn_def.ret_type)
+    }
+    mono_scheme(type_fn(params, ret))
+}
+
+fn predeclare_class(c: Checker, def: ClassDef) -> Unit {
+    let field_names: Array[String] = []
+    let field_types: Array[Type] = []
+    let method_names: Array[String] = []
+    let method_schemes: Array[Scheme] = []
+    if def.has_extends {
+        let parent_idx = find_class_index(c, def.extends_name)
+        if parent_idx >= 0 {
+            let mut parent_i = 0
+            while parent_i < c.class_field_names[parent_idx].len() {
+                field_names.push(c.class_field_names[parent_idx][parent_i])
+                field_types.push(c.class_field_types[parent_idx][parent_i])
+                parent_i = parent_i + 1
+            }
+            parent_i = 0
+            while parent_i < c.class_method_names[parent_idx].len() {
+                method_names.push(c.class_method_names[parent_idx][parent_i])
+                method_schemes.push(c.class_method_schemes[parent_idx][parent_i])
+                parent_i = parent_i + 1
+            }
+        }
+    }
+    let mut i = 0
+    while i < def.members.len() {
+        if class_member_kind_is(def.members[i], "Field") {
+            field_names.push(def.members[i].field_def.name)
+            if def.members[i].field_def.has_type_hint {
+                field_types.push(type_from_annotation(c, def.members[i].field_def.type_hint))
+            } else {
+                field_types.push(checker_fresh_var(c))
+            }
+        } else if class_member_kind_is(def.members[i], "Method") {
+            method_names.push(def.members[i].method_def.name)
+            method_schemes.push(predeclare_fn_scheme(c, def.members[i].method_def, def.name))
+        } else {
+            let mut j = 0
+            while j < def.members[i].layer_def.methods.len() {
+                method_names.push(def.members[i].layer_def.methods[j].name)
+                method_schemes.push(predeclare_fn_scheme(c, def.members[i].layer_def.methods[j], def.name))
+                j = j + 1
+            }
+        }
+        i = i + 1
+    }
+    checker_define_class(c, def.name, field_names, field_types, method_names, method_schemes)
+    let _done = 0
+}
+
 fn new_checker() {
     let c = Checker()
     let errors: Array[TypeError] = []
@@ -398,7 +468,9 @@ fn infer_type_block(c: Checker, def: TypeBlockDef) {
 fn predeclare_items(c: Checker, program: Program) {
     let mut i = 0
     while i < program.items.len() {
-        if item_kind_is(program.items[i], "Fn") {
+        if item_kind_is(program.items[i], "Class") {
+            predeclare_class(c, program.items[i].class_def)
+        } else if item_kind_is(program.items[i], "Fn") {
             let params: Array[Type] = []
             let mut j = 0
             while j < program.items[i].fn_def.params.len() {
@@ -414,6 +486,39 @@ fn predeclare_items(c: Checker, program: Program) {
                 ret = type_from_annotation(c, program.items[i].fn_def.ret_type)
             }
             env_define(c.env, program.items[i].fn_def.name, mono_scheme(type_fn(params, ret)))
+        } else if item_kind_is(program.items[i], "PanicHandler") {
+            env_define(c.env, program.items[i].panic_handler_def.name, predeclare_fn_scheme(c, program.items[i].panic_handler_def, ""))
+        } else if item_kind_is(program.items[i], "OomHandler") {
+            env_define(c.env, program.items[i].oom_handler_def.name, predeclare_fn_scheme(c, program.items[i].oom_handler_def, ""))
+        } else if item_kind_is(program.items[i], "Extern") {
+            let mut j = 0
+            while j < program.items[i].extern_block.functions.len() {
+                env_define(c.env, program.items[i].extern_block.functions[j].name, predeclare_fn_scheme(c, program.items[i].extern_block.functions[j], ""))
+                j = j + 1
+            }
+        } else if item_kind_is(program.items[i], "Const") {
+            env_define(c.env, program.items[i].const_def.name, mono_scheme(checker_fresh_var(c)))
+        } else if item_kind_is(program.items[i], "Enum") {
+            let empty_named_args: Array[Type] = []
+            env_define(c.env, program.items[i].enum_def.name, mono_scheme(ty_named(program.items[i].enum_def.name, empty_named_args)))
+            let mut j = 0
+            while j < program.items[i].enum_def.variants.len() {
+                env_define(c.env, program.items[i].enum_def.variants[j], mono_scheme(ty_named(program.items[i].enum_def.name, empty_named_args)))
+                j = j + 1
+            }
+        } else if item_kind_is(program.items[i], "Error") {
+            let params: Array[Type] = []
+            let empty_named_args: Array[Type] = []
+            let mut j = 0
+            while j < program.items[i].error_def.fields.len() {
+                if program.items[i].error_def.fields[j].has_type_hint {
+                    params.push(type_from_annotation(c, program.items[i].error_def.fields[j].type_hint))
+                } else {
+                    params.push(checker_fresh_var(c))
+                }
+                j = j + 1
+            }
+            env_define(c.env, program.items[i].error_def.name, mono_scheme(type_fn(params, ty_named(program.items[i].error_def.name, empty_named_args))))
         }
         i = i + 1
     }
@@ -482,6 +587,15 @@ fn type_from_annotation(c: Checker, ty_expr: TypeExpr) {
             i = i + 1
         }
         return ty_named(ty_expr.name, args)
+    }
+    if type_expr_kind_is(ty_expr, "Fn") {
+        let params: Array[Type] = []
+        let mut i = 0
+        while i < ty_expr.args.len() {
+            params.push(type_from_annotation(c, ty_expr.args[i]))
+            i = i + 1
+        }
+        return type_fn(params, type_from_annotation(c, ty_expr.ret))
     }
     if type_expr_kind_is(ty_expr, "Pointer") {
         return ty_pointer(checker_fresh_var(c))

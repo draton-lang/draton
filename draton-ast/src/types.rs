@@ -7,6 +7,8 @@ pub enum TypeExpr {
     Named(String, Span),
     /// A generic type such as `List[Int]`.
     Generic(String, Vec<TypeExpr>, Span),
+    /// A function type such as `fn(Int) -> Int`.
+    Fn(Vec<TypeExpr>, Box<TypeExpr>, Span),
     /// The raw `@pointer` type marker.
     Pointer(Span),
     /// An inferred type marker `_`.
@@ -19,6 +21,7 @@ impl TypeExpr {
         match self {
             Self::Named(_, span)
             | Self::Generic(_, _, span)
+            | Self::Fn(_, _, span)
             | Self::Pointer(span)
             | Self::Infer(span) => *span,
         }

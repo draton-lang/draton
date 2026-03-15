@@ -74,8 +74,18 @@ impl<'ctx> CodeGen<'ctx> {
             let env_type = self.context.opaque_struct_type(&env_name);
             let field_types = captures
                 .iter()
-                .map(|capture| capture.storage.get_type().into())
-                .collect::<Vec<_>>();
+                .map(|capture| {
+                    inkwell::types::BasicTypeEnum::try_from(
+                        capture.storage.get_type().get_element_type(),
+                    )
+                    .map_err(|_| {
+                        CodeGenError::UnsupportedExpr(format!(
+                            "capture {} has non-basic storage type",
+                            capture.name
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
             env_type.set_body(&field_types, false);
             Some(env_type)
         };
@@ -244,7 +254,8 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_struct_gep(env_ptr, index as u32, &format!("env.{}", capture.name))
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-            self.build_store(field_ptr, capture.storage.into())?;
+            let captured_value = self.build_load(capture.storage, &format!("capture.{}", capture.name))?;
+            self.build_store(field_ptr, captured_value)?;
         }
         Ok(env_ptr)
     }
@@ -296,9 +307,13 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_struct_gep(env_ptr, index as u32, &format!("env.load.{}", capture.name))
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                let storage = self
-                    .build_load(field_ptr, &format!("capture.{}", capture.name))?
-                    .into_pointer_value();
+                let captured_value = self.build_load(field_ptr, &format!("capture.{}", capture.name))?;
+                let storage = self.create_entry_alloca(
+                    function,
+                    captured_value.get_type(),
+                    &format!("capture.{}", capture.name),
+                )?;
+                self.build_store(storage, captured_value)?;
                 self.define_local(&capture.name, storage);
             }
         }
