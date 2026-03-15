@@ -134,6 +134,18 @@ case(
 )
 
 case(
+    "elif no else",
+    """fn main() -> Int {
+    let x = 7
+    let mut r = 0
+    if x < 0 { r = 1 }
+    elif x == 7 { r = 42 }
+    r
+}""",
+    exit=42,
+)
+
+case(
     "while loop",
     """fn main() {
     let mut i = 0
