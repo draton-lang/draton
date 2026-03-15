@@ -114,3 +114,7 @@ interface Drawable {
     }
 }
 ```
+
+Repository status tracking for the self-host mirror:
+
+- [Self-Host Canonical Migration Status](selfhost-canonical-migration-status.md)

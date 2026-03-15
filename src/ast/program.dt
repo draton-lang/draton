@@ -1,27 +1,34 @@
 import { Item }
 
 class Program {
-    let mut items: Array[Item]
+    let mut items
+
+    @type {
+        items: Array[Item]
+    }
 }
 
 @type {
-    fn new_program() -> Program
-    fn program_push_item(program: Program, item: Item) -> Program
-    fn program_item_count(program: Program) -> Int
+    new_program: () -> Program
+    program_push_item: (Program, Item) -> Program
+    program_item_count: (Program) -> Int
 }
 
 fn new_program() {
+    @type {
+        items: Array[Item]
+    }
     let program = Program()
-    let items: Array[Item] = []
+    let items = []
     program.items = items
     program
 }
 
-fn program_push_item(program: Program, item: Item) {
+fn program_push_item(program, item) {
     program.items.push(item)
     program
 }
 
-fn program_item_count(program: Program) {
+fn program_item_count(program) {
     program.items.len()
 }

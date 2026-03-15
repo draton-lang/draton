@@ -1,43 +1,62 @@
 import { Span }
 
 class TypeError {
-    let mut kind: String
-    let mut name: String
-    let mut expected: String
-    let mut found: String
-    let mut ty: String
-    let mut field: String
-    let mut method: String
-    let mut var_name: String
-    let mut missing: Array[String]
-    let mut expected_count: Int
-    let mut found_count: Int
-    let mut line: Int
-    let mut col: Int
+    let mut kind
+    let mut name
+    let mut expected
+    let mut found
+    let mut ty
+    let mut field
+    let mut method
+    let mut var_name
+    let mut missing
+    let mut expected_count
+    let mut found_count
+    let mut line
+    let mut col
+
+    @type {
+        kind: String
+        name: String
+        expected: String
+        found: String
+        ty: String
+        field: String
+        method: String
+        var_name: String
+        missing: Array[String]
+        expected_count: Int
+        found_count: Int
+        line: Int
+        col: Int
+    }
 }
 
 @type {
-    fn new_type_error(kind: String, line: Int, col: Int) -> TypeError
-    fn undefined_var_error(name: String, line: Int, col: Int) -> TypeError
-    fn type_mismatch_error(expected: String, found: String, line: Int, col: Int) -> TypeError
-    fn infinite_type_error(var_name: String, line: Int, col: Int) -> TypeError
-    fn arity_mismatch_error(expected: Int, found: Int, line: Int, col: Int) -> TypeError
-    fn not_callable_error(ty: String, line: Int, col: Int) -> TypeError
-    fn undefined_field_error(field: String, ty: String, line: Int, col: Int) -> TypeError
-    fn undefined_method_error(method: String, ty: String, line: Int, col: Int) -> TypeError
-    fn not_indexable_error(ty: String, line: Int, col: Int) -> TypeError
-    fn cannot_infer_error(line: Int, col: Int) -> TypeError
-    fn non_exhaustive_match_error(missing: Array[String], line: Int, col: Int) -> TypeError
-    fn duplicate_variant_error(name: String, line: Int, col: Int) -> TypeError
-    fn type_error_message(err: TypeError) -> String
-    fn type_error_has_value(err: TypeError) -> Bool
-    fn join_missing_patterns(items: Array[String]) -> String
-    fn str_eq_type_error(a: String, b: String) -> Bool
+    new_type_error: (String, Int, Int) -> TypeError
+    undefined_var_error: (String, Int, Int) -> TypeError
+    type_mismatch_error: (String, String, Int, Int) -> TypeError
+    infinite_type_error: (String, Int, Int) -> TypeError
+    arity_mismatch_error: (Int, Int, Int, Int) -> TypeError
+    not_callable_error: (String, Int, Int) -> TypeError
+    undefined_field_error: (String, String, Int, Int) -> TypeError
+    undefined_method_error: (String, String, Int, Int) -> TypeError
+    not_indexable_error: (String, Int, Int) -> TypeError
+    cannot_infer_error: (Int, Int) -> TypeError
+    non_exhaustive_match_error: (Array[String], Int, Int) -> TypeError
+    duplicate_variant_error: (String, Int, Int) -> TypeError
+    type_error_message: (TypeError) -> String
+    type_error_has_value: (TypeError) -> Bool
+    join_missing_patterns: (Array[String]) -> String
+    str_eq_type_error: (String, String) -> Bool
 }
 
-fn new_type_error(kind: String, line: Int, col: Int) {
+fn new_type_error(kind, line, col) {
+    @type {
+        empty_missing: Array[String]
+    }
     let err = TypeError()
-    let empty_missing: Array[String] = []
+    let empty_missing = []
     err.kind = kind
     err.name = ""
     err.expected = ""
@@ -54,77 +73,77 @@ fn new_type_error(kind: String, line: Int, col: Int) {
     err
 }
 
-fn undefined_var_error(name: String, line: Int, col: Int) {
+fn undefined_var_error(name, line, col) {
     let err = new_type_error("UndefinedVar", line, col)
     err.name = name
     err
 }
 
-fn type_mismatch_error(expected: String, found: String, line: Int, col: Int) {
+fn type_mismatch_error(expected, found, line, col) {
     let err = new_type_error("TypeMismatch", line, col)
     err.expected = expected
     err.found = found
     err
 }
 
-fn infinite_type_error(var_name: String, line: Int, col: Int) {
+fn infinite_type_error(var_name, line, col) {
     let err = new_type_error("InfiniteType", line, col)
     err.var_name = var_name
     err
 }
 
-fn arity_mismatch_error(expected: Int, found: Int, line: Int, col: Int) {
+fn arity_mismatch_error(expected, found, line, col) {
     let err = new_type_error("ArityMismatch", line, col)
     err.expected_count = expected
     err.found_count = found
     err
 }
 
-fn not_callable_error(ty: String, line: Int, col: Int) {
+fn not_callable_error(ty, line, col) {
     let err = new_type_error("NotCallable", line, col)
     err.ty = ty
     err
 }
 
-fn undefined_field_error(field: String, ty: String, line: Int, col: Int) {
+fn undefined_field_error(field, ty, line, col) {
     let err = new_type_error("UndefinedField", line, col)
     err.field = field
     err.ty = ty
     err
 }
 
-fn undefined_method_error(method: String, ty: String, line: Int, col: Int) {
+fn undefined_method_error(method, ty, line, col) {
     let err = new_type_error("UndefinedMethod", line, col)
     err.method = method
     err.ty = ty
     err
 }
 
-fn not_indexable_error(ty: String, line: Int, col: Int) {
+fn not_indexable_error(ty, line, col) {
     let err = new_type_error("NotIndexable", line, col)
     err.ty = ty
     err
 }
 
-fn cannot_infer_error(line: Int, col: Int) {
+fn cannot_infer_error(line, col) {
     let err = new_type_error("CannotInfer", line, col)
     err.name = "expression"
     err
 }
 
-fn non_exhaustive_match_error(missing: Array[String], line: Int, col: Int) {
+fn non_exhaustive_match_error(missing, line, col) {
     let err = new_type_error("NonExhaustiveMatch", line, col)
     err.missing = missing
     err
 }
 
-fn duplicate_variant_error(name: String, line: Int, col: Int) {
+fn duplicate_variant_error(name, line, col) {
     let err = new_type_error("DuplicateVariant", line, col)
     err.name = name
     err
 }
 
-fn type_error_message(err: TypeError) {
+fn type_error_message(err) {
     let mut out = ""
     if str_eq_type_error(err.kind, "UndefinedVar") {
         let a = str_concat("undefined variable '", err.name)
@@ -209,11 +228,11 @@ fn type_error_message(err: TypeError) {
     out
 }
 
-fn type_error_has_value(err: TypeError) {
+fn type_error_has_value(err) {
     str_len(err.kind) != 0
 }
 
-fn join_missing_patterns(items: Array[String]) {
+fn join_missing_patterns(items) {
     let mut out = ""
     let mut i = 0
     while i < items.len() {
@@ -226,7 +245,7 @@ fn join_missing_patterns(items: Array[String]) {
     out
 }
 
-fn str_eq_type_error(a: String, b: String) {
+fn str_eq_type_error(a, b) {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

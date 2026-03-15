@@ -1,39 +1,48 @@
 @type {
-    fn new_lex_result() -> LexResult
-    fn append_text(out: String, more: String) -> String
-    fn append_line(out: String, line: String) -> String
-    fn append_token(out: String, kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) -> String
-    fn append_error(out: String, err: LexError) -> String
-    fn str_eq(a: String, b: String) -> Bool
-    fn keyword_kind_runtime(word: String) -> String
-    fn skip_whitespace(c: Cursor) -> Bool
-    fn lex_identifier_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) -> String
-    fn lex_at_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) -> String
-    fn lex_slash_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) -> String
-    fn lex_punct_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) -> String
-    fn tokenize(source: String) -> LexResult
-    fn lex_dump(source: String) -> String
+    new_lex_result: () -> LexResult
+    append_text: (String, String) -> String
+    append_line: (String, String) -> String
+    append_token: (String, String, String, Int, Int, Int, Int) -> String
+    append_error: (String, LexError) -> String
+    str_eq: (String, String) -> Bool
+    keyword_kind_runtime: (String) -> String
+    skip_whitespace: (Cursor) -> Bool
+    lex_identifier_dump: (Cursor, String, Int, Int, Int) -> String
+    lex_at_dump: (Cursor, String, Int, Int, Int) -> String
+    lex_slash_dump: (Cursor, String, Int, Int, Int) -> String
+    lex_punct_dump: (Cursor, String, Int, Int, Int) -> String
+    tokenize: (String) -> LexResult
+    lex_dump: (String) -> String
 }
 
 class LexResult {
-    let mut tokens: Array[Token]
-    let mut errors: Array[LexError]
+    let mut tokens
+    let mut errors
+
+    @type {
+        tokens: Array[Token]
+        errors: Array[LexError]
+    }
 }
 
 fn new_lex_result() {
+    @type {
+        tokens: Array[Token]
+        errors: Array[LexError]
+    }
     let result = LexResult()
-    let tokens: Array[Token] = []
-    let errors: Array[LexError] = []
+    let tokens = []
+    let errors = []
     result.tokens = tokens
     result.errors = errors
     result
 }
 
-fn append_text(out: String, more: String) {
+fn append_text(out, more) {
     str_concat(out, more)
 }
 
-fn append_line(out: String, line: String) {
+fn append_line(out, line) {
     let mut next = line
     if str_len(out) != 0 {
         let a = append_text(out, ascii_char(10))
@@ -42,7 +51,7 @@ fn append_line(out: String, line: String) {
     next
 }
 
-fn append_token(out: String, kind: String, lexeme: String, start: Int, end: Int, line: Int, col: Int) {
+fn append_token(out, kind, lexeme, start, end, line, col) {
     let a = append_text("", kind)
     let b = append_text(a, ascii_char(9))
     let c = append_text(b, lexeme)
@@ -55,12 +64,12 @@ fn append_token(out: String, kind: String, lexeme: String, start: Int, end: Int,
     append_line(out, i)
 }
 
-fn append_error(out: String, err: LexError) {
+fn append_error(out, err) {
     let a = append_text(str_concat("ERROR", ascii_char(9)), lex_error_message(err))
     append_line(out, a)
 }
 
-fn str_eq(a: String, b: String) {
+fn str_eq(a, b) {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {
@@ -72,7 +81,7 @@ fn str_eq(a: String, b: String) {
     same
 }
 
-fn keyword_kind_runtime(word: String) {
+fn keyword_kind_runtime(word) {
     let mut kind = "Ident"
     if str_eq(word, "let") {
         kind = "Let"
@@ -136,7 +145,7 @@ fn keyword_kind_runtime(word: String) {
     kind
 }
 
-fn skip_whitespace(c: Cursor) {
+fn skip_whitespace(c) {
     let mut skipped = false
     let code = cursor_peek_code(c)
     if code == 32 || code == 9 {
@@ -156,7 +165,7 @@ fn skip_whitespace(c: Cursor) {
     skipped
 }
 
-fn lex_identifier_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
+fn lex_identifier_dump(c, out, start, line, col) {
     cursor_advance(c)
     while is_ident_continue_code(cursor_peek_code(c)) {
         cursor_advance(c)
@@ -164,7 +173,7 @@ fn lex_identifier_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) 
     append_token(out, keyword_kind(cursor_slice(c, start, c.pos)), cursor_slice(c, start, c.pos), start, c.pos, line, col)
 }
 
-fn lex_at_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
+fn lex_at_dump(c, out, start, line, col) {
     let mut next_out = out
     if is_ident_start_code(cursor_peek_next_code(c)) {
         let mut end = start + 1
@@ -189,7 +198,7 @@ fn lex_at_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
     next_out
 }
 
-fn lex_slash_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
+fn lex_slash_dump(c, out, start, line, col) {
     let mut next_out = out
     if cursor_peek_next_code(c) == 47 {
         cursor_advance(c)
@@ -217,7 +226,7 @@ fn lex_slash_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
     next_out
 }
 
-fn lex_punct_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
+fn lex_punct_dump(c, out, start, line, col) {
     let code = cursor_peek_code(c)
     let mut next_out = out
     if code == 40 {
@@ -301,7 +310,7 @@ fn lex_punct_dump(c: Cursor, out: String, start: Int, line: Int, col: Int) {
     next_out
 }
 
-fn lex_dump(source: String) {
+fn lex_dump(source) {
     let lexed = tokenize(source)
     let mut out = ""
     let mut i = 0
@@ -317,7 +326,7 @@ fn lex_dump(source: String) {
     out
 }
 
-fn tokenize(source: String) {
+fn tokenize(source) {
     let c = new_cursor(source)
     let result = new_lex_result()
 

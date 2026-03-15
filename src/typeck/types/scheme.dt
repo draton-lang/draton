@@ -1,19 +1,25 @@
 import { Type }
 
 class Scheme {
-    let mut quantified: Array[Int]
-    let mut ty: Type
-    let mut exists: Bool
+    let mut quantified
+    let mut ty
+    let mut exists
+
+    @type {
+        quantified: Array[Int]
+        ty: Type
+        exists: Bool
+    }
 }
 
 @type {
-    fn new_scheme(quantified: Array[Int], ty: Type) -> Scheme
-    fn mono_scheme(ty: Type) -> Scheme
-    fn empty_scheme() -> Scheme
-    fn scheme_is_generic(s: Scheme) -> Bool
+    new_scheme: (Array[Int], Type) -> Scheme
+    mono_scheme: (Type) -> Scheme
+    empty_scheme: () -> Scheme
+    scheme_is_generic: (Scheme) -> Bool
 }
 
-fn new_scheme(quantified: Array[Int], ty: Type) {
+fn new_scheme(quantified, ty) {
     let s = Scheme()
     s.quantified = quantified
     s.ty = ty
@@ -21,13 +27,19 @@ fn new_scheme(quantified: Array[Int], ty: Type) {
     s
 }
 
-fn mono_scheme(ty: Type) {
-    let vars: Array[Int] = []
+fn mono_scheme(ty) {
+    @type {
+        vars: Array[Int]
+    }
+    let vars = []
     new_scheme(vars, ty)
 }
 
 fn empty_scheme() {
-    let vars: Array[Int] = []
+    @type {
+        vars: Array[Int]
+    }
+    let vars = []
     let s = Scheme()
     s.quantified = vars
     s.ty = type_unit()
@@ -35,6 +47,6 @@ fn empty_scheme() {
     s
 }
 
-fn scheme_is_generic(s: Scheme) {
+fn scheme_is_generic(s) {
     s.exists && s.quantified.len() > 0
 }

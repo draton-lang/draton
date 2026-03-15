@@ -8,9 +8,15 @@
 }
 
 class NumberResult {
-    let mut kind: String
-    let mut lexeme: String
-    let mut invalid: Bool
+    let mut kind
+    let mut lexeme
+    let mut invalid
+
+    @type {
+        kind: String
+        lexeme: String
+        invalid: Bool
+    }
 }
 
 fn make_number_result(kind, lexeme, invalid) {

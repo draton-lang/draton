@@ -1,14 +1,21 @@
 class TypedProgram {
-    let mut program_items: Array[TypedItem]
+    let mut program_items
+
+    @type {
+        program_items: Array[TypedItem]
+    }
 }
 
 @type {
-    fn empty_typed_program() -> TypedProgram
+    empty_typed_program: () -> TypedProgram
 }
 
 fn empty_typed_program() {
+    @type {
+        items: Array[TypedItem]
+    }
     let program = TypedProgram()
-    let items: Array[TypedItem] = []
+    let items = []
     program.program_items = items
     program
 }

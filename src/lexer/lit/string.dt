@@ -4,10 +4,17 @@
 }
 
 class StringResult {
-    let mut kind: String
-    let mut lexeme: String
-    let mut has_error: Bool
-    let mut err: LexError
+    let mut kind
+    let mut lexeme
+    let mut has_error
+    let mut err
+
+    @type {
+        kind: String
+        lexeme: String
+        has_error: Bool
+        err: LexError
+    }
 }
 
 fn make_string_result(kind, lexeme, has_error, err) {

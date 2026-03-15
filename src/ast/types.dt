@@ -1,27 +1,35 @@
 import { Span }
 
 class TypeExpr {
-    let mut kind: String
-    let mut name: String
-    let mut args: Array[TypeExpr]
-    let mut ret: TypeExpr
-    let mut span: Span
+    let mut kind
+    let mut name
+    let mut args
+    let mut ret
+    let mut span
+
+    @type {
+        kind: String
+        name: String
+        args: Array[TypeExpr]
+        ret: TypeExpr
+        span: Span
+    }
 }
 
 @type {
-    fn new_type_expr(kind: String, name: String, args: Array[TypeExpr], ret: TypeExpr, span: Span) -> TypeExpr
-    fn type_named(name: String, span: Span) -> TypeExpr
-    fn type_generic(name: String, args: Array[TypeExpr], span: Span) -> TypeExpr
-    fn type_fn_expr(params: Array[TypeExpr], ret: TypeExpr, span: Span) -> TypeExpr
-    fn type_pointer(span: Span) -> TypeExpr
-    fn type_infer(span: Span) -> TypeExpr
-    fn type_expr_span(ty: TypeExpr) -> Span
-    fn type_expr_add_arg(ty: TypeExpr, arg: TypeExpr) -> TypeExpr
-    fn type_expr_kind_is(ty: TypeExpr, kind: String) -> Bool
-    fn str_eq_types(a: String, b: String) -> Bool
+    new_type_expr: (String, String, Array[TypeExpr], TypeExpr, Span) -> TypeExpr
+    type_named: (String, Span) -> TypeExpr
+    type_generic: (String, Array[TypeExpr], Span) -> TypeExpr
+    type_fn_expr: (Array[TypeExpr], TypeExpr, Span) -> TypeExpr
+    type_pointer: (Span) -> TypeExpr
+    type_infer: (Span) -> TypeExpr
+    type_expr_span: (TypeExpr) -> Span
+    type_expr_add_arg: (TypeExpr, TypeExpr) -> TypeExpr
+    type_expr_kind_is: (TypeExpr, String) -> Bool
+    str_eq_types: (String, String) -> Bool
 }
 
-fn new_type_expr(kind: String, name: String, args: Array[TypeExpr], ret: TypeExpr, span: Span) {
+fn new_type_expr(kind, name, args, ret, span) {
     let ty = TypeExpr()
     ty.kind = kind
     ty.name = name
@@ -31,43 +39,52 @@ fn new_type_expr(kind: String, name: String, args: Array[TypeExpr], ret: TypeExp
     ty
 }
 
-fn type_named(name: String, span: Span) {
-    let args: Array[TypeExpr] = []
+fn type_named(name, span) {
+    @type {
+        args: Array[TypeExpr]
+    }
+    let args = []
     new_type_expr("Named", name, args, TypeExpr(), span)
 }
 
-fn type_generic(name: String, args: Array[TypeExpr], span: Span) {
+fn type_generic(name, args, span) {
     new_type_expr("Generic", name, args, TypeExpr(), span)
 }
 
-fn type_fn_expr(params: Array[TypeExpr], ret: TypeExpr, span: Span) {
+fn type_fn_expr(params, ret, span) {
     new_type_expr("Fn", "", params, ret, span)
 }
 
-fn type_pointer(span: Span) {
-    let args: Array[TypeExpr] = []
+fn type_pointer(span) {
+    @type {
+        args: Array[TypeExpr]
+    }
+    let args = []
     new_type_expr("Pointer", "", args, TypeExpr(), span)
 }
 
-fn type_infer(span: Span) {
-    let args: Array[TypeExpr] = []
+fn type_infer(span) {
+    @type {
+        args: Array[TypeExpr]
+    }
+    let args = []
     new_type_expr("Infer", "", args, TypeExpr(), span)
 }
 
-fn type_expr_span(ty: TypeExpr) {
+fn type_expr_span(ty) {
     ty.span
 }
 
-fn type_expr_add_arg(ty: TypeExpr, arg: TypeExpr) {
+fn type_expr_add_arg(ty, arg) {
     ty.args.push(arg)
     ty
 }
 
-fn type_expr_kind_is(ty: TypeExpr, kind: String) {
+fn type_expr_kind_is(ty, kind) {
     str_eq_types(ty.kind, kind)
 }
 
-fn str_eq_types(a: String, b: String) {
+fn str_eq_types(a, b) {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

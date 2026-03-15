@@ -1,155 +1,256 @@
 import { Span, Expr, TypeExpr }
 
 class Stmt {
-    let mut kind: String
-    let mut let_stmt: LetStmt
-    let mut assign_stmt: AssignStmt
-    let mut return_stmt: ReturnStmt
-    let mut expr: Expr
-    let mut if_stmt: IfStmt
-    let mut for_stmt: ForStmt
-    let mut while_stmt: WhileStmt
-    let mut spawn_stmt: SpawnStmt
-    let mut block: Block
-    let mut code: String
-    let mut if_compile_stmt: IfCompileStmt
-    let mut gc_config_stmt: GcConfigStmt
-    let mut span: Span
+    let mut kind
+    let mut let_stmt
+    let mut assign_stmt
+    let mut return_stmt
+    let mut expr
+    let mut if_stmt
+    let mut for_stmt
+    let mut while_stmt
+    let mut spawn_stmt
+    let mut block
+    let mut code
+    let mut if_compile_stmt
+    let mut gc_config_stmt
+    let mut span
+
+    @type {
+        kind: String
+        let_stmt: LetStmt
+        assign_stmt: AssignStmt
+        return_stmt: ReturnStmt
+        expr: Expr
+        if_stmt: IfStmt
+        for_stmt: ForStmt
+        while_stmt: WhileStmt
+        spawn_stmt: SpawnStmt
+        block: Block
+        code: String
+        if_compile_stmt: IfCompileStmt
+        gc_config_stmt: GcConfigStmt
+        span: Span
+    }
 }
 
 class Block {
-    let mut stmts: Array[Stmt]
-    let mut span: Span
+    let mut stmts
+    let mut span
+
+    @type {
+        stmts: Array[Stmt]
+        span: Span
+    }
 }
 
 class LetStmt {
-    let mut is_mut: Bool
-    let mut name: String
-    let mut has_type_hint: Bool
-    let mut type_hint: TypeExpr
-    let mut has_value: Bool
-    let mut value: Expr
-    let mut span: Span
+    let mut is_mut
+    let mut name
+    let mut has_type_hint
+    let mut type_hint
+    let mut has_value
+    let mut value
+    let mut span
+
+    @type {
+        is_mut: Bool
+        name: String
+        has_type_hint: Bool
+        type_hint: TypeExpr
+        has_value: Bool
+        value: Expr
+        span: Span
+    }
 }
 
 class AssignStmt {
-    let mut target: Expr
-    let mut op: String
-    let mut has_value: Bool
-    let mut value: Expr
-    let mut span: Span
+    let mut target
+    let mut op
+    let mut has_value
+    let mut value
+    let mut span
+
+    @type {
+        target: Expr
+        op: String
+        has_value: Bool
+        value: Expr
+        span: Span
+    }
 }
 
 class ReturnStmt {
-    let mut has_value: Bool
-    let mut value: Expr
-    let mut span: Span
+    let mut has_value
+    let mut value
+    let mut span
+
+    @type {
+        has_value: Bool
+        value: Expr
+        span: Span
+    }
 }
 
 class IfStmt {
-    let mut condition: Expr
-    let mut then_branch: Block
-    let mut has_else_branch: Bool
-    let mut else_branch: ElseBranch
-    let mut span: Span
+    let mut condition
+    let mut then_branch
+    let mut has_else_branch
+    let mut else_branch
+    let mut span
+
+    @type {
+        condition: Expr
+        then_branch: Block
+        has_else_branch: Bool
+        else_branch: ElseBranch
+        span: Span
+    }
 }
 
 class ElseBranch {
-    let mut kind: String
-    let mut stmt: IfStmt
-    let mut block: Block
+    let mut kind
+    let mut stmt
+    let mut block
+
+    @type {
+        kind: String
+        stmt: IfStmt
+        block: Block
+    }
 }
 
 class ForStmt {
-    let mut binding: String
-    let mut iter: Expr
-    let mut body: Block
-    let mut span: Span
+    let mut binding
+    let mut iter
+    let mut body
+    let mut span
+
+    @type {
+        binding: String
+        iter: Expr
+        body: Block
+        span: Span
+    }
 }
 
 class WhileStmt {
-    let mut condition: Expr
-    let mut body: Block
-    let mut span: Span
+    let mut condition
+    let mut body
+    let mut span
+
+    @type {
+        condition: Expr
+        body: Block
+        span: Span
+    }
 }
 
 class SpawnStmt {
-    let mut body: SpawnBody
-    let mut span: Span
+    let mut body
+    let mut span
+
+    @type {
+        body: SpawnBody
+        span: Span
+    }
 }
 
 class SpawnBody {
-    let mut kind: String
-    let mut expr: Expr
-    let mut block: Block
+    let mut kind
+    let mut expr
+    let mut block
+
+    @type {
+        kind: String
+        expr: Expr
+        block: Block
+    }
 }
 
 class IfCompileStmt {
-    let mut condition: Expr
-    let mut body: Block
-    let mut span: Span
+    let mut condition
+    let mut body
+    let mut span
+
+    @type {
+        condition: Expr
+        body: Block
+        span: Span
+    }
 }
 
 class GcConfigStmt {
-    let mut entries: Array[GcConfigEntry]
-    let mut span: Span
+    let mut entries
+    let mut span
+
+    @type {
+        entries: Array[GcConfigEntry]
+        span: Span
+    }
 }
 
 class GcConfigEntry {
-    let mut key: String
-    let mut value: Expr
-    let mut span: Span
+    let mut key
+    let mut value
+    let mut span
+
+    @type {
+        key: String
+        value: Expr
+        span: Span
+    }
 }
 
 @type {
-    fn new_block(stmts: Array[Stmt], span: Span) -> Block
-    fn block_push_stmt(block: Block, stmt: Stmt) -> Block
-    fn stmt_from_let(let_stmt: LetStmt, span: Span) -> Stmt
-    fn stmt_from_assign(assign_stmt: AssignStmt, span: Span) -> Stmt
-    fn stmt_from_return(return_stmt: ReturnStmt, span: Span) -> Stmt
-    fn stmt_from_expr(expr: Expr) -> Stmt
-    fn stmt_from_if(if_stmt: IfStmt, span: Span) -> Stmt
-    fn stmt_from_for(for_stmt: ForStmt, span: Span) -> Stmt
-    fn stmt_from_while(while_stmt: WhileStmt, span: Span) -> Stmt
-    fn stmt_from_spawn(spawn_stmt: SpawnStmt, span: Span) -> Stmt
-    fn stmt_from_block(block: Block, kind: String) -> Stmt
-    fn stmt_asm_block(code: String, span: Span) -> Stmt
-    fn stmt_from_if_compile(if_compile_stmt: IfCompileStmt, span: Span) -> Stmt
-    fn stmt_from_gc_config(gc_config_stmt: GcConfigStmt, span: Span) -> Stmt
-    fn new_let_stmt(is_mut: Bool, name: String, has_type_hint: Bool, type_hint: TypeExpr, has_value: Bool, value: Expr, span: Span) -> LetStmt
-    fn new_assign_stmt(target: Expr, op: String, has_value: Bool, value: Expr, span: Span) -> AssignStmt
-    fn new_return_stmt(has_value: Bool, value: Expr, span: Span) -> ReturnStmt
-    fn else_branch_if(stmt: IfStmt) -> ElseBranch
-    fn else_branch_block(block: Block) -> ElseBranch
-    fn new_if_stmt(condition: Expr, then_branch: Block, has_else_branch: Bool, else_branch: ElseBranch, span: Span) -> IfStmt
-    fn new_for_stmt(binding: String, iter: Expr, body: Block, span: Span) -> ForStmt
-    fn new_while_stmt(condition: Expr, body: Block, span: Span) -> WhileStmt
-    fn spawn_body_expr(expr: Expr) -> SpawnBody
-    fn spawn_body_block(block: Block) -> SpawnBody
-    fn new_spawn_stmt(body: SpawnBody, span: Span) -> SpawnStmt
-    fn new_if_compile_stmt(condition: Expr, body: Block, span: Span) -> IfCompileStmt
-    fn new_gc_config_stmt(entries: Array[GcConfigEntry], span: Span) -> GcConfigStmt
-    fn gc_config_push_entry(stmt: GcConfigStmt, entry: GcConfigEntry) -> GcConfigStmt
-    fn new_gc_config_entry(key: String, value: Expr, span: Span) -> GcConfigEntry
-    fn stmt_kind_is(stmt: Stmt, kind: String) -> Bool
-    fn else_branch_kind_is(branch: ElseBranch, kind: String) -> Bool
-    fn spawn_body_kind_is(body: SpawnBody, kind: String) -> Bool
-    fn str_eq_stmt(a: String, b: String) -> Bool
+    new_block: (Array[Stmt], Span) -> Block
+    block_push_stmt: (Block, Stmt) -> Block
+    stmt_from_let: (LetStmt, Span) -> Stmt
+    stmt_from_assign: (AssignStmt, Span) -> Stmt
+    stmt_from_return: (ReturnStmt, Span) -> Stmt
+    stmt_from_expr: (Expr) -> Stmt
+    stmt_from_if: (IfStmt, Span) -> Stmt
+    stmt_from_for: (ForStmt, Span) -> Stmt
+    stmt_from_while: (WhileStmt, Span) -> Stmt
+    stmt_from_spawn: (SpawnStmt, Span) -> Stmt
+    stmt_from_block: (Block, String) -> Stmt
+    stmt_asm_block: (String, Span) -> Stmt
+    stmt_from_if_compile: (IfCompileStmt, Span) -> Stmt
+    stmt_from_gc_config: (GcConfigStmt, Span) -> Stmt
+    new_let_stmt: (Bool, String, Bool, TypeExpr, Bool, Expr, Span) -> LetStmt
+    new_assign_stmt: (Expr, String, Bool, Expr, Span) -> AssignStmt
+    new_return_stmt: (Bool, Expr, Span) -> ReturnStmt
+    else_branch_if: (IfStmt) -> ElseBranch
+    else_branch_block: (Block) -> ElseBranch
+    new_if_stmt: (Expr, Block, Bool, ElseBranch, Span) -> IfStmt
+    new_for_stmt: (String, Expr, Block, Span) -> ForStmt
+    new_while_stmt: (Expr, Block, Span) -> WhileStmt
+    spawn_body_expr: (Expr) -> SpawnBody
+    spawn_body_block: (Block) -> SpawnBody
+    new_spawn_stmt: (SpawnBody, Span) -> SpawnStmt
+    new_if_compile_stmt: (Expr, Block, Span) -> IfCompileStmt
+    new_gc_config_stmt: (Array[GcConfigEntry], Span) -> GcConfigStmt
+    gc_config_push_entry: (GcConfigStmt, GcConfigEntry) -> GcConfigStmt
+    new_gc_config_entry: (String, Expr, Span) -> GcConfigEntry
+    stmt_kind_is: (Stmt, String) -> Bool
+    else_branch_kind_is: (ElseBranch, String) -> Bool
+    spawn_body_kind_is: (SpawnBody, String) -> Bool
+    str_eq_stmt: (String, String) -> Bool
 }
 
-fn new_block(stmts: Array[Stmt], span: Span) {
+fn new_block(stmts, span) {
     let block = Block()
     block.stmts = stmts
     block.span = span
     block
 }
 
-fn block_push_stmt(block: Block, stmt: Stmt) {
+fn block_push_stmt(block, stmt) {
     block.stmts.push(stmt)
     block
 }
 
-fn stmt_from_let(let_stmt: LetStmt, span: Span) {
+fn stmt_from_let(let_stmt, span) {
     let stmt = Stmt()
     stmt.kind = "Let"
     stmt.let_stmt = let_stmt
@@ -157,7 +258,7 @@ fn stmt_from_let(let_stmt: LetStmt, span: Span) {
     stmt
 }
 
-fn stmt_from_assign(assign_stmt: AssignStmt, span: Span) {
+fn stmt_from_assign(assign_stmt, span) {
     let stmt = Stmt()
     stmt.kind = "Assign"
     stmt.assign_stmt = assign_stmt
@@ -165,7 +266,7 @@ fn stmt_from_assign(assign_stmt: AssignStmt, span: Span) {
     stmt
 }
 
-fn stmt_from_return(return_stmt: ReturnStmt, span: Span) {
+fn stmt_from_return(return_stmt, span) {
     let stmt = Stmt()
     stmt.kind = "Return"
     stmt.return_stmt = return_stmt
@@ -173,7 +274,7 @@ fn stmt_from_return(return_stmt: ReturnStmt, span: Span) {
     stmt
 }
 
-fn stmt_from_expr(expr: Expr) {
+fn stmt_from_expr(expr) {
     let stmt = Stmt()
     stmt.kind = "Expr"
     stmt.expr = expr
@@ -181,7 +282,7 @@ fn stmt_from_expr(expr: Expr) {
     stmt
 }
 
-fn stmt_from_if(if_stmt: IfStmt, span: Span) {
+fn stmt_from_if(if_stmt, span) {
     let stmt = Stmt()
     stmt.kind = "If"
     stmt.if_stmt = if_stmt
@@ -189,7 +290,7 @@ fn stmt_from_if(if_stmt: IfStmt, span: Span) {
     stmt
 }
 
-fn stmt_from_for(for_stmt: ForStmt, span: Span) {
+fn stmt_from_for(for_stmt, span) {
     let stmt = Stmt()
     stmt.kind = "For"
     stmt.for_stmt = for_stmt
@@ -197,7 +298,7 @@ fn stmt_from_for(for_stmt: ForStmt, span: Span) {
     stmt
 }
 
-fn stmt_from_while(while_stmt: WhileStmt, span: Span) {
+fn stmt_from_while(while_stmt, span) {
     let stmt = Stmt()
     stmt.kind = "While"
     stmt.while_stmt = while_stmt
@@ -205,7 +306,7 @@ fn stmt_from_while(while_stmt: WhileStmt, span: Span) {
     stmt
 }
 
-fn stmt_from_spawn(spawn_stmt: SpawnStmt, span: Span) {
+fn stmt_from_spawn(spawn_stmt, span) {
     let stmt = Stmt()
     stmt.kind = "Spawn"
     stmt.spawn_stmt = spawn_stmt
@@ -213,7 +314,7 @@ fn stmt_from_spawn(spawn_stmt: SpawnStmt, span: Span) {
     stmt
 }
 
-fn stmt_from_block(block: Block, kind: String) {
+fn stmt_from_block(block, kind) {
     let stmt = Stmt()
     stmt.kind = kind
     stmt.block = block
@@ -221,7 +322,7 @@ fn stmt_from_block(block: Block, kind: String) {
     stmt
 }
 
-fn stmt_asm_block(code: String, span: Span) {
+fn stmt_asm_block(code, span) {
     let stmt = Stmt()
     stmt.kind = "AsmBlock"
     stmt.code = code
@@ -229,7 +330,7 @@ fn stmt_asm_block(code: String, span: Span) {
     stmt
 }
 
-fn stmt_from_if_compile(if_compile_stmt: IfCompileStmt, span: Span) {
+fn stmt_from_if_compile(if_compile_stmt, span) {
     let stmt = Stmt()
     stmt.kind = "IfCompile"
     stmt.if_compile_stmt = if_compile_stmt
@@ -237,7 +338,7 @@ fn stmt_from_if_compile(if_compile_stmt: IfCompileStmt, span: Span) {
     stmt
 }
 
-fn stmt_from_gc_config(gc_config_stmt: GcConfigStmt, span: Span) {
+fn stmt_from_gc_config(gc_config_stmt, span) {
     let stmt = Stmt()
     stmt.kind = "GcConfig"
     stmt.gc_config_stmt = gc_config_stmt
@@ -245,7 +346,7 @@ fn stmt_from_gc_config(gc_config_stmt: GcConfigStmt, span: Span) {
     stmt
 }
 
-fn new_let_stmt(is_mut: Bool, name: String, has_type_hint: Bool, type_hint: TypeExpr, has_value: Bool, value: Expr, span: Span) {
+fn new_let_stmt(is_mut, name, has_type_hint, type_hint, has_value, value, span) {
     let stmt = LetStmt()
     stmt.is_mut = is_mut
     stmt.name = name
@@ -257,7 +358,7 @@ fn new_let_stmt(is_mut: Bool, name: String, has_type_hint: Bool, type_hint: Type
     stmt
 }
 
-fn new_assign_stmt(target: Expr, op: String, has_value: Bool, value: Expr, span: Span) {
+fn new_assign_stmt(target, op, has_value, value, span) {
     let stmt = AssignStmt()
     stmt.target = target
     stmt.op = op
@@ -267,7 +368,7 @@ fn new_assign_stmt(target: Expr, op: String, has_value: Bool, value: Expr, span:
     stmt
 }
 
-fn new_return_stmt(has_value: Bool, value: Expr, span: Span) {
+fn new_return_stmt(has_value, value, span) {
     let stmt = ReturnStmt()
     stmt.has_value = has_value
     stmt.value = value
@@ -275,21 +376,21 @@ fn new_return_stmt(has_value: Bool, value: Expr, span: Span) {
     stmt
 }
 
-fn else_branch_if(stmt: IfStmt) {
+fn else_branch_if(stmt) {
     let branch = ElseBranch()
     branch.kind = "If"
     branch.stmt = stmt
     branch
 }
 
-fn else_branch_block(block: Block) {
+fn else_branch_block(block) {
     let branch = ElseBranch()
     branch.kind = "Block"
     branch.block = block
     branch
 }
 
-fn new_if_stmt(condition: Expr, then_branch: Block, has_else_branch: Bool, else_branch: ElseBranch, span: Span) {
+fn new_if_stmt(condition, then_branch, has_else_branch, else_branch, span) {
     let stmt = IfStmt()
     stmt.condition = condition
     stmt.then_branch = then_branch
@@ -299,7 +400,7 @@ fn new_if_stmt(condition: Expr, then_branch: Block, has_else_branch: Bool, else_
     stmt
 }
 
-fn new_for_stmt(binding: String, iter: Expr, body: Block, span: Span) {
+fn new_for_stmt(binding, iter, body, span) {
     let stmt = ForStmt()
     stmt.binding = binding
     stmt.iter = iter
@@ -308,7 +409,7 @@ fn new_for_stmt(binding: String, iter: Expr, body: Block, span: Span) {
     stmt
 }
 
-fn new_while_stmt(condition: Expr, body: Block, span: Span) {
+fn new_while_stmt(condition, body, span) {
     let stmt = WhileStmt()
     stmt.condition = condition
     stmt.body = body
@@ -316,28 +417,28 @@ fn new_while_stmt(condition: Expr, body: Block, span: Span) {
     stmt
 }
 
-fn spawn_body_expr(expr: Expr) {
+fn spawn_body_expr(expr) {
     let body = SpawnBody()
     body.kind = "Expr"
     body.expr = expr
     body
 }
 
-fn spawn_body_block(block: Block) {
+fn spawn_body_block(block) {
     let body = SpawnBody()
     body.kind = "Block"
     body.block = block
     body
 }
 
-fn new_spawn_stmt(body: SpawnBody, span: Span) {
+fn new_spawn_stmt(body, span) {
     let stmt = SpawnStmt()
     stmt.body = body
     stmt.span = span
     stmt
 }
 
-fn new_if_compile_stmt(condition: Expr, body: Block, span: Span) {
+fn new_if_compile_stmt(condition, body, span) {
     let stmt = IfCompileStmt()
     stmt.condition = condition
     stmt.body = body
@@ -345,19 +446,19 @@ fn new_if_compile_stmt(condition: Expr, body: Block, span: Span) {
     stmt
 }
 
-fn new_gc_config_stmt(entries: Array[GcConfigEntry], span: Span) {
+fn new_gc_config_stmt(entries, span) {
     let stmt = GcConfigStmt()
     stmt.entries = entries
     stmt.span = span
     stmt
 }
 
-fn gc_config_push_entry(stmt: GcConfigStmt, entry: GcConfigEntry) {
+fn gc_config_push_entry(stmt, entry) {
     stmt.entries.push(entry)
     stmt
 }
 
-fn new_gc_config_entry(key: String, value: Expr, span: Span) {
+fn new_gc_config_entry(key, value, span) {
     let entry = GcConfigEntry()
     entry.key = key
     entry.value = value
@@ -365,19 +466,19 @@ fn new_gc_config_entry(key: String, value: Expr, span: Span) {
     entry
 }
 
-fn stmt_kind_is(stmt: Stmt, kind: String) {
+fn stmt_kind_is(stmt, kind) {
     str_eq_stmt(stmt.kind, kind)
 }
 
-fn else_branch_kind_is(branch: ElseBranch, kind: String) {
+fn else_branch_kind_is(branch, kind) {
     str_eq_stmt(branch.kind, kind)
 }
 
-fn spawn_body_kind_is(body: SpawnBody, kind: String) {
+fn spawn_body_kind_is(body, kind) {
     str_eq_stmt(body.kind, kind)
 }
 
-fn str_eq_stmt(a: String, b: String) {
+fn str_eq_stmt(a, b) {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

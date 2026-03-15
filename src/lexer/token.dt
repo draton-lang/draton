@@ -7,9 +7,15 @@
 }
 
 class Token {
-    let mut kind: String
-    let mut lexeme: String
-    let mut span: Span
+    let mut kind
+    let mut lexeme
+    let mut span
+
+    @type {
+        kind: String
+        lexeme: String
+        span: Span
+    }
 }
 
 

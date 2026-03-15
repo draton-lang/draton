@@ -15,10 +15,17 @@
 }
 
 class Cursor {
-    let mut source: String
-    let mut pos: Int
-    let mut line: Int
-    let mut col: Int
+    let mut source
+    let mut pos
+    let mut line
+    let mut col
+
+    @type {
+        source: String
+        pos: Int
+        line: Int
+        col: Int
+    }
 }
 
 fn new_cursor(source) {

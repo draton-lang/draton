@@ -9,7 +9,11 @@
 
 
 class LexError {
-    let mut message: String
+    let mut message
+
+    @type {
+        message: String
+    }
 }
 
 fn new_lex_error(message) {

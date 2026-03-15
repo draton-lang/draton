@@ -1,25 +1,28 @@
 import { Type }
 
 @type {
-    fn row_get_field(ty: Type, name: String) -> Type
-    fn row_extend(base: Type, name: String, field_ty: Type) -> Type
-    fn free_vars_in_type(ty: Type) -> Array[Int]
+    row_get_field: (Type, String) -> Type
+    row_extend: (Type, String, Type) -> Type
+    free_vars_in_type: (Type) -> Array[Int]
 }
 
-fn row_get_field(ty: Type, name: String) {
+fn row_get_field(ty, name) {
     let _name = name
     let _ty = ty
     type_unit()
 }
 
-fn row_extend(base: Type, name: String, field_ty: Type) {
+fn row_extend(base, name, field_ty) {
     let _name = name
     let _field_ty = field_ty
     type_row(base.ty_row_fields, base.ty_has_rest, base.ty_rest)
 }
 
-fn free_vars_in_type(ty: Type) {
-    let mut vars: Array[Int] = []
+fn free_vars_in_type(ty) {
+    @type {
+        vars: Array[Int]
+    }
+    let mut vars = []
     if str_eq_type(ty.type_kind, "Var") {
         vars.push(ty.ty_id)
         return vars
