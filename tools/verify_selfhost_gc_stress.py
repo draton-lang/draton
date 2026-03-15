@@ -40,6 +40,11 @@ CASES = [
         "tests/programs/gc/stress_linked_list.dt",
         50,
     ),
+    (
+        "linked list class inheritance-style stress",
+        "tests/programs/gc/stress_linked_list_class.dt",
+        50,
+    ),
 ]
 
 

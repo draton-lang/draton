@@ -360,6 +360,23 @@ fn main() -> Int {
 )
 
 case(
+    "class two methods",
+    """class Vec2 {
+    pub let x: Int
+    pub let y: Int
+    pub fn dot(self, other: Vec2) -> Int {
+        self.x * other.x + self.y * other.y
+    }
+    pub fn len_sq(self) -> Int { self.dot(self) }
+}
+fn main() -> Int {
+    let v = Vec2 { x: 3, y: 4 }
+    v.len_sq()
+}""",
+    exit=25,
+)
+
+case(
     "class inheritance",
     """class Animal {
     pub let legs: Int
@@ -372,6 +389,23 @@ fn main() -> Int {
     d.legs
 }""",
     exit=4,
+)
+
+case(
+    "class inheritance method",
+    """class Shape {
+    pub let color: Int
+    pub fn get_color(self) -> Int { self.color }
+}
+class Circle extends Shape {
+    pub let radius: Int
+    pub fn area_approx(self) -> Int { self.radius * self.radius * 3 }
+}
+fn main() -> Int {
+    let c = Circle { color: 1, radius: 4 }
+    c.area_approx() + c.get_color()
+}""",
+    exit=49,
 )
 
 case(

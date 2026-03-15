@@ -1583,7 +1583,15 @@ impl TypeChecker {
         let ret_ty = self.fresh_var();
         let mut expected_arg_types = Vec::new();
         if target_is_named {
-            expected_arg_types.push(target_ty.clone());
+            if let Some(params) = expected_params.as_ref() {
+                if let Some(receiver_ty) = params.first() {
+                    expected_arg_types.push(receiver_ty.clone());
+                } else {
+                    expected_arg_types.push(target_ty.clone());
+                }
+            } else {
+                expected_arg_types.push(target_ty.clone());
+            }
         }
         expected_arg_types.extend(arg_types);
         let expected = Type::Fn(expected_arg_types, Box::new(ret_ty.clone()));

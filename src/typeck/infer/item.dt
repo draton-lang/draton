@@ -498,6 +498,12 @@ fn infer_class_def(c: Checker, def: ClassDef) {
                 field_types.push(c.class_field_types[parent_idx][parent_i])
                 parent_i = parent_i + 1
             }
+            parent_i = 0
+            while parent_i < c.class_method_names[parent_idx].len() {
+                method_names.push(c.class_method_names[parent_idx][parent_i])
+                method_schemes.push(c.class_method_schemes[parent_idx][parent_i])
+                parent_i = parent_i + 1
+            }
         }
     }
     let mut impl_i = 0

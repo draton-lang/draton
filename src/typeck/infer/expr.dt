@@ -432,7 +432,12 @@ fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], 
                 if str_eq_type(c.class_method_names[idx][i], name) {
                     let method_ty = env_instantiate(c.env, c.class_method_schemes[idx][i])
                     let ret_ty = checker_fresh_var(c)
-                    let full_arg_types: Array[Type] = [resolved_target_ty]
+                    let full_arg_types: Array[Type] = []
+                    if str_eq_type(method_ty.type_kind, "Fn") && method_ty.ty_params.len() > 0 {
+                        full_arg_types.push(method_ty.ty_params[0])
+                    } else {
+                        full_arg_types.push(resolved_target_ty)
+                    }
                     let mut j = 0
                     while j < arg_types.len() {
                         full_arg_types.push(arg_types[j])
@@ -452,7 +457,12 @@ fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], 
                 if str_eq_type(c.interface_method_names[iface_idx][i], name) {
                     let method_ty = env_instantiate(c.env, c.interface_method_schemes[iface_idx][i])
                     let ret_ty = checker_fresh_var(c)
-                    let full_arg_types: Array[Type] = [resolved_target_ty]
+                    let full_arg_types: Array[Type] = []
+                    if str_eq_type(method_ty.type_kind, "Fn") && method_ty.ty_params.len() > 0 {
+                        full_arg_types.push(method_ty.ty_params[0])
+                    } else {
+                        full_arg_types.push(resolved_target_ty)
+                    }
                     let mut j = 0
                     while j < arg_types.len() {
                         full_arg_types.push(arg_types[j])
