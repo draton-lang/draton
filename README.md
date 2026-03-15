@@ -36,26 +36,55 @@ The compiler is written entirely in Rust and designed as a Cargo workspace of fo
 
 ### Prerequisites
 
-- Rust stable toolchain
-- LLVM 14 (`llvm-14-dev` on Debian/Ubuntu, `llvm@14` via Homebrew)
+- LLVM 14 runtime libraries
+
+If you are installing from a GitHub Release archive, start with [docs/install.md](docs/install.md). Current prebuilt releases expect LLVM 14 to be available on the target machine.
+
+### Install Prebuilt Releases
+
+Download the archive for your platform from the [GitHub Releases](https://github.com/draton-lang/draton/releases) page, extract it, add the extracted directory to `PATH`, then verify:
+
+```sh
+drat --version
+drat run examples/hello.dt
+```
+
+Release artifacts:
+
+- `draton-linux-x86_64.tar.gz`
+- `draton-linux-aarch64.tar.gz`
+- `draton-macos-x86_64.tar.gz`
+- `draton-macos-aarch64.tar.gz`
+- `draton-windows-x86_64.zip`
 
 ### Install from source
+
+Source builds require:
+
+- Rust stable
+- LLVM 14 development libraries
 
 ```sh
 git clone https://github.com/draton-lang/draton.git
 cd draton
 cargo build --release
-# Optionally add to PATH
 export PATH="$PWD/target/release:$PATH"
 ```
 
-### Create and run a project
+### Verify the install
 
 ```sh
-drat init hello-world
-cd hello-world
-drat run
+drat --version
+drat run examples/hello.dt
 ```
+
+Expected output:
+
+```text
+hello, draton!
+```
+
+For full platform-specific install snippets, checksum verification, and troubleshooting, see [docs/install.md](docs/install.md).
 
 ## Language Tour
 

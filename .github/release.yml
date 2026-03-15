@@ -1,0 +1,34 @@
+changelog:
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking
+    - title: Features
+      labels:
+        - feature
+        - enhancement
+    - title: Fixes
+      labels:
+        - bug
+        - fix
+    - title: Documentation
+      labels:
+        - docs
+    - title: Internal
+      labels:
+        - chore
+        - ci
+  exclude:
+    labels:
+      - skip-changelog
+  template: |
+    ## Install
+
+    Pick the archive for your platform from the assets below, extract it, add the extracted directory to `PATH`, then run:
+
+    ```sh
+    drat --version
+    drat run examples/hello.dt
+    ```
+
+    Full install instructions, checksum verification, and platform-specific troubleshooting are documented in `docs/install.md`.

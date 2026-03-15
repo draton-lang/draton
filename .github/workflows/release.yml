@@ -1,309 +1,189 @@
-name: Release
+name: release
 
 on:
   push:
     tags:
-      - "v*.*.*"
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag (e.g. v0.1.0)"
-        required: true
+      - "v*"
 
-env:
-  CARGO_TERM_COLOR: always
-  LLVM_VERSION: "14"
+permissions:
+  contents: write
 
 jobs:
+  test:
+    name: test
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM 14
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "14.0.6"
+
+      - name: Configure LLVM environment
+        shell: bash
+        run: |
+          echo "LLVM_SYS_140_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
+          echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
+          echo "$LLVM_PATH/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run workspace tests
+        run: cargo test --workspace --locked
+
+      - name: Build drat and packaged runtime
+        run: cargo build --locked -p drat -p draton-runtime
+
   build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.artifact }}
+    needs: test
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            artifact: drat-linux-x86_64
-            llvm_pkg: llvm-14-dev
-            mode: native-linux
-
+            artifact: draton-linux-x86_64.tar.gz
+            binary: drat
+            python: "3.11"
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: draton-linux-aarch64.tar.gz
+            binary: drat
+            python: "3.11"
+          - runner: macos-13
+            target: x86_64-apple-darwin
+            artifact: draton-macos-x86_64.tar.gz
+            binary: drat
+            python: "3.11"
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            artifact: draton-macos-aarch64.tar.gz
+            binary: drat
+            python: "3.11"
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            artifact: draton-windows-x86_64.zip
+            binary: drat.exe
+            python: "3.11"
     steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install LLVM (Linux)
-        if: matrix.mode == 'native-linux'
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh ${{ env.LLVM_VERSION }}
-          sudo apt-get install -y ${{ matrix.llvm_pkg }} libpolly-14-dev libzstd-dev
-          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
-          echo "LLVM_CONFIG_PATH=/usr/lib/llvm-14/bin/llvm-config" >> "$GITHUB_ENV"
-          echo "/usr/lib/llvm-14/bin" >> "$GITHUB_PATH"
-
-      - name: Install LLVM (macOS)
-        if: matrix.mode == 'native-macos'
-        run: |
-          brew install ${{ matrix.llvm_pkg }}
-          echo "LLVM_SYS_140_PREFIX=$(brew --prefix ${{ matrix.llvm_pkg }})" >> "$GITHUB_ENV"
-          echo "LLVM_CONFIG_PATH=$(brew --prefix ${{ matrix.llvm_pkg }})/bin/llvm-config" >> "$GITHUB_ENV"
-          echo "$(brew --prefix ${{ matrix.llvm_pkg }})/bin" >> "$GITHUB_PATH"
-
-      - name: Install LLVM (Windows)
-        if: matrix.mode == 'native-windows'
-        shell: pwsh
-        run: |
-          if (Test-Path C:\llvm-download) {
-            Remove-Item -Recurse -Force C:\llvm-download
-          }
-          if (Test-Path C:\llvm-pkg) {
-            Remove-Item -Recurse -Force C:\llvm-pkg
-          }
-          New-Item -ItemType Directory -Force -Path C:\llvm-download | Out-Null
-          Invoke-WebRequest -Uri "${{ matrix.llvm_archive }}" -OutFile C:\llvm-download\llvm.7z
-          & "C:\Program Files\7-Zip\7z.exe" x C:\llvm-download\llvm.7z -oC:\llvm-pkg -y
-          $llvmConfigPath = Get-ChildItem C:\llvm-pkg -Recurse -Filter llvm-config.exe |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $llvmConfigPath) {
-            throw "failed to locate llvm-config.exe inside extracted LLVM package"
-          }
-          $llvmRoot = Split-Path (Split-Path $llvmConfigPath -Parent) -Parent
-          $seedLib = Get-ChildItem "$llvmRoot\lib" -Filter *.lib |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $seedLib) {
-            throw "failed to locate any .lib files inside extracted LLVM package"
-          }
-          Copy-Item $seedLib "$llvmRoot\lib\xml2s.lib" -Force
-          echo "LLVM_SYS_140_PREFIX=$llvmRoot" >> $env:GITHUB_ENV
-          echo "LLVM_CONFIG_PATH=$llvmConfigPath" >> $env:GITHUB_ENV
-          echo "$(Split-Path $llvmConfigPath -Parent)" >> $env:GITHUB_PATH
-
-      - name: Set up QEMU
-        if: matrix.mode == 'qemu-riscv64'
-        uses: docker/setup-qemu-action@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          platforms: riscv64
+          python-version: ${{ matrix.python }}
 
-      - name: Setup Rust
-        if: startsWith(matrix.mode, 'native-')
+      - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Cache cargo
-        if: startsWith(matrix.mode, 'native-')
-        uses: Swatinem/rust-cache@v2
+      - name: Install LLVM 14
+        uses: KyleMayes/install-llvm-action@v2
         with:
-          key: ${{ matrix.target }}
+          version: "14.0.6"
 
-      - name: Build (native)
-        if: startsWith(matrix.mode, 'native-')
-        run: cargo build --release --package drat --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_DIR: target
-
-      - name: Build (musl in Alpine)
-        if: matrix.mode == 'alpine-musl'
+      - name: Configure LLVM environment
+        shell: bash
         run: |
-          mkdir -p dist
-          docker run --rm \
-            -v "$PWD":"$PWD" \
-            -v "$PWD/dist":/out \
-            -w "$PWD" \
-            -e CARGO_TERM_COLOR="${CARGO_TERM_COLOR}" \
-            -e HOST_UID="$(id -u)" \
-            -e HOST_GID="$(id -g)" \
-            alpine:3.19 \
-            /bin/sh -lc '
-              set -eux
-              apk add --no-cache \
-                bash \
-                build-base \
-                curl \
-                git \
-                linux-headers \
-                llvm14 \
-                llvm14-dev \
-                llvm14-static \
-                lld \
-                python3 \
-                zlib-dev \
-                zstd-dev
-              curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
-              . "$HOME/.cargo/env"
-              rustup target add x86_64-unknown-linux-musl
-              export LLVM_SYS_140_PREFIX=/usr/lib/llvm14
-              export LLVM_CONFIG_PATH=/usr/bin/llvm14-config
-              mkdir -p /opt/musl-compat
-              printf "%s\n" "void __draton_musl_rt_stub(void) {}" > /tmp/rt_stub.c
-              cc -c /tmp/rt_stub.c -o /tmp/rt_stub.o
-              ar rcs /opt/musl-compat/librt.a /tmp/rt_stub.o
-              ar rcs /opt/musl-compat/libdl.a /tmp/rt_stub.o
-              ar rcs /opt/musl-compat/libm.a /tmp/rt_stub.o
-              ar rcs /opt/musl-compat/libpthread.a /tmp/rt_stub.o
-              export RUSTFLAGS="${RUSTFLAGS:-} -L native=/opt/musl-compat"
-              cargo build --release --package drat --target x86_64-unknown-linux-musl
-              test -f target/x86_64-unknown-linux-musl/release/drat
-              ls -lh target/x86_64-unknown-linux-musl/release/drat
-              strip target/x86_64-unknown-linux-musl/release/drat || true
-              tar -czf /out/drat-linux-x86_64-musl.tar.gz -C target/x86_64-unknown-linux-musl/release drat
-              sha256sum /out/drat-linux-x86_64-musl.tar.gz > /out/drat-linux-x86_64-musl.tar.gz.sha256
-              chown -R "$HOST_UID:$HOST_GID" /out target
-            '
-          test -f dist/${{ matrix.artifact }}.tar.gz
-          ls -lh dist/${{ matrix.artifact }}.tar.gz dist/${{ matrix.artifact }}.tar.gz.sha256
+          echo "LLVM_SYS_140_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config.exe" >> "$GITHUB_ENV"
+          else
+            echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
+          fi
+          echo "$LLVM_PATH/bin" >> "$GITHUB_PATH"
 
-      - name: Build (riscv64 in Debian)
-        if: matrix.mode == 'qemu-riscv64'
-        run: |
-          mkdir -p dist
-          docker run --rm \
-            --platform linux/riscv64 \
-            -v "$PWD":"$PWD" \
-            -v "$PWD/dist":/out \
-            -w "$PWD" \
-            -e CARGO_TERM_COLOR="${CARGO_TERM_COLOR}" \
-            -e HOST_UID="$(id -u)" \
-            -e HOST_GID="$(id -g)" \
-            debian:unstable-slim \
-            /bin/bash -lc '
-              set -euxo pipefail
-              export DEBIAN_FRONTEND=noninteractive
-              apt-get update
-              apt-get install -y \
-                build-essential \
-                ca-certificates \
-                clang-14 \
-                curl \
-                git \
-                libpolly-14-dev \
-                libzstd-dev \
-                llvm-14 \
-                llvm-14-dev \
-                pkg-config \
-                python3 \
-                zlib1g-dev
-              curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
-              . "$HOME/.cargo/env"
-              rustup target add riscv64gc-unknown-linux-gnu
-              export LLVM_SYS_140_PREFIX=/usr/lib/llvm-14
-              export LLVM_CONFIG_PATH=/usr/lib/llvm-14/bin/llvm-config
-              cargo build --release --package drat --target riscv64gc-unknown-linux-gnu
-              test -f target/riscv64gc-unknown-linux-gnu/release/drat
-              ls -lh target/riscv64gc-unknown-linux-gnu/release/drat
-              strip target/riscv64gc-unknown-linux-gnu/release/drat || true
-              tar -czf /out/drat-linux-riscv64.tar.gz -C target/riscv64gc-unknown-linux-gnu/release drat
-              sha256sum /out/drat-linux-riscv64.tar.gz > /out/drat-linux-riscv64.tar.gz.sha256
-              chown -R "$HOST_UID:$HOST_GID" /out target
-            '
-          test -f dist/${{ matrix.artifact }}.tar.gz
-          ls -lh dist/${{ matrix.artifact }}.tar.gz dist/${{ matrix.artifact }}.tar.gz.sha256
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
 
-      - name: Package (Unix)
-        if: startsWith(matrix.mode, 'native-') && runner.os != 'Windows'
-        run: |
-          BIN=target/${{ matrix.target }}/release/drat
-          strip "$BIN" || true
-          mkdir -p dist
-          tar -czf dist/${{ matrix.artifact }}.tar.gz -C target/${{ matrix.target }}/release drat
-          sha256sum dist/${{ matrix.artifact }}.tar.gz > dist/${{ matrix.artifact }}.tar.gz.sha256
+      - name: Build release binary
+        run: cargo build --release --locked -p drat -p draton-runtime --target ${{ matrix.target }}
 
-      - name: Package (Windows)
-        if: matrix.mode == 'native-windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $bin = "target\\${{ matrix.target }}\\release\\drat.exe"
-          Compress-Archive -Path $bin -DestinationPath "dist\\${{ matrix.artifact }}.zip" -Force
-          (
-            (Get-FileHash "dist\\${{ matrix.artifact }}.zip" -Algorithm SHA256).Hash.ToLower() +
-            "  ${{ matrix.artifact }}.zip"
-          ) | Out-File "dist\\${{ matrix.artifact }}.zip.sha256" -Encoding ascii
+      - name: Package release archive
+        run: >
+          python scripts/package_release.py
+          --binary target/${{ matrix.target }}/release/${{ matrix.binary }}
+          --artifact ${{ matrix.artifact }}
+          --out-dir dist
 
-      - name: Upload artifact
+      - name: Smoke test packaged archive
+        run: python scripts/smoke_release.py --archive dist/${{ matrix.artifact }}
+
+      - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: dist/
+          path: |
+            dist/${{ matrix.artifact }}
+            dist/${{ matrix.artifact }}.sha256
+          if-no-files-found: error
 
-  release:
-    name: Publish Release
+  publish:
+    name: publish
     needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download packaged artifacts
         uses: actions/download-artifact@v4
         with:
-          path: dist/
-          merge-multiple: true
+          path: dist
 
-      - name: Get tag
-        id: tag
+      - name: Flatten artifact directories
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          fi
+          mkdir -p release-assets
+          find dist -maxdepth 2 -type f -exec cp {} release-assets/ \;
 
-      - name: Generate release notes
+      - name: Generate SHA256SUMS.txt
         run: |
-          TAG=${{ steps.tag.outputs.tag }}
-          cat > release_notes.md << EOF
-          ## Draton $TAG
+          cd release-assets
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          archives = sorted(
+              p for p in Path(".").iterdir()
+              if p.suffix == ".zip" or p.name.endswith(".tar.gz")
+          )
+          lines = []
+          for path in archives:
+              digest = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              lines.append(f"{digest.hexdigest()}  {path.name}")
+          Path("SHA256SUMS.txt").write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+          PY
 
-          ### Downloads
-
-          | Platform | File |
-          |----------|------|
-          | Linux x86_64 (glibc) | \`drat-linux-x86_64.tar.gz\` |
-
-          ### Install (Linux/macOS)
-
-          \`\`\`bash
-          curl -L https://github.com/draton-lang/draton/releases/download/$TAG/drat-linux-x86_64.tar.gz | tar xz
-          sudo mv drat /usr/local/bin/
-          drat --version
-          \`\`\`
-
-          ### Verify checksum
-
-          \`\`\`bash
-          sha256sum -c drat-linux-x86_64.tar.gz.sha256
-          \`\`\`
-          EOF
-
-      - name: Create Release
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: Draton ${{ steps.tag.outputs.tag }}
-          body_file: release_notes.md
-          draft: false
-          prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
-          files: dist/**/*
-
-  smoke-test:
-    name: Smoke test drat-linux-x86_64
-    needs: release
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: Download release binary
-        uses: actions/download-artifact@v4
-        with:
-          name: drat-linux-x86_64
-
-      - name: Extract
-        run: tar -xzf drat-linux-x86_64.tar.gz
-
-      - name: Smoke test
-        run: ./drat --version
+          generate_release_notes: true
+          files: |
+            release-assets/draton-linux-x86_64.tar.gz
+            release-assets/draton-linux-x86_64.tar.gz.sha256
+            release-assets/draton-linux-aarch64.tar.gz
+            release-assets/draton-linux-aarch64.tar.gz.sha256
+            release-assets/draton-macos-x86_64.tar.gz
+            release-assets/draton-macos-x86_64.tar.gz.sha256
+            release-assets/draton-macos-aarch64.tar.gz
+            release-assets/draton-macos-aarch64.tar.gz.sha256
+            release-assets/draton-windows-x86_64.zip
+            release-assets/draton-windows-x86_64.zip.sha256
+            release-assets/SHA256SUMS.txt

@@ -240,7 +240,8 @@ fn collect_project_sources(entry_path: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn prepare_temp_project(source_path: &Path) -> Result<PathBuf> {
-    let temp_root = workspace_root()
+    let temp_root = env::temp_dir()
+        .join("draton")
         .join("build")
         .join("phase5_cli")
         .join(format!(
@@ -561,6 +562,21 @@ fn link_binary(
 }
 
 fn ensure_runtime_staticlib(profile: Profile) -> Result<PathBuf> {
+    if let Some(path) = env::var_os("DRATON_RUNTIME_LIB") {
+        let path = PathBuf::from(path);
+        if path.exists() {
+            return Ok(path);
+        }
+        bail!(
+            "DRATON_RUNTIME_LIB duoc dat nhung khong ton tai: {}",
+            path.display()
+        );
+    }
+
+    if let Some(path) = packaged_runtime_staticlib() {
+        return Ok(path);
+    }
+
     let workspace_root = workspace_root();
     let manifest = workspace_root.join("draton-runtime/Cargo.toml");
     let mut command = Command::new("cargo");
@@ -602,6 +618,18 @@ fn ensure_runtime_staticlib(profile: Profile) -> Result<PathBuf> {
         bail!("khong tim thay runtime staticlib tai {}", path.display());
     }
     Ok(path)
+}
+
+fn packaged_runtime_staticlib() -> Option<PathBuf> {
+    let exe = env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let filename = if cfg!(windows) {
+        "draton_runtime.lib"
+    } else {
+        "libdraton_runtime.a"
+    };
+    let path = dir.join(filename);
+    path.exists().then_some(path)
 }
 
 fn workspace_root() -> PathBuf {
