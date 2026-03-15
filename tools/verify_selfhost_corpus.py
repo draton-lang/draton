@@ -451,11 +451,31 @@ fn main() -> Int { id(42) }""",
 )
 
 case(
+    "generic two args",
+    """fn first[A, B](a: A, b: B) -> A { a }
+fn main() -> Int { first(42, "ignored") }""",
+    exit=42,
+)
+
+case(
     "generic max",
     """fn max_val[T](a: T, b: T) -> T {
     if a > b { a } else { b }
 }
 fn main() -> Int { max_val(17, 42) }""",
+    exit=42,
+)
+
+case(
+    "generic class Pair",
+    """class Pair[A, B] {
+    pub let first: A
+    pub let second: B
+}
+fn main() -> Int {
+    let p = Pair[Int, Int] { first: 40, second: 2 }
+    p.first + p.second
+}""",
     exit=42,
 )
 
