@@ -1,0 +1,41 @@
+{
+  "name": "draton",
+  "displayName": "Draton",
+  "description": "Draton language support",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:draton"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "draton",
+        "aliases": [
+          "Draton",
+          "draton"
+        ],
+        "extensions": [
+          ".dt"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "draton",
+        "scopeName": "source.draton",
+        "path": "./syntaxes/draton.tmLanguage.json"
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.0.0"
+  }
+}
