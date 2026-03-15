@@ -215,6 +215,16 @@ impl Parser {
     fn parse_if_stmt(&mut self) -> Option<IfStmt> {
         let start = self.token_span();
         let _ = self.expect(TokenKind::If, "if");
+        self.parse_if_stmt_tail(start)
+    }
+
+    fn parse_elif_stmt(&mut self) -> Option<IfStmt> {
+        let start = self.token_span();
+        let _ = self.expect(TokenKind::Elif, "elif");
+        self.parse_if_stmt_tail(start)
+    }
+
+    fn parse_if_stmt_tail(&mut self, start: draton_ast::Span) -> Option<IfStmt> {
         let condition = if self.match_kind(TokenKind::LParen) {
             let expr = self.parse_expression()?;
             let _ = self.expect(TokenKind::RParen, ")");
@@ -227,9 +237,17 @@ impl Parser {
             if self.check(TokenKind::If) {
                 self.parse_if_stmt()
                     .map(|stmt| ElseBranch::If(Box::new(stmt)))
+            } else if self.check(TokenKind::Elif) {
+                self.parse_elif_stmt()
+                    .map(|stmt| ElseBranch::If(Box::new(stmt)))
             } else {
                 self.parse_block().map(ElseBranch::Block)
             }
+        } else if self.check(TokenKind::Elif) {
+            let elif_start = self.token_span();
+            let _ = self.expect(TokenKind::Elif, "elif");
+            self.parse_if_stmt_tail(elif_start)
+                .map(|stmt| ElseBranch::If(Box::new(stmt)))
         } else {
             None
         };

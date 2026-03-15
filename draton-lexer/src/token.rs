@@ -40,6 +40,7 @@ pub enum TokenKind {
     Fn,
     Return,
     If,
+    Elif,
     Else,
     For,
     While,

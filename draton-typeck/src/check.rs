@@ -517,7 +517,14 @@ impl TypeChecker {
         let typed_body = function.body.as_ref().map(|body| {
             let (typed_block, block_ty) = self.infer_block(body);
             let current_ret = self.current_return.last().cloned().unwrap_or(Type::Unit);
-            let _ = self.unify(current_ret, block_ty, body.span);
+            let effective_block_ty = match typed_block.stmts.last() {
+                Some(TypedStmt {
+                    kind: TypedStmtKind::If(if_stmt),
+                    ..
+                }) => self.infer_if_result_ty(if_stmt, if_stmt.span),
+                _ => block_ty,
+            };
+            let _ = self.unify(current_ret, effective_block_ty, body.span);
             typed_block
         });
         let effect = self.current_effect.pop().unwrap_or(None);
@@ -610,6 +617,39 @@ impl TypeChecker {
             },
             self.apply_subst(last_ty),
         )
+    }
+
+    fn infer_if_result_ty(&mut self, if_stmt: &TypedIfStmt, span: draton_ast::Span) -> Type {
+        let Some(else_branch) = &if_stmt.else_branch else {
+            return Type::Unit;
+        };
+        let then_ty = match if_stmt.then_branch.stmts.last() {
+            Some(TypedStmt {
+                kind: TypedStmtKind::Expr(expr),
+                ..
+            }) => expr.ty.clone(),
+            Some(TypedStmt {
+                kind: TypedStmtKind::If(child),
+                ..
+            }) => self.infer_if_result_ty(child, child.span),
+            _ => Type::Unit,
+        };
+        let else_ty = match else_branch {
+            TypedElseBranch::If(child) => self.infer_if_result_ty(child, child.span),
+            TypedElseBranch::Block(block) => match block.stmts.last() {
+                Some(TypedStmt {
+                    kind: TypedStmtKind::Expr(expr),
+                    ..
+                }) => expr.ty.clone(),
+                Some(TypedStmt {
+                    kind: TypedStmtKind::If(child),
+                    ..
+                }) => self.infer_if_result_ty(child, child.span),
+                _ => Type::Unit,
+            },
+        };
+        let unified = self.unify(then_ty, else_ty, span);
+        self.apply_subst(unified)
     }
 
     fn infer_stmt(&mut self, stmt: &Stmt) -> TypedStmt {

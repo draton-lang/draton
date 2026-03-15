@@ -1,7 +1,7 @@
 import { Type, Scheme, TypeEnv, Substitution, TypedFnDef, TypedParam, TypedClassDef, TypedFieldDef,
          TypedInterfaceDef, TypedEnumDef, TypedErrorDef, TypedConstDef, TypedImportDef,
          TypedImportItem, TypedExternBlock, TypedTypeBlockDef, TypedTypeMember, TypedItem,
-         TypedProgram, Item, FnDef, ClassDef, InterfaceDef, EnumDef, ErrorDef, ConstDef,
+         TypedProgram, TypedBlock, TypedIfStmt, Item, FnDef, ClassDef, InterfaceDef, EnumDef, ErrorDef, ConstDef,
          ImportDef, ExternBlock, TypeBlockDef, TypeMember, ClassMember, Program, TypeError, Span,
          TypeExpr }
 
@@ -41,6 +41,8 @@ class TypeCheckResult {
     fn checker_apply_subst(c: Checker, ty: Type) -> Type
     fn checker_fresh_var(c: Checker) -> Type
     fn checker_unify(c: Checker, a: Type, b: Type, span: Span) -> Type
+    fn infer_block_result_ty(c: Checker, block: TypedBlock) -> Type
+    fn infer_if_result_ty(c: Checker, stmt: TypedIfStmt) -> Type
     fn find_class_index(c: Checker, name: String) -> Int
     fn checker_define_class(c: Checker, name: String, field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme])
 }
@@ -172,7 +174,14 @@ fn infer_fn_def(c: Checker, fn_def: FnDef, current_class: String) {
         let block = infer_block(c, fn_def.body)
         typed.fn_has_body = true
         typed.fn_body = block
-        checker_unify(c, annotated_ret, block.block_result_ty, block.block_span)
+        let mut block_ty = block.block_result_ty
+        if block.block_stmts.len() > 0 {
+            let last = block.block_stmts[block.block_stmts.len() - 1]
+            if str_eq_type(last.tag, "If") {
+                block_ty = infer_if_result_ty(c, last.stmt_if)
+            }
+        }
+        checker_unify(c, annotated_ret, block_ty, block.block_span)
     }
     typed.fn_ret_type = checker_apply_subst(c, annotated_ret)
     i = 0
@@ -209,6 +218,34 @@ fn infer_fn_def(c: Checker, fn_def: FnDef, current_class: String) {
     }
     env_pop_scope(c.env)
     typed
+}
+
+fn infer_block_result_ty(c: Checker, block: TypedBlock) {
+    if block.block_stmts.len() == 0 {
+        return type_unit()
+    }
+    let last = block.block_stmts[block.block_stmts.len() - 1]
+    if str_eq_type(last.tag, "Expr") {
+        return last.stmt_expr.expr_ty
+    }
+    if str_eq_type(last.tag, "If") {
+        return infer_if_result_ty(c, last.stmt_if)
+    }
+    type_unit()
+}
+
+fn infer_if_result_ty(c: Checker, stmt: TypedIfStmt) {
+    if !stmt.if_has_else_branch {
+        return type_unit()
+    }
+    let then_ty = infer_block_result_ty(c, stmt.if_then_branch)
+    let mut else_ty = type_unit()
+    if str_eq_type(stmt.if_else_branch.tag, "If") {
+        else_ty = infer_if_result_ty(c, stmt.if_else_branch.else_if_stmt)
+    } else {
+        else_ty = infer_block_result_ty(c, stmt.if_else_branch.else_block)
+    }
+    checker_apply_subst(c, checker_unify(c, then_ty, else_ty, stmt.if_span))
 }
 
 fn infer_class_def(c: Checker, def: ClassDef) {

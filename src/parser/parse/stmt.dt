@@ -25,6 +25,8 @@ import { Stmt, Block, LetStmt, AssignStmt, ReturnStmt, IfStmt, ElseBranch, ForSt
     fn parse_if_compile_stmt(p: Parser) -> IfCompileStmt
     fn parse_gc_config_stmt(p: Parser) -> GcConfigStmt
     fn parse_expr_stmt_or_assignment(p: Parser) -> Stmt
+    fn parse_if_stmt_tail(p: Parser, start: Span) -> IfStmt
+    fn parse_elif_stmt(p: Parser) -> IfStmt
     fn join_with_space(parts: Array[String]) -> String
     fn assign_op_name(kind: String) -> String
     fn empty_block_stmt() -> Block
@@ -145,6 +147,16 @@ fn parse_return_stmt(p: Parser) -> ReturnStmt {
 fn parse_if_stmt(p: Parser) -> IfStmt {
     let start = parser_token_span(p)
     let _if = parser_expect(p, "If", "if")
+    parse_if_stmt_tail(p, start)
+}
+
+fn parse_elif_stmt(p: Parser) -> IfStmt {
+    let start = parser_token_span(p)
+    let _elif = parser_expect(p, "Elif", "elif")
+    parse_if_stmt_tail(p, start)
+}
+
+fn parse_if_stmt_tail(p: Parser, start: Span) -> IfStmt {
     let mut condition: Expr = expr_ident("", start)
     if parser_match_kind(p, "LParen") {
         condition = parse_expression(p)
@@ -159,9 +171,16 @@ fn parse_if_stmt(p: Parser) -> IfStmt {
         has_else_branch = true
         if parser_check(p, "If") {
             else_branch = else_branch_if(parse_if_stmt(p))
+        } else if parser_check(p, "Elif") {
+            else_branch = else_branch_if(parse_elif_stmt(p))
         } else {
             else_branch = else_branch_block(parse_block(p))
         }
+    } else if parser_check(p, "Elif") {
+        let elif_start = parser_token_span(p)
+        let _elif = parser_expect(p, "Elif", "elif")
+        has_else_branch = true
+        else_branch = else_branch_if(parse_if_stmt_tail(p, elif_start))
     }
     let mut end = then_branch.span
     if has_else_branch {

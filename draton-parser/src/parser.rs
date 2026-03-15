@@ -213,6 +213,7 @@ impl Parser {
                 | TokenKind::Let
                 | TokenKind::Return
                 | TokenKind::If
+                | TokenKind::Elif
                 | TokenKind::For
                 | TokenKind::While
                 | TokenKind::Spawn

@@ -541,6 +541,7 @@ impl<'a> Lexer<'a> {
             "fn" => TokenKind::Fn,
             "return" => TokenKind::Return,
             "if" => TokenKind::If,
+            "elif" => TokenKind::Elif,
             "else" => TokenKind::Else,
             "for" => TokenKind::For,
             "while" => TokenKind::While,

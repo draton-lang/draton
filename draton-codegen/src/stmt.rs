@@ -44,10 +44,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(None)
             }
             TypedStmtKind::Expr(expr) => self.emit_expr(expr),
-            TypedStmtKind::If(if_stmt) => {
-                self.emit_if_stmt(if_stmt)?;
-                Ok(None)
-            }
+            TypedStmtKind::If(if_stmt) => self.emit_if_stmt(if_stmt),
             TypedStmtKind::For(for_stmt) => {
                 self.emit_for_stmt(for_stmt)?;
                 Ok(None)
@@ -242,7 +239,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    fn emit_if_stmt(&mut self, stmt: &TypedIfStmt) -> Result<(), CodeGenError> {
+    fn emit_if_stmt(&mut self, stmt: &TypedIfStmt) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
         let function = self.current_function()?;
         let cond = self.emit_expr(&stmt.condition)?.ok_or_else(|| {
             CodeGenError::UnsupportedStmt("if condition without value".to_string())
@@ -255,30 +252,58 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
 
         self.builder.position_at_end(then_block);
-        let _ = self.emit_block(&stmt.then_branch)?;
-        if !self.current_block_terminated() {
+        let then_value = self.emit_block(&stmt.then_branch)?;
+        let then_term = self.current_block_terminated();
+        let then_end = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| CodeGenError::MissingSymbol("if.then.end".to_string()))?;
+        if !then_term {
             self.builder
                 .build_unconditional_branch(merge_block)
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         }
 
         self.builder.position_at_end(else_block);
-        if let Some(else_branch) = &stmt.else_branch {
+        let else_value = if let Some(else_branch) = &stmt.else_branch {
             match else_branch {
                 TypedElseBranch::If(if_stmt) => self.emit_if_stmt(if_stmt)?,
-                TypedElseBranch::Block(block) => {
-                    let _ = self.emit_block(block)?;
-                }
+                TypedElseBranch::Block(block) => self.emit_block(block)?,
             }
-        }
-        if !self.current_block_terminated() {
+        } else {
+            None
+        };
+        let else_term = self.current_block_terminated();
+        let else_end = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| CodeGenError::MissingSymbol("if.else.end".to_string()))?;
+        if !else_term {
             self.builder
                 .build_unconditional_branch(merge_block)
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         }
 
         self.builder.position_at_end(merge_block);
-        Ok(())
+        if then_term || else_term {
+            return Ok(None);
+        }
+        let Some(then_value) = then_value else {
+            return Ok(None);
+        };
+        let Some(else_value) = else_value else {
+            return Ok(None);
+        };
+        let phi = self
+            .builder
+            .build_phi(then_value.get_type(), "if.value")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let incoming = [
+            (&then_value as &dyn BasicValue<'ctx>, then_end),
+            (&else_value as &dyn BasicValue<'ctx>, else_end),
+        ];
+        phi.add_incoming(&incoming);
+        Ok(Some(phi.as_basic_value()))
     }
 
     fn emit_while_stmt(&mut self, stmt: &TypedWhileStmt) -> Result<(), CodeGenError> {

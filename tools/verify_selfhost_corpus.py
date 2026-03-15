@@ -97,6 +97,29 @@ case(
 )
 
 case(
+    "elif basic",
+    """fn main() -> Int {
+    let x = 5
+    if x > 10 { 0 }
+    elif x > 3 { 42 }
+    else { 1 }
+}""",
+    exit=42,
+)
+
+case(
+    "elif chain",
+    """fn main() -> Int {
+    let x = 2
+    if x == 1 { 1 }
+    elif x == 2 { 42 }
+    elif x == 3 { 3 }
+    else { 0 }
+}""",
+    exit=42,
+)
+
+case(
     "while loop",
     """fn main() {
     let mut i = 0

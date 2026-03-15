@@ -84,6 +84,8 @@ fn keyword_kind_runtime(word: String) {
         kind = "Return"
     } else if str_eq(word, "if") {
         kind = "If"
+    } else if str_eq(word, "elif") {
+        kind = "Elif"
     } else if str_eq(word, "else") {
         kind = "Else"
     } else if str_eq(word, "for") {
