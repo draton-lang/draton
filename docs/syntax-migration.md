@@ -1,5 +1,7 @@
 # Syntax Migration Notes
 
+For the design rationale behind these syntax rules, see [language-manifesto.md](language-manifesto.md).
+
 This repository now documents and tests the following syntax as canonical:
 
 ## Removed from canonical syntax

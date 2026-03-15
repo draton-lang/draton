@@ -18,6 +18,8 @@ Draton is a compiled language that targets LLVM for native performance. It combi
 
 The compiler is written entirely in Rust and designed as a Cargo workspace of focused, independently usable crates.
 
+For the language design rationale behind the canonical syntax, see [docs/language-manifesto.md](docs/language-manifesto.md). For migration details and compatibility rules, see [docs/syntax-migration.md](docs/syntax-migration.md).
+
 ## Features
 
 | | |
