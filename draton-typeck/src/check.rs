@@ -50,6 +50,8 @@ pub struct TypeChecker {
     exhaust_checker: ExhaustivenessChecker,
     function_hints: HashMap<String, FnDef>,
     binding_hints: HashMap<String, TypeExpr>,
+    class_function_hints: HashMap<String, HashMap<String, FnDef>>,
+    class_binding_hints: HashMap<String, HashMap<String, TypeExpr>>,
     current_return: Vec<Type>,
     current_effect: Vec<Option<Type>>,
     current_class: Vec<String>,
@@ -78,6 +80,8 @@ impl TypeChecker {
             exhaust_checker: ExhaustivenessChecker::default(),
             function_hints: HashMap::new(),
             binding_hints: HashMap::new(),
+            class_function_hints: HashMap::new(),
+            class_binding_hints: HashMap::new(),
             current_return: Vec::new(),
             current_effect: Vec::new(),
             current_class: Vec::new(),
@@ -127,6 +131,7 @@ impl TypeChecker {
             }),
             Item::Error(error_def) => TypedItem::Error(self.infer_error_item(error_def)),
             Item::Import(import_def) => TypedItem::Import(TypedImportDef {
+                module: import_def.module.clone(),
                 items: import_def
                     .items
                     .iter()
@@ -384,6 +389,11 @@ impl TypeChecker {
             implements: class_def.implements.clone(),
             fields,
             methods,
+            type_blocks: class_def
+                .type_blocks
+                .iter()
+                .map(|block| self.infer_type_block(block))
+                .collect(),
             span: class_def.span,
         }
     }
@@ -442,8 +452,15 @@ impl TypeChecker {
         let ty = self
             .lookup_field_ty(&class_def.name, &field.name)
             .unwrap_or_else(|| {
-                field
+                let field_hint = field
                     .type_hint
+                    .clone()
+                    .or_else(|| {
+                        self.class_binding_hints
+                            .get(&class_def.name)
+                            .and_then(|hints| hints.get(&field.name).cloned())
+                    });
+                field_hint
                     .as_ref()
                     .map(|hint| self.type_from_annotation(hint))
                     .unwrap_or_else(|| self.fresh_var())
@@ -613,7 +630,22 @@ impl TypeChecker {
 
     fn infer_fn_item(&mut self, function: &FnDef, current_class: Option<&str>) -> TypedFnDef {
         self.push_type_params(&function.type_params);
-        let hint = self.function_hints.get(&function.name).cloned();
+        let hint = current_class
+            .and_then(|class_name| {
+                self.class_function_hints
+                    .get(class_name)
+                    .and_then(|hints| hints.get(&function.name))
+                    .cloned()
+            })
+            .or_else(|| self.function_hints.get(&function.name).cloned());
+        let binding_hint = current_class
+            .and_then(|class_name| {
+                self.class_binding_hints
+                    .get(class_name)
+                    .and_then(|hints| hints.get(&function.name))
+                    .cloned()
+            })
+            .or_else(|| self.binding_hints.get(&function.name).cloned());
         let placeholder = self
             .env
             .lookup(&function.name)
@@ -628,26 +660,32 @@ impl TypeChecker {
                 if current_class.is_some() && param.name == "self" {
                     return self.class_instance_type(current_class.unwrap());
                 }
-                param
+                let selected_hint = param
                     .type_hint
-                    .as_ref()
+                    .clone()
                     .or_else(|| {
                         hint.as_ref().and_then(|fn_hint| {
                             fn_hint
                                 .params
                                 .get(index)
-                                .and_then(|item| item.type_hint.as_ref())
+                                .and_then(|item| item.type_hint.clone())
                         })
                     })
+                    .or_else(|| self.function_type_param_hint(binding_hint.as_ref(), index));
+                selected_hint
+                    .as_ref()
                     .map(|type_expr| self.type_from_annotation(type_expr))
                     .unwrap_or_else(|| self.fresh_var())
             })
             .collect::<Vec<_>>();
 
-        let mut ret_type = function
+        let ret_hint = function
             .ret_type
+            .clone()
+            .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.clone()))
+            .or_else(|| self.function_type_ret_hint(binding_hint.as_ref()));
+        let mut ret_type = ret_hint
             .as_ref()
-            .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.as_ref()))
             .map(|type_expr| self.type_from_annotation(type_expr))
             .unwrap_or_else(|| self.fresh_var());
 
@@ -688,6 +726,10 @@ impl TypeChecker {
             let current_ret = self.current_return.last().cloned().unwrap_or(Type::Unit);
             let effective_block_ty = match typed_block.stmts.last() {
                 Some(TypedStmt {
+                    kind: TypedStmtKind::Return(_),
+                    ..
+                }) => current_ret.clone(),
+                Some(TypedStmt {
                     kind: TypedStmtKind::If(if_stmt),
                     ..
                 }) => self.infer_if_result_ty(if_stmt, if_stmt.span),
@@ -716,7 +758,26 @@ impl TypeChecker {
             };
         }
 
-        let full_ty = Type::Fn(resolved_params.clone(), Box::new(resolved_ret.clone()));
+        let has_explicit_self = current_class.is_some()
+            && function
+                .params
+                .first()
+                .map(|param| param.name == "self")
+                .unwrap_or(false);
+        let method_params = if let Some(class_name) = current_class {
+            if has_explicit_self {
+                resolved_params.clone()
+            } else {
+                let mut params = Vec::with_capacity(resolved_params.len() + 1);
+                params.push(self.class_instance_type(class_name));
+                params.extend(resolved_params.clone());
+                params
+            }
+        } else {
+            resolved_params.clone()
+        };
+
+        let full_ty = Type::Fn(method_params, Box::new(resolved_ret.clone()));
         let _ = self.env.remove(&function.name);
         let scheme = self.generalize(full_ty.clone());
         if let Some(class_name) = current_class {
@@ -2385,24 +2446,79 @@ impl TypeChecker {
 
     fn collect_type_hints(&mut self, program: &Program) {
         for item in &program.items {
-            if let Item::TypeBlock(type_block) = item {
-                for member in &type_block.members {
-                    match member {
-                        TypeMember::Binding {
-                            name, type_expr, ..
-                        } => {
-                            self.binding_hints
-                                .entry(name.clone())
-                                .or_insert_with(|| type_expr.clone());
-                        }
-                        TypeMember::Function(function) => {
-                            self.function_hints
-                                .entry(function.name.clone())
-                                .or_insert_with(|| function.clone());
+            match item {
+                Item::TypeBlock(type_block) => self.collect_type_block_hints(type_block, None),
+                Item::Class(class_def) => {
+                    for type_block in &class_def.type_blocks {
+                        self.collect_type_block_hints(type_block, Some(&class_def.name));
+                    }
+                    for member in &class_def.members {
+                        if let ClassMember::Layer(layer) = member {
+                            for type_block in &layer.type_blocks {
+                                self.collect_type_block_hints(type_block, Some(&class_def.name));
+                            }
                         }
                     }
                 }
+                _ => {}
             }
+        }
+    }
+
+    fn collect_type_block_hints(
+        &mut self,
+        type_block: &draton_ast::TypeBlock,
+        class_name: Option<&str>,
+    ) {
+        for member in &type_block.members {
+            match member {
+                TypeMember::Binding {
+                    name, type_expr, ..
+                } => {
+                    if let Some(class_name) = class_name {
+                        self.class_binding_hints
+                            .entry(class_name.to_string())
+                            .or_default()
+                            .entry(name.clone())
+                            .or_insert_with(|| type_expr.clone());
+                    } else {
+                        self.binding_hints
+                            .entry(name.clone())
+                            .or_insert_with(|| type_expr.clone());
+                    }
+                }
+                TypeMember::Function(function) => {
+                    if let Some(class_name) = class_name {
+                        self.class_function_hints
+                            .entry(class_name.to_string())
+                            .or_default()
+                            .entry(function.name.clone())
+                            .or_insert_with(|| function.clone());
+                    } else {
+                        self.function_hints
+                            .entry(function.name.clone())
+                            .or_insert_with(|| function.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    fn function_type_param_hint(
+        &self,
+        hint: Option<&TypeExpr>,
+        index: usize,
+    ) -> Option<TypeExpr> {
+        match hint {
+            Some(TypeExpr::Fn(params, _, _)) => params.get(index).cloned(),
+            _ => None,
+        }
+    }
+
+    fn function_type_ret_hint(&self, hint: Option<&TypeExpr>) -> Option<TypeExpr> {
+        match hint {
+            Some(TypeExpr::Fn(_, ret, _)) => Some((**ret).clone()),
+            _ => None,
         }
     }
 
@@ -2551,6 +2667,12 @@ impl TypeChecker {
                     field.name.clone(),
                     field
                         .type_hint
+                        .clone()
+                        .or_else(|| {
+                            self.class_binding_hints
+                                .get(&class_def.name)
+                                .and_then(|hints| hints.get(&field.name).cloned())
+                        })
                         .as_ref()
                         .map(|hint| self.type_from_annotation(hint))
                         .unwrap_or_else(|| self.fresh_var()),
@@ -2650,7 +2772,28 @@ impl TypeChecker {
 
     fn function_placeholder(&mut self, function: &FnDef, current_class: Option<&str>) -> Type {
         self.push_type_params(&function.type_params);
-        let hint = self.function_hints.get(&function.name).cloned();
+        let has_explicit_self = current_class.is_some()
+            && function
+                .params
+                .first()
+                .map(|param| param.name == "self")
+                .unwrap_or(false);
+        let hint = current_class
+            .and_then(|class_name| {
+                self.class_function_hints
+                    .get(class_name)
+                    .and_then(|hints| hints.get(&function.name))
+                    .cloned()
+            })
+            .or_else(|| self.function_hints.get(&function.name).cloned());
+        let binding_hint = current_class
+            .and_then(|class_name| {
+                self.class_binding_hints
+                    .get(class_name)
+                    .and_then(|hints| hints.get(&function.name))
+                    .cloned()
+            })
+            .or_else(|| self.binding_hints.get(&function.name).cloned());
         let params = function
             .params
             .iter()
@@ -2661,27 +2804,45 @@ impl TypeChecker {
                         return self.class_instance_type(class_name);
                     }
                 }
-                param
+                let selected_hint = param
                     .type_hint
-                    .as_ref()
+                    .clone()
                     .or_else(|| {
                         hint.as_ref().and_then(|fn_hint| {
                             fn_hint
                                 .params
                                 .get(index)
-                                .and_then(|value| value.type_hint.as_ref())
+                                .and_then(|value| value.type_hint.clone())
                         })
                     })
+                    .or_else(|| self.function_type_param_hint(binding_hint.as_ref(), index));
+                selected_hint
+                    .as_ref()
                     .map(|type_expr| self.type_from_annotation(type_expr))
                     .unwrap_or_else(|| self.fresh_var())
             })
             .collect::<Vec<_>>();
-        let ret = function
+        let ret_hint = function
             .ret_type
+            .clone()
+            .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.clone()))
+            .or_else(|| self.function_type_ret_hint(binding_hint.as_ref()));
+        let ret = ret_hint
             .as_ref()
-            .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.as_ref()))
             .map(|type_expr| self.type_from_annotation(type_expr))
             .unwrap_or_else(|| self.fresh_var());
+        let params = if let Some(class_name) = current_class {
+            if has_explicit_self {
+                params
+            } else {
+                let mut with_self = Vec::with_capacity(params.len() + 1);
+                with_self.push(self.class_instance_type(class_name));
+                with_self.extend(params);
+                with_self
+            }
+        } else {
+            params
+        };
         let out = Type::Fn(params, Box::new(ret));
         self.pop_type_params();
         out

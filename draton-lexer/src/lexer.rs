@@ -556,6 +556,7 @@ impl<'a> Lexer<'a> {
             "error" => TokenKind::Error,
             "pub" => TokenKind::Pub,
             "import" => TokenKind::Import,
+            "from" => TokenKind::From,
             "as" => TokenKind::As,
             "spawn" => TokenKind::Spawn,
             "chan" => TokenKind::Chan,

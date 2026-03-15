@@ -1,6 +1,6 @@
 use draton_ast::{
     ClassDef, ClassMember, ConstDef, EnumDef, ErrorDef, ExternBlock, FieldDef, FnDef, ImportDef,
-    ImportItem, InterfaceDef, Item, LayerDef, Param, TypeBlock, TypeExpr, TypeMember,
+    ImportItem, InterfaceDef, Item, LayerDef, Param, Span, TypeBlock, TypeExpr, TypeMember,
 };
 use draton_lexer::TokenKind;
 
@@ -157,6 +157,7 @@ impl Parser {
         }
 
         let mut members = Vec::new();
+        let mut type_blocks = Vec::new();
         while !self.is_eof() && !self.check(TokenKind::RBrace) {
             self.skip_doc_comments();
             match self.current_kind() {
@@ -205,6 +206,13 @@ impl Parser {
                         self.synchronize_stmt();
                     }
                 }
+                TokenKind::AtType => {
+                    if let Some(type_block) = self.parse_type_block() {
+                        type_blocks.push(type_block);
+                    } else {
+                        self.synchronize_stmt();
+                    }
+                }
                 _ => {
                     let token = self.current_token().clone();
                     self.error_unexpected(&token, "class member");
@@ -221,6 +229,7 @@ impl Parser {
             extends,
             implements,
             members,
+            type_blocks,
             span: self.merge_spans(start, end),
         })
     }
@@ -274,6 +283,7 @@ impl Parser {
         }
 
         let mut methods = Vec::new();
+        let mut type_blocks = Vec::new();
         while !self.is_eof() && !self.check(TokenKind::RBrace) {
             self.skip_doc_comments();
             match self.current_kind() {
@@ -300,6 +310,13 @@ impl Parser {
                     });
                     self.skip_layer_block();
                 }
+                TokenKind::AtType => {
+                    if let Some(type_block) = self.parse_type_block() {
+                        type_blocks.push(type_block);
+                    } else {
+                        self.synchronize_stmt();
+                    }
+                }
                 _ => {
                     let token = self.current_token().clone();
                     self.error_unexpected(&token, "layer method");
@@ -313,6 +330,7 @@ impl Parser {
         Some(LayerDef {
             name,
             methods,
+            type_blocks,
             span: self.merge_spans(start, end),
         })
     }
@@ -474,7 +492,13 @@ impl Parser {
 
         let end = self.token_span();
         let _ = self.expect(TokenKind::RBrace, "}");
+        let module = if self.match_kind(TokenKind::From) {
+            self.parse_module_path()?
+        } else {
+            Vec::new()
+        };
         Some(ImportDef {
+            module,
             items,
             span: self.merge_spans(start, end),
         })
@@ -570,28 +594,28 @@ impl Parser {
         })
     }
 
+    fn parse_module_path(&mut self) -> Option<Vec<String>> {
+        let mut module = Vec::new();
+        let (first, _) = self.consume_ident("module path")?;
+        module.push(first);
+        while self.match_kind(TokenKind::Dot) {
+            let (segment, _) = self.consume_ident("module path segment")?;
+            module.push(segment);
+        }
+        Some(module)
+    }
+
     pub(crate) fn parse_type_expr(&mut self) -> Option<TypeExpr> {
         self.skip_doc_comments();
         let token = self.current_token().clone();
         let mut ty = match token.kind {
             TokenKind::Fn => {
                 self.advance();
+                self.parse_fn_type_expr(self.convert_span(token.span))
+            }
+            TokenKind::LParen => {
                 let start = self.convert_span(token.span);
-                let _ = self.expect(TokenKind::LParen, "(");
-                let mut params = Vec::new();
-                while !self.is_eof() && !self.check(TokenKind::RParen) {
-                    if let Some(param) = self.parse_type_expr() {
-                        params.push(param);
-                    }
-                    if !self.match_kind(TokenKind::Comma) {
-                        break;
-                    }
-                }
-                let _ = self.expect(TokenKind::RParen, ")");
-                let _ = self.expect(TokenKind::Arrow, "->");
-                let ret = self.parse_type_expr()?;
-                let end = ret.span();
-                Some(TypeExpr::Fn(params, Box::new(ret), self.merge_spans(start, end)))
+                self.parse_paren_type_expr(start)
             }
             TokenKind::AtPointer => {
                 self.advance();
@@ -630,5 +654,50 @@ impl Parser {
             ty = TypeExpr::Generic("Option".to_string(), vec![ty], span);
         }
         Some(ty)
+    }
+
+    fn parse_fn_type_expr(&mut self, start: Span) -> Option<TypeExpr> {
+        let _ = self.expect(TokenKind::LParen, "(");
+        let mut params = Vec::new();
+        while !self.is_eof() && !self.check(TokenKind::RParen) {
+            if let Some(param) = self.parse_type_expr() {
+                params.push(param);
+            }
+            if !self.match_kind(TokenKind::Comma) {
+                break;
+            }
+        }
+        let _ = self.expect(TokenKind::RParen, ")");
+        let _ = self.expect(TokenKind::Arrow, "->");
+        let ret = self.parse_type_expr()?;
+        let end = ret.span();
+        Some(TypeExpr::Fn(params, Box::new(ret), self.merge_spans(start, end)))
+    }
+
+    fn parse_paren_type_expr(&mut self, start: Span) -> Option<TypeExpr> {
+        let _ = self.expect(TokenKind::LParen, "(");
+        let mut params = Vec::new();
+        while !self.is_eof() && !self.check(TokenKind::RParen) {
+            if let Some(param) = self.parse_type_expr() {
+                params.push(param);
+            }
+            if !self.match_kind(TokenKind::Comma) {
+                break;
+            }
+        }
+        let _ = self.expect(TokenKind::RParen, ")");
+        if self.match_kind(TokenKind::Arrow) {
+            let ret = self.parse_type_expr()?;
+            let end = ret.span();
+            return Some(TypeExpr::Fn(params, Box::new(ret), self.merge_spans(start, end)));
+        }
+        match params.as_slice() {
+            [single] => Some(single.clone()),
+            _ => {
+                let token = self.current_token().clone();
+                self.error_unexpected(&token, "-> after parenthesized parameter types");
+                None
+            }
+        }
     }
 }

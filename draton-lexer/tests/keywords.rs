@@ -3,7 +3,7 @@ use pretty_assertions::assert_eq;
 
 #[test]
 fn lexes_all_keywords() {
-    let source = "let mut fn return if else for while in match class layer extends implements interface enum error pub import as spawn chan const lambda";
+    let source = "let mut fn return if elif else for while in match class layer extends implements interface enum error pub import from as spawn chan const lambda";
     let result = Lexer::new(source).tokenize();
 
     assert_eq!(result.errors, Vec::new());
@@ -19,6 +19,7 @@ fn lexes_all_keywords() {
             TokenKind::Fn,
             TokenKind::Return,
             TokenKind::If,
+            TokenKind::Elif,
             TokenKind::Else,
             TokenKind::For,
             TokenKind::While,
@@ -33,6 +34,7 @@ fn lexes_all_keywords() {
             TokenKind::Error,
             TokenKind::Pub,
             TokenKind::Import,
+            TokenKind::From,
             TokenKind::As,
             TokenKind::Spawn,
             TokenKind::Chan,

@@ -107,12 +107,27 @@ impl Printer {
                         self.fmt_fn(method);
                         self.newline();
                     }
+                    for type_block in &layer.type_blocks {
+                        self.write_indent();
+                        self.fmt_type_block(type_block);
+                        self.newline();
+                    }
                     self.pop_indent();
                     self.write_indent();
                     self.write("}");
                     previous_field = false;
                 }
             }
+            self.newline();
+            first = false;
+        }
+
+        for type_block in &class_def.type_blocks {
+            if !first {
+                self.newline();
+            }
+            self.write_indent();
+            self.fmt_type_block(type_block);
             self.newline();
             first = false;
         }
@@ -201,6 +216,10 @@ impl Printer {
             }
         }
         self.write(" }");
+        if !import_def.module.is_empty() {
+            self.write(" from ");
+            self.write(&import_def.module.join("."));
+        }
     }
 
     fn fmt_extern(&mut self, extern_block: &ExternBlock) {

@@ -92,45 +92,76 @@ For full platform-specific install snippets, checksum verification, and troubles
 
 ```draton
 let x = 42
-let mut count: Int = 0
-let name: String = "Draton"
+let mut count = 0
+let name = "Draton"
 let greeting = f"Hello, {name}!"
+
+@type {
+    count: Int
+    name: String
+}
 ```
 
 ### Functions
 
 ```draton
-pub fn add(a: Int, b: Int) -> Int {
-    return a + b
+@type {
+    add: (Int, Int) -> Int
 }
 
-let double = |x| x * 2
+pub fn add(a, b) {
+    return a + b
+}
 ```
 
 ### Classes and interfaces
 
 ```draton
 interface Shape {
-    fn area() -> Float
+    @type {
+        area: () -> Float
+    }
+
+    fn area()
 }
 
 class Circle implements Shape {
-    let radius: Float
+    let radius
 
-    fn area() -> Float {
-        return 3.14159 * radius * radius
+    layer metrics {
+        fn area() {
+            return 3.14159 * radius * radius
+        }
     }
 
-    @layer display {
-        fn to_string() -> String {
+    layer display {
+        fn to_string() {
             return f"Circle(r={radius})"
         }
+    }
+
+    @type {
+        radius: Float
+        area: () -> Float
+        to_string: () -> String
     }
 }
 
 class ColoredCircle extends Circle {
-    let color: String
+    let color
+
+    @type {
+        color: String
+    }
 }
+```
+
+### Imports
+
+```draton
+import { User } from models.user
+import { connect, listen } from std.net
+import { http as nethttp } from std.net
 ```
 
 ### Enums and pattern matching
@@ -143,10 +174,22 @@ enum Direction {
     West
 }
 
-let label = match dir {
-    Direction.North => "up"
-    Direction.South => "down"
-    _ => "sideways"
+@type {
+    label_for: (Direction) -> String
+}
+
+fn label_for(dir) {
+    match dir {
+        Direction.North => {
+            return "up"
+        }
+        Direction.South => {
+            return "down"
+        }
+        _ => {
+            return "sideways"
+        }
+    }
 }
 ```
 
@@ -155,12 +198,21 @@ let label = match dir {
 ```draton
 error ParseError { message: String }
 
-fn parse(input: String) -> Int {
-    // ...
+@type {
+    parse: (String) -> Result[Int, ParseError]
+}
+
+fn parse(input) {
+    if input == "42" {
+        return Ok(42)
+    }
+
     return Err(ParseError { message: "invalid input" })
 }
 
-let value = parse("abc") ?? 0
+fn load_value() {
+    return parse("abc") ?? 0
+}
 ```
 
 ### Concurrency
@@ -172,18 +224,33 @@ spawn {
     ch.send(42)
 }
 
-let result = ch.recv()
+@type {
+    read_value: () -> Int
+}
+
+fn read_value() {
+    let result = ch.recv()
+    return result
+}
 ```
 
 ### Low-level blocks
 
 ```draton
-let raw = @pointer {
-    // pointer arithmetic here
+@type {
+    read_pointer: () -> Int
 }
 
-let value = @comptime {
-    // evaluated at compile time
+fn read_pointer() {
+    let raw = @pointer {
+        // pointer arithmetic here
+    }
+
+    let value = @comptime {
+        // evaluated at compile time
+    }
+
+    return value
 }
 ```
 

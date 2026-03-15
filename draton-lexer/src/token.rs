@@ -55,6 +55,7 @@ pub enum TokenKind {
     Error,
     Pub,
     Import,
+    From,
     As,
     Spawn,
     Chan,

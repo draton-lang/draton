@@ -63,6 +63,7 @@ pub struct ClassDef {
     pub extends: Option<String>,
     pub implements: Vec<String>,
     pub members: Vec<ClassMember>,
+    pub type_blocks: Vec<TypeBlock>,
     pub span: Span,
 }
 
@@ -82,6 +83,7 @@ pub enum ClassMember {
 pub struct LayerDef {
     pub name: String,
     pub methods: Vec<FnDef>,
+    pub type_blocks: Vec<TypeBlock>,
     pub span: Span,
 }
 
@@ -129,6 +131,7 @@ pub struct ConstDef {
 /// An import declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImportDef {
+    pub module: Vec<String>,
     pub items: Vec<ImportItem>,
     pub span: Span,
 }

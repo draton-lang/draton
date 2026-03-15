@@ -64,6 +64,7 @@ pub struct TypedClassDef {
     pub implements: Vec<String>,
     pub fields: Vec<TypedFieldDef>,
     pub methods: Vec<TypedFnDef>,
+    pub type_blocks: Vec<TypedTypeBlock>,
     pub span: Span,
 }
 
@@ -112,6 +113,7 @@ pub struct TypedConstDef {
 /// A typed import declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedImportDef {
+    pub module: Vec<String>,
     pub items: Vec<TypedImportItem>,
     pub span: Span,
 }

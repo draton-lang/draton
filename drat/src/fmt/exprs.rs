@@ -22,7 +22,7 @@ impl Printer {
                 self.write("]");
             }
             TypeExpr::Fn(params, ret, _) => {
-                self.write("fn(");
+                self.write("(");
                 for (index, param) in params.iter().enumerate() {
                     if index > 0 {
                         self.write(", ");

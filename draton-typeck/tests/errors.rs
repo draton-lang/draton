@@ -72,7 +72,7 @@ fn load() {
 }
 
 #[test]
-fn reports_cannot_infer_for_ambiguous_empty_array_literal() {
+fn allows_ambiguous_empty_array_literal_without_eager_error() {
     let result = parse_and_check(
         r#"
 fn main() {
@@ -80,10 +80,7 @@ fn main() {
 }
 "#,
     );
-    assert!(result
-        .errors
-        .iter()
-        .any(|error| matches!(error, TypeError::CannotInfer { name, .. } if name == "x")));
+    assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
 }
 
 #[test]

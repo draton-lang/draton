@@ -562,6 +562,7 @@ pub fn specialize_class(
             .iter()
             .map(|method| specialize_function(method, &subst, Some(self_class), None))
             .collect(),
+        type_blocks: class_def.type_blocks.clone(),
         span: class_def.span,
     }
 }

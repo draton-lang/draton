@@ -53,8 +53,8 @@ fn main() {
 fn infers_function_lambda_and_collections() {
     let result = parse_and_check(
         r#"
-@type { fn add(a: Int, b: Int) -> Int }
-fn add(a, b) { a + b }
+@type { add: (Int, Int) -> Int }
+fn add(a, b) { return a + b }
 fn main() {
     let arr = [1, 2, 3]
     let tup = (1, "hello")
@@ -209,4 +209,32 @@ fn main() {
         panic!("expected function");
     };
     assert_eq!(double_fn.ty, Type::Fn(vec![Type::Int], Box::new(Type::Int)));
+}
+
+#[test]
+fn infers_types_from_canonical_type_blocks() {
+    let result = parse_and_check(
+        r#"
+@type {
+    add: (Int, Int) -> Int
+}
+
+fn add(a, b) {
+    return a + b
+}
+
+fn main() {
+    let value = add(20, 22)
+    return value
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "type errors: {:?}", result.errors);
+    let TypedItem::Fn(add_fn) = &result.typed_program.items[1] else {
+        panic!("expected add function");
+    };
+    assert_eq!(
+        add_fn.ty,
+        Type::Fn(vec![Type::Int, Type::Int], Box::new(Type::Int))
+    );
 }

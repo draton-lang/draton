@@ -39,11 +39,11 @@ fn load() {
 fn uses_type_annotations_and_checks_inside_unsafe() {
     let result = parse_and_check(
         r#"
-@type { fn add(a: Int, b: Int) -> Int }
-fn add(a, b) { a + b }
+@type { add: (Int, Int) -> Int }
+fn add(a, b) { return a + b }
 fn main() {
     @unsafe {
-        let x: Int = add(1, 2)
+        let x = add(1, 2)
     }
 }
 "#,
@@ -62,8 +62,18 @@ fn checks_class_fields_and_methods() {
     let result = parse_and_check(
         r#"
 class User {
-    let name: String
-    fn getName() { self.name }
+    let name
+
+    layer Accessors {
+        fn getName() {
+            return self.name
+        }
+    }
+
+    @type {
+        name: String
+        getName: () -> String
+    }
 }
 "#,
     );
@@ -75,7 +85,7 @@ class User {
     assert_eq!(class_def.methods[0].ret_type, Type::String);
     let body = class_def.methods[0].body.as_ref().expect("body");
     match &body.stmts[0].kind {
-        TypedStmtKind::Expr(expr) => assert_eq!(expr.ty, Type::String),
+        TypedStmtKind::Return(ret) => assert_eq!(ret.ty, Type::String),
         other => panic!("unexpected stmt: {other:?}"),
     }
 }
@@ -85,14 +95,24 @@ fn flattens_layer_methods_into_class_scope() {
     let result = parse_and_check(
         r#"
 class User {
-    let name: String
+    let name
 
     layer Accessors {
-        fn getName() { self.name }
+        fn getName() {
+            return self.name
+        }
     }
 
-    fn read() {
-        self.getName()
+    layer Reader {
+        fn read() {
+            return self.getName()
+        }
+    }
+
+    @type {
+        name: String
+        getName: () -> String
+        read: () -> String
     }
 }
 "#,
@@ -109,7 +129,40 @@ class User {
         .expect("read method");
     let body = read_method.body.as_ref().expect("body");
     match &body.stmts[0].kind {
-        TypedStmtKind::Expr(expr) => assert_eq!(expr.ty, Type::String),
+        TypedStmtKind::Return(ret) => assert_eq!(ret.ty, Type::String),
         other => panic!("unexpected stmt: {other:?}"),
     }
+}
+
+#[test]
+fn resolves_class_and_layer_type_blocks_without_inline_annotations() {
+    let result = parse_and_check(
+        r#"
+class User {
+    let name
+
+    layer Info {
+        fn greet() {
+            return self.name
+        }
+    }
+
+    @type {
+        name: String
+        greet: () -> String
+    }
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "type errors: {:?}", result.errors);
+    let TypedItem::Class(class_def) = &result.typed_program.items[0] else {
+        panic!("expected class");
+    };
+    assert_eq!(class_def.fields[0].ty, Type::String);
+    let greet_method = class_def
+        .methods
+        .iter()
+        .find(|method| method.name == "greet")
+        .expect("greet method");
+    assert_eq!(greet_method.ret_type, Type::String);
 }
