@@ -264,16 +264,23 @@ impl<'ctx> CodeGen<'ctx> {
                 return Ok(Some(value));
             }
         }
-        let lhs = self
+        let lhs_value = self
             .emit_expr(lhs)?
             .ok_or_else(|| CodeGenError::UnsupportedExpr("binop lhs missing value".to_string()))?;
-        let rhs = self
+        let rhs_value = self
             .emit_expr(rhs)?
             .ok_or_else(|| CodeGenError::UnsupportedExpr("binop rhs missing value".to_string()))?;
+        let uses_float_ops = matches!(
+            (&lhs.ty, &rhs.ty),
+            (
+                Type::Float | Type::Float32 | Type::Float64,
+                Type::Float | Type::Float32 | Type::Float64
+            )
+        );
         let value = match ty {
-            Type::Float | Type::Float32 | Type::Float64 => {
-                let lhs = lhs.into_float_value();
-                let rhs = rhs.into_float_value();
+            Type::Float | Type::Float32 | Type::Float64 if uses_float_ops => {
+                let lhs = lhs_value.into_float_value();
+                let rhs = rhs_value.into_float_value();
                 match op {
                     BinOp::Add => self
                         .builder
@@ -328,9 +335,46 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => return Err(CodeGenError::UnsupportedExpr(format!("float op {op:?}"))),
                 }
             }
+            Type::Bool if uses_float_ops => {
+                let lhs = lhs_value.into_float_value();
+                let rhs = rhs_value.into_float_value();
+                match op {
+                    BinOp::Eq => self
+                        .builder
+                        .build_float_compare(FloatPredicate::OEQ, lhs, rhs, "feq")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                        .into(),
+                    BinOp::Ne => self
+                        .builder
+                        .build_float_compare(FloatPredicate::ONE, lhs, rhs, "fne")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                        .into(),
+                    BinOp::Lt => self
+                        .builder
+                        .build_float_compare(FloatPredicate::OLT, lhs, rhs, "flt")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                        .into(),
+                    BinOp::Le => self
+                        .builder
+                        .build_float_compare(FloatPredicate::OLE, lhs, rhs, "fle")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                        .into(),
+                    BinOp::Gt => self
+                        .builder
+                        .build_float_compare(FloatPredicate::OGT, lhs, rhs, "fgt")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                        .into(),
+                    BinOp::Ge => self
+                        .builder
+                        .build_float_compare(FloatPredicate::OGE, lhs, rhs, "fge")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                        .into(),
+                    _ => return Err(CodeGenError::UnsupportedExpr(format!("float op {op:?}"))),
+                }
+            }
             _ => {
-                let lhs = lhs.into_int_value();
-                let rhs = rhs.into_int_value();
+                let lhs = lhs_value.into_int_value();
+                let rhs = rhs_value.into_int_value();
                 match op {
                     BinOp::Add => self
                         .builder
