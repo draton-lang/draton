@@ -1,3 +1,10 @@
 // RUN: compile
-import { fs as f, net }
-fn main() { 0 }
+import { fs as f, net } from std.core
+
+@type {
+    main: () -> Int
+}
+
+fn main() {
+    return 0
+}

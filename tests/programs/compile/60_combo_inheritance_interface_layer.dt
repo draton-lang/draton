@@ -1,18 +1,53 @@
 // RUN: compile
 interface Named {
-    fn name() -> String
+    @type {
+        name: () -> String
+    }
+
+    fn name()
 }
 class Entity {
-    let label: String
-    fn name() { self.label }
-}
-class User extends Entity implements Named {
-    fn name() { self.label }
+    let label
 
-    layer Access {
-        fn read() { self.name() }
+    layer Identity {
+        fn name() {
+            return self.label
+        }
+    }
+
+    @type {
+        label: String
+        name: () -> String
     }
 }
-@type { fn render(n: Named) -> String fn main(u: User) -> String }
-fn render(n) { n.name() }
-fn main(u) { render(u) }
+class User extends Entity implements Named {
+    layer Identity {
+        fn name() {
+            return self.label
+        }
+    }
+
+    layer Access {
+        fn read() {
+            return self.name()
+        }
+    }
+
+    @type {
+        name: () -> String
+        read: () -> String
+    }
+}
+
+@type {
+    render: (Named) -> String
+    main: (User) -> String
+}
+
+fn render(n) {
+    return n.name()
+}
+
+fn main(u) {
+    return render(u)
+}

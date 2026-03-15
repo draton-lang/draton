@@ -1,7 +1,23 @@
 // RUN: compile
 class User {
-    let name: String
-    fn getName() { self.name }
+    let name
+
+    layer Access {
+        fn getName() {
+            return self.name
+        }
+    }
+
+    @type {
+        name: String
+        getName: () -> String
+    }
 }
-@type { fn main(u: User) -> String }
-fn main(u) { u.getName() }
+
+@type {
+    main: (User) -> String
+}
+
+fn main(u) {
+    return u.getName()
+}

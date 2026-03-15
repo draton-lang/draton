@@ -1,9 +1,31 @@
 // RUN: compile
 class Animal {
-    fn speak() { 1 }
+    layer Voice {
+        fn speak() {
+            return 1
+        }
+    }
+
+    @type {
+        speak: () -> Int
+    }
 }
 class Dog extends Animal {
-    fn bark() { 2 }
+    layer Voice {
+        fn bark() {
+            return 2
+        }
+    }
+
+    @type {
+        bark: () -> Int
+    }
 }
-@type { fn main(d: Dog) -> Int }
-fn main(d) { d.speak() }
+
+@type {
+    main: (Dog) -> Int
+}
+
+fn main(d) {
+    return d.speak()
+}
