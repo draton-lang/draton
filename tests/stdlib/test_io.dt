@@ -1,0 +1,12 @@
+fn main() -> Int {
+    let path = "/tmp/draton_io_test.txt"
+    let content = "hello draton\n"
+    let ok = write_file(path, content)
+    if !ok { return 1 }
+    if !file_exists(path) { return 1 }
+    let got = read_file(path)
+    if got != content { return 1 }
+    if !append_file(path, "again\n") { return 1 }
+    if read_file(path) != "hello draton\nagain\n" { return 1 }
+    0
+}

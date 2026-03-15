@@ -1,28 +1,17 @@
-/// Console I/O standard library module.
+/// File and console I/O helpers for single-file programs.
 
 @extern "C" {
-    fn __draton_std_io_print(s: String)
-    fn __draton_std_io_println(s: String)
-    fn __draton_std_io_eprint(s: String)
     fn __draton_std_io_eprintln(s: String)
-    fn __draton_std_io_readline() -> String
-    fn __draton_std_io_readlines() -> Array[String]
+    fn __draton_std_io_read_line() -> String
+    fn __draton_std_io_read_file(path: String) -> String
+    fn __draton_std_io_write_file(path: String, content: String) -> Bool
+    fn __draton_std_io_append_file(path: String, content: String) -> Bool
+    fn __draton_std_io_file_exists(path: String) -> Bool
 }
 
-/// Prints without a trailing newline.
-pub fn print(s: String) { __draton_std_io_print(s) }
-
-/// Prints with a trailing newline.
-pub fn println(s: String) { __draton_std_io_println(s) }
-
-/// Prints to stderr without a trailing newline.
-pub fn eprint(s: String) { __draton_std_io_eprint(s) }
-
-/// Prints to stderr with a trailing newline.
 pub fn eprintln(s: String) { __draton_std_io_eprintln(s) }
-
-/// Reads one line from stdin.
-pub fn readline() -> String { __draton_std_io_readline() }
-
-/// Reads all lines from stdin until EOF.
-pub fn readlines() -> Array[String] { __draton_std_io_readlines() }
+pub fn read_line() -> String { __draton_std_io_read_line() }
+pub fn read_file(path: String) -> String { __draton_std_io_read_file(path) }
+pub fn write_file(path: String, content: String) -> Bool { __draton_std_io_write_file(path, content) }
+pub fn append_file(path: String, content: String) -> Bool { __draton_std_io_append_file(path, content) }
+pub fn file_exists(path: String) -> Bool { __draton_std_io_file_exists(path) }

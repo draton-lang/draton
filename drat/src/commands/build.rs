@@ -398,7 +398,7 @@ pub(crate) fn compile_snippet(source: &str) -> Result<CompiledProject> {
 fn load_bundled_stdlib_items() -> Result<Vec<draton_ast::Item>> {
     let mut items = Vec::new();
     for module in bundled_stdlib_modules() {
-        if !matches!(module.name, "math" | "string") {
+        if !matches!(module.name, "math" | "string" | "io") {
             continue;
         }
         let lexed = Lexer::new(module.source).tokenize();

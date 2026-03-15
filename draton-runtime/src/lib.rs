@@ -857,6 +857,53 @@ pub extern "C" fn __draton_std_float_to_string(value: f64) -> DratonString {
 }
 
 #[no_mangle]
+pub extern "C" fn __draton_std_io_eprintln(value: DratonString) {
+    stdlib::io::eprintln(draton_string_to_owned(value));
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_io_read_line() -> DratonString {
+    owned_string(stdlib::io::readline().into_bytes())
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_io_read_file(path: DratonString) -> DratonString {
+    match stdlib::fs::read(draton_string_to_owned(path)) {
+        Ok(content) => owned_string(content.into_bytes()),
+        Err(_) => owned_string(Vec::new()),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_io_write_file(
+    path: DratonString,
+    content: DratonString,
+) -> bool {
+    stdlib::fs::write(
+        draton_string_to_owned(path),
+        draton_string_to_owned(content),
+    )
+    .is_ok()
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_io_append_file(
+    path: DratonString,
+    content: DratonString,
+) -> bool {
+    stdlib::fs::append(
+        draton_string_to_owned(path),
+        draton_string_to_owned(content),
+    )
+    .is_ok()
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_io_file_exists(path: DratonString) -> bool {
+    stdlib::fs::exists(draton_string_to_owned(path))
+}
+
+#[no_mangle]
 pub extern "C" fn __draton_std_math_sqrt(x: f64) -> f64 {
     stdlib::math::sqrt(x)
 }
