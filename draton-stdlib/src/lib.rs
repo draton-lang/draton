@@ -532,62 +532,62 @@ pub mod json {
 pub mod math {
     /// Returns the square root of a number.
     pub fn sqrt(x: f64) -> f64 {
-        x.sqrt()
+        libm::sqrt(x)
     }
 
     /// Raises a number to a power.
     pub fn pow(base: f64, exp: f64) -> f64 {
-        base.powf(exp)
+        libm::pow(base, exp)
     }
 
     /// Returns the absolute value.
     pub fn abs(x: f64) -> f64 {
-        x.abs()
+        if x < 0.0 { -x } else { x }
     }
 
     /// Floors a number.
     pub fn floor(x: f64) -> f64 {
-        x.floor()
+        libm::floor(x)
     }
 
     /// Ceils a number.
     pub fn ceil(x: f64) -> f64 {
-        x.ceil()
+        libm::ceil(x)
     }
 
     /// Rounds a number.
     pub fn round(x: f64) -> f64 {
-        x.round()
+        libm::round(x)
     }
 
     /// Returns the sine of a number.
     pub fn sin(x: f64) -> f64 {
-        x.sin()
+        libm::sin(x)
     }
 
     /// Returns the cosine of a number.
     pub fn cos(x: f64) -> f64 {
-        x.cos()
+        libm::cos(x)
     }
 
     /// Returns the tangent of a number.
     pub fn tan(x: f64) -> f64 {
-        x.tan()
+        libm::tan(x)
     }
 
     /// Returns the natural logarithm.
     pub fn log(x: f64) -> f64 {
-        x.ln()
+        libm::log(x)
     }
 
     /// Returns the base-2 logarithm.
     pub fn log2(x: f64) -> f64 {
-        x.log2()
+        libm::log2(x)
     }
 
     /// Returns the base-10 logarithm.
     pub fn log10(x: f64) -> f64 {
-        x.log10()
+        libm::log10(x)
     }
 
     /// Returns the smaller number.

@@ -9,6 +9,7 @@ use draton_ast::Program;
 use draton_codegen::{BuildMode, CodeGen};
 use draton_lexer::{LexError, Lexer};
 use draton_parser::{ParseError, Parser};
+use draton_stdlib::modules as bundled_stdlib_modules;
 use draton_typeck::{Type, TypeChecker, TypeError, TypedItem, TypedProgram};
 use inkwell::context::Context as LlvmContext;
 use inkwell::AddressSpace;
@@ -205,8 +206,9 @@ fn render_type_warnings_without_source(path: &Path, warnings: &[TypeError]) -> S
 }
 
 fn load_project_program(entry_path: &Path) -> Result<Program> {
-    let files = collect_project_sources(entry_path)?;
     let mut items = Vec::new();
+    items.extend(load_bundled_stdlib_items()?);
+    let files = collect_project_sources(entry_path)?;
     for path in files {
         let source = fs::read_to_string(&path)
             .with_context(|| format!("khong the doc {}", path.display()))?;
@@ -356,6 +358,7 @@ fn collect_dt_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> 
 
 pub(crate) fn compile_snippet(source: &str) -> Result<CompiledProject> {
     let synthetic = PathBuf::from("<repl>");
+    let mut items = load_bundled_stdlib_items()?;
     let lexed = Lexer::new(source).tokenize();
     if !lexed.errors.is_empty() {
         bail!("{}", render_lex_errors(&synthetic, source, &lexed.errors));
@@ -367,7 +370,8 @@ pub(crate) fn compile_snippet(source: &str) -> Result<CompiledProject> {
             render_parse_errors(&synthetic, source, &parsed.errors)
         );
     }
-    let typed = TypeChecker::new().check(parsed.program);
+    items.extend(parsed.program.items);
+    let typed = TypeChecker::new().check(Program { items });
     if !typed.errors.is_empty() {
         bail!("{}", render_type_errors(&synthetic, source, &typed.errors));
     }
@@ -389,6 +393,35 @@ pub(crate) fn compile_snippet(source: &str) -> Result<CompiledProject> {
         typed_program: typed.typed_program,
         main_return_type,
     })
+}
+
+fn load_bundled_stdlib_items() -> Result<Vec<draton_ast::Item>> {
+    let mut items = Vec::new();
+    for module in bundled_stdlib_modules() {
+        if !matches!(module.name, "math") {
+            continue;
+        }
+        let lexed = Lexer::new(module.source).tokenize();
+        if !lexed.errors.is_empty() {
+            bail!(
+                "{}",
+                render_lex_errors(&PathBuf::from(format!("<stdlib:{}>", module.name)), module.source, &lexed.errors)
+            );
+        }
+        let parsed = Parser::new(lexed.tokens).parse();
+        if !parsed.errors.is_empty() {
+            bail!(
+                "{}",
+                render_parse_errors(
+                    &PathBuf::from(format!("<stdlib:{}>", module.name)),
+                    module.source,
+                    &parsed.errors
+                )
+            );
+        }
+        items.extend(parsed.program.items);
+    }
+    Ok(items)
 }
 
 pub(crate) fn build_module<'ctx>(

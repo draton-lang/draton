@@ -16,6 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use draton_lexer::Lexer;
 use draton_parser::Parser;
+use draton_stdlib as stdlib;
 use draton_typeck::TypeChecker;
 use gc::config::GcConfig;
 use scheduler::channel::RawChan;
@@ -24,6 +25,12 @@ use scheduler::channel::RawChan;
 pub struct DratonString {
     pub len: i64,
     pub ptr: *mut libc::c_char,
+}
+
+#[repr(C)]
+pub struct DratonOptionI64 {
+    pub is_some: bool,
+    pub value: i64,
 }
 
 fn string_bytes(value: DratonString) -> &'static [u8] {
@@ -46,6 +53,19 @@ fn owned_string(bytes: Vec<u8>) -> DratonString {
     DratonString {
         len: len as i64,
         ptr: ptr.cast::<libc::c_char>(),
+    }
+}
+
+fn option_i64(value: Option<i64>) -> DratonOptionI64 {
+    match value {
+        Some(value) => DratonOptionI64 {
+            is_some: true,
+            value,
+        },
+        None => DratonOptionI64 {
+            is_some: false,
+            value: 0,
+        },
     }
 }
 
@@ -652,6 +672,111 @@ pub extern "C" fn draton_string_parse_float(value: DratonString) -> f64 {
     draton_string_to_owned(value)
         .parse::<f64>()
         .unwrap_or(0.0)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_sqrt(x: f64) -> f64 {
+    stdlib::math::sqrt(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_pow(base: f64, exp: f64) -> f64 {
+    stdlib::math::pow(base, exp)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_abs(x: f64) -> f64 {
+    stdlib::math::abs(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_floor(x: f64) -> f64 {
+    stdlib::math::floor(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_ceil(x: f64) -> f64 {
+    stdlib::math::ceil(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_round(x: f64) -> f64 {
+    stdlib::math::round(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_sin(x: f64) -> f64 {
+    stdlib::math::sin(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_cos(x: f64) -> f64 {
+    stdlib::math::cos(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_tan(x: f64) -> f64 {
+    stdlib::math::tan(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_log(x: f64) -> f64 {
+    stdlib::math::log(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_log2(x: f64) -> f64 {
+    stdlib::math::log2(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_log10(x: f64) -> f64 {
+    stdlib::math::log10(x)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_min(a: f64, b: f64) -> f64 {
+    stdlib::math::min(a, b)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_max(a: f64, b: f64) -> f64 {
+    stdlib::math::max(a, b)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_clamp(x: f64, lo: f64, hi: f64) -> f64 {
+    stdlib::math::clamp(x, lo, hi)
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_pi() -> f64 {
+    stdlib::math::pi()
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_e() -> f64 {
+    stdlib::math::e()
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_checked_add(a: i64, b: i64) -> DratonOptionI64 {
+    option_i64(stdlib::math::checked_add(a, b))
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_checked_sub(a: i64, b: i64) -> DratonOptionI64 {
+    option_i64(stdlib::math::checked_sub(a, b))
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_checked_mul(a: i64, b: i64) -> DratonOptionI64 {
+    option_i64(stdlib::math::checked_mul(a, b))
+}
+
+#[no_mangle]
+pub extern "C" fn __draton_std_math_checked_div(a: i64, b: i64) -> DratonOptionI64 {
+    option_i64(stdlib::math::checked_div(a, b))
 }
 
 /// Parses a source file with the host Rust frontend and returns its AST debug dump.

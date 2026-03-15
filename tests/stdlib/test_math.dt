@@ -1,0 +1,15 @@
+fn main() -> Int {
+    if sqrt(81.0) < 8.99 || sqrt(81.0) > 9.01 { return 1 }
+    if pow(2.0, 5.0) < 31.99 || pow(2.0, 5.0) > 32.01 { return 1 }
+    if abs(-3.5) < 3.49 || abs(-3.5) > 3.51 { return 1 }
+    if floor(3.9) != 3.0 { return 1 }
+    if ceil(3.1) != 4.0 { return 1 }
+    if round(3.6) != 4.0 { return 1 }
+    if min(1.0, 2.0) != 1.0 { return 1 }
+    if max(1.0, 2.0) != 2.0 { return 1 }
+    if clamp(10.0, 0.0, 5.0) != 5.0 { return 1 }
+    if pi() < 3.14 { return 1 }
+    if e() < 2.71 { return 1 }
+
+    0
+}

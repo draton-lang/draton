@@ -17,6 +17,7 @@ draton-lexer = { path = "../draton-lexer" }
 draton-lsp = { path = "../draton-lsp" }
 draton-parser = { path = "../draton-parser" }
 draton-runtime = { path = "../draton-runtime" }
+draton-stdlib = { path = "../draton-stdlib" }
 draton-typeck = { path = "../draton-typeck" }
 inkwell = { version = "0.4", features = ["llvm14-0"] }
 serde = { version = "1", features = ["derive"] }

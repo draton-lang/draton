@@ -69,8 +69,17 @@ struct BuildFlags {
 
 #[derive(Debug, Clone, Args)]
 struct RunFlags {
-    #[command(flatten)]
-    build: BuildFlags,
+    input: Option<PathBuf>,
+    #[arg(short = 'o', long = "output")]
+    output: Option<PathBuf>,
+    #[arg(long)]
+    release: bool,
+    #[arg(long)]
+    size: bool,
+    #[arg(long)]
+    fast: bool,
+    #[arg(long)]
+    target: Option<String>,
     #[arg(trailing_var_arg = true)]
     args: Vec<String>,
 }
@@ -99,14 +108,19 @@ fn main() -> Result<()> {
         Command::LexDump { path } => commands::lex_dump::run(&path),
         Command::Run(flags) => {
             let request = BuildRequest {
-                profile: Profile::from_flags(
-                    flags.build.release,
-                    flags.build.size,
-                    flags.build.fast,
-                )?,
-                target: flags.build.target,
+                profile: Profile::from_flags(flags.release, flags.size, flags.fast)?,
+                target: flags.target,
             };
-            commands::run::run(&cwd, &request, &flags.args)
+            match flags.input.as_deref() {
+                Some(input) => commands::run::run_file(
+                    &cwd,
+                    input,
+                    flags.output.as_deref(),
+                    &request,
+                    &flags.args,
+                ),
+                None => commands::run::run(&cwd, &request, &flags.args),
+            }
         }
         Command::Test => commands::test::run(&cwd),
         Command::Fmt => commands::fmt::run(&cwd),
