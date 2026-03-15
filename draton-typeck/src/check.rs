@@ -388,6 +388,15 @@ impl TypeChecker {
         }
     }
 
+    fn normalize_interface_method_ty(&self, ty: Type) -> Type {
+        match self.apply_subst(ty) {
+            Type::Fn(params, ret) if !params.is_empty() => {
+                Type::Fn(params.into_iter().skip(1).collect(), ret)
+            }
+            other => other,
+        }
+    }
+
     fn check_interface_impl(&mut self, class_def: &ClassDef) {
         for iface_name in &class_def.implements {
             let Some(required_methods) = self.interface_methods.get(iface_name).cloned() else {
@@ -411,8 +420,8 @@ impl TypeChecker {
                     });
                     continue;
                 };
-                let iface_ty = self.apply_subst(iface_scheme.ty);
-                let class_ty = self.apply_subst(class_scheme.ty);
+                let iface_ty = self.normalize_interface_method_ty(iface_scheme.ty);
+                let class_ty = self.normalize_interface_method_ty(class_scheme.ty);
                 if iface_ty != class_ty {
                     self.errors.push(TypeError::Mismatch {
                         expected: iface_ty.to_string(),
@@ -456,13 +465,13 @@ impl TypeChecker {
             methods: interface_def
                 .methods
                 .iter()
-                .map(|method| self.infer_interface_method(method))
+                .map(|method| self.infer_interface_method(&interface_def.name, method))
                 .collect(),
             span: interface_def.span,
         }
     }
 
-    fn infer_interface_method(&mut self, function: &FnDef) -> TypedFnDef {
+    fn infer_interface_method(&mut self, interface_name: &str, function: &FnDef) -> TypedFnDef {
         self.push_type_params(&function.type_params);
         let hint = self.function_hints.get(&function.name).cloned();
         let params = function
@@ -470,6 +479,9 @@ impl TypeChecker {
             .iter()
             .enumerate()
             .map(|(index, param)| {
+                if param.name == "self" {
+                    return self.class_instance_type(interface_name);
+                }
                 param
                     .type_hint
                     .as_ref()
@@ -1313,8 +1325,32 @@ impl TypeChecker {
         rhs: &Expr,
         span: draton_ast::Span,
     ) -> (TypedExpr, Type) {
-        let (typed_lhs, lhs_ty) = self.infer_expr(lhs);
-        let (typed_rhs, rhs_ty) = self.infer_expr(rhs);
+        let (typed_lhs, lhs_ty, typed_rhs, rhs_ty) = match op {
+            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => match (lhs, rhs) {
+                (Expr::NoneLit(_), _) => {
+                    let (typed_rhs, rhs_ty) = self.infer_expr(rhs);
+                    let (typed_lhs, lhs_ty) =
+                        self.infer_expr_with_expected(lhs, Some(rhs_ty.clone()));
+                    (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
+                }
+                (_, Expr::NoneLit(_)) => {
+                    let (typed_lhs, lhs_ty) = self.infer_expr(lhs);
+                    let (typed_rhs, rhs_ty) =
+                        self.infer_expr_with_expected(rhs, Some(lhs_ty.clone()));
+                    (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
+                }
+                _ => {
+                    let (typed_lhs, lhs_ty) = self.infer_expr(lhs);
+                    let (typed_rhs, rhs_ty) = self.infer_expr(rhs);
+                    (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
+                }
+            },
+            _ => {
+                let (typed_lhs, lhs_ty) = self.infer_expr(lhs);
+                let (typed_rhs, rhs_ty) = self.infer_expr(rhs);
+                (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
+            }
+        };
         let result_ty = match op {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                 let lhs_resolved = self.expect_numeric(lhs_ty.clone(), span, "left-hand operand");
@@ -2295,6 +2331,22 @@ impl TypeChecker {
                 quantified: Vec::new(),
                 ty: Type::Fn(Vec::new(), Box::new(Type::Int)),
             }),
+            "contains" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String], Box::new(Type::Bool)),
+            }),
+            "slice" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::Int, Type::Int], Box::new(Type::String)),
+            }),
+            "starts_with" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String], Box::new(Type::Bool)),
+            }),
+            "replace" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String, Type::String], Box::new(Type::String)),
+            }),
             _ => None,
         }
     }
@@ -2537,7 +2589,7 @@ impl TypeChecker {
             .methods
             .iter()
             .map(|method| {
-                let ty = self.interface_method_placeholder(method);
+                let ty = self.interface_method_placeholder(&interface_def.name, method);
                 (
                     method.name.clone(),
                     Scheme {
@@ -2551,7 +2603,7 @@ impl TypeChecker {
             .insert(interface_def.name.clone(), methods);
     }
 
-    fn interface_method_placeholder(&mut self, function: &FnDef) -> Type {
+    fn interface_method_placeholder(&mut self, interface_name: &str, function: &FnDef) -> Type {
         self.push_type_params(&function.type_params);
         let hint = self.function_hints.get(&function.name).cloned();
         let params = function
@@ -2559,6 +2611,9 @@ impl TypeChecker {
             .iter()
             .enumerate()
             .map(|(index, param)| {
+                if param.name == "self" {
+                    return self.class_instance_type(interface_name);
+                }
                 param
                     .type_hint
                     .as_ref()
@@ -2631,6 +2686,14 @@ impl TypeChecker {
             Scheme {
                 quantified: vec![extract_var(&print_a)],
                 ty: Type::Fn(vec![print_a], Box::new(Type::Unit)),
+            },
+        );
+        let println_a = self.fresh_var();
+        self.env.define(
+            "println",
+            Scheme {
+                quantified: vec![extract_var(&println_a)],
+                ty: Type::Fn(vec![println_a], Box::new(Type::Unit)),
             },
         );
         self.env.define(

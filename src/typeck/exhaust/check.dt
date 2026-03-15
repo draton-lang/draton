@@ -43,8 +43,10 @@ fn ast_expr_to_pattern(expr: Expr) {
     let items: Array[Pattern] = []
     p.kind = "Any"
     p.items = items
-    if expr_kind_is(expr, "Ident") && str_eq_type_error(expr.name, "_") {
-        p.kind = "Wildcard"
+    if expr_kind_is(expr, "Ident") {
+        if str_eq_type_error(expr.name, "_") {
+            p.kind = "Wildcard"
+        }
     } else if expr_kind_is(expr, "BoolLit") {
         p.kind = "BoolLit"
         p.bool_value = expr.bool_value

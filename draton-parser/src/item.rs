@@ -573,7 +573,7 @@ impl Parser {
     pub(crate) fn parse_type_expr(&mut self) -> Option<TypeExpr> {
         self.skip_doc_comments();
         let token = self.current_token().clone();
-        match token.kind {
+        let mut ty = match token.kind {
             TokenKind::Fn => {
                 self.advance();
                 let start = self.convert_span(token.span);
@@ -624,6 +624,11 @@ impl Parser {
                 self.error_unexpected(&token, "type expression");
                 None
             }
+        }?;
+        while self.match_kind(TokenKind::QuestionQuestion) {
+            let span = self.merge_spans(ty.span(), self.token_span());
+            ty = TypeExpr::Generic("Option".to_string(), vec![ty], span);
         }
+        Some(ty)
     }
 }

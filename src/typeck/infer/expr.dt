@@ -18,6 +18,7 @@ import { Checker, Type, Scheme, TypedExpr, TypedMapEntry, TypedMatchArm, TypedMa
     fn infer_fstr(c: Checker, parts: Array[FStrPart], span: Span) -> TypedExpr
     fn expect_numeric(c: Checker, ty: Type, span: Span) -> Type
     fn make_typed(kind: String, ty: Type, span: Span) -> TypedExpr
+    fn infer_arg_type_for_call(c: Checker, actual: Type, expected: Type) -> Type
 }
 
 fn infer_expr(c: Checker, expr: Expr) {
@@ -232,12 +233,16 @@ fn infer_unop(c: Checker, op: String, expr: Expr, span: Span) {
 
 fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) {
     let callee_typed = infer_expr(c, callee)
-    if expr_kind_is(callee, "Ident") && args.len() == 1 && expr_kind_is(args[0], "Map") {
-        if str_eq_type(callee_typed.expr_ty.type_kind, "Named") {
-            return infer_class_literal_call(c, callee_typed.expr_ty.ty_name, args[0], span)
-        }
-        if find_class_index(c, callee.name) >= 0 {
-            return infer_class_literal_call(c, callee.name, args[0], span)
+    if expr_kind_is(callee, "Ident") {
+        if args.len() == 1 {
+            if expr_kind_is(args[0], "Map") {
+                if str_eq_type(callee_typed.expr_ty.type_kind, "Named") {
+                    return infer_class_literal_call(c, callee_typed.expr_ty.ty_name, args[0], span)
+                }
+                if find_class_index(c, callee.name) >= 0 {
+                    return infer_class_literal_call(c, callee.name, args[0], span)
+                }
+            }
         }
     }
     let out = make_typed("Call", checker_fresh_var(c), span)
@@ -245,11 +250,23 @@ fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) {
     let arg_types: Array[Type] = []
     out.call_callee = callee_typed
     out.call_args = typed_args
+    let expected_params: Array[Type] = []
+    if str_eq_type(out.call_callee.expr_ty.type_kind, "Fn") {
+        let mut param_i = 0
+        while param_i < out.call_callee.expr_ty.ty_params.len() {
+            expected_params.push(out.call_callee.expr_ty.ty_params[param_i])
+            param_i = param_i + 1
+        }
+    }
     let mut i = 0
     while i < args.len() {
         let arg = infer_expr(c, args[i])
         out.call_args.push(arg)
-        arg_types.push(arg.expr_ty)
+        if i < expected_params.len() {
+            arg_types.push(infer_arg_type_for_call(c, arg.expr_ty, expected_params[i]))
+        } else {
+            arg_types.push(arg.expr_ty)
+        }
         i = i + 1
     }
     if expr_kind_is(callee, "Ident") {
@@ -428,6 +445,26 @@ fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], 
                 i = i + 1
             }
         }
+        let iface_idx = find_interface_index(c, resolved_target_ty.ty_name)
+        if iface_idx >= 0 {
+            i = 0
+            while i < c.interface_method_names[iface_idx].len() {
+                if str_eq_type(c.interface_method_names[iface_idx][i], name) {
+                    let method_ty = env_instantiate(c.env, c.interface_method_schemes[iface_idx][i])
+                    let ret_ty = checker_fresh_var(c)
+                    let full_arg_types: Array[Type] = [resolved_target_ty]
+                    let mut j = 0
+                    while j < arg_types.len() {
+                        full_arg_types.push(arg_types[j])
+                        j = j + 1
+                    }
+                    checker_unify(c, method_ty, type_fn(full_arg_types, ret_ty), span)
+                    out.expr_ty = checker_apply_subst(c, ret_ty)
+                    return out
+                }
+                i = i + 1
+            }
+        }
         c.errors.push(undefined_method_error(name, resolved_target_ty.ty_name, span.line, span.col))
     } else {
         c.errors.push(undefined_method_error(name, type_display(resolved_target_ty), span.line, span.col))
@@ -521,9 +558,33 @@ fn infer_match(c: Checker, subject: Expr, arms: Array[MatchArm], span: Span) {
     let mut i = 0
     while i < arms.len() {
         let arm = TypedMatchArm()
+        env_push_scope(c.env)
+        let mut some_binding_name = ""
+        if expr_kind_is(arms[i].pattern, "Call") {
+            if expr_kind_is(arms[i].pattern.callee, "Ident") {
+                if str_eq_type(arms[i].pattern.callee.name, "Some") {
+                    if arms[i].pattern.args.len() == 1 {
+                        if expr_kind_is(arms[i].pattern.args[0], "Ident") {
+                            if !str_eq_type(arms[i].pattern.args[0].name, "_") {
+                                let inner_ty = checker_fresh_var(c)
+                                checker_unify(c, out.match_subject.expr_ty, type_option(inner_ty), arms[i].pattern.span)
+                                some_binding_name = arms[i].pattern.args[0].name
+                                env_define(c.env, some_binding_name, mono_scheme(inner_ty))
+                            }
+                        }
+                    }
+                }
+            }
+        }
         arm.arm_pattern = infer_expr(c, arms[i].pattern)
         checker_unify(c, arm.arm_pattern.expr_ty, out.match_subject.expr_ty, arms[i].pattern.span)
         arm.arm_pattern.expr_ty = checker_apply_subst(c, out.match_subject.expr_ty)
+        if str_len(some_binding_name) != 0 {
+            let resolved_pattern_ty = checker_apply_subst(c, arm.arm_pattern.expr_ty)
+            if str_eq_type(resolved_pattern_ty.type_kind, "Option") {
+                env_define(c.env, some_binding_name, mono_scheme(checker_apply_subst(c, resolved_pattern_ty.ty_inner)))
+            }
+        }
         let body = TypedMatchArmBody()
         if match_arm_body_kind_is(arms[i].body, "Expr") {
             body.tag = "Expr"
@@ -534,6 +595,7 @@ fn infer_match(c: Checker, subject: Expr, arms: Array[MatchArm], span: Span) {
             body.body_block = infer_block(c, arms[i].body.block)
             checker_unify(c, body.body_block.block_result_ty, result_ty, arms[i].span)
         }
+        env_pop_scope(c.env)
         arm.arm_body = body
         arm.arm_span = arms[i].span
         out.match_arms.push(arm)
@@ -607,4 +669,15 @@ fn make_typed(kind: String, ty: Type, span: Span) {
     out.field_names = empty_fields
     out.field_values = empty_values
     out
+}
+
+fn infer_arg_type_for_call(c: Checker, actual: Type, expected: Type) {
+    let resolved_actual = checker_apply_subst(c, actual)
+    let resolved_expected = checker_apply_subst(c, expected)
+    if str_eq_type(resolved_actual.type_kind, "Named") &&
+       str_eq_type(resolved_expected.type_kind, "Named") &&
+       class_implements_interface(c, resolved_actual.ty_name, resolved_expected.ty_name) {
+        return resolved_expected
+    }
+    resolved_actual
 }

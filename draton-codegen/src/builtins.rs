@@ -14,6 +14,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.declare_panic_runtime()?;
         if let Some(print_fn) = self.module.get_function("draton_print") {
             self.functions.insert("print".to_string(), print_fn);
+            self.functions.insert("println".to_string(), print_fn);
         }
         Ok(())
     }
@@ -237,6 +238,38 @@ impl<'ctx> CodeGen<'ctx> {
                 "draton_str_concat",
                 self.string_type
                     .fn_type(&[self.string_type.into(), self.string_type.into()], false),
+                None,
+            );
+        }
+        if self.module.get_function("draton_str_contains").is_none() {
+            self.module.add_function(
+                "draton_str_contains",
+                self.context
+                    .bool_type()
+                    .fn_type(&[self.string_type.into(), self.string_type.into()], false),
+                None,
+            );
+        }
+        if self.module.get_function("draton_str_starts_with").is_none() {
+            self.module.add_function(
+                "draton_str_starts_with",
+                self.context
+                    .bool_type()
+                    .fn_type(&[self.string_type.into(), self.string_type.into()], false),
+                None,
+            );
+        }
+        if self.module.get_function("draton_str_replace").is_none() {
+            self.module.add_function(
+                "draton_str_replace",
+                self.string_type.fn_type(
+                    &[
+                        self.string_type.into(),
+                        self.string_type.into(),
+                        self.string_type.into(),
+                    ],
+                    false,
+                ),
                 None,
             );
         }

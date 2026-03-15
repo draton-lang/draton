@@ -259,6 +259,11 @@ impl<'ctx> CodeGen<'ctx> {
                 "range expressions are lowered only inside for loops".to_string(),
             ));
         }
+        if matches!(op, BinOp::Eq | BinOp::Ne) {
+            if let Some(value) = self.emit_option_none_compare(lhs, op, rhs)? {
+                return Ok(Some(value));
+            }
+        }
         let lhs = self
             .emit_expr(lhs)?
             .ok_or_else(|| CodeGenError::UnsupportedExpr("binop lhs missing value".to_string()))?;
@@ -424,6 +429,44 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(Some(value))
     }
 
+    fn emit_option_none_compare(
+        &mut self,
+        lhs: &TypedExpr,
+        op: BinOp,
+        rhs: &TypedExpr,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        let option_expr = match (&lhs.kind, &rhs.kind) {
+            (TypedExprKind::NoneLit, _) if matches!(rhs.ty, Type::Option(_)) => Some(rhs),
+            (_, TypedExprKind::NoneLit) if matches!(lhs.ty, Type::Option(_)) => Some(lhs),
+            _ => None,
+        };
+        let Some(option_expr) = option_expr else {
+            return Ok(None);
+        };
+        let option_value = self
+            .emit_expr(option_expr)?
+            .ok_or_else(|| {
+                CodeGenError::UnsupportedExpr("option compare missing value".to_string())
+            })?
+            .into_struct_value();
+        let has_value = self
+            .builder
+            .build_extract_value(option_value, 0, "option.has_value")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+            .into_int_value();
+        let zero = self.context.bool_type().const_zero();
+        let pred = match op {
+            BinOp::Eq => IntPredicate::EQ,
+            BinOp::Ne => IntPredicate::NE,
+            _ => unreachable!(),
+        };
+        let cmp = self
+            .builder
+            .build_int_compare(pred, has_value, zero, "option.none.cmp")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        Ok(Some(cmp.into()))
+    }
+
     fn emit_unop(
         &mut self,
         op: UnOp,
@@ -514,15 +557,15 @@ impl<'ctx> CodeGen<'ctx> {
             name,
             &args.iter().map(|arg| arg.ty.clone()).collect::<Vec<_>>(),
         )?;
-        if symbol == "print" {
+        if symbol == "print" || symbol == "println" {
             let value = args
                 .first()
                 .ok_or_else(|| {
-                    CodeGenError::UnsupportedExpr("print requires one argument".to_string())
+                    CodeGenError::UnsupportedExpr(format!("{symbol} requires one argument"))
                 })
                 .and_then(|arg| {
                     self.emit_expr(arg)?.ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr("print arg missing value".to_string())
+                        CodeGenError::UnsupportedExpr(format!("{symbol} arg missing value"))
                     })
                 })?;
             let function = self
@@ -999,6 +1042,9 @@ impl<'ctx> CodeGen<'ctx> {
         if let Type::Array(inner) = &target.ty {
             return self.emit_array_method_call(target, inner, method, args);
         }
+        if matches!(target.ty, Type::String) {
+            return self.emit_string_method_call(target, method, args);
+        }
         let Type::Named(class_name, type_args) = &target.ty else {
             return Err(CodeGenError::UnsupportedExpr(format!(
                 "method call on non-class type {}",
@@ -1067,6 +1113,152 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         self.emit_safepoint_poll()?;
         Ok(call.try_as_basic_value().left())
+    }
+
+    fn emit_string_method_call(
+        &mut self,
+        target: &TypedExpr,
+        method: &str,
+        args: &[TypedExpr],
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        let target_value = self
+            .emit_expr(target)?
+            .ok_or_else(|| {
+                CodeGenError::UnsupportedExpr("string target missing value".to_string())
+            })?
+            .into_struct_value();
+        match method {
+            "len" => {
+                let len = self
+                    .builder
+                    .build_extract_value(target_value, 0, "str.len")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(len))
+            }
+            "slice" => {
+                let function = self
+                    .module
+                    .get_function("draton_str_slice")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_str_slice".to_string()))?;
+                let start = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("String.slice expects 2 args".to_string())
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "String.slice start arg missing value".to_string(),
+                        )
+                    })?;
+                let end = self
+                    .emit_expr(args.get(1).ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("String.slice expects 2 args".to_string())
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "String.slice end arg missing value".to_string(),
+                        )
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(
+                        function,
+                        &[target_value.into(), start.into(), end.into()],
+                        "str.slice",
+                    )
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(call.try_as_basic_value().left())
+            }
+            "contains" => {
+                let function = self
+                    .module
+                    .get_function("draton_str_contains")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_str_contains".to_string())
+                    })?;
+                let needle = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "String.contains expects 1 arg".to_string(),
+                        )
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "String.contains arg missing value".to_string(),
+                        )
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[target_value.into(), needle.into()], "str.contains")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(call.try_as_basic_value().left())
+            }
+            "starts_with" => {
+                let function = self
+                    .module
+                    .get_function("draton_str_starts_with")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_str_starts_with".to_string())
+                    })?;
+                let prefix = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "String.starts_with expects 1 arg".to_string(),
+                        )
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "String.starts_with arg missing value".to_string(),
+                        )
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[target_value.into(), prefix.into()], "str.starts")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(call.try_as_basic_value().left())
+            }
+            "replace" => {
+                let function = self
+                    .module
+                    .get_function("draton_str_replace")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_str_replace".to_string())
+                    })?;
+                let from = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("String.replace expects 2 args".to_string())
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "String.replace from arg missing value".to_string(),
+                        )
+                    })?;
+                let to = self
+                    .emit_expr(args.get(1).ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("String.replace expects 2 args".to_string())
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "String.replace to arg missing value".to_string(),
+                        )
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(
+                        function,
+                        &[target_value.into(), from.into(), to.into()],
+                        "str.replace",
+                    )
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.emit_safepoint_poll()?;
+                Ok(call.try_as_basic_value().left())
+            }
+            _ => Err(CodeGenError::UnsupportedExpr(format!(
+                "unsupported string method {method}"
+            ))),
+        }
     }
 
     fn emit_array_method_call(
@@ -1577,6 +1769,9 @@ impl<'ctx> CodeGen<'ctx> {
         arms: &[draton_typeck::TypedMatchArm],
         ty: &Type,
     ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        if matches!(subject.ty, Type::Option(_)) {
+            return self.emit_option_match(subject, arms, ty);
+        }
         let subject = self.emit_expr(subject)?.ok_or_else(|| {
             CodeGenError::UnsupportedExpr("match subject missing value".to_string())
         })?;
@@ -1644,6 +1839,150 @@ impl<'ctx> CodeGen<'ctx> {
             Ok(None)
         } else {
             self.zero_value(ty).map(Some)
+        }
+    }
+
+    fn emit_option_match(
+        &mut self,
+        subject: &TypedExpr,
+        arms: &[draton_typeck::TypedMatchArm],
+        ty: &Type,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        let function = self.current_function()?;
+        let subject = self
+            .emit_expr(subject)?
+            .ok_or_else(|| {
+                CodeGenError::UnsupportedExpr("match subject missing value".to_string())
+            })?
+            .into_struct_value();
+        let tag = self
+            .builder
+            .build_extract_value(subject, 0, "match.option.tag")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+            .into_int_value();
+        let payload = self
+            .builder
+            .build_extract_value(subject, 1, "match.option.payload")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let exit = self.context.append_basic_block(function, "match.option.exit");
+        let result_slot = if matches!(ty, Type::Unit | Type::Never) {
+            None
+        } else {
+            Some(self.create_entry_alloca(function, self.llvm_basic_type(ty)?, "match.option.slot")?)
+        };
+
+        let mut next_block = self.context.append_basic_block(function, "match.option.check");
+        self.builder
+            .build_unconditional_branch(next_block)
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+
+        for arm in arms {
+            self.builder.position_at_end(next_block);
+            if matches!(&arm.pattern.kind, TypedExprKind::Ident(name) if name == "_") {
+                let value = self.emit_match_arm_body(&arm.body)?;
+                if let (Some(slot), Some(value)) = (result_slot, value) {
+                    self.build_store(slot, value)?;
+                }
+                if !self.current_block_terminated() {
+                    self.builder
+                        .build_unconditional_branch(exit)
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                }
+                self.builder.position_at_end(exit);
+                return if let Some(slot) = result_slot {
+                    self.build_load(slot, "match.option.result").map(Some)
+                } else {
+                    Ok(None)
+                };
+            }
+
+            let arm_block = self.context.append_basic_block(function, "match.option.arm");
+            let fallthrough = self
+                .context
+                .append_basic_block(function, "match.option.next");
+
+            match &arm.pattern.kind {
+                TypedExprKind::Call(callee, args)
+                    if matches!(&callee.kind, TypedExprKind::Ident(name) if name == "Some")
+                        && args.len() == 1 =>
+                {
+                    self.builder
+                        .build_conditional_branch(tag, arm_block, fallthrough)
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    self.builder.position_at_end(arm_block);
+                    if let TypedExprKind::Ident(name) = &args[0].kind {
+                        if name != "_" {
+                            let ptr = self.create_entry_alloca(function, payload.get_type(), name)?;
+                            self.build_store(ptr, payload)?;
+                            self.push_scope();
+                            self.define_local(name, ptr);
+                            let value = self.emit_match_arm_body(&arm.body)?;
+                            self.pop_scope();
+                            if let (Some(slot), Some(value)) = (result_slot, value) {
+                                self.build_store(slot, value)?;
+                            }
+                        } else {
+                            let value = self.emit_match_arm_body(&arm.body)?;
+                            if let (Some(slot), Some(value)) = (result_slot, value) {
+                                self.build_store(slot, value)?;
+                            }
+                        }
+                    } else {
+                        return Err(CodeGenError::UnsupportedExpr(
+                            "unsupported Some pattern shape".to_string(),
+                        ));
+                    }
+                }
+                TypedExprKind::NoneLit => {
+                    let is_none = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            tag,
+                            self.context.bool_type().const_zero(),
+                            "match.option.is_none",
+                        )
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    self.builder
+                        .build_conditional_branch(is_none, arm_block, fallthrough)
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    self.builder.position_at_end(arm_block);
+                    let value = self.emit_match_arm_body(&arm.body)?;
+                    if let (Some(slot), Some(value)) = (result_slot, value) {
+                        self.build_store(slot, value)?;
+                    }
+                }
+                _ => {
+                    return Err(CodeGenError::UnsupportedExpr(
+                        "unsupported option match pattern".to_string(),
+                    ));
+                }
+            }
+
+            if !self.current_block_terminated() {
+                self.builder
+                    .build_unconditional_branch(exit)
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            }
+            next_block = fallthrough;
+        }
+
+        self.builder.position_at_end(next_block);
+        if !self.current_block_terminated() {
+            if let Some(slot) = result_slot {
+                let fallback = self.zero_value(ty)?;
+                self.build_store(slot, fallback)?;
+            }
+            self.builder
+                .build_unconditional_branch(exit)
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        }
+
+        self.builder.position_at_end(exit);
+        if let Some(slot) = result_slot {
+            self.build_load(slot, "match.option.result").map(Some)
+        } else {
+            Ok(None)
         }
     }
 

@@ -339,6 +339,7 @@ impl<'ctx> CodeGen<'ctx> {
             method
                 .param_types
                 .iter()
+                .skip(1)
                 .map(|ty| self.llvm_payload_type(ty))
                 .collect::<Result<Vec<_>, _>>()?,
         );

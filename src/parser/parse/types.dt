@@ -61,6 +61,11 @@ fn parse_type_expr(p: Parser) -> TypeExpr {
     } else {
         parser_error_unexpected(p, token, "type expression")
     }
+    while parser_match_kind(p, "QuestionQuestion") {
+        let option_args: Array[TypeExpr] = []
+        option_args.push(ty)
+        ty = type_generic("Option", option_args, merge_spans(type_expr_span(ty), parser_token_span(p)))
+    }
     ty
 }
 

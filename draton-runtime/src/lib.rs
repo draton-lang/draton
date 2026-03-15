@@ -584,6 +584,32 @@ pub extern "C" fn draton_str_concat(lhs: DratonString, rhs: DratonString) -> Dra
     owned_string(out)
 }
 
+/// Returns true when `needle` occurs anywhere in `value`.
+#[no_mangle]
+pub extern "C" fn draton_str_contains(value: DratonString, needle: DratonString) -> bool {
+    draton_string_to_owned(value).contains(&draton_string_to_owned(needle))
+}
+
+/// Returns true when `value` begins with `prefix`.
+#[no_mangle]
+pub extern "C" fn draton_str_starts_with(value: DratonString, prefix: DratonString) -> bool {
+    draton_string_to_owned(value).starts_with(&draton_string_to_owned(prefix))
+}
+
+/// Replaces all occurrences of `from` with `to`.
+#[no_mangle]
+pub extern "C" fn draton_str_replace(
+    value: DratonString,
+    from: DratonString,
+    to: DratonString,
+) -> DratonString {
+    owned_string(
+        draton_string_to_owned(value)
+            .replace(&draton_string_to_owned(from), &draton_string_to_owned(to))
+            .into_bytes(),
+    )
+}
+
 /// Converts an integer to a Draton string.
 #[no_mangle]
 pub extern "C" fn draton_int_to_string(value: i64) -> DratonString {

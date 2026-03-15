@@ -10,11 +10,15 @@ class Checker {
     let mut subst: Substitution
     let mut errors: Array[TypeError]
     let mut class_names: Array[String]
+    let mut class_implements_names: Array[Array[String]]
     let mut class_field_names: Array[Array[String]]
     let mut class_field_types: Array[Array[Type]]
     let mut class_method_names: Array[Array[String]]
     let mut class_method_schemes: Array[Array[Scheme]]
     let mut class_type_args: Array[Array[Type]]
+    let mut interface_names: Array[String]
+    let mut interface_method_names: Array[Array[String]]
+    let mut interface_method_schemes: Array[Array[Scheme]]
     let mut type_param_names: Array[Array[String]]
     let mut type_param_types: Array[Array[Type]]
     let mut current_return: Array[Type]
@@ -47,7 +51,10 @@ class TypeCheckResult {
     fn infer_block_result_ty(c: Checker, block: TypedBlock) -> Type
     fn infer_if_result_ty(c: Checker, stmt: TypedIfStmt) -> Type
     fn find_class_index(c: Checker, name: String) -> Int
-    fn checker_define_class(c: Checker, name: String, class_type_args: Array[Type], field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme])
+    fn find_interface_index(c: Checker, name: String) -> Int
+    fn checker_define_class(c: Checker, name: String, class_type_args: Array[Type], implements_names: Array[String], field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme])
+    fn checker_define_interface(c: Checker, name: String, method_names: Array[String], method_schemes: Array[Scheme])
+    fn class_implements_interface(c: Checker, class_name: String, interface_name: String) -> Bool
     fn push_type_params(c: Checker, params: Array[String])
     fn pop_type_params(c: Checker)
     fn has_type_param(c: Checker, name: String) -> Bool
@@ -89,6 +96,7 @@ fn predeclare_fn_scheme(c: Checker, fn_def: FnDef, current_class: String) -> Sch
 fn predeclare_class(c: Checker, def: ClassDef) -> Unit {
     push_type_params(c, def.type_params)
     let class_type_args: Array[Type] = []
+    let implements_names: Array[String] = []
     let mut type_i = 0
     while type_i < def.type_params.len() {
         class_type_args.push(lookup_type_param(c, def.type_params[type_i]))
@@ -101,6 +109,11 @@ fn predeclare_class(c: Checker, def: ClassDef) -> Unit {
     if def.has_extends {
         let parent_idx = find_class_index(c, def.extends_name)
         if parent_idx >= 0 {
+            let mut parent_iface_i = 0
+            while parent_iface_i < c.class_implements_names[parent_idx].len() {
+                implements_names.push(c.class_implements_names[parent_idx][parent_iface_i])
+                parent_iface_i = parent_iface_i + 1
+            }
             let mut parent_i = 0
             while parent_i < c.class_field_names[parent_idx].len() {
                 field_names.push(c.class_field_names[parent_idx][parent_i])
@@ -114,6 +127,11 @@ fn predeclare_class(c: Checker, def: ClassDef) -> Unit {
                 parent_i = parent_i + 1
             }
         }
+    }
+    let mut impl_i = 0
+    while impl_i < def.implements_names.len() {
+        implements_names.push(def.implements_names[impl_i])
+        impl_i = impl_i + 1
     }
     let mut i = 0
     while i < def.members.len() {
@@ -137,7 +155,22 @@ fn predeclare_class(c: Checker, def: ClassDef) -> Unit {
         }
         i = i + 1
     }
-    checker_define_class(c, def.name, class_type_args, field_names, field_types, method_names, method_schemes)
+    checker_define_class(c, def.name, class_type_args, implements_names, field_names, field_types, method_names, method_schemes)
+    let iface_method_names: Array[String] = []
+    let iface_method_schemes: Array[Scheme] = []
+    i = 0
+    while i < def.implements_names.len() {
+        let iface_idx = find_interface_index(c, def.implements_names[i])
+        if iface_idx >= 0 {
+            let mut method_i = 0
+            while method_i < c.interface_method_names[iface_idx].len() {
+                iface_method_names.push(c.interface_method_names[iface_idx][method_i])
+                iface_method_schemes.push(c.interface_method_schemes[iface_idx][method_i])
+                method_i = method_i + 1
+            }
+        }
+        i = i + 1
+    }
     pop_type_params(c)
     let _done = 0
 }
@@ -205,11 +238,15 @@ fn new_checker() {
     let c = Checker()
     let errors: Array[TypeError] = []
     let class_names: Array[String] = []
+    let class_implements_names: Array[Array[String]] = []
     let class_field_names: Array[Array[String]] = []
     let class_field_types: Array[Array[Type]] = []
     let class_method_names: Array[Array[String]] = []
     let class_method_schemes: Array[Array[Scheme]] = []
     let class_type_args: Array[Array[Type]] = []
+    let interface_names: Array[String] = []
+    let interface_method_names: Array[Array[String]] = []
+    let interface_method_schemes: Array[Array[Scheme]] = []
     let type_param_names: Array[Array[String]] = []
     let type_param_types: Array[Array[Type]] = []
     let current_return: Array[Type] = []
@@ -218,11 +255,15 @@ fn new_checker() {
     c.subst = empty_subst()
     c.errors = errors
     c.class_names = class_names
+    c.class_implements_names = class_implements_names
     c.class_field_names = class_field_names
     c.class_field_types = class_field_types
     c.class_method_names = class_method_names
     c.class_method_schemes = class_method_schemes
     c.class_type_args = class_type_args
+    c.interface_names = interface_names
+    c.interface_method_names = interface_method_names
+    c.interface_method_schemes = interface_method_schemes
     c.type_param_names = type_param_names
     c.type_param_types = type_param_types
     c.current_return = current_return
@@ -431,6 +472,7 @@ fn infer_class_def(c: Checker, def: ClassDef) {
     let typed = TypedClassDef()
     let fields: Array[TypedFieldDef] = []
     let methods: Array[TypedFnDef] = []
+    let implements_names: Array[String] = []
     let field_names: Array[String] = []
     let field_types: Array[Type] = []
     let method_names: Array[String] = []
@@ -445,6 +487,11 @@ fn infer_class_def(c: Checker, def: ClassDef) {
     if def.has_extends {
         let parent_idx = find_class_index(c, def.extends_name)
         if parent_idx >= 0 {
+            let mut parent_iface_i = 0
+            while parent_iface_i < c.class_implements_names[parent_idx].len() {
+                implements_names.push(c.class_implements_names[parent_idx][parent_iface_i])
+                parent_iface_i = parent_iface_i + 1
+            }
             let mut parent_i = 0
             while parent_i < c.class_field_names[parent_idx].len() {
                 field_names.push(c.class_field_names[parent_idx][parent_i])
@@ -452,6 +499,11 @@ fn infer_class_def(c: Checker, def: ClassDef) {
                 parent_i = parent_i + 1
             }
         }
+    }
+    let mut impl_i = 0
+    while impl_i < def.implements_names.len() {
+        implements_names.push(def.implements_names[impl_i])
+        impl_i = impl_i + 1
     }
     let mut i = 0
     while i < def.members.len() {
@@ -484,7 +536,7 @@ fn infer_class_def(c: Checker, def: ClassDef) {
         }
         i = i + 1
     }
-    checker_define_class(c, def.name, class_type_args, field_names, field_types, method_names, method_schemes)
+    checker_define_class(c, def.name, class_type_args, implements_names, field_names, field_types, method_names, method_schemes)
     pop_type_params(c)
     typed
 }
@@ -492,14 +544,20 @@ fn infer_class_def(c: Checker, def: ClassDef) {
 fn infer_interface_def(c: Checker, def: InterfaceDef) {
     let typed = TypedInterfaceDef()
     let methods: Array[TypedFnDef] = []
+    let method_names: Array[String] = []
+    let method_schemes: Array[Scheme] = []
     typed.interface_name = def.name
     typed.interface_methods = methods
     typed.interface_span = def.span
     let mut i = 0
     while i < def.methods.len() {
-        typed.interface_methods.push(infer_fn_def(c, def.methods[i], ""))
+        let method = infer_fn_def(c, def.methods[i], def.name)
+        typed.interface_methods.push(method)
+        method_names.push(method.fn_name)
+        method_schemes.push(mono_scheme(method.fn_ty))
         i = i + 1
     }
+    checker_define_interface(c, def.name, method_names, method_schemes)
     typed
 }
 
@@ -578,6 +636,17 @@ fn predeclare_items(c: Checker, program: Program) {
     while i < program.items.len() {
         if item_kind_is(program.items[i], "Class") {
             predeclare_class(c, program.items[i].class_def)
+        } else if item_kind_is(program.items[i], "Interface") {
+            let method_names: Array[String] = []
+            let method_schemes: Array[Scheme] = []
+            let mut j = 0
+            while j < program.items[i].interface_def.methods.len() {
+                let method = program.items[i].interface_def.methods[j]
+                method_names.push(method.name)
+                method_schemes.push(predeclare_fn_scheme(c, method, program.items[i].interface_def.name))
+                j = j + 1
+            }
+            checker_define_interface(c, program.items[i].interface_def.name, method_names, method_schemes)
         } else if item_kind_is(program.items[i], "Fn") {
             env_define(c.env, program.items[i].fn_def.name, predeclare_fn_scheme(c, program.items[i].fn_def, ""))
         } else if item_kind_is(program.items[i], "PanicHandler") {
@@ -622,6 +691,9 @@ fn install_builtins(c: Checker) {
     let print_params: Array[Type] = []
     print_params.push(type_string())
     env_define(c.env, "print", mono_scheme(type_fn(print_params, type_unit())))
+    let println_params: Array[Type] = []
+    println_params.push(type_string())
+    env_define(c.env, "println", mono_scheme(type_fn(println_params, type_unit())))
 
     let range_params: Array[Type] = []
     range_params.push(type_int())
@@ -667,6 +739,12 @@ fn install_builtins(c: Checker) {
     let read_file_params: Array[Type] = []
     read_file_params.push(type_string())
     env_define(c.env, "read_file", mono_scheme(type_fn(read_file_params, type_string())))
+
+    let some_var = checker_fresh_var(c)
+    let some_params: Array[Type] = []
+    some_params.push(some_var)
+    let some_quantified: Array[Int] = [some_var.ty_id]
+    env_define(c.env, "Some", new_scheme(some_quantified, type_fn(some_params, type_option(some_var))))
 }
 
 fn type_from_annotation(c: Checker, ty_expr: TypeExpr) {
@@ -766,10 +844,22 @@ fn find_class_index(c: Checker, name: String) {
     -1
 }
 
-fn checker_define_class(c: Checker, name: String, class_type_args: Array[Type], field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme]) {
+fn find_interface_index(c: Checker, name: String) {
+    let mut i = 0
+    while i < c.interface_names.len() {
+        if str_eq_type(c.interface_names[i], name) {
+            return i
+        }
+        i = i + 1
+    }
+    -1
+}
+
+fn checker_define_class(c: Checker, name: String, class_type_args: Array[Type], implements_names: Array[String], field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme]) {
     let idx = find_class_index(c, name)
     if idx >= 0 {
         c.class_type_args[idx] = class_type_args
+        c.class_implements_names[idx] = implements_names
         c.class_field_names[idx] = field_names
         c.class_field_types[idx] = field_types
         c.class_method_names[idx] = method_names
@@ -777,6 +867,7 @@ fn checker_define_class(c: Checker, name: String, class_type_args: Array[Type], 
     } else {
         c.class_names.push(name)
         c.class_type_args.push(class_type_args)
+        c.class_implements_names.push(implements_names)
         c.class_field_names.push(field_names)
         c.class_field_types.push(field_types)
         c.class_method_names.push(method_names)
@@ -784,4 +875,31 @@ fn checker_define_class(c: Checker, name: String, class_type_args: Array[Type], 
     }
     env_define(c.env, name, mono_scheme(ty_named(name, class_type_args)))
     let _done = 0
+}
+
+fn checker_define_interface(c: Checker, name: String, method_names: Array[String], method_schemes: Array[Scheme]) {
+    let idx = find_interface_index(c, name)
+    if idx >= 0 {
+        c.interface_method_names[idx] = method_names
+        c.interface_method_schemes[idx] = method_schemes
+    } else {
+        c.interface_names.push(name)
+        c.interface_method_names.push(method_names)
+        c.interface_method_schemes.push(method_schemes)
+    }
+}
+
+fn class_implements_interface(c: Checker, class_name: String, interface_name: String) {
+    let idx = find_class_index(c, class_name)
+    if idx < 0 {
+        return false
+    }
+    let mut i = 0
+    while i < c.class_implements_names[idx].len() {
+        if str_eq_type(c.class_implements_names[idx][i], interface_name) {
+            return true
+        }
+        i = i + 1
+    }
+    false
 }
