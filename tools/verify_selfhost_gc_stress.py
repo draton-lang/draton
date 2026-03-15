@@ -35,6 +35,11 @@ CASES = [
         "tests/programs/gc/stress_large_alloc.dt",
         0,
     ),
+    (
+        "linked list option/class traversal",
+        "tests/programs/gc/stress_linked_list.dt",
+        50,
+    ),
 ]
 
 

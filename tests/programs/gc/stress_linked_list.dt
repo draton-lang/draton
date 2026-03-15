@@ -1,0 +1,33 @@
+class Node {
+    pub let value: Int
+    pub let next: Node??
+}
+
+fn make_list(n: Int) -> Node?? {
+    let mut head: Node?? = None
+    let mut i = 0
+    while i < n {
+        head = Some(Node { value: i, next: head })
+        i++
+    }
+    head
+}
+
+fn sum_list(node: Node??) -> Int {
+    let mut s = 0
+    let mut cur = node
+    while cur != None {
+        match cur {
+            Some(n) => {
+                s += n.value
+                cur = n.next
+            }
+            None => { }
+        }
+    }
+    s
+}
+
+fn main() -> Int {
+    sum_list(make_list(100)) % 100
+}

@@ -418,6 +418,66 @@ fn main() -> Int {
 )
 
 case(
+    "interface basic",
+    """interface Shape {
+    fn area(self) -> Int
+}
+class Square implements Shape {
+    pub let side: Int
+    pub fn area(self) -> Int { self.side * self.side }
+}
+fn total_area(s: Shape) -> Int { s.area() }
+fn main() -> Int {
+    let sq = Square { side: 6 }
+    total_area(sq)
+}""",
+    exit=36,
+)
+
+case(
+    "interface two impls",
+    """interface Greeter {
+    fn greet(self) -> Int
+}
+class A implements Greeter {
+    pub fn greet(self) -> Int { 1 }
+}
+class B implements Greeter {
+    pub fn greet(self) -> Int { 2 }
+}
+fn call_greet(g: Greeter) -> Int { g.greet() }
+fn main() -> Int {
+    call_greet(A {}) + call_greet(B {})
+}""",
+    exit=3,
+)
+
+case(
+    "string len",
+    """fn main() -> Int {
+    "hello".len()
+}""",
+    exit=5,
+)
+
+case(
+    "string contains stdout",
+    """fn main() {
+    let s = "foobar"
+    if s.contains("oba") { println("yes") } else { println("no") }
+}""",
+    stdout="yes\n",
+)
+
+case(
+    "string slice stdout",
+    """fn main() {
+    println("hello world".slice(6, 11))
+}""",
+    stdout="world\n",
+)
+
+case(
     "print literal stdout",
     """fn main() {
     print("hello")
