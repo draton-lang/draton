@@ -418,6 +418,18 @@ fn main() -> Int {
 )
 
 case(
+    "fn type return",
+    """fn make_adder(n: Int) -> fn(Int) -> Int {
+    lambda x => x + n
+}
+fn main() -> Int {
+    let add10 = make_adder(10)
+    add10(32)
+}""",
+    exit=42,
+)
+
+case(
     "fn type higher order",
     """fn compose(f: fn(Int) -> Int, g: fn(Int) -> Int) -> fn(Int) -> Int {
     lambda x => f(g(x))
