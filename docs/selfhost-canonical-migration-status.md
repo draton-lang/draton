@@ -50,6 +50,33 @@ Migration techniques used:
 - top-level function contracts rewritten from `fn ... -> ...` members to binding-style `name: (...) -> ...`
 - executable function definitions stripped of inline parameter and return annotations
 
+## Semantic Parity Completed In This Pass
+
+The following previously blocked self-host files are no longer blocked by missing canonical-contract semantics:
+
+- `src/ast/item.dt`
+- `src/parser/parse/item.dt`
+- `src/parser/parse/stmt.dt`
+- `src/typeck/infer/item.dt`
+- `src/typeck/infer/stmt.dt`
+- `src/typeck/typed_ast/item.dt`
+- `src/typeck/typed_ast/stmt.dt`
+- `src/mono/collector.dt`
+
+What was completed for this cluster:
+
+- interface bodies now accept self-host `@type` blocks
+- function bodies now accept self-host `@type` statements
+- self-host type inference now collects function-local binding hints from statement `@type` blocks
+- self-host interface predeclaration and inference now consume interface binding-style contracts and prepend the implicit receiver internally
+- typed AST and monomorphization mirrors now carry and tolerate the new statement and interface-contract shapes
+
+Important status note:
+
+- these files are now semantically unblocked, but several of them still contain compatibility-form inline type syntax in their own source
+- the remaining work on those files is now mostly mechanical canonicalization, not missing parser or typechecker capability
+- that mechanical rewrite was intentionally left out of this pass to keep the semantic change reviewable
+
 ## Skipped Files
 
 The files below still contain deprecated inline syntax after this pass.
@@ -61,28 +88,21 @@ These files are coupled to parts of the self-host mirror that still model or imp
 | File | Exact blocker |
 | --- | --- |
 | `src/ast/expr.dt` | Expression node constructors and helpers still mirror legacy typed fields and are tightly coupled to `src/typeck/typed_ast/expr.dt` and parser/typechecker consumers. |
-| `src/ast/item.dt` | Item/class/interface mirror still needs coordinated updates for interface `@type` blocks and canonical member-contract storage across the rest of the self-host pipeline. |
 | `src/parser/parse/expr.dt` | Parser mirror still implements legacy type-hint and inline signature paths directly in expression parsing helpers. |
-| `src/parser/parse/item.dt` | Parser mirror still builds old item/function/class/interface shapes; canonicalizing source alone would not complete parser-behavior parity. |
-| `src/parser/parse/stmt.dt` | Statement parser mirror still carries legacy typed-let parsing paths and has not been updated end-to-end to self-host canonical block semantics. |
 | `src/parser/parse/types.dt` | Type parser mirror still assumes older inline syntax entry points and should be migrated together with the rest of `src/parser/parse/*`. |
 | `src/typeck/env/env.dt` | Environment layout and helpers still assume older annotation flow from parser/typechecker mirror. |
 | `src/typeck/env/scope.dt` | Scope representation is coupled to current self-host typechecker hint propagation and needs coordinated migration with `env.dt`. |
 | `src/typeck/exhaust/check.dt` | Exhaustiveness logic still depends on legacy typed structures from the self-host checker mirror. |
 | `src/typeck/exhaust/classify.dt` | Pattern classification still relies on older mirrored typed representations. |
 | `src/typeck/exhaust/pattern.dt` | Pattern helpers still use legacy typed locals that are coupled to incomplete self-host semantic parity. |
-| `src/typeck/infer/expr.dt` | Expression inference is one of the main self-host semantic gaps; local and interface `@type` semantics are not mirrored here yet. |
-| `src/typeck/infer/item.dt` | Item inference still predeclares and consumes legacy annotation shapes across classes, interfaces, and methods. |
-| `src/typeck/infer/stmt.dt` | Statement inference still assumes legacy typed-let and inline signature flow from the self-host parser mirror. |
+| `src/typeck/infer/expr.dt` | Expression inference still contains additional self-host parity gaps outside the new contract collection path, especially around the broader typed-expression mirror and downstream backend consumers. |
 | `src/typeck/infer/subst.dt` | Substitution logic still reflects pre-migration typechecker mirror structures. |
 | `src/typeck/infer/unify.dt` | Unification helpers are coupled to the current self-host type representation and checker flow. |
 | `src/typeck/typed_ast/expr.dt` | Typed expression mirror still stores many legacy inline-typed fields and constructors consumed throughout the self-host backend. |
-| `src/typeck/typed_ast/item.dt` | Typed item mirror still needs coordinated canonical contract storage for classes, interfaces, and type blocks. |
-| `src/typeck/typed_ast/stmt.dt` | Typed statement mirror still carries legacy inline field annotations and would need coordinated downstream updates. |
 | `src/codegen/closure/capture.dt` | Closure capture walker still depends on current typed AST mirror shapes. |
 | `src/codegen/closure/emit.dt` | Closure emission still depends on legacy typed AST and checker mirror contracts. |
 | `src/codegen/closure/env.dt` | Closure environment layout still follows the current typed AST mirror, not a fully canonicalized one. |
-| `src/codegen/codegen.dt` | Core codegen state still contains many inline-typed fields and helper contracts tied to incomplete self-host semantic parity. |
+| `src/codegen/codegen.dt` | Core codegen state still contains many inline-typed fields and helper contracts tied to the broader non-migrated self-host backend slice; the new parser and typechecker parity is not enough on its own to rewrite this file safely. |
 | `src/codegen/emit/expr.dt` | Expression emission still depends on legacy typed AST/value-contract shapes. |
 | `src/codegen/emit/item.dt` | Item emission is coupled to current codegen and typed item mirror structures. |
 | `src/codegen/emit/stmt.dt` | Statement emission still follows the current typed statement mirror. |
@@ -90,7 +110,6 @@ These files are coupled to parts of the self-host mirror that still model or imp
 | `src/codegen/layout/class.dt` | Class layout helpers are coupled to class/type mirror structures that are not fully canonicalized yet. |
 | `src/codegen/layout/vtable.dt` | Vtable layout still depends on current interface/class mirror contracts. |
 | `src/codegen/types/descriptor.dt` | Descriptor helpers are tied to the non-migrated codegen/type slices. |
-| `src/mono/collector.dt` | Monomorphization collector still mirrors legacy typed item and type annotation flow. |
 | `src/mono/substitute.dt` | Monomorphization substitution still depends on current self-host typed AST shapes. |
 
 ### Blocker: Another Specific Reason
@@ -114,12 +133,13 @@ After this pass, the self-host mirror is materially closer to canonical syntax i
 - foundational type model helpers
 - lexer cursor/token/error/result helpers
 - self-host-facing utility modules that previously depended only on local typed bindings or class field annotations
+- self-host parser/typechecker/mono handling for function-scope and interface-scope canonical `@type`
 
 What is still not true:
 
 - the self-host mirror is **not yet** at full semantic parity with the Rust frontend for canonical syntax
 - `--strict-syntax` still cannot be applied cleanly to the entire `src/` tree
-- the remaining debt is concentrated in the self-host parser/typechecker/codegen/mono implementation slices
+- the remaining debt is now concentrated mostly in the self-host backend/codegen slice and in the still-unmigrated source text of semantically-unblocked files
 
 In practice, the repository is now in an intermediate state:
 
@@ -132,10 +152,13 @@ In practice, the repository is now in an intermediate state:
 - `cargo test -p draton-parser --test items -p draton-typeck --test errors`
 - `cargo run -p drat -- build --strict-syntax tests/programs/gc/stress_linked_list.dt -o /tmp/draton_gc_linked_list_strict`
 - `/tmp/draton_gc_linked_list_strict` returned exit code `50` as expected
+- `cargo run -p drat -- build --strict-syntax /tmp/draton_selfhost_semantic_parity.dt -o /tmp/draton_selfhost_semantic_parity_out`
+- `/tmp/draton_selfhost_semantic_parity_out` returned exit code `7`
+- `cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_semantic_batch`
 
 ## Recommended Next Steps
 
-1. Migrate the self-host AST/item and typed-AST mirrors together.
-2. Migrate `src/parser/parse/*` as one coordinated slice rather than file-by-file.
-3. Migrate `src/typeck/infer/*` and `src/typeck/env/*` together so function-scope and interface-scope `@type` semantics are mirrored end-to-end.
-4. Once those slices are aligned, finish codegen and mono migration.
+1. Canonicalize the source text of the now-unblocked parser/typechecker/mono files without changing semantics.
+2. Migrate the remaining self-host backend/codegen slice, starting with `src/codegen/codegen.dt` and its typed-expression dependencies.
+3. Re-run `src/main.dt` under stricter focused checks once the backend slice is canonicalized enough to reduce warning noise.
+4. Finish large deferred printer/dump modules only after the semantic slices are stable.

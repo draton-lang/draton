@@ -1,11 +1,14 @@
 import { Stmt, Block, LetStmt, AssignStmt, ReturnStmt, IfStmt, ElseBranch, ForStmt,
          WhileStmt, SpawnStmt, SpawnBody, IfCompileStmt, GcConfigStmt, GcConfigEntry,
+         TypeBlockDef, TypeMember,
          new_block, stmt_from_let, stmt_from_assign, stmt_from_return, stmt_from_expr,
          stmt_from_if, stmt_from_for, stmt_from_while, stmt_from_spawn, stmt_from_block,
-         stmt_asm_block, stmt_from_if_compile, stmt_from_gc_config, new_let_stmt,
+         stmt_asm_block, stmt_from_if_compile, stmt_from_gc_config, stmt_from_type_block,
+         new_let_stmt,
          new_assign_stmt, new_return_stmt, else_branch_if, else_branch_block,
          new_if_stmt, new_for_stmt, new_while_stmt, spawn_body_expr, spawn_body_block,
          new_spawn_stmt, new_if_compile_stmt, new_gc_config_stmt, new_gc_config_entry,
+         new_type_block, type_member_binding,
          Parser, parser_current, parser_current_kind, parser_advance, parser_match_kind,
          parser_expect, parser_consume_ident, parser_check, parser_is_eof,
          parser_skip_doc_comments, parser_optional_semicolon, parser_token_span, merge_spans,
@@ -24,6 +27,7 @@ import { Stmt, Block, LetStmt, AssignStmt, ReturnStmt, IfStmt, ElseBranch, ForSt
     fn parse_asm_block(p: Parser) -> Stmt
     fn parse_if_compile_stmt(p: Parser) -> IfCompileStmt
     fn parse_gc_config_stmt(p: Parser) -> GcConfigStmt
+    fn parse_type_block_stmt(p: Parser) -> TypeBlockDef
     fn parse_expr_stmt_or_assignment(p: Parser) -> Stmt
     fn parse_if_stmt_tail(p: Parser, start: Span) -> IfStmt
     fn parse_elif_stmt(p: Parser) -> IfStmt
@@ -91,6 +95,9 @@ fn parse_stmt(p: Parser) -> Stmt {
     } else if str_eq_stmt_parse(kind, "AtGcConfig") {
         let gc_stmt: GcConfigStmt = parse_gc_config_stmt(p)
         stmt = stmt_from_gc_config(gc_stmt, gc_stmt.span)
+    } else if str_eq_stmt_parse(kind, "AtType") {
+        let type_block = parse_type_block_stmt(p)
+        stmt = stmt_from_type_block(type_block, type_block.span)
     } else if str_eq_stmt_parse(kind, "LBrace") {
         stmt = stmt_from_block(parse_block(p), "Block")
     } else {
@@ -272,6 +279,25 @@ fn parse_gc_config_stmt(p: Parser) -> GcConfigStmt {
     let end = parser_token_span(p)
     let _rbrace = parser_expect(p, "RBrace", "}")
     new_gc_config_stmt(entries, merge_spans(start, end))
+}
+
+fn parse_type_block_stmt(p: Parser) -> TypeBlockDef {
+    let start = parser_token_span(p)
+    let _attype = parser_expect(p, "AtType", "@type")
+    let _lbrace = parser_expect(p, "LBrace", "{")
+    let mut members: Array[TypeMember] = []
+    while !parser_is_eof(p) && !parser_check(p, "RBrace") {
+        let member_start = parser_token_span(p)
+        let name_token = parser_consume_ident(p, "type binding name")
+        let _colon = parser_expect(p, "Colon", ":")
+        let type_expr = parse_type_expr(p)
+        members.push(type_member_binding(name_token.lexeme, type_expr, merge_spans(member_start, type_expr_span(type_expr))))
+        let _comma = parser_match_kind(p, "Comma")
+    }
+    let end = parser_token_span(p)
+    let _rbrace = parser_expect(p, "RBrace", "}")
+    parser_optional_semicolon(p)
+    new_type_block(members, merge_spans(start, end))
 }
 
 fn parse_expr_stmt_or_assignment(p: Parser) -> Stmt {

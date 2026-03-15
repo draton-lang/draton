@@ -450,6 +450,10 @@ fn mono_visit_stmt(collector: MonoCollector, stmt: TypedStmt, subst_vars: Array[
             mono_visit_expr(collector, stmt.stmt_gc_config.gc_entries[i].gc_value, subst_vars, subst_values)
             i = i + 1
         }
+        return
+    }
+    if str_eq_type(stmt.tag, "TypeBlock") {
+        return
     }
 }
 

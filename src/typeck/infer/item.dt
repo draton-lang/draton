@@ -3,7 +3,7 @@ import { Type, Scheme, TypeEnv, Substitution, TypedFnDef, TypedParam, TypedClass
          TypedImportItem, TypedExternBlock, TypedTypeBlockDef, TypedTypeMember, TypedItem,
          TypedProgram, TypedBlock, TypedIfStmt, Item, FnDef, ClassDef, InterfaceDef, EnumDef, ErrorDef, ConstDef,
          ImportDef, ExternBlock, TypeBlockDef, TypeMember, ClassMember, Program, TypeError, Span,
-         TypeExpr }
+         TypeExpr, Block, Stmt, stmt_from_if }
 
 class Checker {
     let mut env: TypeEnv
@@ -19,6 +19,8 @@ class Checker {
     let mut interface_names: Array[String]
     let mut interface_method_names: Array[Array[String]]
     let mut interface_method_schemes: Array[Array[Scheme]]
+    let mut local_hint_names: Array[Array[String]]
+    let mut local_hint_types: Array[Array[Type]]
     let mut type_param_names: Array[Array[String]]
     let mut type_param_types: Array[Array[Type]]
     let mut current_return: Array[Type]
@@ -59,6 +61,17 @@ class TypeCheckResult {
     fn pop_type_params(c: Checker)
     fn has_type_param(c: Checker, name: String) -> Bool
     fn lookup_type_param(c: Checker, name: String) -> Type
+    fn push_local_binding_hints(c: Checker, names: Array[String], types: Array[Type])
+    fn pop_local_binding_hints(c: Checker)
+    fn has_local_binding_hint(c: Checker, name: String) -> Bool
+    fn lookup_local_binding_hint(c: Checker, name: String) -> Type
+    fn collect_binding_hints_from_type_block(c: Checker, def: TypeBlockDef, names: Array[String], types: Array[Type])
+    fn collect_function_binding_hints_from_stmt(c: Checker, stmt: Stmt, names: Array[String], types: Array[Type])
+    fn collect_function_binding_hints_from_block(c: Checker, block: Block, names: Array[String], types: Array[Type])
+    fn interface_has_binding_hint(def: InterfaceDef, name: String) -> Bool
+    fn interface_binding_hint_type(c: Checker, def: InterfaceDef, name: String) -> Type
+    fn interface_contract_scheme(c: Checker, def: InterfaceDef, method: FnDef) -> Scheme
+    fn infer_interface_method(c: Checker, def: InterfaceDef, method: FnDef) -> TypedFnDef
 }
 
 fn predeclare_fn_scheme(c: Checker, fn_def: FnDef, current_class: String) -> Scheme {
@@ -91,6 +104,194 @@ fn predeclare_fn_scheme(c: Checker, fn_def: FnDef, current_class: String) -> Sch
     let scheme = mono_scheme(type_fn(params, ret))
     pop_type_params(c)
     scheme
+}
+
+fn push_local_binding_hints(c: Checker, names: Array[String], types: Array[Type]) {
+    c.local_hint_names.push(names)
+    c.local_hint_types.push(types)
+}
+
+fn pop_local_binding_hints(c: Checker) {
+    if c.local_hint_names.len() == 0 {
+        return
+    }
+    let names: Array[Array[String]] = []
+    let types: Array[Array[Type]] = []
+    let mut i = 0
+    while i + 1 < c.local_hint_names.len() {
+        names.push(c.local_hint_names[i])
+        types.push(c.local_hint_types[i])
+        i = i + 1
+    }
+    c.local_hint_names = names
+    c.local_hint_types = types
+}
+
+fn has_local_binding_hint(c: Checker, name: String) -> Bool {
+    let mut scope_i = c.local_hint_names.len()
+    while scope_i > 0 {
+        scope_i = scope_i - 1
+        let mut i = c.local_hint_names[scope_i].len()
+        while i > 0 {
+            i = i - 1
+            if str_eq_type(c.local_hint_names[scope_i][i], name) {
+                return true
+            }
+        }
+    }
+    false
+}
+
+fn lookup_local_binding_hint(c: Checker, name: String) -> Type {
+    let mut scope_i = c.local_hint_names.len()
+    while scope_i > 0 {
+        scope_i = scope_i - 1
+        let mut i = c.local_hint_names[scope_i].len()
+        while i > 0 {
+            i = i - 1
+            if str_eq_type(c.local_hint_names[scope_i][i], name) {
+                return c.local_hint_types[scope_i][i]
+            }
+        }
+    }
+    checker_fresh_var(c)
+}
+
+fn collect_binding_hints_from_type_block(c: Checker, def: TypeBlockDef, names: Array[String], types: Array[Type]) {
+    let mut i = 0
+    while i < def.members.len() {
+        if type_member_kind_is(def.members[i], "Binding") {
+            names.push(def.members[i].name)
+            types.push(type_from_annotation(c, def.members[i].type_expr))
+        }
+        i = i + 1
+    }
+}
+
+fn collect_function_binding_hints_from_stmt(c: Checker, stmt: Stmt, names: Array[String], types: Array[Type]) {
+    if stmt_kind_is(stmt, "TypeBlock") {
+        collect_binding_hints_from_type_block(c, stmt.type_block_stmt, names, types)
+        return
+    }
+    if stmt_kind_is(stmt, "If") {
+        collect_function_binding_hints_from_block(c, stmt.if_stmt.then_branch, names, types)
+        if stmt.if_stmt.has_else_branch {
+            if else_branch_kind_is(stmt.if_stmt.else_branch, "If") {
+                let nested = stmt_from_if(stmt.if_stmt.else_branch.stmt, stmt.if_stmt.else_branch.stmt.span)
+                collect_function_binding_hints_from_stmt(c, nested, names, types)
+            } else {
+                collect_function_binding_hints_from_block(c, stmt.if_stmt.else_branch.block, names, types)
+            }
+        }
+        return
+    }
+    if stmt_kind_is(stmt, "For") {
+        collect_function_binding_hints_from_block(c, stmt.for_stmt.body, names, types)
+        return
+    }
+    if stmt_kind_is(stmt, "While") {
+        collect_function_binding_hints_from_block(c, stmt.while_stmt.body, names, types)
+        return
+    }
+    if stmt_kind_is(stmt, "Spawn") && spawn_body_kind_is(stmt.spawn_stmt.body, "Block") {
+        collect_function_binding_hints_from_block(c, stmt.spawn_stmt.body.block, names, types)
+        return
+    }
+    if stmt_kind_is(stmt, "Block") || stmt_kind_is(stmt, "UnsafeBlock") || stmt_kind_is(stmt, "PointerBlock") || stmt_kind_is(stmt, "ComptimeBlock") {
+        collect_function_binding_hints_from_block(c, stmt.block, names, types)
+        return
+    }
+    if stmt_kind_is(stmt, "IfCompile") {
+        collect_function_binding_hints_from_block(c, stmt.if_compile_stmt.body, names, types)
+    }
+}
+
+fn collect_function_binding_hints_from_block(c: Checker, block: Block, names: Array[String], types: Array[Type]) {
+    let mut i = 0
+    while i < block.stmts.len() {
+        collect_function_binding_hints_from_stmt(c, block.stmts[i], names, types)
+        i = i + 1
+    }
+}
+
+fn interface_has_binding_hint(def: InterfaceDef, name: String) -> Bool {
+    let mut block_i = 0
+    while block_i < def.type_blocks.len() {
+        let mut member_i = 0
+        while member_i < def.type_blocks[block_i].members.len() {
+            if type_member_kind_is(def.type_blocks[block_i].members[member_i], "Binding") &&
+               str_eq_type(def.type_blocks[block_i].members[member_i].name, name) {
+                return true
+            }
+            member_i = member_i + 1
+        }
+        block_i = block_i + 1
+    }
+    false
+}
+
+fn interface_binding_hint_type(c: Checker, def: InterfaceDef, name: String) -> Type {
+    let mut block_i = def.type_blocks.len()
+    while block_i > 0 {
+        block_i = block_i - 1
+        let mut member_i = def.type_blocks[block_i].members.len()
+        while member_i > 0 {
+            member_i = member_i - 1
+            if type_member_kind_is(def.type_blocks[block_i].members[member_i], "Binding") &&
+               str_eq_type(def.type_blocks[block_i].members[member_i].name, name) {
+                return type_from_annotation(c, def.type_blocks[block_i].members[member_i].type_expr)
+            }
+        }
+    }
+    checker_fresh_var(c)
+}
+
+fn interface_contract_scheme(c: Checker, def: InterfaceDef, method: FnDef) -> Scheme {
+    push_type_params(c, method.type_params)
+    let mut scheme = predeclare_fn_scheme(c, method, def.name)
+    if interface_has_binding_hint(def, method.name) {
+        let hinted = interface_binding_hint_type(c, def, method.name)
+        if str_eq_type(hinted.type_kind, "Fn") {
+            let params: Array[Type] = []
+            let iface_args: Array[Type] = []
+            params.push(ty_named(def.name, iface_args))
+            let mut i = 0
+            while i < hinted.ty_params.len() {
+                params.push(hinted.ty_params[i])
+                i = i + 1
+            }
+            scheme = mono_scheme(type_fn(params, hinted.ty_ret))
+        }
+    }
+    pop_type_params(c)
+    scheme
+}
+
+fn infer_interface_method(c: Checker, def: InterfaceDef, method: FnDef) -> TypedFnDef {
+    let typed = infer_fn_def(c, method, def.name)
+    if interface_has_binding_hint(def, method.name) {
+        let hinted = interface_binding_hint_type(c, def, method.name)
+        if str_eq_type(hinted.type_kind, "Fn") {
+            let params: Array[Type] = []
+            let iface_args: Array[Type] = []
+            params.push(ty_named(def.name, iface_args))
+            let mut i = 0
+            while i < hinted.ty_params.len() {
+                params.push(hinted.ty_params[i])
+                i = i + 1
+            }
+            let contract_ty = type_fn(params, hinted.ty_ret)
+            checker_unify(c, typed.fn_ty, contract_ty, method.span)
+            typed.fn_ty = checker_apply_subst(c, contract_ty)
+            typed.fn_ret_type = checker_apply_subst(c, hinted.ty_ret)
+            i = 0
+            while i < typed.fn_params.len() && i < typed.fn_ty.ty_params.len() {
+                typed.fn_params[i].param_ty = typed.fn_ty.ty_params[i]
+                i = i + 1
+            }
+        }
+    }
+    typed
 }
 
 fn predeclare_class(c: Checker, def: ClassDef) -> Unit {
@@ -247,6 +448,8 @@ fn new_checker() {
     let interface_names: Array[String] = []
     let interface_method_names: Array[Array[String]] = []
     let interface_method_schemes: Array[Array[Scheme]] = []
+    let local_hint_names: Array[Array[String]] = []
+    let local_hint_types: Array[Array[Type]] = []
     let type_param_names: Array[Array[String]] = []
     let type_param_types: Array[Array[Type]] = []
     let current_return: Array[Type] = []
@@ -264,6 +467,8 @@ fn new_checker() {
     c.interface_names = interface_names
     c.interface_method_names = interface_method_names
     c.interface_method_schemes = interface_method_schemes
+    c.local_hint_names = local_hint_names
+    c.local_hint_types = local_hint_types
     c.type_param_names = type_param_names
     c.type_param_types = type_param_types
     c.current_return = current_return
@@ -353,6 +558,12 @@ fn infer_item(c: Checker, item: Item) {
 fn infer_fn_def(c: Checker, fn_def: FnDef, current_class: String) {
     push_type_params(c, fn_def.type_params)
     env_push_scope(c.env)
+    let local_hint_names: Array[String] = []
+    let local_hint_types: Array[Type] = []
+    if fn_def.has_body {
+        collect_function_binding_hints_from_block(c, fn_def.body, local_hint_names, local_hint_types)
+    }
+    push_local_binding_hints(c, local_hint_names, local_hint_types)
     let typed = TypedFnDef()
     let params: Array[TypedParam] = []
     let raw_param_types: Array[Type] = []
@@ -436,6 +647,7 @@ fn infer_fn_def(c: Checker, fn_def: FnDef, current_class: String) {
         c.current_class = classes
     }
     env_pop_scope(c.env)
+    pop_local_binding_hints(c)
     pop_type_params(c)
     typed
 }
@@ -569,14 +781,21 @@ fn infer_class_def(c: Checker, def: ClassDef) {
 fn infer_interface_def(c: Checker, def: InterfaceDef) {
     let typed = TypedInterfaceDef()
     let methods: Array[TypedFnDef] = []
+    let type_blocks: Array[TypedTypeBlockDef] = []
     let method_names: Array[String] = []
     let method_schemes: Array[Scheme] = []
     typed.interface_name = def.name
     typed.interface_methods = methods
+    typed.interface_type_blocks = type_blocks
     typed.interface_span = def.span
+    let mut type_block_i = 0
+    while type_block_i < def.type_blocks.len() {
+        typed.interface_type_blocks.push(infer_type_block(c, def.type_blocks[type_block_i]))
+        type_block_i = type_block_i + 1
+    }
     let mut i = 0
     while i < def.methods.len() {
-        let method = infer_fn_def(c, def.methods[i], def.name)
+        let method = infer_interface_method(c, def, def.methods[i])
         typed.interface_methods.push(method)
         method_names.push(method.fn_name)
         method_schemes.push(mono_scheme(method.fn_ty))
@@ -668,7 +887,7 @@ fn predeclare_items(c: Checker, program: Program) {
             while j < program.items[i].interface_def.methods.len() {
                 let method = program.items[i].interface_def.methods[j]
                 method_names.push(method.name)
-                method_schemes.push(predeclare_fn_scheme(c, method, program.items[i].interface_def.name))
+                method_schemes.push(interface_contract_scheme(c, program.items[i].interface_def, method))
                 j = j + 1
             }
             checker_define_interface(c, program.items[i].interface_def.name, method_names, method_schemes)

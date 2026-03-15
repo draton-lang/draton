@@ -1,4 +1,4 @@
-import { Span, Expr, TypeExpr }
+import { Span, Expr, TypeExpr, TypeBlockDef }
 
 class Stmt {
     let mut kind
@@ -14,6 +14,7 @@ class Stmt {
     let mut code
     let mut if_compile_stmt
     let mut gc_config_stmt
+    let mut type_block_stmt
     let mut span
 
     @type {
@@ -30,6 +31,7 @@ class Stmt {
         code: String
         if_compile_stmt: IfCompileStmt
         gc_config_stmt: GcConfigStmt
+        type_block_stmt: TypeBlockDef
         span: Span
     }
 }
@@ -217,6 +219,7 @@ class GcConfigEntry {
     stmt_asm_block: (String, Span) -> Stmt
     stmt_from_if_compile: (IfCompileStmt, Span) -> Stmt
     stmt_from_gc_config: (GcConfigStmt, Span) -> Stmt
+    stmt_from_type_block: (TypeBlockDef, Span) -> Stmt
     new_let_stmt: (Bool, String, Bool, TypeExpr, Bool, Expr, Span) -> LetStmt
     new_assign_stmt: (Expr, String, Bool, Expr, Span) -> AssignStmt
     new_return_stmt: (Bool, Expr, Span) -> ReturnStmt
@@ -342,6 +345,14 @@ fn stmt_from_gc_config(gc_config_stmt, span) {
     let stmt = Stmt()
     stmt.kind = "GcConfig"
     stmt.gc_config_stmt = gc_config_stmt
+    stmt.span = span
+    stmt
+}
+
+fn stmt_from_type_block(type_block_stmt, span) {
+    let stmt = Stmt()
+    stmt.kind = "TypeBlock"
+    stmt.type_block_stmt = type_block_stmt
     stmt.span = span
     stmt
 }

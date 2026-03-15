@@ -54,6 +54,7 @@ class TypedFieldDef {
 class TypedInterfaceDef {
     let mut interface_name: String
     let mut interface_methods: Array[TypedFnDef]
+    let mut interface_type_blocks: Array[TypedTypeBlockDef]
     let mut interface_span: Span
 }
 

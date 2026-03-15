@@ -17,6 +17,7 @@ class TypedStmt {
     let mut asm_code: String
     let mut stmt_if_compile: TypedIfCompileStmt
     let mut stmt_gc_config: TypedGcConfigStmt
+    let mut stmt_type_block: TypedTypeBlockDef
 }
 
 class TypedBlock {

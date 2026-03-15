@@ -1,8 +1,9 @@
 import { Checker, Type, Scheme, TypedStmt, TypedStmtKind, TypedLetStmt, TypedAssignStmt,
          TypedReturnStmt, TypedIfStmt, TypedElseBranch, TypedForStmt, TypedWhileStmt, TypedBlock,
          TypedSpawnStmt, TypedSpawnBody, TypedIfCompileStmt, TypedGcConfigStmt, TypedGcConfigEntry,
+         TypedTypeBlockDef,
          Stmt, Block, LetStmt, AssignStmt, ReturnStmt, IfStmt, ElseBranch, ForStmt, WhileStmt,
-         SpawnStmt, SpawnBody, AssignOp, Span }
+         SpawnStmt, SpawnBody, AssignOp, Span, TypeBlockDef }
 
 @type {
     fn infer_block(c: Checker, block: Block) -> TypedBlock
@@ -14,6 +15,9 @@ import { Checker, Type, Scheme, TypedStmt, TypedStmtKind, TypedLetStmt, TypedAss
     fn infer_for(c: Checker, s: ForStmt) -> TypedStmt
     fn infer_while(c: Checker, s: WhileStmt) -> TypedStmt
     fn infer_spawn(c: Checker, s: SpawnStmt) -> TypedStmt
+    fn infer_type_block(c: Checker, def: TypeBlockDef) -> TypedTypeBlockDef
+    fn has_local_binding_hint(c: Checker, name: String) -> Bool
+    fn lookup_local_binding_hint(c: Checker, name: String) -> Type
 }
 
 fn infer_block(c: Checker, block: Block) {
@@ -96,6 +100,8 @@ fn infer_stmt(c: Checker, stmt: Stmt) {
             i = i + 1
         }
         out.stmt_gc_config = typed_gc
+    } else if str_eq_type(stmt.kind, "TypeBlock") {
+        out.stmt_type_block = infer_type_block(c, stmt.type_block_stmt)
     }
     out
 }
@@ -118,8 +124,15 @@ fn infer_let(c: Checker, s: LetStmt) {
         typed_let.let_has_value = false
         typed_let.let_ty = value_ty
     }
+    let mut has_annotated = s.has_type_hint
+    let mut annotated = checker_fresh_var(c)
     if s.has_type_hint {
-        let annotated = type_from_annotation(c, s.type_hint)
+        annotated = type_from_annotation(c, s.type_hint)
+    } else if has_local_binding_hint(c, s.name) {
+        annotated = lookup_local_binding_hint(c, s.name)
+        has_annotated = true
+    }
+    if has_annotated {
         typed_let.let_ty = checker_unify(c, typed_let.let_ty, annotated, s.span)
         if typed_let.let_has_value && str_eq_type(typed_let.let_value.tag, "NoneLit") {
             typed_let.let_value.expr_ty = checker_apply_subst(c, type_option(annotated.ty_inner))

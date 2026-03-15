@@ -70,6 +70,7 @@ class FieldDef {
 class InterfaceDef {
     let mut name: String
     let mut methods: Array[FnDef]
+    let mut type_blocks: Array[TypeBlockDef]
     let mut span: Span
 }
 
@@ -149,8 +150,9 @@ class TypeMember {
     fn layer_def_push_method(def: LayerDef, method: FnDef) -> LayerDef
     fn layer_def_push_type_block(def: LayerDef, block: TypeBlockDef) -> LayerDef
     fn new_field_def(is_mut: Bool, name: String, has_type_hint: Bool, type_hint: TypeExpr, span: Span) -> FieldDef
-    fn new_interface_def(name: String, methods: Array[FnDef], span: Span) -> InterfaceDef
+    fn new_interface_def(name: String, methods: Array[FnDef], type_blocks: Array[TypeBlockDef], span: Span) -> InterfaceDef
     fn interface_def_push_method(def: InterfaceDef, method: FnDef) -> InterfaceDef
+    fn interface_def_push_type_block(def: InterfaceDef, block: TypeBlockDef) -> InterfaceDef
     fn new_enum_def(name: String, variants: Array[String], span: Span) -> EnumDef
     fn enum_def_push_variant(def: EnumDef, variant: String) -> EnumDef
     fn new_error_def(name: String, fields: Array[Param], span: Span) -> ErrorDef
@@ -355,16 +357,22 @@ fn new_field_def(is_mut: Bool, name: String, has_type_hint: Bool, type_hint: Typ
     def
 }
 
-fn new_interface_def(name: String, methods: Array[FnDef], span: Span) {
+fn new_interface_def(name: String, methods: Array[FnDef], type_blocks: Array[TypeBlockDef], span: Span) {
     let def = InterfaceDef()
     def.name = name
     def.methods = methods
+    def.type_blocks = type_blocks
     def.span = span
     def
 }
 
 fn interface_def_push_method(def: InterfaceDef, method: FnDef) {
     def.methods.push(method)
+    def
+}
+
+fn interface_def_push_type_block(def: InterfaceDef, block: TypeBlockDef) {
+    def.type_blocks.push(block)
     def
 }
 

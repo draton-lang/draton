@@ -280,14 +280,23 @@ fn parse_interface_def(p: Parser) -> InterfaceDef {
     let name_token = parser_consume_ident(p, "interface name")
     let _lbrace = parser_expect(p, "LBrace", "{")
     let mut methods: Array[FnDef] = []
+    let mut type_blocks: Array[TypeBlockDef] = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         parser_skip_doc_comments(p)
-        methods.push(parse_fn_def(p, false, false))
-        parser_optional_semicolon(p)
+        let kind = parser_current_kind(p)
+        if str_eq_item_parse(kind, "Fn") {
+            methods.push(parse_fn_def(p, false, false))
+            parser_optional_semicolon(p)
+        } else if str_eq_item_parse(kind, "AtType") {
+            type_blocks.push(parse_type_block(p))
+        } else {
+            parser_error_unexpected(p, parser_current(p), "interface member")
+            parser_sync_stmt(p)
+        }
     }
     let end = parser_token_span(p)
     let _rbrace = parser_expect(p, "RBrace", "}")
-    new_interface_def(name_token.lexeme, methods, merge_spans(start, end))
+    new_interface_def(name_token.lexeme, methods, type_blocks, merge_spans(start, end))
 }
 
 fn parse_enum_def(p: Parser) -> EnumDef {
