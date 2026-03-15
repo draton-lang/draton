@@ -116,6 +116,7 @@ fn dump_fn_def(def: FnDef, level: Int) -> String {
     out = dump_append(out, dump_line(level, "FnDef {"))
     out = dump_append(out, dump_field("is_pub", dump_bool(def.is_pub), level + 1))
     out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
+    out = dump_append(out, dump_field("type_params", dump_string_list(def.type_params, level + 1), level + 1))
     out = dump_append(out, dump_field("params", dump_param_list(def.params, level + 1), level + 1))
     out = dump_append(out, dump_field("ret_type", dump_option_type_expr(def.has_ret_type, def.ret_type, level + 1), level + 1))
     out = dump_append(out, dump_field("body", dump_option_block(def.has_body, def.body, level + 1), level + 1))
@@ -136,10 +137,9 @@ fn dump_param(param: Param, level: Int) -> String {
 
 fn dump_class_def(def: ClassDef, level: Int) -> String {
     let mut out = ""
-    let empty_type_params: Array[String] = []
     out = dump_append(out, dump_line(level, "ClassDef {"))
     out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
-    out = dump_append(out, dump_field("type_params", dump_string_list(empty_type_params, level + 1), level + 1))
+    out = dump_append(out, dump_field("type_params", dump_string_list(def.type_params, level + 1), level + 1))
     out = dump_append(out, dump_field("extends", dump_option_string(def.has_extends, def.extends_name, level + 1), level + 1))
     out = dump_append(out, dump_field("implements", dump_string_list(def.implements_names, level + 1), level + 1))
     out = dump_append(out, dump_field("members", dump_class_member_list(def.members, level + 1), level + 1))

@@ -267,14 +267,21 @@ fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) {
 }
 
 fn infer_class_literal_call(c: Checker, class_name: String, field_map: Expr, span: Span) {
-    let empty_class_args: Array[Type] = []
-    let out = make_typed("ClassNew", ty_named(class_name, empty_class_args), span)
+    let idx = find_class_index(c, class_name)
+    let class_type_args: Array[Type] = []
+    if idx >= 0 {
+        let mut type_i = 0
+        while type_i < c.class_type_args[idx].len() {
+            class_type_args.push(c.class_type_args[idx][type_i])
+            type_i = type_i + 1
+        }
+    }
+    let out = make_typed("ClassNew", ty_named(class_name, class_type_args), span)
     let field_names: Array[String] = []
     let field_values: Array[TypedExpr] = []
     out.class_name = class_name
     out.field_names = field_names
     out.field_values = field_values
-    let idx = find_class_index(c, class_name)
     let raw_entries = field_map.entries
     let mut matched: Array[Bool] = []
     let mut i = 0
@@ -354,15 +361,61 @@ fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], 
         arg_types.push(arg.expr_ty)
         i = i + 1
     }
-    if str_eq_type(out.access_target.expr_ty.type_kind, "Named") {
-        let idx = find_class_index(c, out.access_target.expr_ty.ty_name)
+    let resolved_target_ty = checker_apply_subst(c, out.access_target.expr_ty)
+    if str_eq_type(resolved_target_ty.type_kind, "Array") {
+        if str_eq_type(name, "len") {
+            out.expr_ty = type_int()
+            return out
+        }
+        if str_eq_type(name, "push") {
+            if arg_types.len() == 1 {
+                checker_unify(c, arg_types[0], resolved_target_ty.ty_inner, span)
+                out.expr_ty = type_unit()
+                return out
+            }
+        }
+        if str_eq_type(name, "pop") {
+            out.expr_ty = resolved_target_ty.ty_inner
+            return out
+        }
+    }
+    if str_eq_type(resolved_target_ty.type_kind, "String") {
+        if str_eq_type(name, "len") {
+            out.expr_ty = type_int()
+            return out
+        }
+        if str_eq_type(name, "contains") && arg_types.len() == 1 {
+            checker_unify(c, arg_types[0], type_string(), span)
+            out.expr_ty = type_bool()
+            return out
+        }
+        if str_eq_type(name, "slice") && arg_types.len() == 2 {
+            checker_unify(c, arg_types[0], type_int(), span)
+            checker_unify(c, arg_types[1], type_int(), span)
+            out.expr_ty = type_string()
+            return out
+        }
+        if str_eq_type(name, "starts_with") && arg_types.len() == 1 {
+            checker_unify(c, arg_types[0], type_string(), span)
+            out.expr_ty = type_bool()
+            return out
+        }
+        if str_eq_type(name, "replace") && arg_types.len() == 2 {
+            checker_unify(c, arg_types[0], type_string(), span)
+            checker_unify(c, arg_types[1], type_string(), span)
+            out.expr_ty = type_string()
+            return out
+        }
+    }
+    if str_eq_type(resolved_target_ty.type_kind, "Named") {
+        let idx = find_class_index(c, resolved_target_ty.ty_name)
         if idx >= 0 {
             i = 0
             while i < c.class_method_names[idx].len() {
                 if str_eq_type(c.class_method_names[idx][i], name) {
                     let method_ty = env_instantiate(c.env, c.class_method_schemes[idx][i])
                     let ret_ty = checker_fresh_var(c)
-                    let full_arg_types: Array[Type] = [out.access_target.expr_ty]
+                    let full_arg_types: Array[Type] = [resolved_target_ty]
                     let mut j = 0
                     while j < arg_types.len() {
                         full_arg_types.push(arg_types[j])
@@ -375,9 +428,9 @@ fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], 
                 i = i + 1
             }
         }
-        c.errors.push(undefined_method_error(name, out.access_target.expr_ty.ty_name, span.line, span.col))
+        c.errors.push(undefined_method_error(name, resolved_target_ty.ty_name, span.line, span.col))
     } else {
-        c.errors.push(undefined_method_error(name, type_display(out.access_target.expr_ty), span.line, span.col))
+        c.errors.push(undefined_method_error(name, type_display(resolved_target_ty), span.line, span.col))
     }
     out.expr_ty = checker_fresh_var(c)
     out

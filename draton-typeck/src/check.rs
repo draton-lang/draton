@@ -41,6 +41,7 @@ pub struct TypeChecker {
     subst: Substitution,
     class_fields: HashMap<String, HashMap<String, Type>>,
     class_methods: HashMap<String, HashMap<String, Scheme>>,
+    class_type_params: HashMap<String, Vec<Type>>,
     class_parents: HashMap<String, String>,
     interface_methods: HashMap<String, HashMap<String, Scheme>>,
     class_interfaces: HashMap<String, Vec<String>>,
@@ -68,6 +69,7 @@ impl TypeChecker {
             subst: Substitution::empty(),
             class_fields: HashMap::new(),
             class_methods: HashMap::new(),
+            class_type_params: HashMap::new(),
             class_parents: HashMap::new(),
             interface_methods: HashMap::new(),
             class_interfaces: HashMap::new(),
@@ -168,6 +170,155 @@ impl TypeChecker {
             .find_map(|scope| scope.get(name).cloned())
     }
 
+    fn class_instance_type(&self, class_name: &str) -> Type {
+        Type::Named(
+            class_name.to_string(),
+            self.class_type_params
+                .get(class_name)
+                .cloned()
+                .unwrap_or_default(),
+        )
+    }
+
+    fn parse_encoded_type(&self, text: &str) -> Type {
+        let text = text.trim();
+        if let Some(start) = text.find('[') {
+            if text.ends_with(']') {
+                let name = &text[..start];
+                let inner = &text[start + 1..text.len() - 1];
+                let args = self
+                    .split_encoded_type_args(inner)
+                    .into_iter()
+                    .map(|value| self.parse_encoded_type(&value))
+                    .collect::<Vec<_>>();
+                return match name {
+                    "Array" if args.len() == 1 => Type::Array(Box::new(args[0].clone())),
+                    "Option" if args.len() == 1 => Type::Option(Box::new(args[0].clone())),
+                    "Set" if args.len() == 1 => Type::Set(Box::new(args[0].clone())),
+                    "Chan" if args.len() == 1 => Type::Chan(Box::new(args[0].clone())),
+                    "Map" if args.len() == 2 => {
+                        Type::Map(Box::new(args[0].clone()), Box::new(args[1].clone()))
+                    }
+                    "Result" if args.len() == 2 => {
+                        Type::Result(Box::new(args[0].clone()), Box::new(args[1].clone()))
+                    }
+                    _ => Type::Named(name.to_string(), args),
+                };
+            }
+        }
+        match text {
+            "Int" => Type::Int,
+            "Float" => Type::Float,
+            "Bool" => Type::Bool,
+            "String" => Type::String,
+            "Unit" => Type::Unit,
+            "Never" => Type::Never,
+            _ => Type::Named(text.to_string(), Vec::new()),
+        }
+    }
+
+    fn split_encoded_type_args(&self, text: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut current = String::new();
+        let mut depth = 0usize;
+        for ch in text.chars() {
+            match ch {
+                '[' => {
+                    depth += 1;
+                    current.push(ch);
+                }
+                ']' => {
+                    depth = depth.saturating_sub(1);
+                    current.push(ch);
+                }
+                ',' if depth == 0 => {
+                    if !current.trim().is_empty() {
+                        parts.push(current.trim().to_string());
+                    }
+                    current.clear();
+                }
+                _ => current.push(ch),
+            }
+        }
+        if !current.trim().is_empty() {
+            parts.push(current.trim().to_string());
+        }
+        parts
+    }
+
+    fn resolve_class_literal_name(&self, raw_name: &str) -> (String, Vec<Type>) {
+        let Some(start) = raw_name.find('[') else {
+            return (raw_name.to_string(), Vec::new());
+        };
+        if !raw_name.ends_with(']') {
+            return (raw_name.to_string(), Vec::new());
+        }
+        let class_name = raw_name[..start].to_string();
+        let inner = &raw_name[start + 1..raw_name.len() - 1];
+        let args = self
+            .split_encoded_type_args(inner)
+            .into_iter()
+            .map(|value| self.parse_encoded_type(&value))
+            .collect::<Vec<_>>();
+        (class_name, args)
+    }
+
+    fn substitute_class_type_args(&self, class_name: &str, ty: Type, args: &[Type]) -> Type {
+        let Some(params) = self.class_type_params.get(class_name) else {
+            return ty;
+        };
+        self.replace_type_params(ty, params, args)
+    }
+
+    fn replace_type_params(&self, ty: Type, params: &[Type], args: &[Type]) -> Type {
+        match ty {
+            Type::Var(id) => params
+                .iter()
+                .enumerate()
+                .find_map(|(index, param)| match param {
+                    Type::Var(param_id) if *param_id == id => args.get(index).cloned(),
+                    _ => None,
+                })
+                .unwrap_or(Type::Var(id)),
+            Type::Array(inner) => Type::Array(Box::new(self.replace_type_params(*inner, params, args))),
+            Type::Map(key, value) => Type::Map(
+                Box::new(self.replace_type_params(*key, params, args)),
+                Box::new(self.replace_type_params(*value, params, args)),
+            ),
+            Type::Set(inner) => Type::Set(Box::new(self.replace_type_params(*inner, params, args))),
+            Type::Tuple(items) => Type::Tuple(
+                items.into_iter()
+                    .map(|item| self.replace_type_params(item, params, args))
+                    .collect(),
+            ),
+            Type::Option(inner) => {
+                Type::Option(Box::new(self.replace_type_params(*inner, params, args)))
+            }
+            Type::Result(ok, err) => Type::Result(
+                Box::new(self.replace_type_params(*ok, params, args)),
+                Box::new(self.replace_type_params(*err, params, args)),
+            ),
+            Type::Chan(inner) => Type::Chan(Box::new(self.replace_type_params(*inner, params, args))),
+            Type::Fn(items, ret) => Type::Fn(
+                items.into_iter()
+                    .map(|item| self.replace_type_params(item, params, args))
+                    .collect(),
+                Box::new(self.replace_type_params(*ret, params, args)),
+            ),
+            Type::Named(name, named_args) => Type::Named(
+                name,
+                named_args
+                    .into_iter()
+                    .map(|item| self.replace_type_params(item, params, args))
+                    .collect(),
+            ),
+            Type::Pointer(inner) => {
+                Type::Pointer(Box::new(self.replace_type_params(*inner, params, args)))
+            }
+            other => other,
+        }
+    }
+
     fn infer_const_item(&mut self, const_def: &draton_ast::ConstDef) -> TypedConstDef {
         let (typed_value, value_ty) = self.infer_expr(&const_def.value);
         let mut ty = value_ty;
@@ -195,7 +346,7 @@ impl TypeChecker {
             "self",
             Scheme {
                 quantified: Vec::new(),
-                ty: Type::Named(class_def.name.clone(), Vec::new()),
+                ty: self.class_instance_type(&class_def.name),
             },
         );
 
@@ -312,6 +463,7 @@ impl TypeChecker {
     }
 
     fn infer_interface_method(&mut self, function: &FnDef) -> TypedFnDef {
+        self.push_type_params(&function.type_params);
         let hint = self.function_hints.get(&function.name).cloned();
         let params = function
             .params
@@ -340,6 +492,7 @@ impl TypeChecker {
             .map(|type_expr| self.type_from_annotation(type_expr))
             .unwrap_or(Type::Unit);
         let full_ty = Type::Fn(params.clone(), Box::new(ret_type.clone()));
+        self.pop_type_params();
         TypedFnDef {
             is_pub: function.is_pub,
             name: function.name.clone(),
@@ -447,6 +600,7 @@ impl TypeChecker {
     }
 
     fn infer_fn_item(&mut self, function: &FnDef, current_class: Option<&str>) -> TypedFnDef {
+        self.push_type_params(&function.type_params);
         let hint = self.function_hints.get(&function.name).cloned();
         let placeholder = self
             .env
@@ -460,7 +614,7 @@ impl TypeChecker {
             .enumerate()
             .map(|(index, param)| {
                 if current_class.is_some() && param.name == "self" {
-                    return Type::Named(current_class.unwrap().to_string(), Vec::new());
+                    return self.class_instance_type(current_class.unwrap());
                 }
                 param
                     .type_hint
@@ -500,7 +654,7 @@ impl TypeChecker {
                 "self",
                 Scheme {
                     quantified: Vec::new(),
-                    ty: Type::Named(class_name.to_string(), Vec::new()),
+                    ty: self.class_instance_type(class_name),
                 },
             );
         }
@@ -561,6 +715,7 @@ impl TypeChecker {
         } else {
             self.env.define(&function.name, scheme.clone());
         }
+        self.pop_type_params();
 
         TypedFnDef {
             is_pub: function.is_pub,
@@ -1231,9 +1386,22 @@ impl TypeChecker {
         args: &[Expr],
         span: draton_ast::Span,
     ) -> (TypedExpr, Type) {
-        if let (Expr::Ident(class_name, callee_span), [Expr::Map(entries, map_span)]) = (callee, args)
+        if let (Expr::Ident(raw_class_name, callee_span), [Expr::Map(entries, map_span)]) =
+            (callee, args)
         {
-            if self.declared_classes.contains(class_name) {
+            let (class_name, explicit_type_args) = self.resolve_class_literal_name(raw_class_name);
+            if self.declared_classes.contains(&class_name) {
+                let class_ty = Type::Named(
+                    class_name.clone(),
+                    if explicit_type_args.is_empty() {
+                        self.class_type_params
+                            .get(class_name.as_str())
+                            .cloned()
+                            .unwrap_or_default()
+                    } else {
+                        explicit_type_args.clone()
+                    },
+                );
                 let typed_entries = entries
                     .iter()
                     .map(|(key, value)| {
@@ -1242,7 +1410,17 @@ impl TypeChecker {
                             Expr::StrLit(name, _) => name.clone(),
                             _ => String::new(),
                         };
-                        let expected = self.lookup_field_ty(class_name, &field_name);
+                        let expected = self.lookup_field_ty(&class_name, &field_name).map(|field_ty| {
+                            if explicit_type_args.is_empty() {
+                                field_ty
+                            } else {
+                                self.substitute_class_type_args(
+                                    &class_name,
+                                    field_ty,
+                                    &explicit_type_args,
+                                )
+                            }
+                        });
                         let (typed_value, value_ty) =
                             self.infer_expr_with_expected(value, expected.clone());
                         if let Some(field_ty) = expected {
@@ -1260,7 +1438,7 @@ impl TypeChecker {
                     .collect::<Vec<_>>();
                 let typed_callee = TypedExpr {
                     kind: TypedExprKind::Ident(class_name.clone()),
-                    ty: Type::Named(class_name.clone(), Vec::new()),
+                    ty: class_ty.clone(),
                     span: *callee_span,
                 };
                 let typed_map = TypedExpr {
@@ -1270,7 +1448,7 @@ impl TypeChecker {
                 };
                 return self.typed_expr(
                     TypedExprKind::Call(Box::new(typed_callee), vec![typed_map]),
-                    Type::Named(class_name.clone(), Vec::new()),
+                    class_ty,
                     span,
                 );
             }
@@ -1983,8 +2161,22 @@ impl TypeChecker {
             Type::String => self.builtin_string_method(name),
             Type::Int | Type::Float | Type::Bool => self.builtin_scalar_method(name),
             Type::Chan(inner) => self.builtin_chan_method(name, *inner),
-            Type::Named(class_name, _) => self
+            Type::Named(class_name, type_args) => self
                 .lookup_method_in_class_hierarchy(&class_name, name)
+                .map(|scheme| {
+                    if type_args.is_empty() {
+                        scheme
+                    } else {
+                        Scheme {
+                            quantified: scheme.quantified,
+                            ty: self.substitute_class_type_args(
+                                &class_name,
+                                scheme.ty,
+                                &type_args,
+                            ),
+                        }
+                    }
+                })
                 .or_else(|| {
                     self.interface_methods
                         .get(&class_name)
@@ -2172,7 +2364,7 @@ impl TypeChecker {
                     self.predeclare_interface(interface_def);
                 }
                 Item::Fn(function) | Item::PanicHandler(function) | Item::OomHandler(function) => {
-                    let ty = self.function_placeholder(function);
+                    let ty = self.function_placeholder(function, None);
                     self.env.define(
                         &function.name,
                         Scheme {
@@ -2183,7 +2375,7 @@ impl TypeChecker {
                 }
                 Item::Extern(extern_block) => {
                     for function in &extern_block.functions {
-                        let ty = self.function_placeholder(function);
+                        let ty = self.function_placeholder(function, None);
                         self.env.define(
                             &function.name,
                             Scheme {
@@ -2249,6 +2441,14 @@ impl TypeChecker {
 
     fn predeclare_class(&mut self, class_def: &ClassDef) {
         self.push_type_params(&class_def.type_params);
+        self.class_type_params.insert(
+            class_def.name.clone(),
+            class_def
+                .type_params
+                .iter()
+                .filter_map(|name| self.lookup_type_param(name))
+                .collect(),
+        );
         self.class_interfaces
             .insert(class_def.name.clone(), class_def.implements.clone());
         if class_def.type_params.is_empty() {
@@ -2304,7 +2504,7 @@ impl TypeChecker {
         for member in &class_def.members {
             match member {
                 ClassMember::Method(method) => {
-                    let ty = self.function_placeholder(method);
+                    let ty = self.function_placeholder(method, Some(&class_def.name));
                     methods.insert(
                         method.name.clone(),
                         Scheme {
@@ -2315,7 +2515,7 @@ impl TypeChecker {
                 }
                 ClassMember::Layer(layer) => {
                     for method in &layer.methods {
-                        let ty = self.function_placeholder(method);
+                        let ty = self.function_placeholder(method, Some(&class_def.name));
                         methods.insert(
                             method.name.clone(),
                             Scheme {
@@ -2352,6 +2552,7 @@ impl TypeChecker {
     }
 
     fn interface_method_placeholder(&mut self, function: &FnDef) -> Type {
+        self.push_type_params(&function.type_params);
         let hint = self.function_hints.get(&function.name).cloned();
         let params = function
             .params
@@ -2379,16 +2580,24 @@ impl TypeChecker {
             .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.as_ref()))
             .map(|type_expr| self.type_from_annotation(type_expr))
             .unwrap_or(Type::Unit);
-        Type::Fn(params, Box::new(ret))
+        let out = Type::Fn(params, Box::new(ret));
+        self.pop_type_params();
+        out
     }
 
-    fn function_placeholder(&mut self, function: &FnDef) -> Type {
+    fn function_placeholder(&mut self, function: &FnDef, current_class: Option<&str>) -> Type {
+        self.push_type_params(&function.type_params);
         let hint = self.function_hints.get(&function.name).cloned();
         let params = function
             .params
             .iter()
             .enumerate()
             .map(|(index, param)| {
+                if let Some(class_name) = current_class {
+                    if param.name == "self" {
+                        return self.class_instance_type(class_name);
+                    }
+                }
                 param
                     .type_hint
                     .as_ref()
@@ -2410,7 +2619,9 @@ impl TypeChecker {
             .or_else(|| hint.as_ref().and_then(|fn_hint| fn_hint.ret_type.as_ref()))
             .map(|type_expr| self.type_from_annotation(type_expr))
             .unwrap_or_else(|| self.fresh_var());
-        Type::Fn(params, Box::new(ret))
+        let out = Type::Fn(params, Box::new(ret));
+        self.pop_type_params();
+        out
     }
 
     fn install_builtins(&mut self) {
@@ -3387,6 +3598,10 @@ impl TypeChecker {
             | TypedExprKind::Ok(_)
             | TypedExprKind::Err(_)
             | TypedExprKind::Lambda(_, _) => free_type_vars(&expr.ty),
+            TypedExprKind::Array(items) | TypedExprKind::Set(items) if items.is_empty() => {
+                free_type_vars(&expr.ty)
+            }
+            TypedExprKind::Map(entries) if entries.is_empty() => free_type_vars(&expr.ty),
             TypedExprKind::Tuple(items) if !items.is_empty() => free_type_vars(&expr.ty),
             _ => BTreeSet::new(),
         }

@@ -18,6 +18,7 @@ import { Item, FnDef, Param, ClassDef, ClassMember, FieldDef, LayerDef, Interfac
 @type {
     fn parse_item(p: Parser) -> Item
     fn parse_fn_def(p: Parser, is_pub: Bool, allow_body: Bool) -> FnDef
+    fn parse_type_param_list(p: Parser) -> Array[String]
     fn parse_param_list(p: Parser) -> Array[Param]
     fn parse_class_def(p: Parser) -> ClassDef
     fn parse_class_field(p: Parser) -> FieldDef
@@ -86,6 +87,7 @@ fn parse_fn_def(p: Parser, is_pub: Bool, allow_body: Bool) -> FnDef {
 
     let _fn = parser_expect(p, "Fn", "fn")
     let name_token = parser_consume_ident(p, "function name")
+    let type_params = parse_type_param_list(p)
     let params = parse_param_list(p)
     if parser_match_kind(p, "Arrow") {
         ret_type = parse_type_expr(p)
@@ -108,6 +110,7 @@ fn parse_fn_def(p: Parser, is_pub: Bool, allow_body: Bool) -> FnDef {
     new_fn_def(
         is_pub,
         name_token.lexeme,
+        type_params,
         params,
         has_ret_type,
         ret_type,
@@ -115,6 +118,23 @@ fn parse_fn_def(p: Parser, is_pub: Bool, allow_body: Bool) -> FnDef {
         body,
         merge_spans(start, end),
     )
+}
+
+fn parse_type_param_list(p: Parser) -> Array[String] {
+    let params: Array[String] = []
+    if !parser_check(p, "LBracket") {
+        return params
+    }
+    let _lbracket = parser_expect(p, "LBracket", "[")
+    let mut done = false
+    while !parser_is_eof(p) && !parser_check(p, "RBracket") && !done {
+        params.push(parser_consume_ident(p, "type parameter").lexeme)
+        if !parser_match_kind(p, "Comma") {
+            done = true
+        }
+    }
+    let _rbracket = parser_expect(p, "RBracket", "]")
+    params
 }
 
 fn parse_param_list(p: Parser) -> Array[Param] {
@@ -150,6 +170,7 @@ fn parse_class_def(p: Parser) -> ClassDef {
     let start = parser_token_span(p)
     let _class = parser_expect(p, "Class", "class")
     let name_token = parser_consume_ident(p, "class name")
+    let type_params = parse_type_param_list(p)
     let mut extends_name = ""
     let mut has_extends = false
     let mut implements_names: Array[String] = []
@@ -196,7 +217,7 @@ fn parse_class_def(p: Parser) -> ClassDef {
     }
     let end = parser_token_span(p)
     let _rbrace = parser_expect(p, "RBrace", "}")
-    new_class_def(name_token.lexeme, has_extends, extends_name, implements_names, members, merge_spans(start, end))
+    new_class_def(name_token.lexeme, type_params, has_extends, extends_name, implements_names, members, merge_spans(start, end))
 }
 
 fn parse_class_field(p: Parser) -> FieldDef {

@@ -142,6 +142,14 @@ impl Parser {
         let mut expr = self.parse_primary()?;
 
         loop {
+            if matches!(&expr, Expr::Ident(name, _) if name.chars().next().map(|ch| ch.is_ascii_uppercase()).unwrap_or(false))
+                && self.check(TokenKind::LBracket)
+                && self.looks_like_type_arg_list()
+            {
+                expr = self.attach_type_arg_suffix(expr)?;
+                continue;
+            }
+
             if matches!(expr, Expr::Ident(_, _)) && self.looks_like_class_literal() {
                 expr = self.parse_class_literal(expr)?;
                 continue;
@@ -203,6 +211,60 @@ impl Parser {
             (next.kind.clone(), self.tokens.get(self.pos + 2).map(|token| token.kind.clone())),
             (TokenKind::Ident, Some(TokenKind::Colon))
         )
+    }
+
+    fn looks_like_type_arg_list(&self) -> bool {
+        if !self.check(TokenKind::LBracket) {
+            return false;
+        }
+        let mut index = self.pos + 1;
+        let mut depth = 1usize;
+        while let Some(token) = self.tokens.get(index) {
+            match token.kind {
+                TokenKind::LBracket => depth += 1,
+                TokenKind::RBracket => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return self
+                            .tokens
+                            .get(index + 1)
+                            .map(|next| matches!(next.kind, TokenKind::LBrace))
+                            .unwrap_or(false);
+                    }
+                }
+                _ => {}
+            }
+            index += 1;
+        }
+        false
+    }
+
+    fn attach_type_arg_suffix(&mut self, ident: Expr) -> Option<Expr> {
+        let Expr::Ident(name, span) = ident else {
+            return Some(ident);
+        };
+        let _ = self.expect(TokenKind::LBracket, "[");
+        let mut suffix = String::from("[");
+        let mut depth = 1usize;
+        while !self.is_eof() && depth > 0 {
+            match self.current_kind() {
+                TokenKind::LBracket => {
+                    depth += 1;
+                    suffix.push('[');
+                    self.advance();
+                }
+                TokenKind::RBracket => {
+                    depth -= 1;
+                    suffix.push(']');
+                    self.advance();
+                }
+                _ => {
+                    suffix.push_str(self.current_token().lexeme.as_str());
+                    self.advance();
+                }
+            }
+        }
+        Some(Expr::Ident(format!("{name}{suffix}"), span))
     }
 
     fn parse_class_literal(&mut self, ident: Expr) -> Option<Expr> {

@@ -18,6 +18,7 @@ class Item {
 class FnDef {
     let mut is_pub: Bool
     let mut name: String
+    let mut type_params: Array[String]
     let mut params: Array[Param]
     let mut has_ret_type: Bool
     let mut ret_type: TypeExpr
@@ -35,6 +36,7 @@ class Param {
 
 class ClassDef {
     let mut name: String
+    let mut type_params: Array[String]
     let mut has_extends: Bool
     let mut extends_name: String
     let mut implements_names: Array[String]
@@ -130,10 +132,10 @@ class TypeMember {
     fn item_from_import(def: ImportDef) -> Item
     fn item_from_type_block(def: TypeBlockDef) -> Item
     fn item_from_extern(def: ExternBlock) -> Item
-    fn new_fn_def(is_pub: Bool, name: String, params: Array[Param], has_ret_type: Bool, ret_type: TypeExpr, has_body: Bool, body: Block, span: Span) -> FnDef
+    fn new_fn_def(is_pub: Bool, name: String, type_params: Array[String], params: Array[Param], has_ret_type: Bool, ret_type: TypeExpr, has_body: Bool, body: Block, span: Span) -> FnDef
     fn fn_def_push_param(def: FnDef, param: Param) -> FnDef
     fn new_param(name: String, has_type_hint: Bool, type_hint: TypeExpr, span: Span) -> Param
-    fn new_class_def(name: String, has_extends: Bool, extends_name: String, implements_names: Array[String], members: Array[ClassMember], span: Span) -> ClassDef
+    fn new_class_def(name: String, type_params: Array[String], has_extends: Bool, extends_name: String, implements_names: Array[String], members: Array[ClassMember], span: Span) -> ClassDef
     fn class_def_push_implements(def: ClassDef, iface_name: String) -> ClassDef
     fn class_def_push_member(def: ClassDef, member: ClassMember) -> ClassDef
     fn class_member_field(def: FieldDef) -> ClassMember
@@ -241,10 +243,11 @@ fn item_from_extern(def: ExternBlock) {
     item
 }
 
-fn new_fn_def(is_pub: Bool, name: String, params: Array[Param], has_ret_type: Bool, ret_type: TypeExpr, has_body: Bool, body: Block, span: Span) {
+fn new_fn_def(is_pub: Bool, name: String, type_params: Array[String], params: Array[Param], has_ret_type: Bool, ret_type: TypeExpr, has_body: Bool, body: Block, span: Span) {
     let def = FnDef()
     def.is_pub = is_pub
     def.name = name
+    def.type_params = type_params
     def.params = params
     def.has_ret_type = has_ret_type
     def.ret_type = ret_type
@@ -268,9 +271,10 @@ fn new_param(name: String, has_type_hint: Bool, type_hint: TypeExpr, span: Span)
     param
 }
 
-fn new_class_def(name: String, has_extends: Bool, extends_name: String, implements_names: Array[String], members: Array[ClassMember], span: Span) {
+fn new_class_def(name: String, type_params: Array[String], has_extends: Bool, extends_name: String, implements_names: Array[String], members: Array[ClassMember], span: Span) {
     let def = ClassDef()
     def.name = name
+    def.type_params = type_params
     def.has_extends = has_extends
     def.extends_name = extends_name
     def.implements_names = implements_names

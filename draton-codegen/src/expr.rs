@@ -491,11 +491,17 @@ impl<'ctx> CodeGen<'ctx> {
         callee: &TypedExpr,
         args: &[TypedExpr],
     ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
-        if self.class_layouts.contains_key(name)
+        let class_literal_name = match &callee.ty {
+            Type::Named(class_name, type_args) if class_name == name && !type_args.is_empty() => {
+                mangle_class(class_name, type_args)
+            }
+            _ => name.to_string(),
+        };
+        if self.class_layouts.contains_key(&class_literal_name)
             && args.len() == 1
             && matches!(args[0].kind, TypedExprKind::Map(_))
         {
-            return self.emit_class_literal_call(name, &args[0]);
+            return self.emit_class_literal_call(&class_literal_name, &args[0]);
         }
         if let Some(value) = self.emit_builtin_call(name, args)? {
             return Ok(value);

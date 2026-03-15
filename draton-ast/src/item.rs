@@ -40,6 +40,7 @@ pub enum Item {
 pub struct FnDef {
     pub is_pub: bool,
     pub name: String,
+    pub type_params: Vec<String>,
     pub params: Vec<Param>,
     pub ret_type: Option<TypeExpr>,
     pub body: Option<Block>,

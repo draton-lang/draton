@@ -10,7 +10,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def find_selfhost() -> str:
     candidates = [
+        os.path.join(REPO, "build", "debug", "draton-selfhost-phase1"),
         os.path.join(REPO, "draton_selfhost"),
+        os.path.join(REPO, "draton_selfhost_test_new"),
         os.path.join(REPO, "draton_selfhost_test"),
         os.path.join(REPO, "target", "debug", "drat"),
     ]

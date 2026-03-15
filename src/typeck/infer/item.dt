@@ -14,6 +14,9 @@ class Checker {
     let mut class_field_types: Array[Array[Type]]
     let mut class_method_names: Array[Array[String]]
     let mut class_method_schemes: Array[Array[Scheme]]
+    let mut class_type_args: Array[Array[Type]]
+    let mut type_param_names: Array[Array[String]]
+    let mut type_param_types: Array[Array[Type]]
     let mut current_return: Array[Type]
     let mut current_class: Array[String]
 }
@@ -44,17 +47,29 @@ class TypeCheckResult {
     fn infer_block_result_ty(c: Checker, block: TypedBlock) -> Type
     fn infer_if_result_ty(c: Checker, stmt: TypedIfStmt) -> Type
     fn find_class_index(c: Checker, name: String) -> Int
-    fn checker_define_class(c: Checker, name: String, field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme])
+    fn checker_define_class(c: Checker, name: String, class_type_args: Array[Type], field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme])
+    fn push_type_params(c: Checker, params: Array[String])
+    fn pop_type_params(c: Checker)
+    fn has_type_param(c: Checker, name: String) -> Bool
+    fn lookup_type_param(c: Checker, name: String) -> Type
 }
 
 fn predeclare_fn_scheme(c: Checker, fn_def: FnDef, current_class: String) -> Scheme {
+    push_type_params(c, fn_def.type_params)
     let params: Array[Type] = []
-    let empty_class_args: Array[Type] = []
     let mut i = 0
     while i < fn_def.params.len() {
         let param = fn_def.params[i]
         if str_len(current_class) != 0 && str_eq_type(param.name, "self") {
-            params.push(ty_named(current_class, empty_class_args))
+            let class_type_args: Array[Type] = []
+            if c.type_param_types.len() > 0 {
+                let mut class_i = 0
+                while class_i < c.type_param_types[c.type_param_types.len() - 1].len() {
+                    class_type_args.push(c.type_param_types[c.type_param_types.len() - 1][class_i])
+                    class_i = class_i + 1
+                }
+            }
+            params.push(ty_named(current_class, class_type_args))
         } else if param.has_type_hint {
             params.push(type_from_annotation(c, param.type_hint))
         } else {
@@ -66,10 +81,19 @@ fn predeclare_fn_scheme(c: Checker, fn_def: FnDef, current_class: String) -> Sch
     if fn_def.has_ret_type {
         ret = type_from_annotation(c, fn_def.ret_type)
     }
-    mono_scheme(type_fn(params, ret))
+    let scheme = mono_scheme(type_fn(params, ret))
+    pop_type_params(c)
+    scheme
 }
 
 fn predeclare_class(c: Checker, def: ClassDef) -> Unit {
+    push_type_params(c, def.type_params)
+    let class_type_args: Array[Type] = []
+    let mut type_i = 0
+    while type_i < def.type_params.len() {
+        class_type_args.push(lookup_type_param(c, def.type_params[type_i]))
+        type_i = type_i + 1
+    }
     let field_names: Array[String] = []
     let field_types: Array[Type] = []
     let method_names: Array[String] = []
@@ -113,8 +137,68 @@ fn predeclare_class(c: Checker, def: ClassDef) -> Unit {
         }
         i = i + 1
     }
-    checker_define_class(c, def.name, field_names, field_types, method_names, method_schemes)
+    checker_define_class(c, def.name, class_type_args, field_names, field_types, method_names, method_schemes)
+    pop_type_params(c)
     let _done = 0
+}
+
+fn push_type_params(c: Checker, params: Array[String]) {
+    let names: Array[String] = []
+    let types: Array[Type] = []
+    let mut i = 0
+    while i < params.len() {
+        names.push(params[i])
+        types.push(checker_fresh_var(c))
+        i = i + 1
+    }
+    c.type_param_names.push(names)
+    c.type_param_types.push(types)
+}
+
+fn pop_type_params(c: Checker) {
+    if c.type_param_names.len() == 0 {
+        return
+    }
+    let names: Array[Array[String]] = []
+    let types: Array[Array[Type]] = []
+    let mut i = 0
+    while i + 1 < c.type_param_names.len() {
+        names.push(c.type_param_names[i])
+        types.push(c.type_param_types[i])
+        i = i + 1
+    }
+    c.type_param_names = names
+    c.type_param_types = types
+}
+
+fn has_type_param(c: Checker, name: String) -> Bool {
+    let mut scope_i = c.type_param_names.len()
+    while scope_i > 0 {
+        scope_i = scope_i - 1
+        let mut i = 0
+        while i < c.type_param_names[scope_i].len() {
+            if str_eq_type(c.type_param_names[scope_i][i], name) {
+                return true
+            }
+            i = i + 1
+        }
+    }
+    false
+}
+
+fn lookup_type_param(c: Checker, name: String) -> Type {
+    let mut scope_i = c.type_param_names.len()
+    while scope_i > 0 {
+        scope_i = scope_i - 1
+        let mut i = 0
+        while i < c.type_param_names[scope_i].len() {
+            if str_eq_type(c.type_param_names[scope_i][i], name) {
+                return c.type_param_types[scope_i][i]
+            }
+            i = i + 1
+        }
+    }
+    checker_fresh_var(c)
 }
 
 fn new_checker() {
@@ -125,6 +209,9 @@ fn new_checker() {
     let class_field_types: Array[Array[Type]] = []
     let class_method_names: Array[Array[String]] = []
     let class_method_schemes: Array[Array[Scheme]] = []
+    let class_type_args: Array[Array[Type]] = []
+    let type_param_names: Array[Array[String]] = []
+    let type_param_types: Array[Array[Type]] = []
     let current_return: Array[Type] = []
     let current_class: Array[String] = []
     c.env = new_env()
@@ -135,6 +222,9 @@ fn new_checker() {
     c.class_field_types = class_field_types
     c.class_method_names = class_method_names
     c.class_method_schemes = class_method_schemes
+    c.class_type_args = class_type_args
+    c.type_param_names = type_param_names
+    c.type_param_types = type_param_types
     c.current_return = current_return
     c.current_class = current_class
     install_builtins(c)
@@ -213,6 +303,7 @@ fn infer_item(c: Checker, item: Item) {
 }
 
 fn infer_fn_def(c: Checker, fn_def: FnDef, current_class: String) {
+    push_type_params(c, fn_def.type_params)
     env_push_scope(c.env)
     let typed = TypedFnDef()
     let params: Array[TypedParam] = []
@@ -229,7 +320,15 @@ fn infer_fn_def(c: Checker, fn_def: FnDef, current_class: String) {
     while i < fn_def.params.len() {
         let mut raw_ty = checker_fresh_var(c)
         if str_len(current_class) != 0 && str_eq_type(fn_def.params[i].name, "self") {
-            raw_ty = ty_named(current_class, [])
+            let class_type_args: Array[Type] = []
+            if c.type_param_types.len() > 0 {
+                let mut class_i = 0
+                while class_i < c.type_param_types[c.type_param_types.len() - 1].len() {
+                    class_type_args.push(c.type_param_types[c.type_param_types.len() - 1][class_i])
+                    class_i = class_i + 1
+                }
+            }
+            raw_ty = ty_named(current_class, class_type_args)
         } else if fn_def.params[i].has_type_hint {
             raw_ty = type_from_annotation(c, fn_def.params[i].type_hint)
         }
@@ -289,6 +388,7 @@ fn infer_fn_def(c: Checker, fn_def: FnDef, current_class: String) {
         c.current_class = classes
     }
     env_pop_scope(c.env)
+    pop_type_params(c)
     typed
 }
 
@@ -321,6 +421,13 @@ fn infer_if_result_ty(c: Checker, stmt: TypedIfStmt) {
 }
 
 fn infer_class_def(c: Checker, def: ClassDef) {
+    push_type_params(c, def.type_params)
+    let class_type_args: Array[Type] = []
+    let mut type_i = 0
+    while type_i < def.type_params.len() {
+        class_type_args.push(lookup_type_param(c, def.type_params[type_i]))
+        type_i = type_i + 1
+    }
     let typed = TypedClassDef()
     let fields: Array[TypedFieldDef] = []
     let methods: Array[TypedFnDef] = []
@@ -377,7 +484,8 @@ fn infer_class_def(c: Checker, def: ClassDef) {
         }
         i = i + 1
     }
-    checker_define_class(c, def.name, field_names, field_types, method_names, method_schemes)
+    checker_define_class(c, def.name, class_type_args, field_names, field_types, method_names, method_schemes)
+    pop_type_params(c)
     typed
 }
 
@@ -471,21 +579,7 @@ fn predeclare_items(c: Checker, program: Program) {
         if item_kind_is(program.items[i], "Class") {
             predeclare_class(c, program.items[i].class_def)
         } else if item_kind_is(program.items[i], "Fn") {
-            let params: Array[Type] = []
-            let mut j = 0
-            while j < program.items[i].fn_def.params.len() {
-                if program.items[i].fn_def.params[j].has_type_hint {
-                    params.push(type_from_annotation(c, program.items[i].fn_def.params[j].type_hint))
-                } else {
-                    params.push(checker_fresh_var(c))
-                }
-                j = j + 1
-            }
-            let mut ret = checker_fresh_var(c)
-            if program.items[i].fn_def.has_ret_type {
-                ret = type_from_annotation(c, program.items[i].fn_def.ret_type)
-            }
-            env_define(c.env, program.items[i].fn_def.name, mono_scheme(type_fn(params, ret)))
+            env_define(c.env, program.items[i].fn_def.name, predeclare_fn_scheme(c, program.items[i].fn_def, ""))
         } else if item_kind_is(program.items[i], "PanicHandler") {
             env_define(c.env, program.items[i].panic_handler_def.name, predeclare_fn_scheme(c, program.items[i].panic_handler_def, ""))
         } else if item_kind_is(program.items[i], "OomHandler") {
@@ -525,24 +619,61 @@ fn predeclare_items(c: Checker, program: Program) {
 }
 
 fn install_builtins(c: Checker) {
-    let print_ty = checker_fresh_var(c)
-    let quant: Array[Int] = [print_ty.ty_id]
-    env_define(c.env, "print", new_scheme(quant, type_fn([print_ty], type_unit())))
-    env_define(c.env, "range", mono_scheme(type_fn([type_int(), type_int(), type_int()], type_array(type_int()))))
-    env_define(c.env, "str_len", mono_scheme(type_fn([type_string()], type_int())))
-    env_define(c.env, "str_byte_at", mono_scheme(type_fn([type_string(), type_int()], type_int())))
-    env_define(c.env, "str_slice", mono_scheme(type_fn([type_string(), type_int(), type_int()], type_string())))
-    env_define(c.env, "str_concat", mono_scheme(type_fn([type_string(), type_string()], type_string())))
-    env_define(c.env, "int_to_string", mono_scheme(type_fn([type_int()], type_string())))
-    env_define(c.env, "ascii_char", mono_scheme(type_fn([type_int()], type_string())))
+    let print_params: Array[Type] = []
+    print_params.push(type_string())
+    env_define(c.env, "print", mono_scheme(type_fn(print_params, type_unit())))
+
+    let range_params: Array[Type] = []
+    range_params.push(type_int())
+    range_params.push(type_int())
+    range_params.push(type_int())
+    env_define(c.env, "range", mono_scheme(type_fn(range_params, type_array(type_int()))))
+
+    let str_len_params: Array[Type] = []
+    str_len_params.push(type_string())
+    env_define(c.env, "str_len", mono_scheme(type_fn(str_len_params, type_int())))
+
+    let str_byte_at_params: Array[Type] = []
+    str_byte_at_params.push(type_string())
+    str_byte_at_params.push(type_int())
+    env_define(c.env, "str_byte_at", mono_scheme(type_fn(str_byte_at_params, type_int())))
+
+    let str_slice_params: Array[Type] = []
+    str_slice_params.push(type_string())
+    str_slice_params.push(type_int())
+    str_slice_params.push(type_int())
+    env_define(c.env, "str_slice", mono_scheme(type_fn(str_slice_params, type_string())))
+
+    let str_concat_params: Array[Type] = []
+    str_concat_params.push(type_string())
+    str_concat_params.push(type_string())
+    env_define(c.env, "str_concat", mono_scheme(type_fn(str_concat_params, type_string())))
+
+    let int_to_string_params: Array[Type] = []
+    int_to_string_params.push(type_int())
+    env_define(c.env, "int_to_string", mono_scheme(type_fn(int_to_string_params, type_string())))
+
+    let ascii_char_params: Array[Type] = []
+    ascii_char_params.push(type_int())
+    env_define(c.env, "ascii_char", mono_scheme(type_fn(ascii_char_params, type_string())))
+
     let empty_cli_params: Array[Type] = []
     env_define(c.env, "cli_argc", mono_scheme(type_fn(empty_cli_params, type_int())))
-    env_define(c.env, "cli_arg", mono_scheme(type_fn([type_int()], type_string())))
-    env_define(c.env, "read_file", mono_scheme(type_fn([type_string()], type_string())))
+
+    let cli_arg_params: Array[Type] = []
+    cli_arg_params.push(type_int())
+    env_define(c.env, "cli_arg", mono_scheme(type_fn(cli_arg_params, type_string())))
+
+    let read_file_params: Array[Type] = []
+    read_file_params.push(type_string())
+    env_define(c.env, "read_file", mono_scheme(type_fn(read_file_params, type_string())))
 }
 
 fn type_from_annotation(c: Checker, ty_expr: TypeExpr) {
     if type_expr_kind_is(ty_expr, "Named") {
+        if has_type_param(c, ty_expr.name) {
+            return lookup_type_param(c, ty_expr.name)
+        }
         if str_eq_type(ty_expr.name, "Int") {
             return type_int()
         }
@@ -635,21 +766,22 @@ fn find_class_index(c: Checker, name: String) {
     -1
 }
 
-fn checker_define_class(c: Checker, name: String, field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme]) {
+fn checker_define_class(c: Checker, name: String, class_type_args: Array[Type], field_names: Array[String], field_types: Array[Type], method_names: Array[String], method_schemes: Array[Scheme]) {
     let idx = find_class_index(c, name)
     if idx >= 0 {
+        c.class_type_args[idx] = class_type_args
         c.class_field_names[idx] = field_names
         c.class_field_types[idx] = field_types
         c.class_method_names[idx] = method_names
         c.class_method_schemes[idx] = method_schemes
     } else {
         c.class_names.push(name)
+        c.class_type_args.push(class_type_args)
         c.class_field_names.push(field_names)
         c.class_field_types.push(field_types)
         c.class_method_names.push(method_names)
         c.class_method_schemes.push(method_schemes)
     }
-    let empty_class_args: Array[Type] = []
-    env_define(c.env, name, mono_scheme(ty_named(name, empty_class_args)))
+    env_define(c.env, name, mono_scheme(ty_named(name, class_type_args)))
     let _done = 0
 }

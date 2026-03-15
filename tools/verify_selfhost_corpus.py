@@ -15,7 +15,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def find_selfhost() -> str:
     candidates = [
+        os.path.join(REPO, "build", "debug", "draton-selfhost-phase1"),
         os.path.join(REPO, "draton_selfhost"),
+        os.path.join(REPO, "draton_selfhost_test_new"),
         os.path.join(REPO, "draton_selfhost_test"),
         os.path.join(REPO, "target", "debug", "drat"),
     ]
@@ -381,6 +383,38 @@ fn main() -> Int {
     f(20)
 }""",
     exit=41,
+)
+
+case(
+    "generic identity",
+    """fn id[T](x: T) -> T { x }
+fn main() -> Int { id(42) }""",
+    exit=42,
+)
+
+case(
+    "generic max",
+    """fn max_val[T](a: T, b: T) -> T {
+    if a > b { a } else { b }
+}
+fn main() -> Int { max_val(17, 42) }""",
+    exit=42,
+)
+
+case(
+    "generic class Stack",
+    """class Stack[T] {
+    pub let mut items: Array[T]
+    pub fn push(self, v: T) { self.items.push(v) }
+    pub fn size(self) -> Int { self.items.len() }
+}
+fn main() -> Int {
+    let s = Stack[Int] { items: [] }
+    s.push(10)
+    s.push(32)
+    s.size()
+}""",
+    exit=2,
 )
 
 case(

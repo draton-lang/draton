@@ -64,6 +64,7 @@ impl Parser {
         }
 
         let (name, _) = self.consume_ident("function name")?;
+        let type_params = self.parse_type_param_list()?;
         let params = self.parse_param_list()?;
         let ret_type = if self.match_kind(TokenKind::Arrow) {
             self.parse_type_expr()
@@ -87,6 +88,7 @@ impl Parser {
         Some(FnDef {
             is_pub,
             name,
+            type_params,
             params,
             ret_type,
             body,
