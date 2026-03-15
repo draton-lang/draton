@@ -1,6 +1,6 @@
 @type {
-    fn make_string_result(kind: String, lexeme: String, has_error: Bool, err: LexError) -> StringResult
-    fn lex_string(c: Cursor, is_fstring: Bool, start: Int, line: Int, col: Int) -> StringResult
+    make_string_result: (String, String, Bool, LexError) -> StringResult
+    lex_string: (Cursor, Bool, Int, Int, Int) -> StringResult
 }
 
 class StringResult {
@@ -10,7 +10,7 @@ class StringResult {
     let mut err: LexError
 }
 
-fn make_string_result(kind: String, lexeme: String, has_error: Bool, err: LexError) {
+fn make_string_result(kind, lexeme, has_error, err) {
     let result = StringResult()
     result.kind = kind
     result.lexeme = lexeme
@@ -19,7 +19,7 @@ fn make_string_result(kind: String, lexeme: String, has_error: Bool, err: LexErr
     result
 }
 
-fn lex_string(c: Cursor, is_fstring: Bool, start: Int, line: Int, col: Int) {
+fn lex_string(c, is_fstring, start, line, col) {
     if is_fstring {
         cursor_advance(c)
     }

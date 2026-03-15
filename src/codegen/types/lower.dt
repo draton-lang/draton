@@ -1,11 +1,11 @@
 import { Type, CodeGen, LLVMType, new_llvm_type, llvm_pointer_type, cg_find_class_index, str_eq_type }
 
 @type {
-    fn lower_type(cg: CodeGen, ty: Type) -> LLVMType
-    fn is_void_type(ty: Type) -> Bool
+    lower_type: (CodeGen, Type) -> LLVMType
+    is_void_type: (Type) -> Bool
 }
 
-fn lower_type(cg: CodeGen, ty: Type) {
+fn lower_type(cg, ty) {
     if str_eq_type(ty.type_kind, "Int") || str_eq_type(ty.type_kind, "Int8") || str_eq_type(ty.type_kind, "Int16") || str_eq_type(ty.type_kind, "Int32") || str_eq_type(ty.type_kind, "Int64") || str_eq_type(ty.type_kind, "UInt8") || str_eq_type(ty.type_kind, "UInt16") || str_eq_type(ty.type_kind, "UInt32") || str_eq_type(ty.type_kind, "UInt64") {
         return new_llvm_type("i64", false, false)
     }
@@ -89,6 +89,6 @@ fn lower_type(cg: CodeGen, ty: Type) {
     new_llvm_type(ty.type_kind, false, false)
 }
 
-fn is_void_type(ty: Type) {
+fn is_void_type(ty) {
     str_eq_type(ty.type_kind, "Unit") || str_eq_type(ty.type_kind, "Never")
 }

@@ -1,17 +1,17 @@
 @type {
-    fn new_cursor(source: String) -> Cursor
-    fn cursor_len(c: Cursor) -> Int
-    fn cursor_at_end(c: Cursor) -> Bool
-    fn cursor_code_at(c: Cursor, index: Int) -> Int
-    fn cursor_peek_code(c: Cursor) -> Int
-    fn cursor_peek_next_code(c: Cursor) -> Int
-    fn cursor_peek_next_next_code(c: Cursor) -> Int
-    fn cursor_peek(c: Cursor) -> String
-    fn cursor_peek_next(c: Cursor) -> String
-    fn cursor_advance(c: Cursor) -> String
-    fn cursor_advance_newline(c: Cursor, bytes: Int) -> Unit
-    fn cursor_consume_if(c: Cursor, expected_code: Int) -> Bool
-    fn cursor_slice(c: Cursor, start_idx: Int, end_idx: Int) -> String
+    new_cursor: (String) -> Cursor
+    cursor_len: (Cursor) -> Int
+    cursor_at_end: (Cursor) -> Bool
+    cursor_code_at: (Cursor, Int) -> Int
+    cursor_peek_code: (Cursor) -> Int
+    cursor_peek_next_code: (Cursor) -> Int
+    cursor_peek_next_next_code: (Cursor) -> Int
+    cursor_peek: (Cursor) -> String
+    cursor_peek_next: (Cursor) -> String
+    cursor_advance: (Cursor) -> String
+    cursor_advance_newline: (Cursor, Int) -> Unit
+    cursor_consume_if: (Cursor, Int) -> Bool
+    cursor_slice: (Cursor, Int, Int) -> String
 }
 
 class Cursor {
@@ -21,7 +21,7 @@ class Cursor {
     let mut col: Int
 }
 
-fn new_cursor(source: String) {
+fn new_cursor(source) {
     let c = Cursor()
     c.source = source
     c.pos = 0
@@ -30,15 +30,15 @@ fn new_cursor(source: String) {
     c
 }
 
-fn cursor_len(c: Cursor) {
+fn cursor_len(c) {
     str_len(c.source)
 }
 
-fn cursor_at_end(c: Cursor) {
+fn cursor_at_end(c) {
     c.pos >= cursor_len(c)
 }
 
-fn cursor_code_at(c: Cursor, index: Int) {
+fn cursor_code_at(c, index) {
     let mut code = -1
     if index < 0 || index >= cursor_len(c) {
         code = -1
@@ -48,19 +48,19 @@ fn cursor_code_at(c: Cursor, index: Int) {
     code
 }
 
-fn cursor_peek_code(c: Cursor) {
+fn cursor_peek_code(c) {
     cursor_code_at(c, c.pos)
 }
 
-fn cursor_peek_next_code(c: Cursor) {
+fn cursor_peek_next_code(c) {
     cursor_code_at(c, c.pos + 1)
 }
 
-fn cursor_peek_next_next_code(c: Cursor) {
+fn cursor_peek_next_next_code(c) {
     cursor_code_at(c, c.pos + 2)
 }
 
-fn cursor_peek(c: Cursor) {
+fn cursor_peek(c) {
     let mut ch = ""
     if cursor_at_end(c) {
         ch = ""
@@ -70,7 +70,7 @@ fn cursor_peek(c: Cursor) {
     ch
 }
 
-fn cursor_peek_next(c: Cursor) {
+fn cursor_peek_next(c) {
     let mut ch = ""
     if c.pos + 1 >= cursor_len(c) {
         ch = ""
@@ -80,7 +80,7 @@ fn cursor_peek_next(c: Cursor) {
     ch
 }
 
-fn cursor_advance(c: Cursor) {
+fn cursor_advance(c) {
     let mut ch = ""
     if cursor_at_end(c) {
         ch = ""
@@ -92,13 +92,13 @@ fn cursor_advance(c: Cursor) {
     ch
 }
 
-fn cursor_advance_newline(c: Cursor, bytes: Int) {
+fn cursor_advance_newline(c, bytes) {
     c.pos = c.pos + bytes
     c.line = c.line + 1
     c.col = 1
 }
 
-fn cursor_consume_if(c: Cursor, expected_code: Int) {
+fn cursor_consume_if(c, expected_code) {
     let mut matched = false
     if cursor_peek_code(c) == expected_code {
         cursor_advance(c)
@@ -107,6 +107,6 @@ fn cursor_consume_if(c: Cursor, expected_code: Int) {
     matched
 }
 
-fn cursor_slice(c: Cursor, start_idx: Int, end_idx: Int) {
+fn cursor_slice(c, start_idx, end_idx) {
     str_slice(c.source, start_idx, end_idx)
 }

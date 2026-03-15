@@ -1,10 +1,10 @@
 import { CodeGen, LLVMValue, cg_append_line, llvm_value_exists }
 
 @type {
-    fn emit_write_barrier(cg: CodeGen, obj_ptr: LLVMValue, field_ptr: LLVMValue, value: LLVMValue)
+    emit_write_barrier: (CodeGen, LLVMValue, LLVMValue, LLVMValue) -> Unit
 }
 
-fn emit_write_barrier(cg: CodeGen, obj_ptr: LLVMValue, field_ptr: LLVMValue, value: LLVMValue) {
+fn emit_write_barrier(cg, obj_ptr, field_ptr, value) {
     if !llvm_value_exists(value) {
         return
     }

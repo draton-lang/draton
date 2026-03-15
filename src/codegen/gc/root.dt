@@ -1,10 +1,10 @@
 import { CodeGen, LLVMValue, cg_append_line, llvm_value_exists }
 
 @type {
-    fn emit_gc_root(cg: CodeGen, alloca_ptr: LLVMValue)
+    emit_gc_root: (CodeGen, LLVMValue) -> Unit
 }
 
-fn emit_gc_root(cg: CodeGen, alloca_ptr: LLVMValue) {
+fn emit_gc_root(cg, alloca_ptr) {
     if !llvm_value_exists(alloca_ptr) {
         return
     }

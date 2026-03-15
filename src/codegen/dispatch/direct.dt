@@ -1,10 +1,10 @@
 import { CodeGen, LLVMValue, cg_lookup_function, cg_lookup_function_type, new_llvm_value, llvm_value_exists, cg_append_line }
 
 @type {
-    fn emit_direct_call(cg: CodeGen, fn_name: String, args: Array[LLVMValue], result_name: String) -> LLVMValue
+    emit_direct_call: (CodeGen, String, Array[LLVMValue], String) -> LLVMValue
 }
 
-fn emit_direct_call(cg: CodeGen, fn_name: String, args: Array[LLVMValue], result_name: String) {
+fn emit_direct_call(cg, fn_name, args, result_name) {
     let fn_val = cg_lookup_function(cg, fn_name)
     let fn_ty = cg_lookup_function_type(cg, fn_name)
     let mut raw = result_name
