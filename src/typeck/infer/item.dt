@@ -158,7 +158,9 @@ fn infer_fn_def(c: Checker, fn_def: FnDef, current_class: String) {
     let mut i = 0
     while i < fn_def.params.len() {
         let mut raw_ty = checker_fresh_var(c)
-        if fn_def.params[i].has_type_hint {
+        if str_len(current_class) != 0 && str_eq_type(fn_def.params[i].name, "self") {
+            raw_ty = ty_named(current_class, [])
+        } else if fn_def.params[i].has_type_hint {
             raw_ty = type_from_annotation(c, fn_def.params[i].type_hint)
         }
         raw_param_types.push(raw_ty)
@@ -263,6 +265,17 @@ fn infer_class_def(c: Checker, def: ClassDef) {
     typed.class_fields = fields
     typed.class_methods = methods
     typed.class_span = def.span
+    if def.has_extends {
+        let parent_idx = find_class_index(c, def.extends_name)
+        if parent_idx >= 0 {
+            let mut parent_i = 0
+            while parent_i < c.class_field_names[parent_idx].len() {
+                field_names.push(c.class_field_names[parent_idx][parent_i])
+                field_types.push(c.class_field_types[parent_idx][parent_i])
+                parent_i = parent_i + 1
+            }
+        }
+    }
     let mut i = 0
     while i < def.members.len() {
         if class_member_kind_is(def.members[i], "Field") {

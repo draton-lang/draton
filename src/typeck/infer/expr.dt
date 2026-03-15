@@ -7,6 +7,7 @@ import { Checker, Type, Scheme, TypedExpr, TypedMapEntry, TypedMatchArm, TypedMa
     fn infer_binop(c: Checker, lhs: Expr, op: String, rhs: Expr, span: Span) -> TypedExpr
     fn infer_unop(c: Checker, op: String, expr: Expr, span: Span) -> TypedExpr
     fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) -> TypedExpr
+    fn infer_class_literal_call(c: Checker, class_name: String, field_map: Expr, span: Span) -> TypedExpr
     fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], span: Span) -> TypedExpr
     fn infer_field(c: Checker, target: Expr, name: String, span: Span) -> TypedExpr
     fn infer_index(c: Checker, target: Expr, index: Expr, span: Span) -> TypedExpr
@@ -230,6 +231,9 @@ fn infer_unop(c: Checker, op: String, expr: Expr, span: Span) {
 }
 
 fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) {
+    if expr_kind_is(callee, "Ident") && args.len() == 1 && expr_kind_is(args[0], "Map") && find_class_index(c, callee.name) >= 0 {
+        return infer_class_literal_call(c, callee.name, args[0], span)
+    }
     let callee_typed = infer_expr(c, callee)
     let out = make_typed("Call", checker_fresh_var(c), span)
     let typed_args: Array[TypedExpr] = []
@@ -257,6 +261,50 @@ fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) {
     out
 }
 
+fn infer_class_literal_call(c: Checker, class_name: String, field_map: Expr, span: Span) {
+    let out = make_typed("Call", ty_named(class_name, []), span)
+    out.call_callee = make_typed("Ident", ty_named(class_name, []), expr_span(field_map))
+    out.call_callee.ident_name = class_name
+    let map_arg = make_typed("Map", type_unit(), expr_span(field_map))
+    let entries: Array[TypedMapEntry] = []
+    map_arg.map_entries = entries
+    let idx = find_class_index(c, class_name)
+    let raw_entries = field_map.entries
+    let mut i = 0
+    while i < raw_entries.len() {
+        let entry = TypedMapEntry()
+        let key_expr = raw_entries[i].key
+        let key_typed = infer_expr(c, key_expr)
+        entry.entry_key = key_typed
+        let mut field_name = ""
+        if expr_kind_is(key_expr, "StrLit") {
+            field_name = key_expr.string_value
+        }
+        let value_typed = infer_expr(c, raw_entries[i].value)
+        entry.entry_value = value_typed
+        if idx >= 0 {
+            let mut field_i = 0
+            let mut found = false
+            while field_i < c.class_field_names[idx].len() {
+                if str_eq_type(c.class_field_names[idx][field_i], field_name) {
+                    checker_unify(c, value_typed.expr_ty, c.class_field_types[idx][field_i], span)
+                    found = true
+                    field_i = c.class_field_names[idx].len()
+                } else {
+                    field_i = field_i + 1
+                }
+            }
+            if !found {
+                c.errors.push(undefined_field_error(field_name, class_name, span.line, span.col))
+            }
+        }
+        map_arg.map_entries.push(entry)
+        i = i + 1
+    }
+    out.call_args.push(map_arg)
+    out
+}
+
 fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], span: Span) {
     let recv = infer_expr(c, target)
     let out = make_typed("MethodCall", checker_fresh_var(c), span)
@@ -280,7 +328,13 @@ fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], 
                 if str_eq_type(c.class_method_names[idx][i], name) {
                     let method_ty = env_instantiate(c.env, c.class_method_schemes[idx][i])
                     let ret_ty = checker_fresh_var(c)
-                    checker_unify(c, method_ty, type_fn(arg_types, ret_ty), span)
+                    let full_arg_types: Array[Type] = [out.access_target.expr_ty]
+                    let mut j = 0
+                    while j < arg_types.len() {
+                        full_arg_types.push(arg_types[j])
+                        j = j + 1
+                    }
+                    checker_unify(c, method_ty, type_fn(full_arg_types, ret_ty), span)
                     out.expr_ty = checker_apply_subst(c, ret_ty)
                     return out
                 }

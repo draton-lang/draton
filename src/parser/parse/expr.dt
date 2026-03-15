@@ -28,6 +28,8 @@ import { Expr, MatchArm, MatchArmBody, FStrPart, MapEntry, expr_int_lit, expr_fl
     fn parse_postfix(p: Parser) -> Expr
     fn parse_primary(p: Parser) -> Expr
     fn parse_arg_list(p: Parser) -> Array[Expr]
+    fn parse_class_literal_call(p: Parser, ident: Expr) -> Expr
+    fn parser_looks_like_class_literal(p: Parser) -> Bool
     fn parse_fstring(token: Token, p: Parser) -> Expr
     fn parse_inline_fstring_expr(source: String, span: Span) -> Expr
     fn parse_array_literal(p: Parser) -> Expr
@@ -249,7 +251,9 @@ fn parse_postfix(p: Parser) -> Expr {
     let mut expr = parse_primary(p)
     let mut looping = true
     while looping {
-        if parser_match_kind(p, "LParen") {
+        if str_eq_expr_parse(expr.kind, "Ident") && parser_looks_like_class_literal(p) {
+            expr = parse_class_literal_call(p, expr)
+        } else if parser_match_kind(p, "LParen") {
             let args = parse_arg_list(p)
             let end = token_to_span(parser_previous(p))
             let span = merge_spans(expr_span(expr), end)
@@ -275,6 +279,45 @@ fn parse_postfix(p: Parser) -> Expr {
         }
     }
     expr
+}
+
+fn parser_looks_like_class_literal(p: Parser) -> Bool {
+    if !parser_check(p, "LBrace") {
+        return false
+    }
+    if p.pos + 1 >= p.tokens.len() {
+        return false
+    }
+    let next = p.tokens[p.pos + 1]
+    if str_eq_expr_parse(next.kind, "RBrace") {
+        return true
+    }
+    if !str_eq_expr_parse(next.kind, "Ident") {
+        return false
+    }
+    if p.pos + 2 >= p.tokens.len() {
+        return false
+    }
+    str_eq_expr_parse(p.tokens[p.pos + 2].kind, "Colon")
+}
+
+fn parse_class_literal_call(p: Parser, ident: Expr) -> Expr {
+    let start = expr_span(ident)
+    let _lbrace = parser_expect(p, "LBrace", "{")
+    let mut entries: Array[MapEntry] = []
+    let mut done = false
+    while !parser_is_eof(p) && !parser_check(p, "RBrace") && !done {
+        let key_token = parser_consume_ident(p, "field name")
+        let _colon = parser_expect(p, "Colon", ":")
+        let value = parse_expression(p)
+        entries.push(new_map_entry(expr_str_lit(key_token.lexeme, token_to_span(key_token)), value))
+        if !parser_match_kind(p, "Comma") {
+            done = true
+        }
+    }
+    let end = parser_token_span(p)
+    let _rbrace = parser_expect(p, "RBrace", "}")
+    expr_call(ident, [expr_map(entries, merge_spans(start, end))], merge_spans(start, end))
 }
 
 fn parse_arg_list(p: Parser) -> Array[Expr] {

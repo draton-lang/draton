@@ -10,10 +10,22 @@ import subprocess
 import sys
 import tempfile
 
-SELFHOST = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "draton_selfhost",
-)
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def find_selfhost() -> str:
+    candidates = [
+        os.path.join(REPO, "draton_selfhost"),
+        os.path.join(REPO, "draton_selfhost_test"),
+        os.path.join(REPO, "target", "debug", "drat"),
+    ]
+    for path in candidates:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            return path
+    raise FileNotFoundError("khong tim thay binary self-host hoac host fallback")
+
+
+SELFHOST = find_selfhost()
 
 
 def run_case(source: str) -> tuple[int, str]:
@@ -290,6 +302,62 @@ case(
     3
 }""",
     exit=3,
+)
+
+case(
+    "class field read",
+    """class Point {
+    pub let x: Int
+    pub let y: Int
+}
+fn main() -> Int {
+    let p = Point { x: 3, y: 4 }
+    p.x + p.y
+}""",
+    exit=7,
+)
+
+case(
+    "class field mutation",
+    """class Counter {
+    pub let mut n: Int
+}
+fn main() -> Int {
+    let c = Counter { n: 0 }
+    c.n += 10
+    c.n += 32
+    c.n
+}""",
+    exit=42,
+)
+
+case(
+    "class method",
+    """class Rect {
+    pub let w: Int
+    pub let h: Int
+    pub fn area(self) -> Int { self.w * self.h }
+}
+fn main() -> Int {
+    let r = Rect { w: 6, h: 7 }
+    r.area()
+}""",
+    exit=42,
+)
+
+case(
+    "class inheritance",
+    """class Animal {
+    pub let legs: Int
+}
+class Dog extends Animal {
+    pub let name: String
+}
+fn main() -> Int {
+    let d = Dog { legs: 4, name: "Rex" }
+    d.legs
+}""",
+    exit=4,
 )
 
 case(

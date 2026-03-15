@@ -181,8 +181,10 @@ fn parse_class_def(p: Parser) -> ClassDef {
             let _advanced = parser_advance(p)
             if str_eq_item_parse(parser_current_kind(p), "Fn") {
                 members.push(class_member_method(parse_fn_def(p, true, true)))
+            } else if str_eq_item_parse(parser_current_kind(p), "Let") {
+                members.push(class_member_field(parse_class_field(p)))
             } else {
-                parser_error_unexpected(p, parser_current(p), "fn")
+                parser_error_unexpected(p, parser_current(p), "fn or let")
                 parser_sync_stmt(p)
             }
         } else if str_eq_item_parse(kind, "Layer") {

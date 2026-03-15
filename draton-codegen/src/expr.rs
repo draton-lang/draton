@@ -491,6 +491,12 @@ impl<'ctx> CodeGen<'ctx> {
         callee: &TypedExpr,
         args: &[TypedExpr],
     ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        if self.class_layouts.contains_key(name)
+            && args.len() == 1
+            && matches!(args[0].kind, TypedExprKind::Map(_))
+        {
+            return self.emit_class_literal_call(name, &args[0]);
+        }
         if let Some(value) = self.emit_builtin_call(name, args)? {
             return Ok(value);
         }
@@ -562,12 +568,69 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(call.try_as_basic_value().left())
     }
 
+    fn emit_class_literal_call(
+        &mut self,
+        class_name: &str,
+        field_map: &TypedExpr,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        let ctor_name = format!("{class_name}_new");
+        let function = self
+            .functions
+            .get(&ctor_name)
+            .copied()
+            .ok_or_else(|| CodeGenError::MissingSymbol(ctor_name.clone()))?;
+        let call = self
+            .builder
+            .build_call(function, &[], "ctor.call")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let object_ptr = call
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| CodeGenError::UnsupportedExpr("constructor returned void".to_string()))?
+            .into_pointer_value();
+        let TypedExprKind::Map(entries) = &field_map.kind else {
+            return Ok(Some(object_ptr.into()));
+        };
+        for (key, value_expr) in entries {
+            let TypedExprKind::StrLit(field_name) = &key.kind else {
+                continue;
+            };
+            let field_ptr = self.emit_field_ptr_in_class(object_ptr, class_name, field_name)?;
+            let value = self
+                .emit_expr(value_expr)?
+                .ok_or_else(|| {
+                    CodeGenError::UnsupportedExpr(
+                        "class field initializer missing value".to_string(),
+                    )
+                })?;
+            self.build_store(field_ptr, value)?;
+            if Self::is_gc_pointer_type(&value_expr.ty) {
+                let _ = self.emit_gc_write_barrier(object_ptr, field_ptr, value);
+            }
+        }
+        Ok(Some(object_ptr.into()))
+    }
+
     fn emit_builtin_call(
         &mut self,
         name: &str,
         args: &[TypedExpr],
     ) -> Result<Option<Option<BasicValueEnum<'ctx>>>, CodeGenError> {
         match name {
+            "Some" => {
+                let arg = args.first().ok_or_else(|| {
+                    CodeGenError::UnsupportedExpr("Some requires one argument".to_string())
+                })?;
+                let value = self.emit_expr(arg)?.ok_or_else(|| {
+                    CodeGenError::UnsupportedExpr("Some arg missing value".to_string())
+                })?;
+                let option_ty = self
+                    .llvm_basic_type(&Type::Option(Box::new(arg.ty.clone())))?
+                    .into_struct_type();
+                let tag = self.context.bool_type().const_int(1, false).into();
+                let option = self.build_struct_value(option_ty, &[tag, value], "some")?;
+                Ok(Some(Some(option.into())))
+            }
             "str_len" => {
                 let value = self
                     .emit_expr(args.first().ok_or_else(|| {

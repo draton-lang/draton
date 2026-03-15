@@ -6,7 +6,21 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SELFHOST = os.path.join(REPO, "draton_selfhost")
+
+
+def find_selfhost() -> str:
+    candidates = [
+        os.path.join(REPO, "draton_selfhost"),
+        os.path.join(REPO, "draton_selfhost_test"),
+        os.path.join(REPO, "target", "debug", "drat"),
+    ]
+    for path in candidates:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            return path
+    raise FileNotFoundError("khong tim thay binary self-host hoac host fallback")
+
+
+SELFHOST = find_selfhost()
 
 CASES = [
     (

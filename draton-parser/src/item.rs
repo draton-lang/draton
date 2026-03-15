@@ -174,10 +174,26 @@ impl Parser {
                 }
                 TokenKind::Pub => {
                     self.advance();
-                    if let Some(method) = self.parse_fn_def(true, true) {
-                        members.push(ClassMember::Method(method));
-                    } else {
-                        self.synchronize_stmt();
+                    match self.current_kind() {
+                        TokenKind::Fn => {
+                            if let Some(method) = self.parse_fn_def(true, true) {
+                                members.push(ClassMember::Method(method));
+                            } else {
+                                self.synchronize_stmt();
+                            }
+                        }
+                        TokenKind::Let => {
+                            if let Some(field) = self.parse_class_field() {
+                                members.push(ClassMember::Field(field));
+                            } else {
+                                self.synchronize_stmt();
+                            }
+                        }
+                        _ => {
+                            let token = self.current_token().clone();
+                            self.error_unexpected(&token, "fn or let");
+                            self.synchronize_stmt();
+                        }
                     }
                 }
                 TokenKind::Layer => {

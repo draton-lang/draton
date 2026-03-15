@@ -142,6 +142,11 @@ impl Parser {
         let mut expr = self.parse_primary()?;
 
         loop {
+            if matches!(expr, Expr::Ident(_, _)) && self.looks_like_class_literal() {
+                expr = self.parse_class_literal(expr)?;
+                continue;
+            }
+
             if self.match_kind(TokenKind::LParen) {
                 let args = self.parse_argument_list()?;
                 let end = self
@@ -182,6 +187,41 @@ impl Parser {
         }
 
         Some(expr)
+    }
+
+    fn looks_like_class_literal(&self) -> bool {
+        if !self.check(TokenKind::LBrace) {
+            return false;
+        }
+        let Some(next) = self.tokens.get(self.pos + 1) else {
+            return false;
+        };
+        if matches!(next.kind, TokenKind::RBrace) {
+            return true;
+        }
+        matches!(
+            (next.kind.clone(), self.tokens.get(self.pos + 2).map(|token| token.kind.clone())),
+            (TokenKind::Ident, Some(TokenKind::Colon))
+        )
+    }
+
+    fn parse_class_literal(&mut self, ident: Expr) -> Option<Expr> {
+        let start = ident.span();
+        let _ = self.expect(TokenKind::LBrace, "{");
+        let mut entries = Vec::new();
+        while !self.is_eof() && !self.check(TokenKind::RBrace) {
+            let (name, key_span) = self.consume_ident("field name")?;
+            let _ = self.expect(TokenKind::Colon, ":");
+            let value = self.parse_expression()?;
+            entries.push((Expr::StrLit(name, key_span), value));
+            if !self.match_kind(TokenKind::Comma) {
+                break;
+            }
+        }
+        let end = self.token_span();
+        let _ = self.expect(TokenKind::RBrace, "}");
+        let map = Expr::Map(entries, self.merge_spans(start, end));
+        Some(Expr::Call(Box::new(ident), vec![map], self.merge_spans(start, end)))
     }
 
     fn parse_argument_list(&mut self) -> Option<Vec<Expr>> {

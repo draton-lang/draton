@@ -459,6 +459,9 @@ impl TypeChecker {
             .iter()
             .enumerate()
             .map(|(index, param)| {
+                if current_class.is_some() && param.name == "self" {
+                    return Type::Named(current_class.unwrap().to_string(), Vec::new());
+                }
                 param
                     .type_hint
                     .as_ref()
@@ -1228,6 +1231,50 @@ impl TypeChecker {
         args: &[Expr],
         span: draton_ast::Span,
     ) -> (TypedExpr, Type) {
+        if let (Expr::Ident(class_name, callee_span), [Expr::Map(entries, map_span)]) = (callee, args)
+        {
+            if self.declared_classes.contains(class_name) {
+                let typed_entries = entries
+                    .iter()
+                    .map(|(key, value)| {
+                        let (typed_key, _) = self.infer_expr(key);
+                        let field_name = match key {
+                            Expr::StrLit(name, _) => name.clone(),
+                            _ => String::new(),
+                        };
+                        let expected = self.lookup_field_ty(class_name, &field_name);
+                        let (typed_value, value_ty) =
+                            self.infer_expr_with_expected(value, expected.clone());
+                        if let Some(field_ty) = expected {
+                            let _ = self.unify(value_ty, field_ty, span);
+                        } else {
+                            self.errors.push(TypeError::NoField {
+                                field: field_name,
+                                ty: class_name.clone(),
+                                line: span.line,
+                                col: span.col,
+                            });
+                        }
+                        (typed_key, typed_value)
+                    })
+                    .collect::<Vec<_>>();
+                let typed_callee = TypedExpr {
+                    kind: TypedExprKind::Ident(class_name.clone()),
+                    ty: Type::Named(class_name.clone(), Vec::new()),
+                    span: *callee_span,
+                };
+                let typed_map = TypedExpr {
+                    kind: TypedExprKind::Map(typed_entries),
+                    ty: Type::Unit,
+                    span: *map_span,
+                };
+                return self.typed_expr(
+                    TypedExprKind::Call(Box::new(typed_callee), vec![typed_map]),
+                    Type::Named(class_name.clone(), Vec::new()),
+                    span,
+                );
+            }
+        }
         let (typed_callee, callee_ty) = self.infer_expr(callee);
         let expected_params = match self.apply_subst(callee_ty.clone()) {
             Type::Fn(params, _) => Some(params),
@@ -1282,6 +1329,7 @@ impl TypeChecker {
         span: draton_ast::Span,
     ) -> (TypedExpr, Type) {
         let (typed_target, target_ty) = self.infer_expr(target);
+        let target_is_named = matches!(self.apply_subst(target_ty.clone()), Type::Named(_, _));
         let scheme = self.lookup_method_scheme(&target_ty, name, span);
         let instantiated = scheme
             .as_ref()
@@ -1304,7 +1352,13 @@ impl TypeChecker {
                     arg,
                     expected_params
                         .as_ref()
-                        .and_then(|params| params.get(index).cloned()),
+                        .and_then(|params| {
+                            if target_is_named {
+                                params.get(index + 1).cloned()
+                            } else {
+                                params.get(index).cloned()
+                            }
+                        }),
                 )
             })
             .collect::<Vec<_>>();
@@ -1313,12 +1367,22 @@ impl TypeChecker {
             .map(|(_, ty)| ty.clone())
             .collect::<Vec<_>>();
         let ret_ty = self.fresh_var();
-        let expected = Type::Fn(arg_types, Box::new(ret_ty.clone()));
+        let mut expected_arg_types = Vec::new();
+        if target_is_named {
+            expected_arg_types.push(target_ty.clone());
+        }
+        expected_arg_types.extend(arg_types);
+        let expected = Type::Fn(expected_arg_types, Box::new(ret_ty.clone()));
         let resolved = self.apply_subst(instantiated.clone());
         if let Type::Fn(params, _) = &resolved {
-            if params.len() != args.len() {
+            let expected_user_args = if target_is_named {
+                params.len().saturating_sub(1)
+            } else {
+                params.len()
+            };
+            if expected_user_args != args.len() {
                 self.errors.push(TypeError::ArgCount {
-                    expected: params.len(),
+                    expected: expected_user_args,
                     got: args.len(),
                     line: span.line,
                     col: span.col,

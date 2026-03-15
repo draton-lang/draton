@@ -110,6 +110,7 @@ impl<'ctx> CodeGen<'ctx> {
                     &function
                         .params
                         .iter()
+                        .filter(|param| param.name != "self")
                         .map(|param| param.ty.clone())
                         .collect::<Vec<_>>(),
                 )?,
@@ -338,6 +339,9 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         for param in &function.params {
+            if current_class.is_some() && param.name == "self" {
+                continue;
+            }
             let value = llvm_fn
                 .get_nth_param(param_index)
                 .ok_or_else(|| CodeGenError::MissingSymbol(format!("{symbol}:{}", param.name)))?;
