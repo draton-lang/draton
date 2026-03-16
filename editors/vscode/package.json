@@ -1,5 +1,6 @@
 {
   "name": "draton",
+  "publisher": "draton-local",
   "displayName": "Draton",
   "description": "Draton language support",
   "version": "0.1.0",
@@ -33,7 +34,25 @@
         "scopeName": "source.draton",
         "path": "./syntaxes/draton.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Draton",
+      "properties": {
+        "draton.server.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Duong dan toi binary `drat` hoac `draton-lsp`. Neu bo trong, extension se tu thu cac binary trong workspace `target/` roi moi fallback ve PATH."
+        },
+        "draton.server.args": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Danh sach tham so bo sung truyen vao Draton language server."
+        }
+      }
+    }
   },
   "dependencies": {
     "vscode-languageclient": "^8.0.0"
