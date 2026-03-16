@@ -129,7 +129,7 @@ jobs:
         if: ${{ matrix.supported && matrix.llvm_source == 'ubuntu-apt' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm-14-dev clang-14 lld-14 libpolly-14-dev
+          sudo apt-get install -y llvm-14-dev clang-14 lld-14
           echo "LLVM_PATH=/usr/lib/llvm-14" >> "$GITHUB_ENV"
 
       - name: Install LLVM 14 (macOS)
@@ -160,6 +160,10 @@ jobs:
           shutil.move(str(root), str(dst))
           print(dst)
           PY
+          if [ -f "$GITHUB_WORKSPACE/llvm/bin/llvm-config.exe" ]; then
+            mv "$GITHUB_WORKSPACE/llvm/bin/llvm-config.exe" "$GITHUB_WORKSPACE/llvm/bin/llvm-config-real.exe"
+          fi
+          rustc scripts/llvm_config_shim.rs -O -o "$GITHUB_WORKSPACE/llvm/bin/llvm-config.exe"
           echo "LLVM_PATH=$GITHUB_WORKSPACE/llvm" >> "$GITHUB_ENV"
 
       - name: Configure LLVM environment

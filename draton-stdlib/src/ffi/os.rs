@@ -49,7 +49,7 @@ pub fn arch() -> String {
 pub fn hostname() -> String {
     #[cfg(unix)]
     {
-        let mut buffer = [0i8; 256];
+        let mut buffer = [0 as libc::c_char; 256];
         // SAFETY: `buffer` is valid for writes of its full length.
         let rc = unsafe { libc::gethostname(buffer.as_mut_ptr(), buffer.len()) };
         if rc != 0 {

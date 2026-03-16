@@ -6,6 +6,8 @@ import hashlib
 import os
 import shutil
 import stat
+import subprocess
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
@@ -75,6 +77,61 @@ def copy_release_files(staging_root: Path, binary: Path, runtime_lib: Path) -> N
             repo_root / "examples" / "early-preview",
             examples_dir / "early-preview",
             dirs_exist_ok=True,
+        )
+    bundle_macos_runtime_libs(staging_root, staged_binary)
+
+
+def bundle_macos_runtime_libs(staging_root: Path, staged_binary: Path) -> None:
+    if sys.platform != "darwin" or not shutil.which("otool") or not shutil.which("install_name_tool"):
+        return
+
+    llvm_path = os.environ.get("LLVM_PATH")
+    if not llvm_path:
+        return
+
+    llvm_lib_dir = Path(llvm_path) / "lib"
+    if not llvm_lib_dir.exists():
+        return
+
+    inspect = subprocess.run(
+        ["otool", "-L", str(staged_binary)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if inspect.returncode != 0:
+        return
+
+    needed_paths: dict[str, str] = {}
+    for line in inspect.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        dep = stripped.split(" ", 1)[0]
+        name = Path(dep).name
+        if name in {"libc++.1.dylib", "libc++abi.1.dylib", "libunwind.1.dylib"}:
+            needed_paths[name] = dep
+
+    if not needed_paths:
+        return
+
+    subprocess.run(
+        ["install_name_tool", "-add_rpath", "@executable_path", str(staged_binary)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    for name, original_path in needed_paths.items():
+        source = llvm_lib_dir / name
+        if not source.exists():
+            raise SystemExit(f"missing macOS runtime dependency for packaged drat: {source}")
+        shutil.copy2(source, staging_root / name)
+        subprocess.run(
+            ["install_name_tool", "-change", original_path, f"@executable_path/{name}", str(staged_binary)],
+            check=True,
+            capture_output=True,
+            text=True,
         )
 
 
