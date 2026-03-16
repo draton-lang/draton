@@ -16,28 +16,28 @@ import { Item, FnDef, Param, ClassDef, ClassMember, FieldDef, LayerDef, Interfac
          Block, Stmt, parse_block, parse_expression, new_block, new_span }
 
 @type {
-    fn parse_item(p: Parser) -> Item
-    fn parse_fn_def(p: Parser, is_pub: Bool, allow_body: Bool) -> FnDef
-    fn parse_type_param_list(p: Parser) -> Array[String]
-    fn parse_param_list(p: Parser) -> Array[Param]
-    fn parse_class_def(p: Parser) -> ClassDef
-    fn parse_class_field(p: Parser) -> FieldDef
-    fn parse_layer(p: Parser) -> LayerDef
-    fn parse_interface_def(p: Parser) -> InterfaceDef
-    fn parse_enum_def(p: Parser) -> EnumDef
-    fn parse_error_def(p: Parser) -> ErrorDef
-    fn parse_const_def(p: Parser) -> ConstDef
-    fn parse_import_def(p: Parser) -> ImportDef
-    fn parse_module_path(p: Parser) -> Array[String]
-    fn parse_extern_block(p: Parser) -> ExternBlock
-    fn parse_type_block(p: Parser) -> TypeBlockDef
-    fn skip_layer_block(p: Parser)
-    fn empty_item() -> Item
-    fn empty_block() -> Block
-    fn str_eq_item_parse(a: String, b: String) -> Bool
+    parse_item: (Parser) -> Item
+    parse_fn_def: (Parser, Bool, Bool) -> FnDef
+    parse_type_param_list: (Parser) -> Array[String]
+    parse_param_list: (Parser) -> Array[Param]
+    parse_class_def: (Parser) -> ClassDef
+    parse_class_field: (Parser) -> FieldDef
+    parse_layer: (Parser) -> LayerDef
+    parse_interface_def: (Parser) -> InterfaceDef
+    parse_enum_def: (Parser) -> EnumDef
+    parse_error_def: (Parser) -> ErrorDef
+    parse_const_def: (Parser) -> ConstDef
+    parse_import_def: (Parser) -> ImportDef
+    parse_module_path: (Parser) -> Array[String]
+    parse_extern_block: (Parser) -> ExternBlock
+    parse_type_block: (Parser) -> TypeBlockDef
+    skip_layer_block: (Parser) -> Unit
+    empty_item: () -> Item
+    empty_block: () -> Block
+    str_eq_item_parse: (String, String) -> Bool
 }
 
-fn parse_item(p: Parser) -> Item {
+fn parse_item(p) {
     parser_skip_doc_comments(p)
     let is_pub = parser_match_kind(p, "Pub")
     let kind = parser_current_kind(p)
@@ -79,7 +79,11 @@ fn parse_item(p: Parser) -> Item {
     item
 }
 
-fn parse_fn_def(p: Parser, is_pub: Bool, allow_body: Bool) -> FnDef {
+fn parse_fn_def(p, is_pub, allow_body) {
+    @type {
+        type_params: Array[String]
+        params: Array[Param]
+    }
     let start = parser_token_span(p)
     let mut body = empty_block()
     let mut has_body = false
@@ -121,8 +125,11 @@ fn parse_fn_def(p: Parser, is_pub: Bool, allow_body: Bool) -> FnDef {
     )
 }
 
-fn parse_type_param_list(p: Parser) -> Array[String] {
-    let params: Array[String] = []
+fn parse_type_param_list(p) {
+    @type {
+        params: Array[String]
+    }
+    let params = []
     if !parser_check(p, "LBracket") {
         return params
     }
@@ -138,8 +145,11 @@ fn parse_type_param_list(p: Parser) -> Array[String] {
     params
 }
 
-fn parse_param_list(p: Parser) -> Array[Param] {
-    let mut params: Array[Param] = []
+fn parse_param_list(p) {
+    @type {
+        params: Array[Param]
+    }
+    let params = []
     let _lparen = parser_expect(p, "LParen", "(")
     let mut done = false
     while !parser_is_eof(p) && !parser_check(p, "RParen") && !done {
@@ -167,14 +177,19 @@ fn parse_param_list(p: Parser) -> Array[Param] {
     params
 }
 
-fn parse_class_def(p: Parser) -> ClassDef {
+fn parse_class_def(p) {
+    @type {
+        implements_names: Array[String]
+        members: Array[ClassMember]
+        type_blocks: Array[TypeBlockDef]
+    }
     let start = parser_token_span(p)
     let _class = parser_expect(p, "Class", "class")
     let name_token = parser_consume_ident(p, "class name")
     let type_params = parse_type_param_list(p)
     let mut extends_name = ""
     let mut has_extends = false
-    let mut implements_names: Array[String] = []
+    let implements_names = []
 
     if parser_match_kind(p, "Extends") {
         extends_name = parser_consume_ident(p, "base class").lexeme
@@ -191,8 +206,8 @@ fn parse_class_def(p: Parser) -> ClassDef {
     }
 
     let _lbrace = parser_expect(p, "LBrace", "{")
-    let mut members: Array[ClassMember] = []
-    let mut type_blocks: Array[TypeBlockDef] = []
+    let members = []
+    let type_blocks = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         parser_skip_doc_comments(p)
         let kind = parser_current_kind(p)
@@ -224,7 +239,7 @@ fn parse_class_def(p: Parser) -> ClassDef {
     new_class_def(name_token.lexeme, type_params, has_extends, extends_name, implements_names, members, type_blocks, merge_spans(start, end))
 }
 
-fn parse_class_field(p: Parser) -> FieldDef {
+fn parse_class_field(p) {
     let start = parser_token_span(p)
     let _let = parser_expect(p, "Let", "let")
     let is_mut = parser_match_kind(p, "Mut")
@@ -243,13 +258,17 @@ fn parse_class_field(p: Parser) -> FieldDef {
     new_field_def(is_mut, name_token.lexeme, has_type_hint, type_hint, merge_spans(start, end))
 }
 
-fn parse_layer(p: Parser) -> LayerDef {
+fn parse_layer(p) {
+    @type {
+        methods: Array[FnDef]
+        type_blocks: Array[TypeBlockDef]
+    }
     let start = parser_token_span(p)
     let _layer = parser_expect(p, "Layer", "layer")
     let name_token = parser_consume_ident(p, "layer name")
     let _lbrace = parser_expect(p, "LBrace", "{")
-    let mut methods: Array[FnDef] = []
-    let mut type_blocks: Array[TypeBlockDef] = []
+    let methods = []
+    let type_blocks = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         parser_skip_doc_comments(p)
         let kind = parser_current_kind(p)
@@ -274,13 +293,17 @@ fn parse_layer(p: Parser) -> LayerDef {
     new_layer_def(name_token.lexeme, methods, type_blocks, merge_spans(start, end))
 }
 
-fn parse_interface_def(p: Parser) -> InterfaceDef {
+fn parse_interface_def(p) {
+    @type {
+        methods: Array[FnDef]
+        type_blocks: Array[TypeBlockDef]
+    }
     let start = parser_token_span(p)
     let _interface = parser_expect(p, "Interface", "interface")
     let name_token = parser_consume_ident(p, "interface name")
     let _lbrace = parser_expect(p, "LBrace", "{")
-    let mut methods: Array[FnDef] = []
-    let mut type_blocks: Array[TypeBlockDef] = []
+    let methods = []
+    let type_blocks = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         parser_skip_doc_comments(p)
         let kind = parser_current_kind(p)
@@ -299,12 +322,15 @@ fn parse_interface_def(p: Parser) -> InterfaceDef {
     new_interface_def(name_token.lexeme, methods, type_blocks, merge_spans(start, end))
 }
 
-fn parse_enum_def(p: Parser) -> EnumDef {
+fn parse_enum_def(p) {
+    @type {
+        variants: Array[String]
+    }
     let start = parser_token_span(p)
     let _enum = parser_expect(p, "Enum", "enum")
     let name_token = parser_consume_ident(p, "enum name")
     let _lbrace = parser_expect(p, "LBrace", "{")
-    let mut variants: Array[String] = []
+    let variants = []
     let mut done = false
     while !parser_is_eof(p) && !parser_check(p, "RBrace") && !done {
         parser_skip_doc_comments(p)
@@ -318,7 +344,7 @@ fn parse_enum_def(p: Parser) -> EnumDef {
     new_enum_def(name_token.lexeme, variants, merge_spans(start, end))
 }
 
-fn parse_error_def(p: Parser) -> ErrorDef {
+fn parse_error_def(p) {
     let start = parser_token_span(p)
     let _error = parser_expect(p, "Error", "error")
     let name_token = parser_consume_ident(p, "error name")
@@ -330,7 +356,7 @@ fn parse_error_def(p: Parser) -> ErrorDef {
     new_error_def(name_token.lexeme, fields, merge_spans(start, end))
 }
 
-fn parse_const_def(p: Parser) -> ConstDef {
+fn parse_const_def(p) {
     let start = parser_token_span(p)
     let _const = parser_expect(p, "Const", "const")
     let name_token = parser_consume_ident(p, "const name")
@@ -340,11 +366,15 @@ fn parse_const_def(p: Parser) -> ConstDef {
     new_const_def(name_token.lexeme, value, merge_spans(start, expr_span(value)))
 }
 
-fn parse_import_def(p: Parser) -> ImportDef {
+fn parse_import_def(p) {
+    @type {
+        items: Array[ImportItem]
+        module: Array[String]
+    }
     let start = parser_token_span(p)
     let _import = parser_expect(p, "Import", "import")
     let _lbrace = parser_expect(p, "LBrace", "{")
-    let mut items: Array[ImportItem] = []
+    let items = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         let item_start = parser_token_span(p)
         let name_token = parser_consume_ident(p, "import name")
@@ -359,7 +389,7 @@ fn parse_import_def(p: Parser) -> ImportDef {
         let _comma = parser_match_kind(p, "Comma")
     }
     let _rbrace = parser_expect(p, "RBrace", "}")
-    let mut module: Array[String] = []
+    let module = []
     if parser_match_kind(p, "From") {
         module = parse_module_path(p)
     }
@@ -367,8 +397,11 @@ fn parse_import_def(p: Parser) -> ImportDef {
     new_import_def(module, items, merge_spans(start, end))
 }
 
-fn parse_module_path(p: Parser) -> Array[String] {
-    let mut module: Array[String] = []
+fn parse_module_path(p) {
+    @type {
+        module: Array[String]
+    }
+    let mut module = []
     let mut done = false
     while !parser_is_eof(p) && !done {
         module.push(parser_consume_ident(p, "module path segment").lexeme)
@@ -379,10 +412,14 @@ fn parse_module_path(p: Parser) -> Array[String] {
     module
 }
 
-fn parse_extern_block(p: Parser) -> ExternBlock {
+fn parse_extern_block(p) {
+    @type {
+        abi_expr: Expr
+        functions: Array[FnDef]
+    }
     let start = parser_token_span(p)
     let _extern = parser_expect(p, "AtExtern", "@extern")
-    let abi_expr: Expr = parse_expression(p)
+    let abi_expr = parse_expression(p)
     let mut abi = ""
     if str_eq_item_parse(abi_expr.kind, "StrLit") {
         abi = abi_expr.string_value
@@ -390,7 +427,7 @@ fn parse_extern_block(p: Parser) -> ExternBlock {
         p.errors.push(invalid_expr_error(abi_expr.span.line, abi_expr.span.col))
     }
     let _lbrace = parser_expect(p, "LBrace", "{")
-    let mut functions: Array[FnDef] = []
+    let functions = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         functions.push(parse_fn_def(p, false, false))
         parser_optional_semicolon(p)
@@ -400,11 +437,14 @@ fn parse_extern_block(p: Parser) -> ExternBlock {
     new_extern_block(abi, functions, merge_spans(start, end))
 }
 
-fn parse_type_block(p: Parser) -> TypeBlockDef {
+fn parse_type_block(p) {
+    @type {
+        members: Array[TypeMember]
+    }
     let start = parser_token_span(p)
     let _attype = parser_expect(p, "AtType", "@type")
     let _lbrace = parser_expect(p, "LBrace", "{")
-    let mut members: Array[TypeMember] = []
+    let members = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         let kind = parser_current_kind(p)
         if str_eq_item_parse(kind, "Fn") {
@@ -426,7 +466,7 @@ fn parse_type_block(p: Parser) -> TypeBlockDef {
     new_type_block(members, merge_spans(start, end))
 }
 
-fn skip_layer_block(p: Parser) -> Unit {
+fn skip_layer_block(p) {
     let mut done = false
     while !parser_is_eof(p) && !done {
         let kind = parser_current_kind(p)
@@ -456,18 +496,21 @@ fn skip_layer_block(p: Parser) -> Unit {
     let _done2 = 0
 }
 
-fn empty_item() -> Item {
+fn empty_item() {
     let item = Item()
     item.kind = ""
     item
 }
 
-fn empty_block() -> Block {
-    let stmts: Array[Stmt] = []
+fn empty_block() {
+    @type {
+        stmts: Array[Stmt]
+    }
+    let stmts = []
     new_block(stmts, new_span(0, 0, 1, 1))
 }
 
-fn str_eq_item_parse(a: String, b: String) -> Bool {
+fn str_eq_item_parse(a, b) {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

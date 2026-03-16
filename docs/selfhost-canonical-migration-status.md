@@ -1,24 +1,26 @@
 # Self-Host Canonical Migration Status
 
-This document tracks the current state of canonical-syntax migration for the self-host mirror under `src/`.
+This document tracks the canonical-syntax migration state of the self-host mirror under `src/`.
 
-Scope audited in this pass:
+## Scope
+
+Audited self-host areas:
 
 - `src/ast/`
-- `src/parser/parse/`
+- `src/parser/`
 - `src/typeck/`
 - `src/codegen/`
 - `src/lexer/`
 - `src/mono/`
 
-Canonical syntax in scope:
+Canonical syntax targeted:
 
 - `let x = ...`
 - explicit `return`
+- `import { item } from module.path`
 - `@type { name: Type }` at file, class, layer, interface, and function scope
-- brace imports
 
-Deprecated syntax targeted in this pass:
+Deprecated syntax targeted:
 
 - `let x: T = value`
 - `fn f(a: T)`
@@ -26,208 +28,120 @@ Deprecated syntax targeted in this pass:
 
 ## Migrated In This Pass
 
-The following self-host files were migrated safely to canonical syntax in this pass:
+The following remaining mechanical self-host files were canonicalized safely in this pass:
 
-- `src/ast/program.dt`
-- `src/ast/stmt.dt`
-- `src/ast/types.dt`
-- `src/lexer/cursor.dt`
-- `src/lexer/error.dt`
-- `src/lexer/lexer.dt`
-- `src/lexer/token.dt`
-- `src/lexer/lit/number.dt`
-- `src/lexer/lit/string.dt`
-- `src/typeck/error.dt`
-- `src/typeck/typed_ast/program.dt`
-- `src/typeck/types/row.dt`
-- `src/typeck/types/scheme.dt`
-- `src/typeck/types/ty.dt`
-- `src/codegen/codegen.dt`
-- `src/codegen/emit/expr.dt`
-- `src/codegen/emit/item.dt`
-- `src/codegen/emit/stmt.dt`
-- `src/codegen/layout/class.dt`
-- `src/codegen/layout/vtable.dt`
-- `src/codegen/closure/capture.dt`
-- `src/codegen/closure/emit.dt`
-- `src/codegen/closure/env.dt`
-- `src/ast/expr.dt`
-- `src/ast/item.dt`
-- `src/parser/parse/expr.dt`
-- `src/parser/parse/types.dt`
-- `src/typeck/env/env.dt`
-- `src/typeck/env/scope.dt`
-- `src/typeck/exhaust/check.dt`
-- `src/typeck/exhaust/classify.dt`
-- `src/typeck/infer/expr.dt`
-- `src/typeck/infer/stmt.dt`
-- `src/typeck/infer/subst.dt`
-- `src/typeck/infer/unify.dt`
-- `src/mono/substitute.dt`
+- `src/parser/parse/item.dt`
+- `src/parser/parse/stmt.dt`
+- `src/mono/collector.dt`
+- `src/parser/parser.dt`
 
 Migration techniques used:
 
-- class fields moved to class-scope `@type`
-- local typed bindings moved to function-scope `@type`
-- top-level function contracts rewritten from `fn ... -> ...` members to binding-style `name: (...) -> ...`
-- executable function definitions stripped of inline parameter and return annotations
-- backend entry-layer locals that required typed empty-array initialization moved to function-scope `@type`
-- backend emit/layout helper signatures rewritten to canonical file-scope bindings
-- backend emit/layout typed empty-array locals moved to function-scope `@type`
-- backend closure/helper signatures rewritten to canonical file-scope bindings
-- backend closure/helper typed empty-array locals moved to function-scope `@type`
-- AST expression constructors/helpers rewritten to canonical file-scope bindings
-- parser/typechecker support helpers rewritten to canonical file-scope bindings
-- environment, exhaustiveness, substitution, and monomorphization locals moved to function-scope `@type`
-- statement inference locals moved to function-scope `@type`
-- expression parser helpers rewritten to canonical file-scope bindings and function-scope `@type`
-- expression inference helpers rewritten to canonical file-scope bindings and function-scope `@type`
-- AST item definitions now use class-scope `@type` and canonical helper contracts
+- converted file-scope `@type` contracts from legacy `fn ...` members to binding form `name: (...) -> ...`
+- removed inline parameter and return annotations from executable function definitions
+- moved typed local bindings and typed empty-array initializers into function-scope `@type`
+- moved class field annotations into class-scope `@type`
+- kept parser, typechecker, and monomorphization behavior unchanged
 
-## Semantic Parity Completed In This Pass
+## Previously Migrated Core
 
-The following previously blocked self-host files are no longer blocked by missing canonical-contract semantics:
+The self-host core had already been canonicalized before this pass across:
 
-- `src/ast/item.dt`
-- `src/parser/parse/item.dt`
-- `src/parser/parse/stmt.dt`
-- `src/typeck/infer/item.dt`
-- `src/typeck/infer/stmt.dt`
-- `src/typeck/typed_ast/item.dt`
-- `src/typeck/typed_ast/stmt.dt`
-- `src/mono/collector.dt`
+- core AST support modules
+- parser expression/type helpers
+- type environment, exhaustiveness, substitution, and unification helpers
+- expression and statement inference helpers
+- backend entry, emit/layout, and closure/helper codegen slices
+- major lexer and support utilities
 
-What was completed for this cluster:
+That earlier work also resolved the semantic parity gap for canonical contracts:
 
-- interface bodies now accept self-host `@type` blocks
-- function bodies now accept self-host `@type` statements
-- self-host type inference now collects function-local binding hints from statement `@type` blocks
-- self-host interface predeclaration and inference now consume interface binding-style contracts and prepend the implicit receiver internally
-- typed AST and monomorphization mirrors now carry and tolerate the new statement and interface-contract shapes
+- function-scope `@type`
+- interface-scope `@type`
+- canonical contract flow through the self-host frontend mirror
+- canonical contract flow through the self-host backend entry and emit paths
 
-Important status note:
+## Remaining Blocked Files
 
-- these files are now semantically unblocked, but several of them still contain compatibility-form inline type syntax in their own source
-- the remaining work on those files is now mostly mechanical canonicalization, not missing parser or typechecker capability
-- that mechanical rewrite was intentionally left out of this pass to keep the semantic change reviewable
+The remaining unmigrated self-host files are now small and explicit.
 
-## Backend Entry Layer Completed In This Pass
+| File | Blocker | Classification |
+| --- | --- | --- |
+| `src/typeck/infer/item.dt` | A direct canonical rewrite was attempted in this pass, but the self-host-facing bootstrap build regressed with core inference failures. The compatibility-form source is still stable, so this file remains intentionally unmigrated until that inference gap is understood cleanly. | Mechanical, but not yet safe |
+| `src/ast/dump.dt` | Very large printer module with broad low-value mechanical churn; migrating it now would add review noise without affecting parser/typechecker/codegen behavior. | Deferred cleanup |
+| `src/typeck/dump.dt` | Similar large pretty-printer module; canonicalization is straightforward but noisy and low priority compared with executable self-host paths. | Deferred cleanup |
 
-The main self-host backend/codegen blocker has been reduced at the entry layer:
+No remaining `src/` blocker in this audit is a major frontend/backend semantic-parity gap. The main unresolved executable file is a migration-safety issue in `src/typeck/infer/item.dt`.
 
-- `src/codegen/codegen.dt` no longer depends on legacy inline syntax in its own source
-- the file now uses canonical class-scope `@type`, file-scope contract bindings, and function-scope `@type` for typed empty-array locals
-- canonical contract data flowing through typed items no longer required backend entry-point changes beyond the already-completed parser/typechecker parity work
+## Files Completed Across The Final Phase
 
-The backend slice is now substantially cleaner:
+The final-phase blocker set has now been reduced as follows:
 
-- the self-host codegen entry, emit/layout, and closure/helper files have all been migrated to canonical syntax where safe
-- no remaining `src/codegen/*.dt` file in this audit is blocked primarily by missing canonical-contract semantics
-- any remaining self-host migration debt now sits outside the backend slice
+- completed semantic/frontend parity:
+  - `src/ast/item.dt`
+  - `src/parser/parse/expr.dt`
+  - `src/parser/parse/item.dt`
+  - `src/parser/parse/stmt.dt`
+  - `src/typeck/infer/expr.dt`
+  - `src/typeck/infer/stmt.dt`
+  - `src/mono/collector.dt`
+- completed backend parity and canonicalization:
+  - `src/codegen/codegen.dt`
+  - `src/codegen/emit/expr.dt`
+  - `src/codegen/emit/item.dt`
+  - `src/codegen/emit/stmt.dt`
+  - `src/codegen/layout/class.dt`
+  - `src/codegen/layout/vtable.dt`
+  - `src/codegen/closure/capture.dt`
+  - `src/codegen/closure/emit.dt`
+  - `src/codegen/closure/env.dt`
 
-## Skipped Files
+## Current Readiness
 
-The files below still contain deprecated inline syntax after this pass.
+The self-host mirror is now effectively at canonical syntax parity for executable compiler paths:
 
-### Blocker: Mechanical Cleanup On Semantically-Unblocked Files
+- parser, typechecker, monomorphization, and backend/codegen slices are canonicalized where safe
+- only one executable self-host file remains in compatibility form: `src/typeck/infer/item.dt`
+- the other remaining debt is confined to two non-executable dump/printer modules
+- a focused strict-canonical self-host CI subset is now practical
 
-These files are no longer blocked by missing canonical-contract semantics, but they still contain compatibility-form inline syntax in their own source. The remaining work is primarily source-level rewrite, kept separate here to avoid broad risky churn.
+Practical strict-canonical subset:
 
-| File | Exact blocker |
-| --- | --- |
-| `src/parser/parse/item.dt` | Parser item helpers are semantically unblocked but still have many compatibility-form function signatures. |
-| `src/parser/parse/stmt.dt` | Statement parser mirror is semantically unblocked but still source-level legacy syntax heavy. |
-| `src/typeck/infer/item.dt` | Item inference is semantically unblocked but still contains a large amount of compatibility-form syntax. |
-| `src/mono/collector.dt` | Monomorphization collector is semantically unblocked but still contains broad compatibility-form signatures. |
+- canonical compile fixtures
+- selected GC / lambda / interface strict builds
+- self-host-facing bootstrap builds that exercise parser, mono, and backend paths, while tolerating compatibility warnings from `src/typeck/infer/item.dt` and the dump modules
 
-Files that no longer appear here:
+What is not yet true:
 
-- `src/ast/expr.dt` was mechanically canonicalized in this pass
-- `src/ast/item.dt` was mechanically canonicalized in this pass
-- `src/parser/parse/expr.dt` was mechanically canonicalized in this pass
-- `src/parser/parse/types.dt` was mechanically canonicalized in this pass
-- `src/typeck/env/env.dt` was mechanically canonicalized in this pass
-- `src/typeck/env/scope.dt` was mechanically canonicalized in this pass
-- `src/typeck/exhaust/check.dt` was mechanically canonicalized in this pass
-- `src/typeck/exhaust/classify.dt` was mechanically canonicalized in this pass
-- `src/typeck/infer/expr.dt` was mechanically canonicalized in this pass
-- `src/typeck/infer/stmt.dt` was mechanically canonicalized in this pass
-- `src/typeck/infer/subst.dt` was mechanically canonicalized in this pass
-- `src/typeck/infer/unify.dt` was mechanically canonicalized in this pass
-- `src/mono/substitute.dt` was mechanically canonicalized in this pass
-- `src/typeck/typed_ast/expr.dt` currently contains no remaining deprecated inline syntax in this audit
-- `src/typeck/exhaust/pattern.dt` currently contains no remaining deprecated inline syntax in this audit
+- the entire `src/` tree is not fully strict-clean because `src/typeck/infer/item.dt` still relies on compatibility-form syntax
+- full-tree strict self-host CI should wait until `src/typeck/infer/item.dt` and the two dump modules are migrated, or explicitly exclude them
 
-### Blocker: Another Specific Reason
+## Verification Run
 
-These files are mechanically migratable, but were deferred in this pass because they are very large pretty-printer / dump modules. Rewriting hundreds of signature lines at once would create review noise without reducing the core semantic gap.
-
-| File | Exact blocker |
-| --- | --- |
-| `src/ast/dump.dt` | Large printer module with more than a thousand lines of constructor-dump helpers; deferred to keep this pass reviewable. |
-| `src/typeck/dump.dt` | Large printer module with similar mechanical churn and low semantic payoff compared with parser/typechecker/codegen core files. |
-
-### Blocker: Semantic Coupling Still Present
-
-No remaining `src/` files in this scan are blocked primarily by missing canonical-contract semantics in the core frontend/backend mirror. The remaining blockers are mechanical cleanup or intentionally deferred printer/dump churn.
-
-## Current Parity Summary
-
-After this pass, the self-host mirror is materially closer to canonical syntax in the following areas:
-
-- core AST support files
-- foundational type model helpers
-- lexer cursor/token/error/result helpers
-- self-host-facing utility modules that previously depended only on local typed bindings or class field annotations
-- self-host parser/typechecker/mono handling for function-scope and interface-scope canonical `@type`
-- self-host backend entry-layer codegen state and predeclaration plumbing
-- self-host backend emit/layout handling and source-level canonical syntax in the core emit path
-- self-host backend closure capture/emission/environment helpers and the rest of the codegen slice
-- parser/type parser helpers, environment plumbing, exhaustiveness support, substitution, unification, and monomorphization substitution support
-
-What is still not true:
-
-- the self-host mirror is **not yet** fully syntax-clean across every `src/` file
-- `--strict-syntax` still cannot be applied cleanly to the entire `src/` tree
-- the remaining debt is now concentrated in a small mechanical-cleanup set plus large deferred dump/printer modules
-
-In practice, the repository is now in an intermediate state:
-
-- the Rust frontend/tooling path is authoritative for canonical syntax
-- the self-host source tree has been partially canonicalized where safe
-- the remaining migration work is now mostly mechanical source cleanup, not missing canonical-contract semantics
-
-## Verification Run In This Pass
+Historical focused verification from earlier canonical passes included:
 
 - `cargo test -p draton-parser --test items -p draton-typeck --test errors`
-- `cargo run -p drat -- build --strict-syntax tests/programs/gc/stress_linked_list.dt -o /tmp/draton_gc_linked_list_strict`
-- `/tmp/draton_gc_linked_list_strict` returned exit code `50` as expected
-- `cargo run -p drat -- build --strict-syntax /tmp/draton_selfhost_semantic_parity.dt -o /tmp/draton_selfhost_semantic_parity_out`
-- `/tmp/draton_selfhost_semantic_parity_out` returned exit code `7`
-- `cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_semantic_batch`
-- `cargo run -p drat -- build --strict-syntax /tmp/draton_selfhost_semantic_parity.dt -o /tmp/draton_selfhost_emit_slice_out`
-- `/tmp/draton_selfhost_emit_slice_out` returned exit code `7`
-- `cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_emit_slice_batch`
-- `cargo run -p drat -- build --strict-syntax tests/programs/compile/51_lambda_capture.dt -o /tmp/draton_lambda_capture_strict`
-- `/tmp/draton_lambda_capture_strict` returned exit code `15`
-- `cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_closure_slice`
-- `cargo run -p drat -- build --strict-syntax tests/programs/compile/42_interface_upcast_parent_impl.dt -o /tmp/draton_frontend_subset_strict`
-- `/tmp/draton_frontend_subset_strict` returned exit code `7`
-- `cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_frontend_subset`
-- `cargo run -p drat -- build --strict-syntax tests/programs/compile/52_lambda_nested.dt -o /tmp/draton_expr_subset_strict`
-- `/tmp/draton_expr_subset_strict` returned exit code `13`
-- `cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_expr_subset`
+- strict canonical builds for interface, lambda, generic-class, and GC fixtures
+- repeated self-host-facing `cargo run -p drat -- build src/main.dt ...` bootstrap checks
 
-## Recommended Next Steps
+Focused verification for this final mechanical pass:
 
-1. Canonicalize the source text of the remaining semantically-unblocked mechanical files, starting with `src/parser/parse/item.dt`, `src/parser/parse/stmt.dt`, `src/typeck/infer/item.dt`, and `src/mono/collector.dt`.
-2. Finish large deferred printer/dump modules once the smaller mechanical set is out of the way.
+- `cargo test -p draton-parser --test items -p draton-typeck --test errors`
+- `cargo run -p drat -- build --strict-syntax tests/programs/compile/52_lambda_nested.dt -o /tmp/draton_mech_final_strict`
+- `/tmp/draton_mech_final_strict`
+- `cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_mech_final`
 
-## Near-Final State
+Expected current behavior during bootstrap:
 
-The self-host mirror is now close to full canonical syntax parity in the backend path:
+- self-host bootstrap remains CPU-bound and may be slow
+- warning output now comes from `src/typeck/infer/item.dt` plus the deferred dump/printer modules
+- this is not a deadlock; the main remaining cost is normal bootstrap work plus residual warning volume
 
-- `src/codegen/` no longer contains repository-known blockers caused by deprecated inline syntax in the audited files
-- a focused strict-canonical CI subset is now practical for canonical fixtures plus selected self-host-facing builds, because the backend, expression slice, and major support helpers are syntax-clean
-- the main remaining blockers are a small semantically-unblocked mechanical set plus intentionally deferred dump/printer cleanup
-- the remaining skipped set is now narrow enough that a near-final self-host strict-canonical CI subset is practical without waiting for full-tree cleanup
+## Recommended Next Step
+
+Remaining cleanup order:
+
+1. Investigate and safely canonicalize `src/typeck/infer/item.dt`
+2. Canonicalize `src/ast/dump.dt`
+3. Canonicalize `src/typeck/dump.dt`
+4. Then enable full-tree strict self-host CI if desired

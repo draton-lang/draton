@@ -404,14 +404,22 @@ fn new_param(name, has_type_hint, type_hint, span) {
 }
 
 fn new_class_def(name, type_params, has_extends, extends_name, implements_names, members, type_blocks, span) {
+    @type {
+        typed_implements_names: Array[String]
+        typed_members: Array[ClassMember]
+        typed_type_blocks: Array[TypeBlockDef]
+    }
     let def = ClassDef()
+    let typed_implements_names = implements_names
+    let typed_members = members
+    let typed_type_blocks = type_blocks
     def.name = name
     def.type_params = type_params
     def.has_extends = has_extends
     def.extends_name = extends_name
-    def.implements_names = implements_names
-    def.members = members
-    def.type_blocks = type_blocks
+    def.implements_names = typed_implements_names
+    def.members = typed_members
+    def.type_blocks = typed_type_blocks
     def.span = span
     def
 }
@@ -432,31 +440,49 @@ fn class_def_push_type_block(def, block) {
 }
 
 fn class_member_field(def) {
+    @type {
+        field_def: FieldDef
+    }
     let member = ClassMember()
+    let field_def = def
     member.kind = "Field"
-    member.field_def = def
+    member.field_def = field_def
     member
 }
 
 fn class_member_method(def) {
+    @type {
+        method_def: FnDef
+    }
     let member = ClassMember()
+    let method_def = def
     member.kind = "Method"
-    member.method_def = def
+    member.method_def = method_def
     member
 }
 
 fn class_member_layer(def) {
+    @type {
+        layer_def: LayerDef
+    }
     let member = ClassMember()
+    let layer_def = def
     member.kind = "Layer"
-    member.layer_def = def
+    member.layer_def = layer_def
     member
 }
 
 fn new_layer_def(name, methods, type_blocks, span) {
+    @type {
+        typed_methods: Array[FnDef]
+        typed_type_blocks: Array[TypeBlockDef]
+    }
     let def = LayerDef()
+    let typed_methods = methods
+    let typed_type_blocks = type_blocks
     def.name = name
-    def.methods = methods
-    def.type_blocks = type_blocks
+    def.methods = typed_methods
+    def.type_blocks = typed_type_blocks
     def.span = span
     def
 }
@@ -482,10 +508,16 @@ fn new_field_def(is_mut, name, has_type_hint, type_hint, span) {
 }
 
 fn new_interface_def(name, methods, type_blocks, span) {
+    @type {
+        typed_methods: Array[FnDef]
+        typed_type_blocks: Array[TypeBlockDef]
+    }
     let def = InterfaceDef()
+    let typed_methods = methods
+    let typed_type_blocks = type_blocks
     def.name = name
-    def.methods = methods
-    def.type_blocks = type_blocks
+    def.methods = typed_methods
+    def.type_blocks = typed_type_blocks
     def.span = span
     def
 }

@@ -4,100 +4,162 @@ import { TypedProgram, TypedItem, TypedFnDef, TypedClassDef, TypedExpr, TypedStm
          specialize_function, str_eq_type, free_vars_in_type, type_eq }
 
 class GenericClassDef {
-    let mut exists: Bool
-    let mut def: TypedClassDef
-    let mut type_vars: Array[Int]
+    let mut exists
+    let mut def
+    let mut type_vars
+
+    @type {
+        exists: Bool
+        def: TypedClassDef
+        type_vars: Array[Int]
+    }
 }
 
 class GenericFnDef {
-    let mut exists: Bool
-    let mut def: TypedFnDef
-    let mut type_vars: Array[Int]
+    let mut exists
+    let mut def
+    let mut type_vars
+
+    @type {
+        exists: Bool
+        def: TypedFnDef
+        type_vars: Array[Int]
+    }
 }
 
 class ClassInstantiation {
-    let mut class_name: String
-    let mut type_args: Array[Type]
-    let mut mangled: String
+    let mut class_name
+    let mut type_args
+    let mut mangled
+
+    @type {
+        class_name: String
+        type_args: Array[Type]
+        mangled: String
+    }
 }
 
 class FnInstantiation {
-    let mut fn_name: String
-    let mut has_class_name: Bool
-    let mut class_name: String
-    let mut type_args: Array[Type]
-    let mut mangled: String
+    let mut fn_name
+    let mut has_class_name
+    let mut class_name
+    let mut type_args
+    let mut mangled
+
+    @type {
+        fn_name: String
+        has_class_name: Bool
+        class_name: String
+        type_args: Array[Type]
+        mangled: String
+    }
 }
 
 class MonoCollector {
-    let mut class_insts: Array[ClassInstantiation]
-    let mut fn_insts: Array[FnInstantiation]
-    let mut generic_class_names: Array[String]
-    let mut generic_class_defs: Array[TypedClassDef]
-    let mut generic_class_type_vars: Array[Array[Int]]
-    let mut generic_fn_names: Array[String]
-    let mut generic_fn_defs: Array[TypedFnDef]
-    let mut generic_fn_type_vars: Array[Array[Int]]
-    let mut seen_classes: Array[String]
-    let mut seen_fns: Array[String]
-    let mut class_queue: Array[ClassInstantiation]
-    let mut fn_queue: Array[FnInstantiation]
-    let mut class_queue_pos: Int
-    let mut fn_queue_pos: Int
+    let mut class_insts
+    let mut fn_insts
+    let mut generic_class_names
+    let mut generic_class_defs
+    let mut generic_class_type_vars
+    let mut generic_fn_names
+    let mut generic_fn_defs
+    let mut generic_fn_type_vars
+    let mut seen_classes
+    let mut seen_fns
+    let mut class_queue
+    let mut fn_queue
+    let mut class_queue_pos
+    let mut fn_queue_pos
+
+    @type {
+        class_insts: Array[ClassInstantiation]
+        fn_insts: Array[FnInstantiation]
+        generic_class_names: Array[String]
+        generic_class_defs: Array[TypedClassDef]
+        generic_class_type_vars: Array[Array[Int]]
+        generic_fn_names: Array[String]
+        generic_fn_defs: Array[TypedFnDef]
+        generic_fn_type_vars: Array[Array[Int]]
+        seen_classes: Array[String]
+        seen_fns: Array[String]
+        class_queue: Array[ClassInstantiation]
+        fn_queue: Array[FnInstantiation]
+        class_queue_pos: Int
+        fn_queue_pos: Int
+    }
 }
 
 class ResolvedTypeArgs {
-    let mut exists: Bool
-    let mut types: Array[Type]
+    let mut exists
+    let mut types
+
+    @type {
+        exists: Bool
+        types: Array[Type]
+    }
 }
 
 @type {
-    fn empty_mono_collector() -> MonoCollector
-    fn mono_collect(collector: MonoCollector, program: TypedProgram) -> MonoCollector
-    fn monomorphize(program: TypedProgram) -> TypedProgram
-    fn generic_class_def(class_def: TypedClassDef) -> GenericClassDef
-    fn generic_fn_def(function: TypedFnDef) -> GenericFnDef
-    fn resolve_function_type_args(function: TypedFnDef, type_vars: Array[Int], actual_args: Array[Type]) -> ResolvedTypeArgs
-    fn item_is_generic(item: TypedItem) -> Bool
-    fn fn_has_type_vars(function: TypedFnDef) -> Bool
-    fn class_has_type_vars(class_def: TypedClassDef) -> Bool
-    fn mono_index_generics(collector: MonoCollector, program: TypedProgram)
-    fn mono_visit_item(collector: MonoCollector, item: TypedItem, subst_vars: Array[Int], subst_values: Array[Type])
-    fn mono_visit_fn(collector: MonoCollector, function: TypedFnDef, subst_vars: Array[Int], subst_values: Array[Type])
-    fn mono_visit_block(collector: MonoCollector, block: TypedBlock, subst_vars: Array[Int], subst_values: Array[Type])
-    fn mono_visit_stmt(collector: MonoCollector, stmt: TypedStmt, subst_vars: Array[Int], subst_values: Array[Type])
-    fn mono_visit_else_branch(collector: MonoCollector, branch: TypedElseBranch, subst_vars: Array[Int], subst_values: Array[Type])
-    fn mono_visit_expr(collector: MonoCollector, expr: TypedExpr, subst_vars: Array[Int], subst_values: Array[Type])
-    fn mono_visit_type(collector: MonoCollector, ty: Type, subst_vars: Array[Int], subst_values: Array[Type])
-    fn mono_add_class_inst(collector: MonoCollector, name: String, args: Array[Type])
-    fn mono_add_fn_inst(collector: MonoCollector, fn_name: String, has_class_name: Bool, class_name: String, args: Array[Type])
-    fn mono_process_class_inst(collector: MonoCollector, inst: ClassInstantiation)
-    fn mono_process_fn_inst(collector: MonoCollector, inst: FnInstantiation)
-    fn mono_find_generic_class_index(collector: MonoCollector, name: String) -> Int
-    fn mono_find_generic_fn_index(collector: MonoCollector, name: String) -> Int
-    fn mono_string_index(items: Array[String], value: String) -> Int
-    fn mono_int_index(items: Array[Int], value: Int) -> Int
-    fn mono_sort_unique_ints(items: Array[Int]) -> Array[Int]
-    fn mono_merge_type_vars(left: Array[Int], right: Array[Int]) -> Array[Int]
-    fn mono_type_has_vars(ty: Type) -> Bool
-    fn mono_free_type_vars_in_types(items: Array[Type]) -> Array[Int]
-    fn mono_match_type_pattern(pattern: Type, actual: Type, allowed_vars: Array[Int], bound_vars: Array[Int], bound_values: Array[Type]) -> Bool
+    empty_mono_collector: () -> MonoCollector
+    mono_collect: (MonoCollector, TypedProgram) -> MonoCollector
+    monomorphize: (TypedProgram) -> TypedProgram
+    generic_class_def: (TypedClassDef) -> GenericClassDef
+    generic_fn_def: (TypedFnDef) -> GenericFnDef
+    resolve_function_type_args: (TypedFnDef, Array[Int], Array[Type]) -> ResolvedTypeArgs
+    item_is_generic: (TypedItem) -> Bool
+    fn_has_type_vars: (TypedFnDef) -> Bool
+    class_has_type_vars: (TypedClassDef) -> Bool
+    mono_index_generics: (MonoCollector, TypedProgram) -> Unit
+    mono_visit_item: (MonoCollector, TypedItem, Array[Int], Array[Type]) -> Unit
+    mono_visit_fn: (MonoCollector, TypedFnDef, Array[Int], Array[Type]) -> Unit
+    mono_visit_block: (MonoCollector, TypedBlock, Array[Int], Array[Type]) -> Unit
+    mono_visit_stmt: (MonoCollector, TypedStmt, Array[Int], Array[Type]) -> Unit
+    mono_visit_else_branch: (MonoCollector, TypedElseBranch, Array[Int], Array[Type]) -> Unit
+    mono_visit_expr: (MonoCollector, TypedExpr, Array[Int], Array[Type]) -> Unit
+    mono_visit_type: (MonoCollector, Type, Array[Int], Array[Type]) -> Unit
+    mono_add_class_inst: (MonoCollector, String, Array[Type]) -> Unit
+    mono_add_fn_inst: (MonoCollector, String, Bool, String, Array[Type]) -> Unit
+    mono_process_class_inst: (MonoCollector, ClassInstantiation) -> Unit
+    mono_process_fn_inst: (MonoCollector, FnInstantiation) -> Unit
+    mono_find_generic_class_index: (MonoCollector, String) -> Int
+    mono_find_generic_fn_index: (MonoCollector, String) -> Int
+    mono_string_index: (Array[String], String) -> Int
+    mono_int_index: (Array[Int], Int) -> Int
+    mono_sort_unique_ints: (Array[Int]) -> Array[Int]
+    mono_merge_type_vars: (Array[Int], Array[Int]) -> Array[Int]
+    mono_type_has_vars: (Type) -> Bool
+    mono_free_type_vars_in_types: (Array[Type]) -> Array[Int]
+    mono_match_type_pattern: (Type, Type, Array[Int], Array[Int], Array[Type]) -> Bool
 }
 
 fn empty_mono_collector() {
+    @type {
+        class_insts: Array[ClassInstantiation]
+        fn_insts: Array[FnInstantiation]
+        generic_class_names: Array[String]
+        generic_class_defs: Array[TypedClassDef]
+        generic_class_type_vars: Array[Array[Int]]
+        generic_fn_names: Array[String]
+        generic_fn_defs: Array[TypedFnDef]
+        generic_fn_type_vars: Array[Array[Int]]
+        seen_classes: Array[String]
+        seen_fns: Array[String]
+        class_queue: Array[ClassInstantiation]
+        fn_queue: Array[FnInstantiation]
+    }
     let collector = MonoCollector()
-    let class_insts: Array[ClassInstantiation] = []
-    let fn_insts: Array[FnInstantiation] = []
-    let generic_class_names: Array[String] = []
-    let generic_class_defs: Array[TypedClassDef] = []
-    let generic_class_type_vars: Array[Array[Int]] = []
-    let generic_fn_names: Array[String] = []
-    let generic_fn_defs: Array[TypedFnDef] = []
-    let generic_fn_type_vars: Array[Array[Int]] = []
-    let seen_classes: Array[String] = []
-    let seen_fns: Array[String] = []
-    let class_queue: Array[ClassInstantiation] = []
-    let fn_queue: Array[FnInstantiation] = []
+    let class_insts = []
+    let fn_insts = []
+    let generic_class_names = []
+    let generic_class_defs = []
+    let generic_class_type_vars = []
+    let generic_fn_names = []
+    let generic_fn_defs = []
+    let generic_fn_type_vars = []
+    let seen_classes = []
+    let seen_fns = []
+    let class_queue = []
+    let fn_queue = []
     collector.class_insts = class_insts
     collector.fn_insts = fn_insts
     collector.generic_class_names = generic_class_names
@@ -115,10 +177,14 @@ fn empty_mono_collector() {
     collector
 }
 
-fn mono_collect(collector: MonoCollector, program: TypedProgram) {
+fn mono_collect(collector, program) {
+    @type {
+        empty_vars: Array[Int]
+        empty_values: Array[Type]
+    }
     mono_index_generics(collector, program)
-    let empty_vars: Array[Int] = []
-    let empty_values: Array[Type] = []
+    let empty_vars = []
+    let empty_values = []
     let mut i = 0
     while i < program.program_items.len() {
         mono_visit_item(collector, program.program_items[i], empty_vars, empty_values)
@@ -139,7 +205,7 @@ fn mono_collect(collector: MonoCollector, program: TypedProgram) {
     collector
 }
 
-fn monomorphize(program: TypedProgram) {
+fn monomorphize(program) {
     let collector = mono_collect(empty_mono_collector(), program)
     let final_program = empty_typed_program()
     let mut i = 0
@@ -176,12 +242,16 @@ fn monomorphize(program: TypedProgram) {
     final_program
 }
 
-fn generic_class_def(class_def: TypedClassDef) {
+fn generic_class_def(class_def) {
+    @type {
+        empty_vars: Array[Int]
+        vars: Array[Int]
+    }
     let info = GenericClassDef()
-    let empty_vars: Array[Int] = []
+    let empty_vars = []
     info.exists = false
     info.type_vars = empty_vars
-    let mut vars: Array[Int] = []
+    let mut vars = []
     let mut i = 0
     while i < class_def.class_fields.len() {
         vars = mono_merge_type_vars(vars, free_vars_in_type(class_def.class_fields[i].field_ty))
@@ -201,10 +271,13 @@ fn generic_class_def(class_def: TypedClassDef) {
     info
 }
 
-fn generic_fn_def(function: TypedFnDef) {
+fn generic_fn_def(function) {
+    @type {
+        empty_vars: Array[Int]
+    }
     let info = GenericFnDef()
     let vars = mono_sort_unique_ints(free_vars_in_type(function.fn_ty))
-    let empty_vars: Array[Int] = []
+    let empty_vars = []
     info.exists = false
     info.type_vars = empty_vars
     if vars.len() > 0 {
@@ -215,11 +288,16 @@ fn generic_fn_def(function: TypedFnDef) {
     info
 }
 
-fn resolve_function_type_args(function: TypedFnDef, type_vars: Array[Int], actual_args: Array[Type]) {
+fn resolve_function_type_args(function, type_vars, actual_args) {
+    @type {
+        types: Array[Type]
+        bound_vars: Array[Int]
+        bound_values: Array[Type]
+    }
     let resolved = ResolvedTypeArgs()
-    let types: Array[Type] = []
-    let bound_vars: Array[Int] = []
-    let bound_values: Array[Type] = []
+    let types = []
+    let bound_vars = []
+    let bound_values = []
     resolved.exists = false
     resolved.types = types
     if function.fn_params.len() != actual_args.len() {
@@ -248,7 +326,7 @@ fn resolve_function_type_args(function: TypedFnDef, type_vars: Array[Int], actua
     resolved
 }
 
-fn item_is_generic(item: TypedItem) {
+fn item_is_generic(item) {
     if str_eq_type(item.tag, "Fn") {
         return fn_has_type_vars(item.item_fn_def)
     }
@@ -264,15 +342,15 @@ fn item_is_generic(item: TypedItem) {
     false
 }
 
-fn fn_has_type_vars(function: TypedFnDef) {
+fn fn_has_type_vars(function) {
     mono_sort_unique_ints(free_vars_in_type(function.fn_ty)).len() > 0
 }
 
-fn class_has_type_vars(class_def: TypedClassDef) {
+fn class_has_type_vars(class_def) {
     generic_class_def(class_def).exists
 }
 
-fn mono_index_generics(collector: MonoCollector, program: TypedProgram) {
+fn mono_index_generics(collector, program) {
     let mut i = 0
     while i < program.program_items.len() {
         let item = program.program_items[i]
@@ -320,7 +398,7 @@ fn mono_index_generics(collector: MonoCollector, program: TypedProgram) {
     }
 }
 
-fn mono_visit_item(collector: MonoCollector, item: TypedItem, subst_vars: Array[Int], subst_values: Array[Type]) {
+fn mono_visit_item(collector, item, subst_vars, subst_values) {
     let subst = build_var_subst(subst_vars, subst_values)
     if str_eq_type(item.tag, "Fn") {
         mono_visit_fn(collector, item.item_fn_def, subst.vars, subst.values)
@@ -361,7 +439,7 @@ fn mono_visit_item(collector: MonoCollector, item: TypedItem, subst_vars: Array[
     }
 }
 
-fn mono_visit_fn(collector: MonoCollector, function: TypedFnDef, subst_vars: Array[Int], subst_values: Array[Type]) {
+fn mono_visit_fn(collector, function, subst_vars, subst_values) {
     mono_visit_type(collector, function.fn_ty, subst_vars, subst_values)
     mono_visit_type(collector, function.fn_ret_type, subst_vars, subst_values)
     let mut i = 0
@@ -374,7 +452,7 @@ fn mono_visit_fn(collector: MonoCollector, function: TypedFnDef, subst_vars: Arr
     }
 }
 
-fn mono_visit_block(collector: MonoCollector, block: TypedBlock, subst_vars: Array[Int], subst_values: Array[Type]) {
+fn mono_visit_block(collector, block, subst_vars, subst_values) {
     let mut i = 0
     while i < block.block_stmts.len() {
         mono_visit_stmt(collector, block.block_stmts[i], subst_vars, subst_values)
@@ -382,7 +460,7 @@ fn mono_visit_block(collector: MonoCollector, block: TypedBlock, subst_vars: Arr
     }
 }
 
-fn mono_visit_stmt(collector: MonoCollector, stmt: TypedStmt, subst_vars: Array[Int], subst_values: Array[Type]) {
+fn mono_visit_stmt(collector, stmt, subst_vars, subst_values) {
     if str_eq_type(stmt.tag, "Let") {
         mono_visit_type(collector, stmt.stmt_let.let_ty, subst_vars, subst_values)
         if stmt.stmt_let.let_has_value {
@@ -457,7 +535,7 @@ fn mono_visit_stmt(collector: MonoCollector, stmt: TypedStmt, subst_vars: Array[
     }
 }
 
-fn mono_visit_else_branch(collector: MonoCollector, branch: TypedElseBranch, subst_vars: Array[Int], subst_values: Array[Type]) {
+fn mono_visit_else_branch(collector, branch, subst_vars, subst_values) {
     if str_eq_type(branch.tag, "If") {
         mono_visit_expr(collector, branch.else_if_stmt.if_condition, subst_vars, subst_values)
         mono_visit_block(collector, branch.else_if_stmt.if_then_branch, subst_vars, subst_values)
@@ -469,7 +547,10 @@ fn mono_visit_else_branch(collector: MonoCollector, branch: TypedElseBranch, sub
     }
 }
 
-fn mono_visit_expr(collector: MonoCollector, expr: TypedExpr, subst_vars: Array[Int], subst_values: Array[Type]) {
+fn mono_visit_expr(collector, expr, subst_vars, subst_values) {
+    @type {
+        actual_types: Array[Type]
+    }
     mono_visit_type(collector, expr.expr_ty, subst_vars, subst_values)
     if str_eq_type(expr.tag, "FStrLit") {
         let mut i = 0
@@ -512,7 +593,7 @@ fn mono_visit_expr(collector: MonoCollector, expr: TypedExpr, subst_vars: Array[
     }
     if str_eq_type(expr.tag, "Call") {
         mono_visit_expr(collector, expr.call_callee, subst_vars, subst_values)
-        let mut actual_types: Array[Type] = []
+        let mut actual_types = []
         let mut i = 0
         while i < expr.call_args.len() {
             mono_visit_expr(collector, expr.call_args[i], subst_vars, subst_values)
@@ -583,7 +664,7 @@ fn mono_visit_expr(collector: MonoCollector, expr: TypedExpr, subst_vars: Array[
     }
 }
 
-fn mono_visit_type(collector: MonoCollector, ty: Type, subst_vars: Array[Int], subst_values: Array[Type]) {
+fn mono_visit_type(collector, ty, subst_vars, subst_values) {
     let substituted = substitute_type(ty, build_var_subst(subst_vars, subst_values))
     if str_eq_type(substituted.type_kind, "Named") {
         if substituted.ty_args.len() > 0 && !mono_type_has_vars(substituted) {
@@ -628,7 +709,7 @@ fn mono_visit_type(collector: MonoCollector, ty: Type, subst_vars: Array[Int], s
     }
 }
 
-fn mono_add_class_inst(collector: MonoCollector, name: String, args: Array[Type]) {
+fn mono_add_class_inst(collector, name, args) {
     let mangled = mangle_class(name, args)
     if mono_string_index(collector.seen_classes, mangled) < 0 {
         let inst = ClassInstantiation()
@@ -641,7 +722,7 @@ fn mono_add_class_inst(collector: MonoCollector, name: String, args: Array[Type]
     }
 }
 
-fn mono_add_fn_inst(collector: MonoCollector, fn_name: String, has_class_name: Bool, class_name: String, args: Array[Type]) {
+fn mono_add_fn_inst(collector, fn_name, has_class_name, class_name, args) {
     let mangled = mangle_fn(fn_name, has_class_name, class_name, args)
     if mono_string_index(collector.seen_fns, mangled) < 0 {
         let inst = FnInstantiation()
@@ -656,7 +737,7 @@ fn mono_add_fn_inst(collector: MonoCollector, fn_name: String, has_class_name: B
     }
 }
 
-fn mono_process_class_inst(collector: MonoCollector, inst: ClassInstantiation) {
+fn mono_process_class_inst(collector, inst) {
     let idx = mono_find_generic_class_index(collector, inst.class_name)
     if idx < 0 {
         return
@@ -674,7 +755,7 @@ fn mono_process_class_inst(collector: MonoCollector, inst: ClassInstantiation) {
     }
 }
 
-fn mono_process_fn_inst(collector: MonoCollector, inst: FnInstantiation) {
+fn mono_process_fn_inst(collector, inst) {
     let idx = mono_find_generic_fn_index(collector, inst.fn_name)
     if idx < 0 {
         return
@@ -683,15 +764,15 @@ fn mono_process_fn_inst(collector: MonoCollector, inst: FnInstantiation) {
     mono_visit_fn(collector, collector.generic_fn_defs[idx], subst.vars, subst.values)
 }
 
-fn mono_find_generic_class_index(collector: MonoCollector, name: String) {
+fn mono_find_generic_class_index(collector, name) {
     mono_string_index(collector.generic_class_names, name)
 }
 
-fn mono_find_generic_fn_index(collector: MonoCollector, name: String) {
+fn mono_find_generic_fn_index(collector, name) {
     mono_string_index(collector.generic_fn_names, name)
 }
 
-fn mono_string_index(items: Array[String], value: String) {
+fn mono_string_index(items, value) {
     let mut i = 0
     while i < items.len() {
         if str_eq_type(items[i], value) {
@@ -702,7 +783,7 @@ fn mono_string_index(items: Array[String], value: String) {
     -1
 }
 
-fn mono_int_index(items: Array[Int], value: Int) {
+fn mono_int_index(items, value) {
     let mut i = 0
     while i < items.len() {
         if items[i] == value {
@@ -713,8 +794,11 @@ fn mono_int_index(items: Array[Int], value: Int) {
     -1
 }
 
-fn mono_sort_unique_ints(items: Array[Int]) {
-    let mut out: Array[Int] = []
+fn mono_sort_unique_ints(items) {
+    @type {
+        out: Array[Int]
+    }
+    let mut out = []
     let mut i = 0
     while i < items.len() {
         if mono_int_index(out, items[i]) < 0 {
@@ -738,8 +822,11 @@ fn mono_sort_unique_ints(items: Array[Int]) {
     out
 }
 
-fn mono_merge_type_vars(left: Array[Int], right: Array[Int]) {
-    let mut out: Array[Int] = []
+fn mono_merge_type_vars(left, right) {
+    @type {
+        out: Array[Int]
+    }
+    let mut out = []
     let mut i = 0
     while i < left.len() {
         out.push(left[i])
@@ -753,12 +840,15 @@ fn mono_merge_type_vars(left: Array[Int], right: Array[Int]) {
     mono_sort_unique_ints(out)
 }
 
-fn mono_type_has_vars(ty: Type) {
+fn mono_type_has_vars(ty) {
     free_vars_in_type(ty).len() > 0
 }
 
-fn mono_free_type_vars_in_types(items: Array[Type]) {
-    let mut vars: Array[Int] = []
+fn mono_free_type_vars_in_types(items) {
+    @type {
+        vars: Array[Int]
+    }
+    let mut vars = []
     let mut i = 0
     while i < items.len() {
         vars = mono_merge_type_vars(vars, free_vars_in_type(items[i]))
@@ -767,7 +857,7 @@ fn mono_free_type_vars_in_types(items: Array[Type]) {
     vars
 }
 
-fn mono_match_type_pattern(pattern: Type, actual: Type, allowed_vars: Array[Int], bound_vars: Array[Int], bound_values: Array[Type]) {
+fn mono_match_type_pattern(pattern, actual, allowed_vars, bound_vars, bound_values) {
     if str_eq_type(pattern.type_kind, "Var") && mono_int_index(allowed_vars, pattern.ty_id) >= 0 {
         let idx = mono_int_index(bound_vars, pattern.ty_id)
         if idx >= 0 {
