@@ -549,10 +549,11 @@ fn link_binary(
         command.arg(&runtime_lib);
     }
     command.arg("-o").arg(binary_path);
-    if cfg!(target_os = "linux") && env::var_os("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS").is_some() {
-        command.arg("-Wl,--allow-multiple-definition");
-    }
     if cfg!(target_os = "linux") {
+        // Generated binaries still carry a small runtime shim surface, so Linux
+        // links must tolerate duplicate runtime symbols when the bundled static
+        // runtime archive is also linked in.
+        command.arg("-Wl,--allow-multiple-definition");
         command.args([
             "-no-pie",
             "-ldl",

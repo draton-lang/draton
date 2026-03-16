@@ -13,6 +13,48 @@ Installs the Draton Early Tooling Preview for Linux or macOS.
 EOF
 }
 
+find_profile_file() {
+    shell_name="$(basename "${SHELL:-sh}")"
+    case "$shell_name" in
+        bash)
+            printf '%s\n' "$HOME/.bashrc" "$HOME/.profile"
+            ;;
+        zsh)
+            printf '%s\n' "$HOME/.zshrc" "$HOME/.profile"
+            ;;
+        *)
+            printf '%s\n' "$HOME/.profile"
+            ;;
+    esac
+}
+
+ensure_path_in_profile() {
+    target_dir="$1"
+    export_line="export PATH=\"$target_dir:\$PATH\""
+    for candidate in $(find_profile_file); do
+        parent_dir="$(dirname "$candidate")"
+        if [ ! -d "$parent_dir" ]; then
+            mkdir -p "$parent_dir"
+        fi
+        if [ ! -e "$candidate" ]; then
+            : > "$candidate"
+        fi
+        if grep -F "$export_line" "$candidate" >/dev/null 2>&1; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+        if [ -w "$candidate" ]; then
+            {
+                printf '\n# Added by Draton Early Tooling Preview installer\n'
+                printf '%s\n' "$export_line"
+            } >> "$candidate"
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --version)
@@ -125,12 +167,21 @@ ln -s "$FINAL_DIR" "$CURRENT_LINK"
 
 "$CURRENT_LINK/drat" --version
 
+PROFILE_FILE=""
+if PROFILE_FILE="$(ensure_path_in_profile "$CURRENT_LINK")"; then
+    PATH_NOTE="Updated PATH in: $PROFILE_FILE"
+else
+    PATH_NOTE="Could not update your shell profile automatically."
+fi
+
 cat <<EOF
 
 Installed Draton Early Tooling Preview to:
   $FINAL_DIR
 
-Add this directory to PATH:
+$PATH_NOTE
+
+Use this directory on PATH:
   $CURRENT_LINK
 
 Example:

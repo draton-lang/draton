@@ -61,6 +61,8 @@ drat --version
 drat run examples/hello.dt
 ```
 
+The release installers in [docs/install.md](docs/install.md) update `PATH` automatically when practical. If `drat` is not visible immediately after installation, start a new shell session.
+
 Release artifacts:
 
 - `draton-early-linux-x86_64.tar.gz`

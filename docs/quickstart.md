@@ -2,6 +2,8 @@
 
 This quickstart assumes you installed a prebuilt Early Tooling Preview release.
 
+The release installers update `PATH` automatically when practical. Open a new shell after installation if `drat` is not visible immediately.
+
 ## 1. Verify the CLI
 
 ```sh
@@ -64,7 +66,16 @@ Windows PowerShell:
 .\build\hello-preview
 ```
 
-## 8. Build directly with `drat`
+## 8. Build and run the sample project directly
+
+Still inside `examples/early-preview/hello-app`:
+
+```sh
+drat build
+drat run
+```
+
+## 9. Build directly with `drat`
 
 From the repository root or extracted archive root:
 
@@ -86,7 +97,7 @@ Windows:
 .\hello-tooling
 ```
 
-## 9. Start the language server
+## 10. Start the language server
 
 ```sh
 drat lsp

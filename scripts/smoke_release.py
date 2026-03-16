@@ -160,6 +160,10 @@ def main() -> int:
         run([str(binary), "task", "build"], cwd=example_root, extra_env=env)
         built_example = resolve_binary_path(example_root / "build" / "hello-preview")
         run([str(built_example)], cwd=example_root, extra_env=env)
+        run([str(binary), "build"], cwd=example_root, extra_env=env)
+        built_project = resolve_binary_path(example_root / "build" / "hello-preview")
+        run([str(built_project)], cwd=example_root, extra_env=env)
+        run([str(binary), "run"], cwd=example_root, extra_env=env)
         output_binary = root / "hello-tooling"
         run(
             [str(binary), "build", "examples/hello.dt", "-o", str(output_binary)],

@@ -61,11 +61,28 @@ try {
 
     & (Join-Path $currentDir "drat.exe") --version
 
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $pathEntries = @()
+    if ($userPath) {
+        $pathEntries = $userPath -split ';' | Where-Object { $_ }
+    }
+    $pathUpdated = $false
+    if (-not ($pathEntries | Where-Object { $_.TrimEnd('\') -eq $currentDir.TrimEnd('\') })) {
+        $newUserPath = if ($userPath) { "$userPath;$currentDir" } else { $currentDir }
+        [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+        $env:Path = "$env:Path;$currentDir"
+        $pathUpdated = $true
+    }
+
     Write-Host ""
     Write-Host "Installed Draton Early Tooling Preview to:"
     Write-Host "  $finalDir"
     Write-Host ""
-    Write-Host "Add this directory to PATH:"
+    if ($pathUpdated) {
+        Write-Host "Added this directory to your user PATH:"
+    } else {
+        Write-Host "This directory is already on your user PATH:"
+    }
     Write-Host "  $currentDir"
     Write-Host ""
     Write-Host "Then verify:"

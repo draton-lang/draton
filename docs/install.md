@@ -61,6 +61,7 @@ Default install location:
 
 - payload: `~/.local/share/draton/current`
 - add to `PATH`: `~/.local/share/draton/current`
+- installer behavior: appends that directory to the first writable profile it finds (`~/.bashrc`, `~/.zshrc`, or `~/.profile`)
 
 The installer verifies success with:
 
@@ -85,6 +86,7 @@ Default install location:
 
 - payload: `%LOCALAPPDATA%\Draton\current`
 - add to `PATH`: `%LOCALAPPDATA%\Draton\current`
+- installer behavior: appends that directory to the current user's `Path` environment variable when needed
 
 The script verifies:
 
