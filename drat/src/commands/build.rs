@@ -566,7 +566,14 @@ fn link_binary(
         command.arg("-Wl,-multiply_defined,suppress");
         command.args(["-ldl", "-lpthread", "-lm", "-lc++"]);
     } else if cfg!(target_os = "windows") {
-        command.args(["-static", "-static-libgcc", "-static-libstdc++"]);
+        command.args([
+            "-static",
+            "-static-libgcc",
+            "-static-libstdc++",
+            "-lbcrypt",
+            "-luserenv",
+            "-lntdll",
+        ]);
     }
     let output = command
         .output()
