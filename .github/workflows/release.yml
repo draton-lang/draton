@@ -148,29 +148,11 @@ jobs:
         if: ${{ matrix.supported && matrix.llvm_source == 'llvm-package-windows' }}
         shell: pwsh
         run: |
-          $ProgressPreference = 'SilentlyContinue'
-          $installer = Join-Path $env:GITHUB_WORKSPACE 'llvm-installer.exe'
-          Invoke-WebRequest -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/LLVM-14.0.6-win64.exe' -OutFile $installer
-          $extractRoot = Join-Path $env:RUNNER_TEMP 'llvm-src'
-          if (Test-Path $extractRoot) {
-            Remove-Item -Recurse -Force $extractRoot
-          }
-          & 7z x $installer "-o$extractRoot" | Out-Null
-          $header = Get-ChildItem -Path $extractRoot -Recurse -Filter 'Target.h' |
-            Where-Object { $_.FullName -like '*\include\llvm-c\Target.h' } |
-            Select-Object -First 1
-          if (-not $header) {
-            throw 'Could not locate llvm-c/Target.h in extracted LLVM payload'
-          }
-          $prefix = $header.Directory.Parent.Parent.FullName
-          $dest = (Join-Path $env:GITHUB_WORKSPACE 'llvm').Replace('/', '\')
-          if (Test-Path $dest) {
-            Remove-Item -Recurse -Force $dest
-          }
-          Copy-Item -Recurse -Force $prefix $dest
+          choco install llvm --version=14.0.6 -y --no-progress
+          $dest = 'C:\Program Files\LLVM'
           $header = Join-Path $dest 'include\llvm-c\Target.h'
           if (-not (Test-Path $header)) {
-            throw "LLVM headers missing after install: $header"
+            throw "LLVM headers missing after Chocolatey install: $header"
           }
           $realConfig = Join-Path $dest 'bin\llvm-config.exe'
           if (Test-Path $realConfig) {
