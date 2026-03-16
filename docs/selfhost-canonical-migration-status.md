@@ -48,6 +48,9 @@ The following self-host files were migrated safely to canonical syntax in this p
 - `src/codegen/emit/stmt.dt`
 - `src/codegen/layout/class.dt`
 - `src/codegen/layout/vtable.dt`
+- `src/codegen/closure/capture.dt`
+- `src/codegen/closure/emit.dt`
+- `src/codegen/closure/env.dt`
 
 Migration techniques used:
 
@@ -58,6 +61,8 @@ Migration techniques used:
 - backend entry-layer locals that required typed empty-array initialization moved to function-scope `@type`
 - backend emit/layout helper signatures rewritten to canonical file-scope bindings
 - backend emit/layout typed empty-array locals moved to function-scope `@type`
+- backend closure/helper signatures rewritten to canonical file-scope bindings
+- backend closure/helper typed empty-array locals moved to function-scope `@type`
 
 ## Semantic Parity Completed In This Pass
 
@@ -94,11 +99,11 @@ The main self-host backend/codegen blocker has been reduced at the entry layer:
 - the file now uses canonical class-scope `@type`, file-scope contract bindings, and function-scope `@type` for typed empty-array locals
 - canonical contract data flowing through typed items no longer required backend entry-point changes beyond the already-completed parser/typechecker parity work
 
-What remains in the backend slice is now narrower:
+The backend slice is now substantially cleaner:
 
-- closure files and a few small backend helpers still carry compatibility-form inline syntax in their own source
-- those files are no longer blocked by missing canonical-contract semantics in the frontend mirror, but they were not mechanically rewritten in this pass
-- the remaining backend debt is therefore mostly source-level canonicalization and any downstream typed-AST cleanup tied to the closure/helper slice
+- the self-host codegen entry, emit/layout, and closure/helper files have all been migrated to canonical syntax where safe
+- no remaining `src/codegen/*.dt` file in this audit is blocked primarily by missing canonical-contract semantics
+- any remaining self-host migration debt now sits outside the backend slice
 
 ## Skipped Files
 
@@ -122,11 +127,6 @@ These files are coupled to parts of the self-host mirror that still model or imp
 | `src/typeck/infer/subst.dt` | Substitution logic still reflects pre-migration typechecker mirror structures. |
 | `src/typeck/infer/unify.dt` | Unification helpers are coupled to the current self-host type representation and checker flow. |
 | `src/typeck/typed_ast/expr.dt` | Typed expression mirror still stores many legacy inline-typed fields and constructors consumed throughout the self-host backend. |
-| `src/codegen/closure/capture.dt` | Closure capture walker still depends on current typed AST mirror shapes. |
-| `src/codegen/closure/emit.dt` | Closure emission still depends on legacy typed AST and checker mirror contracts. |
-| `src/codegen/closure/env.dt` | Closure environment layout still follows the current typed AST mirror, not a fully canonicalized one. |
-| `src/codegen/error.dt` | Codegen error mirror is still consumed by non-migrated codegen modules and is better migrated with the rest of that slice. |
-| `src/codegen/types/descriptor.dt` | Descriptor helpers are tied to the non-migrated codegen/type slices. |
 | `src/mono/substitute.dt` | Monomorphization substitution still depends on current self-host typed AST shapes. |
 
 ### Blocker: Another Specific Reason
@@ -153,12 +153,13 @@ After this pass, the self-host mirror is materially closer to canonical syntax i
 - self-host parser/typechecker/mono handling for function-scope and interface-scope canonical `@type`
 - self-host backend entry-layer codegen state and predeclaration plumbing
 - self-host backend emit/layout handling and source-level canonical syntax in the core emit path
+- self-host backend closure capture/emission/environment helpers and the rest of the codegen slice
 
 What is still not true:
 
 - the self-host mirror is **not yet** at full semantic parity with the Rust frontend for canonical syntax
 - `--strict-syntax` still cannot be applied cleanly to the entire `src/` tree
-- the remaining debt is now concentrated mostly in the self-host backend closure/helper slice and in the still-unmigrated source text of semantically-unblocked files
+- the remaining debt is now concentrated in the still-unmigrated source text of semantically-unblocked frontend/typechecker files and in deferred dump/printer modules
 
 In practice, the repository is now in an intermediate state:
 
@@ -177,10 +178,20 @@ In practice, the repository is now in an intermediate state:
 - `cargo run -p drat -- build --strict-syntax /tmp/draton_selfhost_semantic_parity.dt -o /tmp/draton_selfhost_emit_slice_out`
 - `/tmp/draton_selfhost_emit_slice_out` returned exit code `7`
 - `cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_emit_slice_batch`
+- `cargo run -p drat -- build --strict-syntax tests/programs/compile/51_lambda_capture.dt -o /tmp/draton_lambda_capture_strict`
+- `/tmp/draton_lambda_capture_strict` returned exit code `15`
+- `cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_closure_slice`
 
 ## Recommended Next Steps
 
 1. Canonicalize the source text of the now-unblocked parser/typechecker/mono files without changing semantics.
-2. Migrate the remaining self-host backend closure/helper slice, starting with `src/codegen/closure/capture.dt`, `src/codegen/closure/emit.dt`, and `src/codegen/closure/env.dt`.
-3. Re-run `src/main.dt` under stricter focused checks once the closure/helper slice is canonicalized enough to reduce warning noise.
-4. Finish large deferred printer/dump modules only after the semantic slices are stable.
+2. Re-run `src/main.dt` under stricter focused checks once the remaining frontend/typechecker warning noise has been reduced.
+3. Finish large deferred printer/dump modules only after the semantic slices are stable.
+
+## Near-Final State
+
+The self-host mirror is now close to full canonical syntax parity in the backend path:
+
+- `src/codegen/` no longer contains repository-known blockers caused by deprecated inline syntax in the audited files
+- the main remaining blockers are concentrated in frontend/typechecker mirror files whose source still mirrors older internal structures
+- the remaining skipped set is therefore mostly semantic/frontend cleanup plus a small amount of intentionally deferred mechanical churn in dump modules

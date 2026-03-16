@@ -1,23 +1,27 @@
 import { TypedExpr, TypedBlock, TypedStmt, str_eq_type }
 
 @type {
-    fn collect_captures(body: TypedExpr, params: Array[String]) -> Array[String]
-    fn collect_captures_in_expr(expr: TypedExpr, params: Array[String], seen: Array[String], out: Array[String])
-    fn capture_collect_block(block: TypedBlock, params: Array[String], seen: Array[String], out: Array[String])
-    fn capture_collect_stmt(stmt: TypedStmt, params: Array[String], seen: Array[String], out: Array[String])
-    fn capture_collect_expr_array(items: Array[TypedExpr], params: Array[String], seen: Array[String], out: Array[String])
-    fn capture_contains(items: Array[String], value: String) -> Bool
-    fn capture_copy(items: Array[String]) -> Array[String]
+    collect_captures: (TypedExpr, Array[String]) -> Array[String]
+    collect_captures_in_expr: (TypedExpr, Array[String], Array[String], Array[String]) -> Unit
+    capture_collect_block: (TypedBlock, Array[String], Array[String], Array[String]) -> Unit
+    capture_collect_stmt: (TypedStmt, Array[String], Array[String], Array[String]) -> Unit
+    capture_collect_expr_array: (Array[TypedExpr], Array[String], Array[String], Array[String]) -> Unit
+    capture_contains: (Array[String], String) -> Bool
+    capture_copy: (Array[String]) -> Array[String]
 }
 
-fn collect_captures(body: TypedExpr, params: Array[String]) {
-    let seen: Array[String] = []
-    let out: Array[String] = []
+fn collect_captures(body, params) {
+    @type {
+        seen: Array[String]
+        out: Array[String]
+    }
+    let seen = []
+    let out = []
     collect_captures_in_expr(body, params, seen, out)
     out
 }
 
-fn collect_captures_in_expr(expr: TypedExpr, params: Array[String], seen: Array[String], out: Array[String]) {
+fn collect_captures_in_expr(expr, params, seen, out) {
     if str_eq_type(expr.tag, "Ident") {
         if !capture_contains(params, expr.ident_name) && !capture_contains(seen, expr.ident_name) {
             seen.push(expr.ident_name)
@@ -114,7 +118,7 @@ fn collect_captures_in_expr(expr: TypedExpr, params: Array[String], seen: Array[
     let _done = 0
 }
 
-fn capture_collect_block(block: TypedBlock, params: Array[String], seen: Array[String], out: Array[String]) {
+fn capture_collect_block(block, params, seen, out) {
     let mut i = 0
     while i < block.block_stmts.len() {
         capture_collect_stmt(block.block_stmts[i], params, seen, out)
@@ -123,7 +127,7 @@ fn capture_collect_block(block: TypedBlock, params: Array[String], seen: Array[S
     let _done = 0
 }
 
-fn capture_collect_stmt(stmt: TypedStmt, params: Array[String], seen: Array[String], out: Array[String]) {
+fn capture_collect_stmt(stmt, params, seen, out) {
     if str_eq_type(stmt.tag, "Let") {
         if stmt.stmt_let.let_has_value {
             collect_captures_in_expr(stmt.stmt_let.let_value, params, seen, out)
@@ -183,7 +187,7 @@ fn capture_collect_stmt(stmt: TypedStmt, params: Array[String], seen: Array[Stri
     let _done = 0
 }
 
-fn capture_collect_expr_array(items: Array[TypedExpr], params: Array[String], seen: Array[String], out: Array[String]) {
+fn capture_collect_expr_array(items, params, seen, out) {
     let mut i = 0
     while i < items.len() {
         collect_captures_in_expr(items[i], params, seen, out)
@@ -192,7 +196,7 @@ fn capture_collect_expr_array(items: Array[TypedExpr], params: Array[String], se
     let _done = 0
 }
 
-fn capture_contains(items: Array[String], value: String) {
+fn capture_contains(items, value) {
     let mut i = 0
     while i < items.len() {
         if str_eq_type(items[i], value) {
@@ -203,8 +207,11 @@ fn capture_contains(items: Array[String], value: String) {
     false
 }
 
-fn capture_copy(items: Array[String]) {
-    let out: Array[String] = []
+fn capture_copy(items) {
+    @type {
+        out: Array[String]
+    }
+    let out = []
     let mut i = 0
     while i < items.len() {
         out.push(items[i])

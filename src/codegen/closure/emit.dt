@@ -1,12 +1,15 @@
 import { CodeGen, LLVMValue, Type, TypedExpr, build_closure_env, collect_captures, lower_type, new_llvm_value, cg_append_line, cg_fresh_name, type_unit }
 
 @type {
-    fn emit_closure(cg: CodeGen, params: Array[String], body: TypedExpr, closure_ty: Type) -> LLVMValue
+    emit_closure: (CodeGen, Array[String], TypedExpr, Type) -> LLVMValue
 }
 
-fn emit_closure(cg: CodeGen, params: Array[String], body: TypedExpr, closure_ty: Type) {
+fn emit_closure(cg, params, body, closure_ty) {
+    @type {
+        capture_types: Array[Type]
+    }
     let captures = collect_captures(body, params)
-    let capture_types: Array[Type] = []
+    let capture_types = []
     let mut i = 0
     while i < captures.len() {
         capture_types.push(type_unit())
