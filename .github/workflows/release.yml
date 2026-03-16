@@ -31,7 +31,7 @@ jobs:
       - name: Install LLVM 14
         uses: KyleMayes/install-llvm-action@v2
         with:
-          version: "14.0.6"
+          version: "14.0.0"
 
       - name: Configure LLVM environment
         shell: bash
@@ -76,6 +76,7 @@ jobs:
             artifact: draton-early-linux-x86_64.tar.gz
             binary: drat
             python: "3.11"
+            llvm_version: "14.0.0"
             supported: true
           - label: linux-aarch64
             runner: ubuntu-24.04-arm
@@ -83,6 +84,7 @@ jobs:
             artifact: draton-early-linux-aarch64.tar.gz
             binary: drat
             python: "3.11"
+            llvm_version: "14.0.6"
             supported: true
           - label: macos-x86_64
             runner: macos-13
@@ -90,6 +92,7 @@ jobs:
             artifact: draton-early-macos-x86_64.tar.gz
             binary: drat
             python: "3.11"
+            llvm_version: "14.0.6"
             supported: true
           - label: macos-aarch64
             runner: macos-14
@@ -97,6 +100,7 @@ jobs:
             artifact: draton-early-macos-aarch64.tar.gz
             binary: drat
             python: "3.11"
+            llvm_version: "14.0.6"
             supported: true
           - label: windows-x86_64
             runner: windows-2022
@@ -104,6 +108,7 @@ jobs:
             artifact: draton-early-windows-x86_64.zip
             binary: drat.exe
             python: "3.11"
+            llvm_version: "14.0.6"
             supported: true
           - label: windows-aarch64-blocked
             runner: ubuntu-22.04
@@ -145,7 +150,7 @@ jobs:
         if: ${{ matrix.supported }}
         uses: KyleMayes/install-llvm-action@v2
         with:
-          version: "14.0.6"
+          version: ${{ matrix.llvm_version }}
 
       - name: Configure LLVM environment
         if: ${{ matrix.supported }}
