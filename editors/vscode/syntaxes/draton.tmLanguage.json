@@ -39,6 +39,9 @@
       "include": "#keywords"
     },
     {
+      "include": "#identifiers"
+    },
+    {
       "include": "#operators"
     },
     {
@@ -375,6 +378,14 @@
         }
       ]
     },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.readwrite.draton",
+          "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
     "operators": {
       "patterns": [
         {
@@ -431,6 +442,9 @@
         },
         {
           "include": "#keywords"
+        },
+        {
+          "include": "#identifiers"
         },
         {
           "include": "#operators"

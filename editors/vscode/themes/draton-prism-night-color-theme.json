@@ -119,10 +119,12 @@
     {
       "scope": [
         "variable.other.definition.draton",
-        "variable.other.import.draton"
+        "variable.other.import.draton",
+        "variable.other.readwrite.draton"
       ],
       "settings": {
-        "foreground": "#F8FAFC"
+        "foreground": "#FFD166",
+        "fontStyle": "italic"
       }
     },
     {
