@@ -2,6 +2,17 @@
 
 This folder contains the temporary VS Code extension for Draton syntax + LSP.
 
+## Build a VSIX
+
+From `editors/vscode`:
+
+```sh
+npm install
+npm run package
+```
+
+If `vsce` says `missing: vscode-languageclient@^8.0.0`, it means you skipped `npm install`.
+
 ## Quick local install
 
 From the repository root:

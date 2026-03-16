@@ -14,6 +14,9 @@
     "onLanguage:draton"
   ],
   "main": "./extension.js",
+  "scripts": {
+    "package": "npx @vscode/vsce package"
+  },
   "contributes": {
     "languages": [
       {
