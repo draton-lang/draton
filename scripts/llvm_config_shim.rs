@@ -27,6 +27,14 @@ fn print_and_exit(message: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn bundled_system_libs() -> &'static str {
+    if cfg!(target_os = "linux") {
+        "-lrt -ldl -lm -lz -ltinfo -lxml2"
+    } else {
+        ""
+    }
+}
+
 fn fallback_query(args: &[String]) -> Option<ExitCode> {
     let prefix = prefix_dir();
     let include_dir = prefix.join("include");
@@ -50,8 +58,9 @@ fn fallback_query(args: &[String]) -> Option<ExitCode> {
                 Some(ExitCode::from(1))
             }
         },
+        [flag] if flag == "--system-libs" => Some(print_and_exit(bundled_system_libs())),
         [flag, link] if flag == "--system-libs" && link == "--link-static" => {
-            Some(print_and_exit(""))
+            Some(print_and_exit(bundled_system_libs()))
         }
         [flag, ..] if flag == "--libs" => match libnames() {
             Ok(value) => Some(print_and_exit(&value)),
