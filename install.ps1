@@ -20,13 +20,25 @@ if ($Version) {
 } else {
     $url = "https://github.com/$repo/releases/latest/download/$artifact"
 }
+$checksumUrl = "$url.sha256"
 
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("draton-install-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
 try {
     $archive = Join-Path $tmp $artifact
+    $checksumFile = "$archive.sha256"
     Invoke-WebRequest -Uri $url -OutFile $archive
+    Invoke-WebRequest -Uri $checksumUrl -OutFile $checksumFile
+    $expectedHashLine = Get-Content -Path $checksumFile | Select-Object -First 1
+    $expectedHash = ($expectedHashLine -split "\s+")[0]
+    if (-not $expectedHash) {
+        throw "Failed to read SHA256 checksum for $artifact."
+    }
+    $actualHash = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualHash -ne $expectedHash.ToLowerInvariant()) {
+        throw "Checksum verification failed for $artifact."
+    }
     Expand-Archive -Path $archive -DestinationPath $tmp -Force
 
     $root = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1

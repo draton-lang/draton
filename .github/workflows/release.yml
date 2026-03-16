@@ -106,12 +106,11 @@ jobs:
             python: "3.11"
             supported: true
           - label: windows-aarch64-blocked
-            runner: windows-2022
+            runner: ubuntu-22.04
             target: aarch64-pc-windows-msvc
             blocker_file: draton-early-windows-aarch64-blocked.txt
             python: "3.11"
             supported: false
-            blocker_reason: "Windows aarch64 early preview is blocked because the LLVM 14 + inkwell release toolchain path is not yet verified for producing and smoke-testing a reliable aarch64-pc-windows-msvc drat binary on GitHub-hosted infrastructure."
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -123,10 +122,10 @@ jobs:
 
       - name: Record explicit blocker
         if: ${{ !matrix.supported }}
-        shell: bash
         run: |
-          mkdir -p dist
-          printf '%s\n' "${{ matrix.blocker_reason }}" > "dist/${{ matrix.blocker_file }}"
+          python scripts/write_windows_arm64_blocker.py \
+            --llvm-version 14.0.6 \
+            --out dist/${{ matrix.blocker_file }}
 
       - name: Upload blocker note
         if: ${{ !matrix.supported }}

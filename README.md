@@ -45,9 +45,12 @@ Tooling references:
 
 ### Prerequisites
 
-- LLVM 14 runtime libraries
+If you are installing from a GitHub Release archive, start with [docs/install.md](docs/install.md). The Early Tooling Preview packages the compiler and codegen stack directly; users do not need to install LLVM separately on supported preview targets.
 
-If you are installing from a GitHub Release archive, start with [docs/install.md](docs/install.md). Current prebuilt releases expect LLVM 14 to be available on the target machine.
+Source builds still require:
+
+- Rust stable
+- LLVM 14 development libraries
 
 ### Install Prebuilt Releases
 
@@ -139,7 +142,7 @@ Current blocked target:
 
 - Windows aarch64
 
-That blocker is tracked explicitly in [docs/early-preview.md](docs/early-preview.md). Draton does not claim support for that target until it is built and smoke-tested successfully.
+That blocker is tracked explicitly in [docs/early-preview.md](docs/early-preview.md). The current issue is not a vague CI gap: LLVM 14 does not have a published Windows arm64 prebuilt asset in the release toolchain matrix Draton depends on, so Draton does not claim support for that target until a verified LLVM 14 arm64 release path exists.
 
 ## Language Tour
 

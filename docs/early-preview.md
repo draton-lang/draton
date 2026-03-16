@@ -26,7 +26,7 @@ It is meant for early adopters who want a real installable package, not just rep
 - LSP completion is basic and editor support is still an MVP
 - binaries are unsigned
 - macOS binaries are not notarized
-- LLVM 14 runtime libraries are still required on user machines
+- Linux builds still depend on a small set of standard system runtime libraries such as `libstdc++`, `libffi`, `libz`, and `libtinfo`
 - Windows aarch64 is not published yet
 
 ## Supported platforms
@@ -43,7 +43,7 @@ Blocked in this preview:
 
 - Windows aarch64
 
-The blocker is explicit and release-engineering specific: the current LLVM 14 + `inkwell` release toolchain path is not yet verified for producing and smoke-testing a reliable `aarch64-pc-windows-msvc` `drat` binary on GitHub-hosted infrastructure.
+The blocker is explicit and release-engineering specific: LLVM 14 does not currently have a published `win32/arm64` prebuilt asset in the release toolchain matrix Draton uses for `inkwell` / `llvm-sys 14`, so there is no verified way to build and smoke-test a release-quality `aarch64-pc-windows-msvc` `drat` binary without maintaining a separate LLVM 14 arm64 Windows toolchain.
 
 ## Install paths
 

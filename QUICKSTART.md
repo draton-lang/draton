@@ -32,4 +32,4 @@ drat lsp
 
 The archive also includes the Draton runtime static library required for `drat build` and `drat run`.
 
-If `drat` fails to start with a missing LLVM library error, install the LLVM 14 runtime for your platform first. See `INSTALL.md` in the archive or `docs/install.md` in the repository.
+Prebuilt preview archives do not require a separate LLVM install. On unusually minimal Linux systems, if `drat` fails to start because a common system runtime library is missing, see `INSTALL.md` in the archive or `docs/install.md` in the repository for the exact packages to add.

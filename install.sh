@@ -71,6 +71,7 @@ if [ -n "$VERSION" ]; then
 else
     URL="https://github.com/${REPO}/releases/latest/download/${ARTIFACT}"
 fi
+CHECKSUM_URL="${URL}.sha256"
 
 TMPDIR="$(mktemp -d)"
 cleanup() {
@@ -79,7 +80,32 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 ARCHIVE="$TMPDIR/$ARTIFACT"
+CHECKSUM_FILE="$TMPDIR/$ARTIFACT.sha256"
 sh -c "$FETCH \"$URL\" > \"$ARCHIVE\""
+sh -c "$FETCH \"$CHECKSUM_URL\" > \"$CHECKSUM_FILE\""
+
+EXPECTED_SUM="$(awk 'NF { print $1; exit }' "$CHECKSUM_FILE")"
+if [ -z "$EXPECTED_SUM" ]; then
+    echo "failed to read SHA256 checksum for $ARTIFACT" >&2
+    exit 1
+fi
+
+if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL_SUM="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
+elif command -v shasum >/dev/null 2>&1; then
+    ACTUAL_SUM="$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')"
+elif command -v openssl >/dev/null 2>&1; then
+    ACTUAL_SUM="$(openssl dgst -sha256 "$ARCHIVE" | awk '{print $NF}')"
+else
+    echo "warning: no SHA256 tool found; skipping checksum verification" >&2
+    ACTUAL_SUM="$EXPECTED_SUM"
+fi
+
+if [ "$ACTUAL_SUM" != "$EXPECTED_SUM" ]; then
+    echo "checksum verification failed for $ARTIFACT" >&2
+    exit 1
+fi
+
 tar -xzf "$ARCHIVE" -C "$TMPDIR"
 
 ROOT_DIR="$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"

@@ -48,9 +48,15 @@ Each shipped Early Preview archive contains:
 
 ## Native Dependency Strategy
 
-Releases are built against LLVM 14. The archives currently do not bundle LLVM shared libraries. End users must install the LLVM 14 runtime on their platform before running `drat`.
+Releases are built against LLVM 14, but the shipped `drat` binaries on verified preview targets do not currently depend on an external LLVM shared library at runtime. The smoke test strips LLVM-specific environment variables from the packaged-artifact run and checks the packaged binary for accidental `libLLVM` / `clang-cpp` dynamic dependencies on Linux and macOS.
 
-This is the smallest viable cross-platform release strategy that keeps artifacts immediately usable while avoiding ad hoc redistribution of platform-specific LLVM runtime pieces.
+The remaining runtime expectation is limited to normal OS libraries:
+
+- Linux: common system libraries such as `libstdc++`, `libffi`, `libz`, and `libtinfo`
+- macOS: standard system runtime libraries
+- Windows x86_64: the normal Windows desktop runtime stack
+
+This keeps the preview archives self-contained enough for end users without bundling fragile copies of platform runtime libraries.
 
 ## Packaging Scripts
 

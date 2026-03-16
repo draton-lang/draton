@@ -83,7 +83,7 @@ Linux / macOS:
 Windows:
 
 ```powershell
-.\hello-tooling.exe
+.\hello-tooling
 ```
 
 ## 9. Start the language server

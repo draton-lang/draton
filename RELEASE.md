@@ -9,9 +9,9 @@ This repository ships end-user Early Tooling Preview archives through GitHub Act
 3. Run a local sanity check:
 
    ```sh
-   cargo build -p drat -p draton-runtime -p draton-lsp
+   cargo build --release -p drat -p draton-runtime -p draton-lsp
    python3 scripts/package_release.py \
-      --binary target/debug/drat \
+      --binary target/release/drat \
       --artifact draton-early-linux-x86_64.tar.gz \
       --out-dir dist
    python3 scripts/smoke_release.py --archive dist/draton-early-linux-x86_64.tar.gz
@@ -66,7 +66,7 @@ Every shipped preview archive contains:
 
 - Binaries are unsigned.
 - macOS builds are not notarized.
-- Users still need the LLVM 14 runtime installed on their machine.
+- Linux preview binaries still rely on standard system runtime libraries such as `libstdc++`, `libffi`, `libz`, and `libtinfo`; they do not require a separate LLVM install.
 - Windows aarch64 is currently blocked and not published.
 - No package-manager distribution yet.
 

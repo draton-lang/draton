@@ -16,7 +16,7 @@ Currently blocked:
 
 - `Windows aarch64`
 
-The Windows aarch64 blocker is explicit: the current LLVM 14 + `inkwell` toolchain path is not yet verified for producing and testing a release-quality `aarch64-pc-windows-msvc` CLI on GitHub-hosted infrastructure. Draton does not claim that target until it is verified.
+The Windows aarch64 blocker is explicit: LLVM 14 does not currently have a published `win32/arm64` prebuilt asset in the release toolchain matrix Draton uses for `inkwell` / `llvm-sys 14`, so there is no verified way to build and smoke-test a release-quality `aarch64-pc-windows-msvc` CLI without maintaining a separate LLVM 14 arm64 Windows toolchain. Draton does not claim that target until that path exists and is verified.
 
 Every supported archive contains:
 
@@ -33,17 +33,15 @@ Every supported archive contains:
 
 ## Runtime prerequisite
 
-Current preview builds require LLVM 14 runtime libraries on the target machine.
+Prebuilt Early Tooling Preview archives do not require a separate LLVM install on supported targets.
 
-Typical packages:
+What they do rely on:
 
-- Debian / Ubuntu: `llvm-14` or `libllvm14`
-- Fedora: LLVM 14 runtime package
-- Arch: `llvm14-libs`
-- macOS Homebrew: `brew install llvm@14`
-- Windows x86_64: install LLVM 14 and add its `bin` directory to `PATH`
+- Linux: standard runtime libraries normally present on mainstream distributions, especially `glibc`, `libstdc++`, `libffi`, `zlib`, and `libtinfo`
+- macOS: system runtime libraries that ship with supported macOS releases
+- Windows x86_64: the standard Windows user-mode runtime stack present on supported desktop systems
 
-If `drat --version` fails with a missing LLVM shared library error, install LLVM 14 first and retry.
+If you are building Draton from source instead of using a release archive, LLVM 14 development libraries are still required.
 
 ## Install with scripts
 
@@ -72,6 +70,8 @@ The installer verifies success with:
 drat --version
 ```
 
+The installer also verifies the downloaded archive against the published `.sha256` checksum before extracting it.
+
 ### Windows x86_64
 
 Use PowerShell:
@@ -93,6 +93,8 @@ The script verifies:
 ```powershell
 drat --version
 ```
+
+The script also verifies the downloaded archive against the published `.sha256` checksum before extracting it.
 
 ### Windows aarch64
 
@@ -212,13 +214,17 @@ Manual installs:
 
 ### `drat --version` fails
 
-Install LLVM 14 runtime libraries first.
+Prebuilt preview binaries should not require a separate LLVM install. If startup still fails, the usual cause is a missing standard system runtime library on a minimal machine image.
 
-Typical failures:
+Typical Linux fixes:
 
-- Linux: missing `libLLVM-14.so`
-- macOS: missing `libLLVM.dylib`
-- Windows: missing LLVM DLLs from the LLVM 14 install
+- Debian / Ubuntu: `sudo apt install libstdc++6 libffi8 zlib1g libtinfo6`
+- Fedora: install the matching `libstdc++`, `libffi`, `zlib`, and `ncurses-compat-libs` packages
+- Arch: ensure `gcc-libs`, `libffi`, `zlib`, and `ncurses` are present
+
+On macOS, unsigned-binary or Gatekeeper restrictions are more likely than a missing runtime library.
+
+On Windows x86_64, verify that you are on a normal desktop/runtime image and not a stripped-down environment.
 
 ### `drat build` fails from an installed archive
 

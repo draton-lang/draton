@@ -25,7 +25,7 @@ This is the first public Draton Early Tooling Preview release.
 
 Current blocker:
 
-- the LLVM 14 + `inkwell` release toolchain path is not yet verified for producing and smoke-testing a reliable `aarch64-pc-windows-msvc` `drat` binary on GitHub-hosted infrastructure
+- LLVM 14 does not currently have a published `win32/arm64` prebuilt asset in the release toolchain matrix Draton uses for `inkwell` / `llvm-sys 14`, so there is no verified way to build and smoke-test a release-quality `aarch64-pc-windows-msvc` `drat` binary without maintaining a separate LLVM 14 arm64 Windows toolchain
 
 ## Install
 
@@ -48,7 +48,7 @@ drat task build
 
 ## Known limitations
 
-- LLVM 14 runtime libraries are required on the user machine
+- Linux preview binaries still depend on standard system runtime libraries such as `libstdc++`, `libffi`, `libz`, and `libtinfo`
 - binaries are unsigned
 - macOS binaries are not notarized
 - formatter comment round-tripping remains conservative in v0

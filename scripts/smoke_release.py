@@ -46,9 +46,63 @@ def run(cmd: list[str], cwd: Path, extra_env: dict[str, str] | None = None) -> N
         raise SystemExit(completed.returncode)
 
 
-def expected_example_binary(example_root: Path) -> Path:
-    binary_name = "hello-preview"
-    return example_root / "build" / binary_name
+def sanitized_runtime_env(root: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    llvm_path = env.get("LLVM_PATH")
+    filtered = []
+    for entry in env.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        entry_lower = entry.lower()
+        if llvm_path and os.path.normcase(entry).startswith(os.path.normcase(llvm_path)):
+            continue
+        if "llvm" in entry_lower:
+            continue
+        filtered.append(entry)
+    env["PATH"] = os.pathsep.join([str(root), *filtered])
+    for key in [
+        "LLVM_PATH",
+        "LLVM_SYS_140_PREFIX",
+        "LLVM_CONFIG_PATH",
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "LIBRARY_PATH",
+    ]:
+        env.pop(key, None)
+    return env
+
+
+def resolve_binary_path(base: Path) -> Path:
+    candidates = [base]
+    if base.suffix.lower() != ".exe":
+        candidates.append(base.with_suffix(".exe"))
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise SystemExit(f"expected built binary at one of: {', '.join(str(path) for path in candidates)}")
+
+
+def assert_no_llvm_runtime(binary: Path) -> None:
+    if sys.platform.startswith("linux") and shutil.which("ldd"):
+        completed = subprocess.run(
+            ["ldd", str(binary)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        deps = completed.stdout + completed.stderr
+        if "libLLVM" in deps or "libclang-cpp" in deps:
+            raise SystemExit("packaged release still depends on an external LLVM shared library")
+    elif sys.platform == "darwin" and shutil.which("otool"):
+        completed = subprocess.run(
+            ["otool", "-L", str(binary)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        deps = completed.stdout + completed.stderr
+        if "LLVM" in deps or "clang-cpp" in deps:
+            raise SystemExit("packaged release still depends on an external LLVM shared library")
 
 
 def smoke_lsp(binary: Path, cwd: Path, env: dict[str, str]) -> None:
@@ -88,8 +142,9 @@ def main() -> int:
             raise SystemExit(f"missing packaged binary: {binary}")
         if os.name != "nt":
             binary.chmod(binary.stat().st_mode | 0o111)
+        assert_no_llvm_runtime(binary)
 
-        env = {"PATH": str(root) + os.pathsep + os.environ.get("PATH", "")}
+        env = sanitized_runtime_env(root)
 
         run([str(binary), "--version"], cwd=root, extra_env=env)
         run([str(binary), "fmt", "--check", "examples/early-preview/hello-app/src"], cwd=root, extra_env=env)
@@ -97,16 +152,15 @@ def main() -> int:
         example_root = root / "examples" / "early-preview" / "hello-app"
         run([str(binary), "task"], cwd=example_root, extra_env=env)
         run([str(binary), "task", "build"], cwd=example_root, extra_env=env)
-        built_example = expected_example_binary(example_root)
-        if not built_example.exists():
-            raise SystemExit(f"expected built example binary at {built_example}")
+        built_example = resolve_binary_path(example_root / "build" / "hello-preview")
         run([str(built_example)], cwd=example_root, extra_env=env)
-        output_binary = root / ("hello-tooling.exe" if os.name == "nt" else "hello-tooling")
+        output_binary = root / "hello-tooling"
         run(
             [str(binary), "build", "examples/hello.dt", "-o", str(output_binary)],
             cwd=root,
             extra_env=env,
         )
+        output_binary = resolve_binary_path(output_binary)
         run([str(output_binary)], cwd=root, extra_env=env)
         run([str(binary), "run", "examples/hello.dt"], cwd=root, extra_env=env)
         smoke_lsp(binary, root, env)
