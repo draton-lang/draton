@@ -42,6 +42,7 @@ The following self-host files were migrated safely to canonical syntax in this p
 - `src/typeck/types/row.dt`
 - `src/typeck/types/scheme.dt`
 - `src/typeck/types/ty.dt`
+- `src/codegen/codegen.dt`
 
 Migration techniques used:
 
@@ -49,6 +50,7 @@ Migration techniques used:
 - local typed bindings moved to function-scope `@type`
 - top-level function contracts rewritten from `fn ... -> ...` members to binding-style `name: (...) -> ...`
 - executable function definitions stripped of inline parameter and return annotations
+- backend entry-layer locals that required typed empty-array initialization moved to function-scope `@type`
 
 ## Semantic Parity Completed In This Pass
 
@@ -77,6 +79,20 @@ Important status note:
 - the remaining work on those files is now mostly mechanical canonicalization, not missing parser or typechecker capability
 - that mechanical rewrite was intentionally left out of this pass to keep the semantic change reviewable
 
+## Backend Entry Layer Completed In This Pass
+
+The main self-host backend/codegen blocker has been reduced at the entry layer:
+
+- `src/codegen/codegen.dt` no longer depends on legacy inline syntax in its own source
+- the file now uses canonical class-scope `@type`, file-scope contract bindings, and function-scope `@type` for typed empty-array locals
+- canonical contract data flowing through typed items no longer required backend entry-point changes beyond the already-completed parser/typechecker parity work
+
+What remains in the backend slice is now narrower:
+
+- expression/item/statement emission files still carry compatibility-form inline syntax in their own source
+- those files are no longer blocked by missing canonical-contract semantics in the frontend mirror, but they were not mechanically rewritten in this pass
+- the remaining backend debt is therefore mostly source-level canonicalization and any downstream typed-AST cleanup tied to that emit/layout slice
+
 ## Skipped Files
 
 The files below still contain deprecated inline syntax after this pass.
@@ -102,7 +118,6 @@ These files are coupled to parts of the self-host mirror that still model or imp
 | `src/codegen/closure/capture.dt` | Closure capture walker still depends on current typed AST mirror shapes. |
 | `src/codegen/closure/emit.dt` | Closure emission still depends on legacy typed AST and checker mirror contracts. |
 | `src/codegen/closure/env.dt` | Closure environment layout still follows the current typed AST mirror, not a fully canonicalized one. |
-| `src/codegen/codegen.dt` | Core codegen state still contains many inline-typed fields and helper contracts tied to the broader non-migrated self-host backend slice; the new parser and typechecker parity is not enough on its own to rewrite this file safely. |
 | `src/codegen/emit/expr.dt` | Expression emission still depends on legacy typed AST/value-contract shapes. |
 | `src/codegen/emit/item.dt` | Item emission is coupled to current codegen and typed item mirror structures. |
 | `src/codegen/emit/stmt.dt` | Statement emission still follows the current typed statement mirror. |
@@ -134,12 +149,13 @@ After this pass, the self-host mirror is materially closer to canonical syntax i
 - lexer cursor/token/error/result helpers
 - self-host-facing utility modules that previously depended only on local typed bindings or class field annotations
 - self-host parser/typechecker/mono handling for function-scope and interface-scope canonical `@type`
+- self-host backend entry-layer codegen state and predeclaration plumbing
 
 What is still not true:
 
 - the self-host mirror is **not yet** at full semantic parity with the Rust frontend for canonical syntax
 - `--strict-syntax` still cannot be applied cleanly to the entire `src/` tree
-- the remaining debt is now concentrated mostly in the self-host backend/codegen slice and in the still-unmigrated source text of semantically-unblocked files
+- the remaining debt is now concentrated mostly in the self-host backend emit/layout slice and in the still-unmigrated source text of semantically-unblocked files
 
 In practice, the repository is now in an intermediate state:
 
@@ -159,6 +175,6 @@ In practice, the repository is now in an intermediate state:
 ## Recommended Next Steps
 
 1. Canonicalize the source text of the now-unblocked parser/typechecker/mono files without changing semantics.
-2. Migrate the remaining self-host backend/codegen slice, starting with `src/codegen/codegen.dt` and its typed-expression dependencies.
-3. Re-run `src/main.dt` under stricter focused checks once the backend slice is canonicalized enough to reduce warning noise.
+2. Migrate the remaining self-host backend emit/layout slice, starting with `src/codegen/emit/expr.dt`, `src/codegen/emit/item.dt`, and `src/codegen/emit/stmt.dt`.
+3. Re-run `src/main.dt` under stricter focused checks once the emit/layout slice is canonicalized enough to reduce warning noise.
 4. Finish large deferred printer/dump modules only after the semantic slices are stable.

@@ -2,124 +2,212 @@ import { TypedProgram, TypedItem, Type, type_display, CodeGenError, new_codegen_
          codegen_emit_item, build_class_layout, lower_type }
 
 class LLVMContext {
-    let mut raw: String
+    let mut raw
+
+    @type {
+        raw: String
+    }
 }
 
 class LLVMModule {
-    let mut raw: String
-    let mut lines: Array[String]
+    let mut raw
+    let mut lines
+
+    @type {
+        raw: String
+        lines: Array[String]
+    }
 }
 
 class LLVMBuilder {
-    let mut raw: String
-    let mut current_block: String
+    let mut raw
+    let mut current_block
+
+    @type {
+        raw: String
+        current_block: String
+    }
 }
 
 class LLVMType {
-    let mut raw: String
-    let mut is_void: Bool
-    let mut is_pointer: Bool
+    let mut raw
+    let mut is_void
+    let mut is_pointer
+
+    @type {
+        raw: String
+        is_void: Bool
+        is_pointer: Bool
+    }
 }
 
 class LLVMValue {
-    let mut raw: String
-    let mut value_ty: LLVMType
-    let mut exists: Bool
+    let mut raw
+    let mut value_ty
+    let mut exists
+
+    @type {
+        raw: String
+        value_ty: LLVMType
+        exists: Bool
+    }
 }
 
 class LLVMBlock {
-    let mut raw: String
-    let mut terminated: Bool
+    let mut raw
+    let mut terminated
+
+    @type {
+        raw: String
+        terminated: Bool
+    }
 }
 
 class LLVMTarget {
-    let mut raw: String
+    let mut raw
+
+    @type {
+        raw: String
+    }
 }
 
 class LLVMMachine {
-    let mut raw: String
+    let mut raw
+
+    @type {
+        raw: String
+    }
 }
 
 class ClassLayout {
-    let mut layout_name: String
-    let mut struct_type: LLVMType
-    let mut field_names: Array[String]
-    let mut field_indices: Array[Int]
-    let mut field_types: Array[LLVMType]
-    let mut method_names: Array[String]
-    let mut method_symbols: Array[String]
+    let mut layout_name
+    let mut struct_type
+    let mut field_names
+    let mut field_indices
+    let mut field_types
+    let mut method_names
+    let mut method_symbols
+
+    @type {
+        layout_name: String
+        struct_type: LLVMType
+        field_names: Array[String]
+        field_indices: Array[Int]
+        field_types: Array[LLVMType]
+        method_names: Array[String]
+        method_symbols: Array[String]
+    }
 }
 
 class CodeGen {
-    let mut context: LLVMContext
-    let mut module: LLVMModule
-    let mut builder: LLVMBuilder
-    let mut string_type: LLVMType
-    let mut i64_type: LLVMType
-    let mut f64_type: LLVMType
-    let mut bool_type: LLVMType
-    let mut void_type: LLVMType
-    let mut functions: Array[String]
-    let mut function_values: Array[LLVMValue]
-    let mut function_types: Array[LLVMType]
-    let mut class_names: Array[String]
-    let mut class_layouts: Array[ClassLayout]
-    let mut scope_names: Array[Array[String]]
-    let mut scope_values: Array[Array[LLVMValue]]
-    let mut current_fn: LLVMValue
-    let mut has_current_fn: Bool
-    let mut current_ret_ty: Type
-    let mut has_current_ret_ty: Bool
-    let mut current_class: String
-    let mut has_current_class: Bool
-    let mut string_counter: Int
-    let mut temp_counter: Int
-    let mut block_counter: Int
-    let mut block_terminated: Bool
-    let mut last_error: CodeGenError
+    let mut context
+    let mut module
+    let mut builder
+    let mut string_type
+    let mut i64_type
+    let mut f64_type
+    let mut bool_type
+    let mut void_type
+    let mut functions
+    let mut function_values
+    let mut function_types
+    let mut class_names
+    let mut class_layouts
+    let mut scope_names
+    let mut scope_values
+    let mut current_fn
+    let mut has_current_fn
+    let mut current_ret_ty
+    let mut has_current_ret_ty
+    let mut current_class
+    let mut has_current_class
+    let mut string_counter
+    let mut temp_counter
+    let mut block_counter
+    let mut block_terminated
+    let mut last_error
+
+    @type {
+        context: LLVMContext
+        module: LLVMModule
+        builder: LLVMBuilder
+        string_type: LLVMType
+        i64_type: LLVMType
+        f64_type: LLVMType
+        bool_type: LLVMType
+        void_type: LLVMType
+        functions: Array[String]
+        function_values: Array[LLVMValue]
+        function_types: Array[LLVMType]
+        class_names: Array[String]
+        class_layouts: Array[ClassLayout]
+        scope_names: Array[Array[String]]
+        scope_values: Array[Array[LLVMValue]]
+        current_fn: LLVMValue
+        has_current_fn: Bool
+        current_ret_ty: Type
+        has_current_ret_ty: Bool
+        current_class: String
+        has_current_class: Bool
+        string_counter: Int
+        temp_counter: Int
+        block_counter: Int
+        block_terminated: Bool
+        last_error: CodeGenError
+    }
 }
 
 @type {
-    fn new_codegen() -> CodeGen
-    fn new_llvm_type(raw: String, is_void: Bool, is_pointer: Bool) -> LLVMType
-    fn new_llvm_value(raw: String, value_ty: LLVMType, exists: Bool) -> LLVMValue
-    fn llvm_missing_value() -> LLVMValue
-    fn llvm_value_exists(value: LLVMValue) -> Bool
-    fn llvm_pointer_type(inner: LLVMType) -> LLVMType
-    fn cg_append_line(cg: CodeGen, line: String)
-    fn cg_append_named_line(cg: CodeGen, prefix: String, line: String)
-    fn cg_register_function(cg: CodeGen, name: String, fn_val: LLVMValue, fn_ty: LLVMType)
-    fn cg_lookup_function(cg: CodeGen, name: String) -> LLVMValue
-    fn cg_lookup_function_type(cg: CodeGen, name: String) -> LLVMType
-    fn cg_find_function_index(cg: CodeGen, name: String) -> Int
-    fn cg_find_class_index(cg: CodeGen, name: String) -> Int
-    fn cg_register_class_layout(cg: CodeGen, layout: ClassLayout)
-    fn cg_lookup_class_layout(cg: CodeGen, name: String) -> ClassLayout
-    fn cg_push_scope(cg: CodeGen)
-    fn cg_pop_scope(cg: CodeGen)
-    fn cg_define_local(cg: CodeGen, name: String, ptr: LLVMValue)
-    fn cg_lookup_local(cg: CodeGen, name: String) -> LLVMValue
-    fn cg_block_terminated(cg: CodeGen) -> Bool
-    fn cg_create_entry_alloca(cg: CodeGen, fn_val: LLVMValue, ty: LLVMType, name: String) -> LLVMValue
-    fn cg_fresh_name(cg: CodeGen, base: String) -> String
-    fn codegen_emit(cg: CodeGen, program: TypedProgram)
-    fn codegen_write_ir(cg: CodeGen, path: String)
-    fn codegen_write_object(cg: CodeGen, path: String)
-    fn codegen_declare_runtime(cg: CodeGen)
-    fn codegen_predeclare_items(cg: CodeGen, program: TypedProgram)
-    fn codegen_verify(cg: CodeGen)
+    new_codegen: () -> CodeGen
+    new_llvm_type: (String, Bool, Bool) -> LLVMType
+    new_llvm_value: (String, LLVMType, Bool) -> LLVMValue
+    llvm_missing_value: () -> LLVMValue
+    llvm_value_exists: (LLVMValue) -> Bool
+    llvm_pointer_type: (LLVMType) -> LLVMType
+    cg_append_line: (CodeGen, String) -> Unit
+    cg_append_named_line: (CodeGen, String, String) -> Unit
+    cg_register_function: (CodeGen, String, LLVMValue, LLVMType) -> Unit
+    cg_lookup_function: (CodeGen, String) -> LLVMValue
+    cg_lookup_function_type: (CodeGen, String) -> LLVMType
+    cg_find_function_index: (CodeGen, String) -> Int
+    cg_find_class_index: (CodeGen, String) -> Int
+    cg_register_class_layout: (CodeGen, ClassLayout) -> Unit
+    cg_lookup_class_layout: (CodeGen, String) -> ClassLayout
+    cg_push_scope: (CodeGen) -> Unit
+    cg_pop_scope: (CodeGen) -> Unit
+    cg_define_local: (CodeGen, String, LLVMValue) -> Unit
+    cg_lookup_local: (CodeGen, String) -> LLVMValue
+    cg_block_terminated: (CodeGen) -> Bool
+    cg_create_entry_alloca: (CodeGen, LLVMValue, LLVMType, String) -> LLVMValue
+    cg_fresh_name: (CodeGen, String) -> String
+    codegen_emit: (CodeGen, TypedProgram) -> Unit
+    codegen_write_ir: (CodeGen, String) -> Unit
+    codegen_write_object: (CodeGen, String) -> Unit
+    codegen_declare_runtime: (CodeGen) -> Unit
+    codegen_predeclare_items: (CodeGen, TypedProgram) -> Unit
+    codegen_verify: (CodeGen) -> Unit
 }
 
 fn new_codegen() {
+    @type {
+        module_lines: Array[String]
+        function_names: Array[String]
+        function_values: Array[LLVMValue]
+        function_types: Array[LLVMType]
+        class_names: Array[String]
+        class_layouts: Array[ClassLayout]
+        scope_names: Array[Array[String]]
+        scope_values: Array[Array[LLVMValue]]
+    }
     let cg = CodeGen()
-    let module_lines: Array[String] = []
-    let function_names: Array[String] = []
-    let function_values: Array[LLVMValue] = []
-    let function_types: Array[LLVMType] = []
-    let class_names: Array[String] = []
-    let class_layouts: Array[ClassLayout] = []
-    let scope_names: Array[Array[String]] = []
-    let scope_values: Array[Array[LLVMValue]] = []
+    let module_lines = []
+    let function_names = []
+    let function_values = []
+    let function_types = []
+    let class_names = []
+    let class_layouts = []
+    let scope_names = []
+    let scope_values = []
     let module = LLVMModule()
     module.raw = "module draton_selfhost"
     module.lines = module_lines
@@ -157,7 +245,7 @@ fn new_codegen() {
     cg
 }
 
-fn new_llvm_type(raw: String, is_void: Bool, is_pointer: Bool) {
+fn new_llvm_type(raw, is_void, is_pointer) {
     let ty = LLVMType()
     ty.raw = raw
     ty.is_void = is_void
@@ -165,7 +253,7 @@ fn new_llvm_type(raw: String, is_void: Bool, is_pointer: Bool) {
     ty
 }
 
-fn new_llvm_value(raw: String, value_ty: LLVMType, exists: Bool) {
+fn new_llvm_value(raw, value_ty, exists) {
     let value = LLVMValue()
     value.raw = raw
     value.value_ty = value_ty
@@ -177,15 +265,15 @@ fn llvm_missing_value() {
     new_llvm_value("", new_llvm_type("invalid", false, false), false)
 }
 
-fn llvm_value_exists(value: LLVMValue) {
+fn llvm_value_exists(value) {
     value.exists
 }
 
-fn llvm_pointer_type(inner: LLVMType) {
+fn llvm_pointer_type(inner) {
     new_llvm_type(str_concat(inner.raw, "*"), false, true)
 }
 
-fn cg_append_line(cg: CodeGen, line: String) {
+fn cg_append_line(cg, line) {
     cg.module.lines.push(line)
     if str_len(cg.module.raw) == 0 {
         cg.module.raw = line
@@ -195,11 +283,11 @@ fn cg_append_line(cg: CodeGen, line: String) {
     let _done = 0
 }
 
-fn cg_append_named_line(cg: CodeGen, prefix: String, line: String) {
+fn cg_append_named_line(cg, prefix, line) {
     cg_append_line(cg, str_concat(prefix, line))
 }
 
-fn cg_find_function_index(cg: CodeGen, name: String) {
+fn cg_find_function_index(cg, name) {
     let mut i = 0
     while i < cg.functions.len() {
         if str_eq_type(cg.functions[i], name) {
@@ -210,7 +298,7 @@ fn cg_find_function_index(cg: CodeGen, name: String) {
     -1
 }
 
-fn cg_register_function(cg: CodeGen, name: String, fn_val: LLVMValue, fn_ty: LLVMType) {
+fn cg_register_function(cg, name, fn_val, fn_ty) {
     let idx = cg_find_function_index(cg, name)
     if idx >= 0 {
         cg.function_values[idx] = fn_val
@@ -223,7 +311,7 @@ fn cg_register_function(cg: CodeGen, name: String, fn_val: LLVMValue, fn_ty: LLV
     let _done = 0
 }
 
-fn cg_lookup_function(cg: CodeGen, name: String) {
+fn cg_lookup_function(cg, name) {
     let idx = cg_find_function_index(cg, name)
     if idx >= 0 {
         return cg.function_values[idx]
@@ -231,7 +319,7 @@ fn cg_lookup_function(cg: CodeGen, name: String) {
     llvm_missing_value()
 }
 
-fn cg_lookup_function_type(cg: CodeGen, name: String) {
+fn cg_lookup_function_type(cg, name) {
     let idx = cg_find_function_index(cg, name)
     if idx >= 0 {
         return cg.function_types[idx]
@@ -239,7 +327,7 @@ fn cg_lookup_function_type(cg: CodeGen, name: String) {
     new_llvm_type("invalid_fn", false, false)
 }
 
-fn cg_find_class_index(cg: CodeGen, name: String) {
+fn cg_find_class_index(cg, name) {
     let mut i = 0
     while i < cg.class_names.len() {
         if str_eq_type(cg.class_names[i], name) {
@@ -250,7 +338,7 @@ fn cg_find_class_index(cg: CodeGen, name: String) {
     -1
 }
 
-fn cg_register_class_layout(cg: CodeGen, layout: ClassLayout) {
+fn cg_register_class_layout(cg, layout) {
     let idx = cg_find_class_index(cg, layout.layout_name)
     if idx >= 0 {
         cg.class_layouts[idx] = layout
@@ -261,17 +349,24 @@ fn cg_register_class_layout(cg: CodeGen, layout: ClassLayout) {
     let _done = 0
 }
 
-fn cg_lookup_class_layout(cg: CodeGen, name: String) {
+fn cg_lookup_class_layout(cg, name) {
+    @type {
+        field_names: Array[String]
+        field_indices: Array[Int]
+        field_types: Array[LLVMType]
+        method_names: Array[String]
+        method_symbols: Array[String]
+    }
     let idx = cg_find_class_index(cg, name)
     if idx >= 0 {
         return cg.class_layouts[idx]
     }
     let layout = ClassLayout()
-    let field_names: Array[String] = []
-    let field_indices: Array[Int] = []
-    let field_types: Array[LLVMType] = []
-    let method_names: Array[String] = []
-    let method_symbols: Array[String] = []
+    let field_names = []
+    let field_indices = []
+    let field_types = []
+    let method_names = []
+    let method_symbols = []
     layout.layout_name = name
     layout.struct_type = new_llvm_type(str_concat("%class.", name), false, false)
     layout.field_names = field_names
@@ -282,20 +377,28 @@ fn cg_lookup_class_layout(cg: CodeGen, name: String) {
     layout
 }
 
-fn cg_push_scope(cg: CodeGen) {
-    let names: Array[String] = []
-    let values: Array[LLVMValue] = []
+fn cg_push_scope(cg) {
+    @type {
+        names: Array[String]
+        values: Array[LLVMValue]
+    }
+    let names = []
+    let values = []
     cg.scope_names.push(names)
     cg.scope_values.push(values)
     let _done = 0
 }
 
-fn cg_pop_scope(cg: CodeGen) {
+fn cg_pop_scope(cg) {
+    @type {
+        kept_names: Array[Array[String]]
+        kept_values: Array[Array[LLVMValue]]
+    }
     if cg.scope_names.len() == 0 {
         return
     }
-    let kept_names: Array[Array[String]] = []
-    let kept_values: Array[Array[LLVMValue]] = []
+    let kept_names = []
+    let kept_values = []
     let mut i = 0
     while i + 1 < cg.scope_names.len() {
         kept_names.push(cg.scope_names[i])
@@ -307,7 +410,7 @@ fn cg_pop_scope(cg: CodeGen) {
     let _done = 0
 }
 
-fn cg_define_local(cg: CodeGen, name: String, ptr: LLVMValue) {
+fn cg_define_local(cg, name, ptr) {
     if cg.scope_names.len() == 0 {
         cg_push_scope(cg)
     }
@@ -325,7 +428,7 @@ fn cg_define_local(cg: CodeGen, name: String, ptr: LLVMValue) {
     let _done = 0
 }
 
-fn cg_lookup_local(cg: CodeGen, name: String) {
+fn cg_lookup_local(cg, name) {
     let mut i = cg.scope_names.len()
     while i > 0 {
         i = i - 1
@@ -340,11 +443,11 @@ fn cg_lookup_local(cg: CodeGen, name: String) {
     llvm_missing_value()
 }
 
-fn cg_block_terminated(cg: CodeGen) {
+fn cg_block_terminated(cg) {
     cg.block_terminated
 }
 
-fn cg_create_entry_alloca(cg: CodeGen, fn_val: LLVMValue, ty: LLVMType, name: String) {
+fn cg_create_entry_alloca(cg, fn_val, ty, name) {
     let slot_name = str_concat("%", str_concat(name, str_concat(".", int_to_string(cg.temp_counter))))
     cg.temp_counter = cg.temp_counter + 1
     let ptr = new_llvm_value(slot_name, llvm_pointer_type(ty), true)
@@ -357,13 +460,13 @@ fn cg_create_entry_alloca(cg: CodeGen, fn_val: LLVMValue, ty: LLVMType, name: St
     ptr
 }
 
-fn cg_fresh_name(cg: CodeGen, base: String) {
+fn cg_fresh_name(cg, base) {
     let name = str_concat(base, str_concat("_", int_to_string(cg.string_counter)))
     cg.string_counter = cg.string_counter + 1
     name
 }
 
-fn codegen_emit(cg: CodeGen, program: TypedProgram) {
+fn codegen_emit(cg, program) {
     codegen_declare_runtime(cg)
     codegen_predeclare_items(cg, program)
     let mut i = 0
@@ -375,18 +478,22 @@ fn codegen_emit(cg: CodeGen, program: TypedProgram) {
     let _done = 0
 }
 
-fn codegen_write_ir(cg: CodeGen, path: String) {
+fn codegen_write_ir(cg, path) {
     cg_append_line(cg, str_concat("; write-ir ", path))
     let _done = 0
 }
 
-fn codegen_write_object(cg: CodeGen, path: String) {
+fn codegen_write_object(cg, path) {
     cg_append_line(cg, str_concat("; write-object ", path))
     let _done = 0
 }
 
-fn codegen_declare_runtime(cg: CodeGen) {
-    let runtime_names: Array[String] = [
+fn codegen_declare_runtime(cg) {
+    @type {
+        runtime_names: Array[String]
+        runtime_types: Array[String]
+    }
+    let runtime_names = [
         "draton_gc_alloc",
         "draton_gc_write_barrier",
         "draton_gc_add_root",
@@ -399,7 +506,7 @@ fn codegen_declare_runtime(cg: CodeGen) {
         "draton_map_get",
         "draton_map_insert"
     ]
-    let runtime_types: Array[String] = [
+    let runtime_types = [
         "fn(i64, i64) -> ptr",
         "fn(ptr, ptr, ptr) -> void",
         "fn(ptr) -> void",
@@ -426,7 +533,7 @@ fn codegen_declare_runtime(cg: CodeGen) {
     let _done = 0
 }
 
-fn codegen_predeclare_items(cg: CodeGen, program: TypedProgram) {
+fn codegen_predeclare_items(cg, program) {
     let mut i = 0
     while i < program.program_items.len() {
         if str_eq_type(program.program_items[i].tag, "Class") {
@@ -472,7 +579,7 @@ fn codegen_predeclare_items(cg: CodeGen, program: TypedProgram) {
     let _done = 0
 }
 
-fn codegen_verify(cg: CodeGen) {
+fn codegen_verify(cg) {
     if cg_find_function_index(cg, "main") < 0 {
         cg.last_error = new_codegen_error("Verify", "missing main")
         cg_append_line(cg, "; verify: missing main")
