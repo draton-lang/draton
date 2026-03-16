@@ -208,7 +208,12 @@ impl Parser {
             return true;
         }
         matches!(
-            (next.kind.clone(), self.tokens.get(self.pos + 2).map(|token| token.kind.clone())),
+            (
+                next.kind.clone(),
+                self.tokens
+                    .get(self.pos + 2)
+                    .map(|token| token.kind.clone())
+            ),
             (TokenKind::Ident, Some(TokenKind::Colon))
         )
     }
@@ -283,7 +288,11 @@ impl Parser {
         let end = self.token_span();
         let _ = self.expect(TokenKind::RBrace, "}");
         let map = Expr::Map(entries, self.merge_spans(start, end));
-        Some(Expr::Call(Box::new(ident), vec![map], self.merge_spans(start, end)))
+        Some(Expr::Call(
+            Box::new(ident),
+            vec![map],
+            self.merge_spans(start, end),
+        ))
     }
 
     fn parse_argument_list(&mut self) -> Option<Vec<Expr>> {

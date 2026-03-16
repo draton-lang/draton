@@ -301,12 +301,15 @@ impl<'ctx> CodeGen<'ctx> {
         if self.module.get_function("draton_read_file").is_none() {
             self.module.add_function(
                 "draton_read_file",
-                self.string_type
-                    .fn_type(&[self.string_type.into()], false),
+                self.string_type.fn_type(&[self.string_type.into()], false),
                 None,
             );
         }
-        if self.module.get_function("draton_string_parse_int").is_none() {
+        if self
+            .module
+            .get_function("draton_string_parse_int")
+            .is_none()
+        {
             self.module.add_function(
                 "draton_string_parse_int",
                 self.context

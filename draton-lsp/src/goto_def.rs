@@ -1,12 +1,7 @@
 use crate::document::DocumentStore;
 use serde_json::{json, Value};
 
-pub fn goto_definition(
-    docs: &DocumentStore,
-    uri: &str,
-    line: usize,
-    col: usize,
-) -> Option<Value> {
+pub fn goto_definition(docs: &DocumentStore, uri: &str, line: usize, col: usize) -> Option<Value> {
     let doc = docs.get(uri)?;
     let analysis = doc.analysis.as_ref()?;
     let mut best = None::<&crate::analysis::DefEntry>;

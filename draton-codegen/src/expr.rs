@@ -83,9 +83,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedExprKind::Lambda(params, body) => {
                 self.emit_lambda(params, body, expr.span).map(Some)
             }
-            TypedExprKind::Map(_)
-            | TypedExprKind::Set(_)
-            | TypedExprKind::Chan(_) => {
+            TypedExprKind::Map(_) | TypedExprKind::Set(_) | TypedExprKind::Chan(_) => {
                 Err(CodeGenError::UnsupportedExpr(format!("{:?}", expr.kind)))
             }
         }
@@ -282,7 +280,11 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_call(
                     function,
                     &[lhs_value.into(), rhs_value.into()],
-                    if op == BinOp::Eq { "str.eq" } else { "str.ne.eq" },
+                    if op == BinOp::Eq {
+                        "str.eq"
+                    } else {
+                        "str.ne.eq"
+                    },
                 )
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?
                 .try_as_basic_value()
@@ -717,13 +719,9 @@ impl<'ctx> CodeGen<'ctx> {
                 continue;
             };
             let field_ptr = self.emit_field_ptr_in_class(object_ptr, class_name, field_name)?;
-            let value = self
-                .emit_expr(value_expr)?
-                .ok_or_else(|| {
-                    CodeGenError::UnsupportedExpr(
-                        "class field initializer missing value".to_string(),
-                    )
-                })?;
+            let value = self.emit_expr(value_expr)?.ok_or_else(|| {
+                CodeGenError::UnsupportedExpr("class field initializer missing value".to_string())
+            })?;
             self.build_store(field_ptr, value)?;
             if Self::is_gc_pointer_type(&value_expr.ty) {
                 let _ = self.emit_gc_write_barrier(object_ptr, field_ptr, value);
@@ -963,9 +961,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .module
                     .get_function("draton_string_parse_int_radix")
                     .ok_or_else(|| {
-                        CodeGenError::MissingSymbol(
-                            "draton_string_parse_int_radix".to_string(),
-                        )
+                        CodeGenError::MissingSymbol("draton_string_parse_int_radix".to_string())
                     })?;
                 let values = args
                     .iter()
@@ -1082,7 +1078,9 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                     })?)?
                     .ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr("host_type_dump arg missing value".to_string())
+                        CodeGenError::UnsupportedExpr(
+                            "host_type_dump arg missing value".to_string(),
+                        )
                     })?;
                 let call = self
                     .builder
@@ -1242,17 +1240,15 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(call.try_as_basic_value().left())
             }
             "contains" => {
-                let function = self
-                    .module
-                    .get_function("draton_str_contains")
-                    .ok_or_else(|| {
-                        CodeGenError::MissingSymbol("draton_str_contains".to_string())
-                    })?;
+                let function =
+                    self.module
+                        .get_function("draton_str_contains")
+                        .ok_or_else(|| {
+                            CodeGenError::MissingSymbol("draton_str_contains".to_string())
+                        })?;
                 let needle = self
                     .emit_expr(args.first().ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr(
-                            "String.contains expects 1 arg".to_string(),
-                        )
+                        CodeGenError::UnsupportedExpr("String.contains expects 1 arg".to_string())
                     })?)?
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr(
@@ -1261,7 +1257,11 @@ impl<'ctx> CodeGen<'ctx> {
                     })?;
                 let call = self
                     .builder
-                    .build_call(function, &[target_value.into(), needle.into()], "str.contains")
+                    .build_call(
+                        function,
+                        &[target_value.into(), needle.into()],
+                        "str.contains",
+                    )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
                 self.emit_safepoint_poll()?;
                 Ok(call.try_as_basic_value().left())
@@ -1286,7 +1286,11 @@ impl<'ctx> CodeGen<'ctx> {
                     })?;
                 let call = self
                     .builder
-                    .build_call(function, &[target_value.into(), prefix.into()], "str.starts")
+                    .build_call(
+                        function,
+                        &[target_value.into(), prefix.into()],
+                        "str.starts",
+                    )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
                 self.emit_safepoint_poll()?;
                 Ok(call.try_as_basic_value().left())
@@ -1295,9 +1299,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let function = self
                     .module
                     .get_function("draton_str_replace")
-                    .ok_or_else(|| {
-                        CodeGenError::MissingSymbol("draton_str_replace".to_string())
-                    })?;
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_str_replace".to_string()))?;
                 let from = self
                     .emit_expr(args.first().ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("String.replace expects 2 args".to_string())
@@ -1366,7 +1368,9 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         let array_ptr = self.emit_lvalue_ptr(target)?;
-        let array_value = self.build_load(array_ptr, "array.push.load")?.into_struct_value();
+        let array_value = self
+            .build_load(array_ptr, "array.push.load")?
+            .into_struct_value();
         let old_len = self
             .builder
             .build_extract_value(array_value, 0, "array.old.len")
@@ -1441,9 +1445,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_memcpy(new_i8, 1, old_i8, 1, old_bytes)
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
 
-        let value = self
-            .emit_expr(&args[0])?
-            .ok_or_else(|| CodeGenError::UnsupportedExpr("array.push arg missing value".to_string()))?;
+        let value = self.emit_expr(&args[0])?.ok_or_else(|| {
+            CodeGenError::UnsupportedExpr("array.push arg missing value".to_string())
+        })?;
         let end_slot = unsafe {
             self.builder
                 .build_gep(new_data, &[old_len], "array.push.slot")
@@ -1936,14 +1940,22 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_extract_value(subject, 1, "match.option.payload")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        let exit = self.context.append_basic_block(function, "match.option.exit");
+        let exit = self
+            .context
+            .append_basic_block(function, "match.option.exit");
         let result_slot = if matches!(ty, Type::Unit | Type::Never) {
             None
         } else {
-            Some(self.create_entry_alloca(function, self.llvm_basic_type(ty)?, "match.option.slot")?)
+            Some(self.create_entry_alloca(
+                function,
+                self.llvm_basic_type(ty)?,
+                "match.option.slot",
+            )?)
         };
 
-        let mut next_block = self.context.append_basic_block(function, "match.option.check");
+        let mut next_block = self
+            .context
+            .append_basic_block(function, "match.option.check");
         self.builder
             .build_unconditional_branch(next_block)
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
@@ -1968,7 +1980,9 @@ impl<'ctx> CodeGen<'ctx> {
                 };
             }
 
-            let arm_block = self.context.append_basic_block(function, "match.option.arm");
+            let arm_block = self
+                .context
+                .append_basic_block(function, "match.option.arm");
             let fallthrough = self
                 .context
                 .append_basic_block(function, "match.option.next");
@@ -1984,7 +1998,8 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.position_at_end(arm_block);
                     if let TypedExprKind::Ident(name) = &args[0].kind {
                         if name != "_" {
-                            let ptr = self.create_entry_alloca(function, payload.get_type(), name)?;
+                            let ptr =
+                                self.create_entry_alloca(function, payload.get_type(), name)?;
                             self.build_store(ptr, payload)?;
                             self.push_scope();
                             self.define_local(name, ptr);

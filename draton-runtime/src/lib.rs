@@ -4,13 +4,13 @@ pub mod gc;
 pub mod panic;
 pub mod scheduler;
 
-use std::fs;
 use std::env;
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 use std::ptr;
 use std::slice;
-use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -107,10 +107,12 @@ fn string_array_to_owned(values: DratonStringArray) -> Vec<String> {
     let slice = unsafe { slice::from_raw_parts(values.ptr, values.len as usize) };
     slice
         .iter()
-        .map(|value| draton_string_to_owned(DratonString {
-            len: value.len,
-            ptr: value.ptr,
-        }))
+        .map(|value| {
+            draton_string_to_owned(DratonString {
+                len: value.len,
+                ptr: value.ptr,
+            })
+        })
         .collect()
 }
 
@@ -374,9 +376,8 @@ fn host_build_source_impl(
     let entry = runtime_prepare_temp_project(source_path, &temp_root)?;
     let project_name = "phase5_bootstrap";
     let config_path = temp_root.join("draton.toml");
-    let config = format!(
-        "[project]\nname = \"{project_name}\"\nversion = \"0.1.0\"\nentry = \"{entry}\"\n"
-    );
+    let config =
+        format!("[project]\nname = \"{project_name}\"\nversion = \"0.1.0\"\nentry = \"{entry}\"\n");
     fs::write(&config_path, config)
         .map_err(|error| format!("khong the ghi {}: {error}", config_path.display()))?;
 
@@ -752,9 +753,7 @@ pub extern "C" fn draton_string_parse_int_radix(value: DratonString, radix: i64)
 /// Parses an f64 value and returns 0.0 on failure.
 #[no_mangle]
 pub extern "C" fn draton_string_parse_float(value: DratonString) -> f64 {
-    draton_string_to_owned(value)
-        .parse::<f64>()
-        .unwrap_or(0.0)
+    draton_string_to_owned(value).parse::<f64>().unwrap_or(0.0)
 }
 
 #[no_mangle]
@@ -827,7 +826,10 @@ pub extern "C" fn __draton_std_string_index_of(value: DratonString, sub: DratonS
 
 #[no_mangle]
 pub extern "C" fn __draton_std_string_ends_with(value: DratonString, suffix: DratonString) -> bool {
-    stdlib::string::ends_with(draton_string_to_owned(value), draton_string_to_owned(suffix))
+    stdlib::string::ends_with(
+        draton_string_to_owned(value),
+        draton_string_to_owned(suffix),
+    )
 }
 
 #[no_mangle]
@@ -840,7 +842,10 @@ pub extern "C" fn __draton_std_string_starts_with(
     value: DratonString,
     prefix: DratonString,
 ) -> bool {
-    stdlib::string::starts_with(draton_string_to_owned(value), draton_string_to_owned(prefix))
+    stdlib::string::starts_with(
+        draton_string_to_owned(value),
+        draton_string_to_owned(prefix),
+    )
 }
 
 #[no_mangle]
@@ -865,9 +870,7 @@ pub extern "C" fn __draton_std_string_slice(
     start: i64,
     end: i64,
 ) -> DratonString {
-    owned_string(
-        stdlib::string::slice(draton_string_to_owned(value), start, end).into_bytes(),
-    )
+    owned_string(stdlib::string::slice(draton_string_to_owned(value), start, end).into_bytes())
 }
 
 #[no_mangle]
@@ -899,10 +902,7 @@ pub extern "C" fn __draton_std_io_read_file(path: DratonString) -> DratonString 
 }
 
 #[no_mangle]
-pub extern "C" fn __draton_std_io_write_file(
-    path: DratonString,
-    content: DratonString,
-) -> bool {
+pub extern "C" fn __draton_std_io_write_file(path: DratonString, content: DratonString) -> bool {
     stdlib::fs::write(
         draton_string_to_owned(path),
         draton_string_to_owned(content),
@@ -911,10 +911,7 @@ pub extern "C" fn __draton_std_io_write_file(
 }
 
 #[no_mangle]
-pub extern "C" fn __draton_std_io_append_file(
-    path: DratonString,
-    content: DratonString,
-) -> bool {
+pub extern "C" fn __draton_std_io_append_file(path: DratonString, content: DratonString) -> bool {
     stdlib::fs::append(
         draton_string_to_owned(path),
         draton_string_to_owned(content),

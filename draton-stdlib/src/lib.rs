@@ -546,7 +546,11 @@ pub mod math {
 
     /// Returns the absolute value.
     pub fn abs(x: f64) -> f64 {
-        if x < 0.0 { -x } else { x }
+        if x < 0.0 {
+            -x
+        } else {
+            x
+        }
     }
 
     /// Floors a number.
