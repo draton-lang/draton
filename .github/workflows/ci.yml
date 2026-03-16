@@ -43,16 +43,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install LLVM 14
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "14.0.6"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-14 llvm-14-dev clang-14
 
       - name: Configure LLVM environment
         shell: bash
         run: |
-          echo "LLVM_SYS_140_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
-          echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
-          echo "$LLVM_PATH/bin" >> "$GITHUB_PATH"
+          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+          echo "LLVM_CONFIG_PATH=/usr/lib/llvm-14/bin/llvm-config" >> "$GITHUB_ENV"
+          echo "/usr/lib/llvm-14/bin" >> "$GITHUB_PATH"
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
