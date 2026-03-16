@@ -78,7 +78,24 @@ def copy_release_files(staging_root: Path, binary: Path, runtime_lib: Path) -> N
             examples_dir / "early-preview",
             dirs_exist_ok=True,
         )
+    bundle_windows_runtime_libs(staging_root, staged_binary)
     bundle_macos_runtime_libs(staging_root, staged_binary)
+
+
+def bundle_windows_runtime_libs(staging_root: Path, staged_binary: Path) -> None:
+    if staged_binary.suffix.lower() != ".exe":
+        return
+
+    llvm_path = os.environ.get("LLVM_PATH")
+    if not llvm_path:
+        return
+
+    llvm_bin_dir = Path(llvm_path) / "bin"
+    if not llvm_bin_dir.exists():
+        return
+
+    for dll in llvm_bin_dir.glob("*.dll"):
+        shutil.copy2(dll, staging_root / dll.name)
 
 
 def bundle_macos_runtime_libs(staging_root: Path, staged_binary: Path) -> None:
