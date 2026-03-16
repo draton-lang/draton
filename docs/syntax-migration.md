@@ -24,7 +24,7 @@ In the Rust compiler/tooling path:
 - default mode keeps legacy inline type syntax working and emits deprecation warnings
 - `drat build --strict-syntax` and `drat run --strict-syntax` turn the same deprecated forms into hard errors
 
-The self-host mirror has parser and AST parity for the main canonical forms, but it still does not have full semantic parity for every `@type`-driven workflow.
+The self-host executable/compiler path is now effectively at canonical syntax parity. The only remaining self-host compatibility-form files are the deferred dump/printer modules `src/ast/dump.dt` and `src/typeck/dump.dt`.
 
 ## Canonical replacements
 
@@ -123,4 +123,4 @@ CI status for the migrated self-host subset:
 
 - the repository enforces a strict-canonical subset with `python3 tools/check_selfhost_strict_subset.py`
 - that subset intentionally excludes only `src/ast/dump.dt` and `src/typeck/dump.dt`
-- full-tree self-host strict mode is not enabled yet because those files remain tracked blockers
+- full-tree self-host strict mode is not enabled yet because those two deferred dump/printer files remain tracked blockers

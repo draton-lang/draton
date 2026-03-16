@@ -121,7 +121,7 @@ The final-phase blocker set has now been reduced as follows:
 
 ## Current Readiness
 
-The self-host mirror is now effectively at canonical syntax parity for executable compiler paths:
+The self-host mirror is now effectively at canonical syntax parity for executable/compiler paths:
 
 - parser, typechecker, monomorphization, and backend/codegen slices are canonicalized where safe
 - all executable self-host files are now canonicalized where safe
@@ -132,7 +132,7 @@ Practical strict-canonical subset:
 
 - canonical compile fixtures
 - selected GC / lambda / interface strict builds
-- self-host-facing bootstrap builds that exercise parser, mono, and backend paths, while tolerating compatibility warnings from `src/typeck/infer/item.dt` and the dump modules
+- self-host-facing bootstrap builds that exercise parser, mono, and backend paths while excluding only the two deferred dump/printer modules
 
 What is not yet true:
 
@@ -172,6 +172,18 @@ What would still be required for full-tree strict self-host CI:
 
 1. canonicalize or intentionally retire `src/ast/dump.dt`
 2. canonicalize or intentionally retire `src/typeck/dump.dt`
+
+## Final Readiness
+
+Executable/compiler-path self-host canonical migration is complete.
+
+Current repository state:
+
+- the migrated self-host compiler path is covered by strict-canonical subset CI
+- the only remaining exclusions are `src/ast/dump.dt` and `src/typeck/dump.dt`
+- those files are deferred printer cleanup, not executable compiler blockers
+
+That means contributors can now treat canonical syntax as the normal rule for executable self-host code. Full-tree strict self-host CI would only require canonicalizing or intentionally retiring the two remaining dump modules.
 
 ## Verification Run
 

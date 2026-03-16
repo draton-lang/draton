@@ -178,15 +178,22 @@ drat run --strict-syntax examples/hello.dt
 ```
 
 Strict mode currently targets the Rust frontend/tooling path. The self-host mirror is closer to canonical syntax than before, but it does not yet have full semantic parity for every `@type` workflow.
-
 Canonical `@type` blocks are currently supported at file, class, layer, interface, and function scope in the Rust frontend/tooling path.
+
+Self-host readiness is now near-final:
+
+- executable/compiler-path self-host files are canonicalized where safe
+- the strict self-host CI subset covers that migrated compiler path
+- only two deferred non-executable dump modules remain excluded:
+  - `src/ast/dump.dt`
+  - `src/typeck/dump.dt`
 
 The repository now enforces a focused self-host strict-canonical subset in CI via [tools/check_selfhost_strict_subset.py](tools/check_selfhost_strict_subset.py). That subset intentionally excludes only:
 
 - `src/ast/dump.dt`
 - `src/typeck/dump.dt`
 
-Those remaining files are tracked explicitly in [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md). Full-tree self-host strict mode is not enabled yet.
+Those remaining files are tracked explicitly in [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md). Full-tree self-host strict mode is one final cleanup step away: canonicalize or intentionally retire those two dump modules.
 
 ### Enums and pattern matching
 
