@@ -567,7 +567,6 @@ fn link_binary(
         command.args(["-ldl", "-lpthread", "-lm", "-lc++"]);
     } else if cfg!(target_os = "windows") {
         command.args([
-            "-static",
             "-static-libgcc",
             "-static-libstdc++",
             "-lbcrypt",
