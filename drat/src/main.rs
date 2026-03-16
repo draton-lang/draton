@@ -1,5 +1,6 @@
 mod config;
 mod fmt;
+mod tooling;
 mod commands {
     pub mod add;
     pub mod ast_dump;
@@ -14,6 +15,7 @@ mod commands {
     pub mod remove;
     pub mod repl;
     pub mod run;
+    pub mod task;
     pub mod test;
     pub mod type_dump;
     pub mod update;
@@ -41,8 +43,9 @@ enum Command {
     LexDump { path: PathBuf },
     Run(RunFlags),
     Test,
-    Fmt,
-    Lint,
+    Fmt(FmtFlags),
+    Lint(LintFlags),
+    Task(TaskFlags),
     Doc,
     Lsp,
     Repl,
@@ -88,6 +91,25 @@ struct RunFlags {
     args: Vec<String>,
 }
 
+#[derive(Debug, Clone, Args)]
+struct FmtFlags {
+    #[arg(value_name = "PATH")]
+    paths: Vec<PathBuf>,
+    #[arg(long)]
+    check: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct LintFlags {
+    #[arg(value_name = "PATH")]
+    paths: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, Args)]
+struct TaskFlags {
+    name: Option<String>,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
@@ -131,8 +153,9 @@ fn main() -> Result<()> {
             }
         }
         Command::Test => commands::test::run(&cwd),
-        Command::Fmt => commands::fmt::run(&cwd),
-        Command::Lint => commands::lint::run(&cwd),
+        Command::Fmt(flags) => commands::fmt::run(&cwd, &flags.paths, flags.check),
+        Command::Lint(flags) => commands::lint::run(&cwd, &flags.paths),
+        Command::Task(flags) => commands::task::run(&cwd, flags.name.as_deref()),
         Command::Doc => commands::doc::run(&cwd),
         Command::Lsp => commands::lsp::run(),
         Command::Repl => commands::repl::run(),
