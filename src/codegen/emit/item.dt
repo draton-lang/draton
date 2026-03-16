@@ -5,12 +5,12 @@ import { CodeGen, LLVMValue, TypedItem, TypedFnDef, TypedClassDef, cg_lookup_fun
          class_field_ptr, ty_named }
 
 @type {
-    fn codegen_emit_item(cg: CodeGen, item: TypedItem)
-    fn emit_fn(cg: CodeGen, fn_def: TypedFnDef, current_class: String)
-    fn emit_class(cg: CodeGen, class_def: TypedClassDef)
+    codegen_emit_item: (CodeGen, TypedItem) -> Unit
+    emit_fn: (CodeGen, TypedFnDef, String) -> Unit
+    emit_class: (CodeGen, TypedClassDef) -> Unit
 }
 
-fn codegen_emit_item(cg: CodeGen, item: TypedItem) {
+fn codegen_emit_item(cg, item) {
     if str_eq_type(item.tag, "Fn") {
         emit_fn(cg, item.item_fn_def, "")
         return
@@ -35,7 +35,7 @@ fn codegen_emit_item(cg: CodeGen, item: TypedItem) {
     let _done = 0
 }
 
-fn emit_fn(cg: CodeGen, fn_def: TypedFnDef, current_class: String) {
+fn emit_fn(cg, fn_def, current_class) {
     let mut symbol = fn_def.fn_name
     if str_len(current_class) != 0 {
         symbol = str_concat(current_class, str_concat(".", fn_def.fn_name))
@@ -80,7 +80,7 @@ fn emit_fn(cg: CodeGen, fn_def: TypedFnDef, current_class: String) {
     let _done = 0
 }
 
-fn emit_class(cg: CodeGen, class_def: TypedClassDef) {
+fn emit_class(cg, class_def) {
     let ctor_name = str_concat(class_def.class_name, "_new")
     cg_append_line(cg, str_concat("define ", ctor_name))
     let obj = emit_gc_alloc(cg, ty_named(class_def.class_name, []), "obj")

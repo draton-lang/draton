@@ -5,26 +5,26 @@ import { CodeGen, LLVMValue, TypedExpr, TypedMatchArm, TypedFStrPart, Type, lowe
          llvm_value_exists, is_void_type, emit_block }
 
 @type {
-    fn emit_expr(cg: CodeGen, expr: TypedExpr) -> LLVMValue
-    fn emit_binop(cg: CodeGen, lhs: TypedExpr, op: String, rhs: TypedExpr, result_ty: Type) -> LLVMValue
-    fn emit_unop(cg: CodeGen, op: String, expr: TypedExpr) -> LLVMValue
-    fn emit_call(cg: CodeGen, callee: TypedExpr, args: Array[TypedExpr]) -> LLVMValue
-    fn emit_method_call(cg: CodeGen, target: TypedExpr, name: String, args: Array[TypedExpr]) -> LLVMValue
-    fn emit_field_access(cg: CodeGen, target: TypedExpr, name: String) -> LLVMValue
-    fn emit_index(cg: CodeGen, target: TypedExpr, index: TypedExpr) -> LLVMValue
-    fn emit_cast(cg: CodeGen, expr: TypedExpr, target_ty: Type) -> LLVMValue
-    fn emit_match(cg: CodeGen, subject: TypedExpr, arms: Array[TypedMatchArm], result_ty: Type) -> LLVMValue
-    fn emit_class_new(cg: CodeGen, expr: TypedExpr) -> LLVMValue
-    fn emit_array_lit(cg: CodeGen, items: Array[TypedExpr], ty: Type) -> LLVMValue
-    fn emit_tuple_lit(cg: CodeGen, items: Array[TypedExpr], ty: Type) -> LLVMValue
-    fn emit_result_ok(cg: CodeGen, expr: TypedExpr, ty: Type) -> LLVMValue
-    fn emit_result_err(cg: CodeGen, expr: TypedExpr, ty: Type) -> LLVMValue
-    fn emit_nullish(cg: CodeGen, lhs: TypedExpr, rhs: TypedExpr, ty: Type) -> LLVMValue
-    fn emit_fstr(cg: CodeGen, parts: Array[TypedFStrPart]) -> LLVMValue
-    fn emit_string_literal(cg: CodeGen, value: String) -> LLVMValue
+    emit_expr: (CodeGen, TypedExpr) -> LLVMValue
+    emit_binop: (CodeGen, TypedExpr, String, TypedExpr, Type) -> LLVMValue
+    emit_unop: (CodeGen, String, TypedExpr) -> LLVMValue
+    emit_call: (CodeGen, TypedExpr, Array[TypedExpr]) -> LLVMValue
+    emit_method_call: (CodeGen, TypedExpr, String, Array[TypedExpr]) -> LLVMValue
+    emit_field_access: (CodeGen, TypedExpr, String) -> LLVMValue
+    emit_index: (CodeGen, TypedExpr, TypedExpr) -> LLVMValue
+    emit_cast: (CodeGen, TypedExpr, Type) -> LLVMValue
+    emit_match: (CodeGen, TypedExpr, Array[TypedMatchArm], Type) -> LLVMValue
+    emit_class_new: (CodeGen, TypedExpr) -> LLVMValue
+    emit_array_lit: (CodeGen, Array[TypedExpr], Type) -> LLVMValue
+    emit_tuple_lit: (CodeGen, Array[TypedExpr], Type) -> LLVMValue
+    emit_result_ok: (CodeGen, TypedExpr, Type) -> LLVMValue
+    emit_result_err: (CodeGen, TypedExpr, Type) -> LLVMValue
+    emit_nullish: (CodeGen, TypedExpr, TypedExpr, Type) -> LLVMValue
+    emit_fstr: (CodeGen, Array[TypedFStrPart]) -> LLVMValue
+    emit_string_literal: (CodeGen, String) -> LLVMValue
 }
 
-fn emit_expr(cg: CodeGen, expr: TypedExpr) {
+fn emit_expr(cg, expr) {
     if str_eq_type(expr.tag, "IntLit") {
         return new_llvm_value(int_to_string(expr.int_value), lower_type(cg, expr.expr_ty), true)
     }
@@ -127,7 +127,7 @@ fn emit_expr(cg: CodeGen, expr: TypedExpr) {
     new_llvm_value(str_concat("expr.", expr.tag), lower_type(cg, expr.expr_ty), false)
 }
 
-fn emit_binop(cg: CodeGen, lhs: TypedExpr, op: String, rhs: TypedExpr, result_ty: Type) {
+fn emit_binop(cg, lhs, op, rhs, result_ty) {
     let left = emit_expr(cg, lhs)
     let right = emit_expr(cg, rhs)
     let raw = str_concat("%bin.", int_to_string(cg.temp_counter))
@@ -136,7 +136,7 @@ fn emit_binop(cg: CodeGen, lhs: TypedExpr, op: String, rhs: TypedExpr, result_ty
     new_llvm_value(raw, lower_type(cg, result_ty), true)
 }
 
-fn emit_unop(cg: CodeGen, op: String, expr: TypedExpr) {
+fn emit_unop(cg, op, expr) {
     let inner = emit_expr(cg, expr)
     let raw = str_concat("%un.", int_to_string(cg.temp_counter))
     cg.temp_counter = cg.temp_counter + 1
@@ -144,8 +144,11 @@ fn emit_unop(cg: CodeGen, op: String, expr: TypedExpr) {
     new_llvm_value(raw, lower_type(cg, expr.expr_ty), true)
 }
 
-fn emit_call(cg: CodeGen, callee: TypedExpr, args: Array[TypedExpr]) {
-    let arg_values: Array[LLVMValue] = []
+fn emit_call(cg, callee, args) {
+    @type {
+        arg_values: Array[LLVMValue]
+    }
+    let arg_values = []
     let mut i = 0
     while i < args.len() {
         arg_values.push(emit_expr(cg, args[i]))
@@ -162,8 +165,12 @@ fn emit_call(cg: CodeGen, callee: TypedExpr, args: Array[TypedExpr]) {
     result
 }
 
-fn emit_method_call(cg: CodeGen, target: TypedExpr, name: String, args: Array[TypedExpr]) {
-    let arg_values: Array[LLVMValue] = []
+fn emit_method_call(cg, target, name, args) {
+    @type {
+        arg_values: Array[LLVMValue]
+        all_args: Array[LLVMValue]
+    }
+    let arg_values = []
     let recv = emit_expr(cg, target)
     let mut i = 0
     while i < args.len() {
@@ -171,7 +178,7 @@ fn emit_method_call(cg: CodeGen, target: TypedExpr, name: String, args: Array[Ty
         i = i + 1
     }
     if str_eq_type(target.expr_ty.type_kind, "Named") {
-        let all_args: Array[LLVMValue] = [recv]
+        let all_args = [recv]
         i = 0
         while i < arg_values.len() {
             all_args.push(arg_values[i])
@@ -187,19 +194,19 @@ fn emit_method_call(cg: CodeGen, target: TypedExpr, name: String, args: Array[Ty
     result
 }
 
-fn emit_field_access(cg: CodeGen, target: TypedExpr, name: String) {
+fn emit_field_access(cg, target, name) {
     let recv = emit_expr(cg, target)
     let field_ptr = class_field_ptr(cg, recv, target.expr_ty.ty_name, name)
     new_llvm_value(str_concat("load ", field_ptr.raw), lower_type(cg, target.expr_ty), true)
 }
 
-fn emit_index(cg: CodeGen, target: TypedExpr, index: TypedExpr) {
+fn emit_index(cg, target, index) {
     let recv = emit_expr(cg, target)
     let idx = emit_expr(cg, index)
     new_llvm_value(str_concat(recv.raw, str_concat("[", str_concat(idx.raw, "]"))), lower_type(cg, target.expr_ty), true)
 }
 
-fn emit_cast(cg: CodeGen, expr: TypedExpr, target_ty: Type) {
+fn emit_cast(cg, expr, target_ty) {
     let value = emit_expr(cg, expr)
     let raw = str_concat("%cast.", int_to_string(cg.temp_counter))
     cg.temp_counter = cg.temp_counter + 1
@@ -207,7 +214,7 @@ fn emit_cast(cg: CodeGen, expr: TypedExpr, target_ty: Type) {
     new_llvm_value(raw, lower_type(cg, target_ty), true)
 }
 
-fn emit_match(cg: CodeGen, subject: TypedExpr, arms: Array[TypedMatchArm], result_ty: Type) {
+fn emit_match(cg, subject, arms, result_ty) {
     let subject_value = emit_expr(cg, subject)
     let raw = str_concat("%match.", int_to_string(cg.temp_counter))
     cg.temp_counter = cg.temp_counter + 1
@@ -227,9 +234,12 @@ fn emit_match(cg: CodeGen, subject: TypedExpr, arms: Array[TypedMatchArm], resul
     new_llvm_value(raw, lower_type(cg, result_ty), true)
 }
 
-fn emit_class_new(cg: CodeGen, expr: TypedExpr) {
+fn emit_class_new(cg, expr) {
     let ctor_name = str_concat(expr.class_name, "_new")
-    let args: Array[LLVMValue] = []
+    @type {
+        args: Array[LLVMValue]
+    }
+    let args = []
     let mut i = 0
     while i < expr.field_values.len() {
         args.push(emit_expr(cg, expr.field_values[i]))
@@ -238,7 +248,7 @@ fn emit_class_new(cg: CodeGen, expr: TypedExpr) {
     emit_direct_call(cg, ctor_name, args, cg_fresh_name(cg, "new"))
 }
 
-fn emit_array_lit(cg: CodeGen, items: Array[TypedExpr], ty: Type) {
+fn emit_array_lit(cg, items, ty) {
     let raw = str_concat("%array.", int_to_string(cg.temp_counter))
     cg.temp_counter = cg.temp_counter + 1
     let mut i = 0
@@ -250,7 +260,7 @@ fn emit_array_lit(cg: CodeGen, items: Array[TypedExpr], ty: Type) {
     new_llvm_value(raw, lower_type(cg, ty), true)
 }
 
-fn emit_tuple_lit(cg: CodeGen, items: Array[TypedExpr], ty: Type) {
+fn emit_tuple_lit(cg, items, ty) {
     let raw = str_concat("%tuple.", int_to_string(cg.temp_counter))
     cg.temp_counter = cg.temp_counter + 1
     let mut i = 0
@@ -262,17 +272,17 @@ fn emit_tuple_lit(cg: CodeGen, items: Array[TypedExpr], ty: Type) {
     new_llvm_value(raw, lower_type(cg, ty), true)
 }
 
-fn emit_result_ok(cg: CodeGen, expr: TypedExpr, ty: Type) {
+fn emit_result_ok(cg, expr, ty) {
     let value = emit_expr(cg, expr)
     new_llvm_value(str_concat("ok(", str_concat(value.raw, ")")), lower_type(cg, ty), true)
 }
 
-fn emit_result_err(cg: CodeGen, expr: TypedExpr, ty: Type) {
+fn emit_result_err(cg, expr, ty) {
     let value = emit_expr(cg, expr)
     new_llvm_value(str_concat("err(", str_concat(value.raw, ")")), lower_type(cg, ty), true)
 }
 
-fn emit_nullish(cg: CodeGen, lhs: TypedExpr, rhs: TypedExpr, ty: Type) {
+fn emit_nullish(cg, lhs, rhs, ty) {
     let left = emit_expr(cg, lhs)
     let right = emit_expr(cg, rhs)
     let raw = str_concat("%nullish.", int_to_string(cg.temp_counter))
@@ -281,7 +291,7 @@ fn emit_nullish(cg: CodeGen, lhs: TypedExpr, rhs: TypedExpr, ty: Type) {
     new_llvm_value(raw, lower_type(cg, ty), true)
 }
 
-fn emit_fstr(cg: CodeGen, parts: Array[TypedFStrPart]) {
+fn emit_fstr(cg, parts) {
     let mut rendered = ""
     let mut i = 0
     while i < parts.len() {
@@ -296,7 +306,7 @@ fn emit_fstr(cg: CodeGen, parts: Array[TypedFStrPart]) {
     emit_string_literal(cg, rendered)
 }
 
-fn emit_string_literal(cg: CodeGen, value: String) {
+fn emit_string_literal(cg, value) {
     let raw = str_concat("@str.", int_to_string(cg.string_counter))
     cg.string_counter = cg.string_counter + 1
     cg_append_line(cg, str_concat(raw, str_concat(" = string ", value)))

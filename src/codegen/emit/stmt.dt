@@ -6,18 +6,18 @@ import { CodeGen, LLVMValue, TypedStmt, TypedExpr, TypedLetStmt, TypedAssignStmt
          is_void_type }
 
 @type {
-    fn emit_block(cg: CodeGen, block: TypedBlock) -> LLVMValue
-    fn emit_stmt(cg: CodeGen, stmt: TypedStmt) -> LLVMValue
-    fn emit_let(cg: CodeGen, s: TypedLetStmt) -> LLVMValue
-    fn emit_assign(cg: CodeGen, s: TypedAssignStmt)
-    fn emit_return(cg: CodeGen, s: TypedReturnStmt)
-    fn emit_if(cg: CodeGen, s: TypedIfStmt)
-    fn emit_for(cg: CodeGen, s: TypedForStmt)
-    fn emit_while(cg: CodeGen, s: TypedWhileStmt)
-    fn emit_lvalue_ptr(cg: CodeGen, expr: TypedExpr) -> LLVMValue
+    emit_block: (CodeGen, TypedBlock) -> LLVMValue
+    emit_stmt: (CodeGen, TypedStmt) -> LLVMValue
+    emit_let: (CodeGen, TypedLetStmt) -> LLVMValue
+    emit_assign: (CodeGen, TypedAssignStmt) -> Unit
+    emit_return: (CodeGen, TypedReturnStmt) -> Unit
+    emit_if: (CodeGen, TypedIfStmt) -> Unit
+    emit_for: (CodeGen, TypedForStmt) -> Unit
+    emit_while: (CodeGen, TypedWhileStmt) -> Unit
+    emit_lvalue_ptr: (CodeGen, TypedExpr) -> LLVMValue
 }
 
-fn emit_block(cg: CodeGen, block: TypedBlock) {
+fn emit_block(cg, block) {
     cg_push_scope(cg)
     let mut last = new_llvm_value("", new_llvm_type("invalid", false, false), false)
     let mut i = 0
@@ -29,7 +29,7 @@ fn emit_block(cg: CodeGen, block: TypedBlock) {
     last
 }
 
-fn emit_stmt(cg: CodeGen, stmt: TypedStmt) {
+fn emit_stmt(cg, stmt) {
     if str_eq_type(stmt.tag, "Let") {
         return emit_let(cg, stmt.stmt_let)
     }
@@ -71,7 +71,7 @@ fn emit_stmt(cg: CodeGen, stmt: TypedStmt) {
     new_llvm_value("", new_llvm_type("void", true, false), false)
 }
 
-fn emit_let(cg: CodeGen, s: TypedLetStmt) {
+fn emit_let(cg, s) {
     let slot = cg_create_entry_alloca(cg, cg.current_fn, lower_type(cg, s.let_ty), s.let_name)
     cg_define_local(cg, s.let_name, slot)
     emit_gc_root(cg, slot)
@@ -85,7 +85,7 @@ fn emit_let(cg: CodeGen, s: TypedLetStmt) {
     new_llvm_value("", new_llvm_type("void", true, false), false)
 }
 
-fn emit_assign(cg: CodeGen, s: TypedAssignStmt) {
+fn emit_assign(cg, s) {
     let target_ptr = emit_lvalue_ptr(cg, s.assign_target)
     if s.assign_has_value {
         let value = emit_expr(cg, s.assign_value)
@@ -97,7 +97,7 @@ fn emit_assign(cg: CodeGen, s: TypedAssignStmt) {
     let _done = 0
 }
 
-fn emit_return(cg: CodeGen, s: TypedReturnStmt) {
+fn emit_return(cg, s) {
     if s.return_has_value {
         let value = emit_expr(cg, s.return_value)
         cg_append_line(cg, str_concat("ret ", value.raw))
@@ -108,7 +108,7 @@ fn emit_return(cg: CodeGen, s: TypedReturnStmt) {
     let _done = 0
 }
 
-fn emit_if(cg: CodeGen, s: TypedIfStmt) {
+fn emit_if(cg, s) {
     let cond = emit_expr(cg, s.if_condition)
     cg_append_line(cg, str_concat("; if ", cond.raw))
     let old_term = cg.block_terminated
@@ -129,7 +129,7 @@ fn emit_if(cg: CodeGen, s: TypedIfStmt) {
     let _done = 0
 }
 
-fn emit_for(cg: CodeGen, s: TypedForStmt) {
+fn emit_for(cg, s) {
     let iter = emit_expr(cg, s.for_iter)
     cg_append_line(cg, str_concat("; for ", iter.raw))
     cg_push_scope(cg)
@@ -142,7 +142,7 @@ fn emit_for(cg: CodeGen, s: TypedForStmt) {
     let _done = 0
 }
 
-fn emit_while(cg: CodeGen, s: TypedWhileStmt) {
+fn emit_while(cg, s) {
     let cond = emit_expr(cg, s.while_condition)
     cg_append_line(cg, str_concat("; while ", cond.raw))
     let _body_last = emit_block(cg, s.while_body)
@@ -151,7 +151,7 @@ fn emit_while(cg: CodeGen, s: TypedWhileStmt) {
     let _done = 0
 }
 
-fn emit_lvalue_ptr(cg: CodeGen, expr: TypedExpr) {
+fn emit_lvalue_ptr(cg, expr) {
     if str_eq_type(expr.tag, "Ident") {
         return cg_lookup_local(cg, expr.ident_name)
     }

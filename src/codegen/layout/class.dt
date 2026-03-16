@@ -1,17 +1,24 @@
 import { TypedClassDef, CodeGen, ClassLayout, LLVMValue, new_llvm_type, new_llvm_value, cg_register_class_layout, cg_lookup_class_layout, cg_find_class_index, cg_append_line, lower_type, llvm_pointer_type, str_eq_type }
 
 @type {
-    fn build_class_layout(cg: CodeGen, class_def: TypedClassDef)
-    fn class_field_ptr(cg: CodeGen, obj_ptr: LLVMValue, class_name: String, field_name: String) -> LLVMValue
+    build_class_layout: (CodeGen, TypedClassDef) -> Unit
+    class_field_ptr: (CodeGen, LLVMValue, String, String) -> LLVMValue
 }
 
-fn build_class_layout(cg: CodeGen, class_def: TypedClassDef) {
+fn build_class_layout(cg, class_def) {
+    @type {
+        field_names: Array[String]
+        field_indices: Array[Int]
+        field_types: Array[LLVMType]
+        method_names: Array[String]
+        method_symbols: Array[String]
+    }
     let layout = ClassLayout()
-    let field_names: Array[String] = []
-    let field_indices: Array[Int] = []
-    let field_types: Array[LLVMType] = []
-    let method_names: Array[String] = []
-    let method_symbols: Array[String] = []
+    let field_names = []
+    let field_indices = []
+    let field_types = []
+    let method_names = []
+    let method_symbols = []
     layout.layout_name = class_def.class_name
     layout.struct_type = new_llvm_type(str_concat("%class.", class_def.class_name), false, false)
     layout.field_names = field_names
@@ -45,7 +52,7 @@ fn build_class_layout(cg: CodeGen, class_def: TypedClassDef) {
     let _done = 0
 }
 
-fn class_field_ptr(cg: CodeGen, obj_ptr: LLVMValue, class_name: String, field_name: String) {
+fn class_field_ptr(cg, obj_ptr, class_name, field_name) {
     let layout = cg_lookup_class_layout(cg, class_name)
     let mut i = 0
     while i < layout.field_names.len() {
