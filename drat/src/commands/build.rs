@@ -542,7 +542,7 @@ fn link_binary(
     if let Some(target) = target {
         ensure_supported_target(target)?;
     }
-    let mut command = Command::new("cc");
+    let mut command = linker_command();
     command.arg(object_path);
     if env::var_os("DRATON_SKIP_RUNTIME_LINK").is_none() {
         let runtime_lib = ensure_runtime_staticlib(profile)?;
@@ -565,6 +565,8 @@ fn link_binary(
     } else if cfg!(target_os = "macos") {
         command.arg("-Wl,-multiply_defined,suppress");
         command.args(["-ldl", "-lpthread", "-lm", "-lc++"]);
+    } else if cfg!(target_os = "windows") {
+        command.args(["-static", "-static-libgcc", "-static-libstdc++"]);
     }
     let output = command
         .output()
@@ -575,6 +577,7 @@ fn link_binary(
             String::from_utf8_lossy(&output.stderr)
         );
     }
+    copy_windows_runtime_dlls(binary_path)?;
     Ok(())
 }
 
@@ -640,13 +643,81 @@ fn ensure_runtime_staticlib(profile: Profile) -> Result<PathBuf> {
 fn packaged_runtime_staticlib() -> Option<PathBuf> {
     let exe = env::current_exe().ok()?;
     let dir = exe.parent()?;
-    let filename = if cfg!(windows) {
-        "draton_runtime.lib"
-    } else {
-        "libdraton_runtime.a"
-    };
-    let path = dir.join(filename);
+    if cfg!(windows) {
+        let gnu_path = dir.join("libdraton_runtime.a");
+        if packaged_windows_gnu_root().is_some() && gnu_path.exists() {
+            return Some(gnu_path);
+        }
+        let msvc_path = dir.join("draton_runtime.lib");
+        return msvc_path.exists().then_some(msvc_path);
+    }
+    let path = dir.join("libdraton_runtime.a");
     path.exists().then_some(path)
+}
+
+fn linker_command() -> Command {
+    if cfg!(windows) {
+        if let Some(root) = packaged_windows_gnu_root() {
+            let driver = ["g++.exe", "gcc.exe", "cc.exe"]
+                .into_iter()
+                .map(|name| root.join("bin").join(name))
+                .find(|path| path.exists());
+            if let Some(driver) = driver {
+                let mut command = Command::new(driver);
+                prepend_path(&mut command, &root.join("bin"));
+                return command;
+            }
+        }
+    }
+    Command::new("cc")
+}
+
+fn packaged_windows_gnu_root() -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let exe = env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let root = dir.join("windows-gnu");
+    root.exists().then_some(root)
+}
+
+fn prepend_path(command: &mut Command, entry: &Path) {
+    let mut path_entries = vec![entry.to_path_buf()];
+    if let Some(existing) = env::var_os("PATH") {
+        path_entries.extend(env::split_paths(&existing));
+    }
+    if let Ok(path) = env::join_paths(path_entries) {
+        command.env("PATH", path);
+    }
+}
+
+fn copy_windows_runtime_dlls(binary_path: &Path) -> Result<()> {
+    if !cfg!(windows) {
+        return Ok(());
+    }
+    let Some(root) = packaged_windows_gnu_root() else {
+        return Ok(());
+    };
+    let Some(dest_dir) = binary_path.parent() else {
+        return Ok(());
+    };
+    let bin_dir = root.join("bin");
+    for name in ["libgcc_s_seh-1.dll", "libstdc++-6.dll", "libwinpthread-1.dll"] {
+        let source = bin_dir.join(name);
+        if !source.exists() {
+            continue;
+        }
+        let dest = dest_dir.join(name);
+        fs::copy(&source, &dest).with_context(|| {
+            format!(
+                "khong the copy windows runtime dll {} -> {}",
+                source.display(),
+                dest.display()
+            )
+        })?;
+    }
+    Ok(())
 }
 
 fn workspace_root() -> PathBuf {

@@ -60,6 +60,10 @@ def copy_release_files(staging_root: Path, binary: Path, runtime_lib: Path) -> N
         ensure_executable(staged_binary)
 
     shutil.copy2(runtime_lib, staging_root / runtime_lib.name)
+    if binary.suffix.lower() == ".exe":
+        extra_runtime = binary.parent / "libdraton_runtime.a"
+        if extra_runtime.exists() and extra_runtime.resolve() != runtime_lib.resolve():
+            shutil.copy2(extra_runtime, staging_root / extra_runtime.name)
     shutil.copy2(repo_root / "LICENSE", staging_root / "LICENSE")
     shutil.copy2(repo_root / "QUICKSTART.md", staging_root / "QUICKSTART.md")
     shutil.copy2(repo_root / "docs" / "install.md", staging_root / "INSTALL.md")
@@ -78,8 +82,33 @@ def copy_release_files(staging_root: Path, binary: Path, runtime_lib: Path) -> N
             examples_dir / "early-preview",
             dirs_exist_ok=True,
         )
+    bundle_windows_gnu_toolchain(staging_root)
     bundle_windows_runtime_libs(staging_root, staged_binary)
     bundle_macos_runtime_libs(staging_root, staged_binary)
+
+
+def bundle_windows_gnu_toolchain(staging_root: Path) -> None:
+    if sys.platform != "win32":
+        return
+
+    mingw_root = os.environ.get("DRATON_WINDOWS_GNU_ROOT")
+    if not mingw_root:
+        candidate = Path("C:/mingw64")
+        if candidate.exists():
+            mingw_root = str(candidate)
+    if not mingw_root:
+        return
+
+    source_root = Path(mingw_root)
+    if not source_root.exists():
+        return
+
+    target_root = staging_root / "windows-gnu"
+    for relative in ["bin", "lib", "libexec", "x86_64-w64-mingw32"]:
+        source = source_root / relative
+        if not source.exists():
+            continue
+        shutil.copytree(source, target_root / relative, dirs_exist_ok=True)
 
 
 def bundle_windows_runtime_libs(staging_root: Path, staged_binary: Path) -> None:

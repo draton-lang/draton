@@ -199,6 +199,17 @@ jobs:
         if: ${{ matrix.supported }}
         uses: Swatinem/rust-cache@v2
 
+      - name: Build GNU runtime companion (Windows)
+        if: ${{ matrix.supported && runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          cargo build --release --locked -p draton-runtime --target x86_64-pc-windows-gnu
+          Copy-Item -Force `
+            target/x86_64-pc-windows-gnu/release/libdraton_runtime.a `
+            target/${{ matrix.target }}/release/libdraton_runtime.a
+          "DRATON_WINDOWS_GNU_ROOT=C:\mingw64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Build release binaries
         if: ${{ matrix.supported }}
         run: cargo build --release --locked -p drat -p draton-runtime -p draton-lsp --target ${{ matrix.target }}
