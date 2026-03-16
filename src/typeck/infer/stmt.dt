@@ -6,24 +6,27 @@ import { Checker, Type, Scheme, TypedStmt, TypedStmtKind, TypedLetStmt, TypedAss
          SpawnStmt, SpawnBody, AssignOp, Span, TypeBlockDef }
 
 @type {
-    fn infer_block(c: Checker, block: Block) -> TypedBlock
-    fn infer_stmt(c: Checker, stmt: Stmt) -> TypedStmt
-    fn infer_let(c: Checker, s: LetStmt) -> TypedStmt
-    fn infer_assign(c: Checker, s: AssignStmt) -> TypedStmt
-    fn infer_return(c: Checker, s: ReturnStmt) -> TypedStmt
-    fn infer_if(c: Checker, s: IfStmt) -> TypedStmt
-    fn infer_for(c: Checker, s: ForStmt) -> TypedStmt
-    fn infer_while(c: Checker, s: WhileStmt) -> TypedStmt
-    fn infer_spawn(c: Checker, s: SpawnStmt) -> TypedStmt
-    fn infer_type_block(c: Checker, def: TypeBlockDef) -> TypedTypeBlockDef
-    fn has_local_binding_hint(c: Checker, name: String) -> Bool
-    fn lookup_local_binding_hint(c: Checker, name: String) -> Type
+    infer_block: (Checker, Block) -> TypedBlock
+    infer_stmt: (Checker, Stmt) -> TypedStmt
+    infer_let: (Checker, LetStmt) -> TypedStmt
+    infer_assign: (Checker, AssignStmt) -> TypedStmt
+    infer_return: (Checker, ReturnStmt) -> TypedStmt
+    infer_if: (Checker, IfStmt) -> TypedStmt
+    infer_for: (Checker, ForStmt) -> TypedStmt
+    infer_while: (Checker, WhileStmt) -> TypedStmt
+    infer_spawn: (Checker, SpawnStmt) -> TypedStmt
+    infer_type_block: (Checker, TypeBlockDef) -> TypedTypeBlockDef
+    has_local_binding_hint: (Checker, String) -> Bool
+    lookup_local_binding_hint: (Checker, String) -> Type
 }
 
-fn infer_block(c: Checker, block: Block) {
+fn infer_block(c, block) {
+    @type {
+        stmts: Array[TypedStmt]
+    }
     env_push_scope(c.env)
     let typed = TypedBlock()
-    let stmts: Array[TypedStmt] = []
+    let stmts = []
     typed.block_stmts = stmts
     typed.block_span = block.span
     typed.block_result_ty = type_unit()
@@ -43,7 +46,10 @@ fn infer_block(c: Checker, block: Block) {
     typed
 }
 
-fn infer_stmt(c: Checker, stmt: Stmt) {
+fn infer_stmt(c, stmt) {
+    @type {
+        entries: Array[TypedGcConfigEntry]
+    }
     if stmt_kind_is(stmt, "Let") {
         return infer_let(c, stmt.let_stmt)
     }
@@ -87,7 +93,7 @@ fn infer_stmt(c: Checker, stmt: Stmt) {
         out.stmt_if_compile = typed_if
     } else if str_eq_type(stmt.kind, "GcConfig") {
         let typed_gc = TypedGcConfigStmt()
-        let entries: Array[TypedGcConfigEntry] = []
+        let entries = []
         typed_gc.gc_entries = entries
         typed_gc.gc_span = stmt.gc_config_stmt.span
         let mut i = 0
@@ -106,7 +112,7 @@ fn infer_stmt(c: Checker, stmt: Stmt) {
     out
 }
 
-fn infer_let(c: Checker, s: LetStmt) {
+fn infer_let(c, s) {
     let out = TypedStmt()
     let typed_let = TypedLetStmt()
     out.tag = "Let"
@@ -148,7 +154,7 @@ fn infer_let(c: Checker, s: LetStmt) {
     out
 }
 
-fn infer_assign(c: Checker, s: AssignStmt) {
+fn infer_assign(c, s) {
     let out = TypedStmt()
     let typed_assign = TypedAssignStmt()
     out.tag = "Assign"
@@ -165,7 +171,7 @@ fn infer_assign(c: Checker, s: AssignStmt) {
     out
 }
 
-fn infer_return(c: Checker, s: ReturnStmt) {
+fn infer_return(c, s) {
     let out = TypedStmt()
     let typed_return = TypedReturnStmt()
     out.tag = "Return"
@@ -181,7 +187,7 @@ fn infer_return(c: Checker, s: ReturnStmt) {
     out
 }
 
-fn infer_if(c: Checker, s: IfStmt) {
+fn infer_if(c, s) {
     let out = TypedStmt()
     let typed_if = TypedIfStmt()
     out.tag = "If"
@@ -206,7 +212,7 @@ fn infer_if(c: Checker, s: IfStmt) {
     out
 }
 
-fn infer_for(c: Checker, s: ForStmt) {
+fn infer_for(c, s) {
     let out = TypedStmt()
     let typed_for = TypedForStmt()
     out.tag = "For"
@@ -225,7 +231,7 @@ fn infer_for(c: Checker, s: ForStmt) {
     out
 }
 
-fn infer_while(c: Checker, s: WhileStmt) {
+fn infer_while(c, s) {
     let out = TypedStmt()
     let typed_while = TypedWhileStmt()
     out.tag = "While"
@@ -238,7 +244,7 @@ fn infer_while(c: Checker, s: WhileStmt) {
     out
 }
 
-fn infer_spawn(c: Checker, s: SpawnStmt) {
+fn infer_spawn(c, s) {
     let out = TypedStmt()
     let typed_spawn = TypedSpawnStmt()
     let body = TypedSpawnBody()
