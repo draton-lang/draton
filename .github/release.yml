@@ -48,8 +48,6 @@ changelog:
     - macOS aarch64
     - Windows x86_64
 
-    Current blocked target:
-
-    - Windows aarch64
+    Windows aarch64 is not part of the current Early Tooling Preview target set.
 
     Full install instructions, checksum verification, and platform-specific troubleshooting are documented in `docs/install.md`.

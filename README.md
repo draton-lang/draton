@@ -138,9 +138,7 @@ Current published preview targets:
 - macOS aarch64
 - Windows x86_64
 
-Current blocked target:
-
-- Windows aarch64
+Windows aarch64 is not part of the current Early Tooling Preview target set.
 
 That blocker is tracked explicitly in [docs/early-preview.md](docs/early-preview.md). The current issue is not a vague CI gap: LLVM 14 does not have a published Windows arm64 prebuilt asset in the release toolchain matrix Draton depends on, so Draton does not claim support for that target until a verified LLVM 14 arm64 release path exists.
 

@@ -87,7 +87,7 @@ jobs:
             llvm_version: "14.0.6"
             supported: true
           - label: macos-x86_64
-            runner: macos-13
+            runner: macos-15-intel
             target: x86_64-apple-darwin
             artifact: draton-early-macos-x86_64.tar.gz
             binary: drat
@@ -110,12 +110,6 @@ jobs:
             python: "3.11"
             llvm_version: "14.0.6"
             supported: true
-          - label: windows-aarch64-blocked
-            runner: ubuntu-22.04
-            target: aarch64-pc-windows-msvc
-            blocker_file: draton-early-windows-aarch64-blocked.txt
-            python: "3.11"
-            supported: false
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -124,21 +118,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-
-      - name: Record explicit blocker
-        if: ${{ !matrix.supported }}
-        run: |
-          python scripts/write_windows_arm64_blocker.py \
-            --llvm-version 14.0.6 \
-            --out dist/${{ matrix.blocker_file }}
-
-      - name: Upload blocker note
-        if: ${{ !matrix.supported }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.blocker_file }}
-          path: dist/${{ matrix.blocker_file }}
-          if-no-files-found: error
 
       - name: Set up Rust
         if: ${{ matrix.supported }}
@@ -256,8 +235,6 @@ jobs:
             release-assets/draton-early-macos-aarch64.tar.gz.sha256
             release-assets/draton-early-windows-x86_64.zip
             release-assets/draton-early-windows-x86_64.zip.sha256
-            release-assets/draton-early-windows-aarch64-blocked.txt
-            release-assets/draton-early-windows-aarch64-blocked.txt.sha256
             release-assets/install.sh
             release-assets/install.sh.sha256
             release-assets/install.ps1

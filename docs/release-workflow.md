@@ -18,9 +18,7 @@ The workflow runs on:
    - macOS x86_64
    - macOS aarch64
    - Windows x86_64
-3. Records the explicit blocker for:
-   - Windows aarch64
-4. Packages one archive per supported platform.
+3. Packages one archive per supported platform.
 4. Verifies each archive with a smoke test:
    - `drat --version`
    - `drat fmt --check`
@@ -29,7 +27,7 @@ The workflow runs on:
    - `drat build`
    - `drat lsp` initialize
 5. Generates per-archive `.sha256` files and a combined `SHA256SUMS.txt`.
-6. Publishes the GitHub Release and uploads all supported assets plus install scripts and the platform blocker note.
+6. Publishes the GitHub Release and uploads all supported assets plus install scripts.
 
 ## Archive Layout
 

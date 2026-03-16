@@ -14,9 +14,7 @@ Supported preview archives:
 
 Currently blocked:
 
-- `Windows aarch64`
-
-The Windows aarch64 blocker is explicit: LLVM 14 does not currently have a published `win32/arm64` prebuilt asset in the release toolchain matrix Draton uses for `inkwell` / `llvm-sys 14`, so there is no verified way to build and smoke-test a release-quality `aarch64-pc-windows-msvc` CLI without maintaining a separate LLVM 14 arm64 Windows toolchain. Draton does not claim that target until that path exists and is verified.
+- none inside the supported Early Tooling Preview matrix
 
 Every supported archive contains:
 
@@ -98,13 +96,13 @@ The script also verifies the downloaded archive against the published `.sha256` 
 
 ### Windows aarch64
 
-Not published in the Early Tooling Preview.
+Not part of the current Early Tooling Preview target set.
 
 Current status:
 
-- no verified release artifact
+- no published release artifact
 - no official install script path
-- tracked as a release-engineering blocker, not as supported functionality
+- not claimed as supported functionality in this preview
 
 ## Manual install
 

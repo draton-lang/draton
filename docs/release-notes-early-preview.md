@@ -19,13 +19,9 @@ This is the first public Draton Early Tooling Preview release.
 - macOS aarch64
 - Windows x86_64
 
-## Blocked platform
+## Not included in this preview
 
 - Windows aarch64
-
-Current blocker:
-
-- LLVM 14 does not currently have a published `win32/arm64` prebuilt asset in the release toolchain matrix Draton uses for `inkwell` / `llvm-sys 14`, so there is no verified way to build and smoke-test a release-quality `aarch64-pc-windows-msvc` `drat` binary without maintaining a separate LLVM 14 arm64 Windows toolchain
 
 ## Install
 

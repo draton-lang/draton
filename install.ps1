@@ -10,7 +10,7 @@ $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToSt
 switch ($arch) {
     "X64" { $artifact = "draton-early-windows-x86_64.zip" }
     "Arm64" {
-        Write-Error "Windows aarch64 Early Preview artifacts are not published yet. The current blocker is lack of a verified LLVM 14 + MSVC ARM64 release toolchain path on GitHub-hosted runners."
+        Write-Error "Windows aarch64 is not part of the current Draton Early Tooling Preview target set."
     }
     default { Write-Error "Unsupported Windows architecture: $arch" }
 }

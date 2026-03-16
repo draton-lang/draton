@@ -35,8 +35,7 @@ This repository ships end-user Early Tooling Preview archives through GitHub Act
    - `install.ps1`
    - matching `.sha256` files
    - `SHA256SUMS.txt`
-7. Confirm the release notes mention the Windows aarch64 blocker rather than claiming support.
-8. Verify the generated release notes and edit them if needed.
+7. Verify the generated release notes and edit them if needed.
 
 ## Exact Release Command
 
@@ -67,7 +66,7 @@ Every shipped preview archive contains:
 - Binaries are unsigned.
 - macOS builds are not notarized.
 - Linux preview binaries still rely on standard system runtime libraries such as `libstdc++`, `libffi`, `libz`, and `libtinfo`; they do not require a separate LLVM install.
-- Windows aarch64 is currently blocked and not published.
+- Windows aarch64 is not part of the current Early Tooling Preview target set.
 - No package-manager distribution yet.
 
 ## Follow-Up Improvements
