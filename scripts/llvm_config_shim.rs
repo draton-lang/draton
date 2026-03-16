@@ -27,6 +27,43 @@ fn print_and_exit(message: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn fallback_query(args: &[String]) -> Option<ExitCode> {
+    let prefix = prefix_dir();
+    let include_dir = prefix.join("include");
+    let lib_dir = prefix.join("lib");
+    match args {
+        [flag] if flag == "--version" => Some(print_and_exit("14.0.6")),
+        [flag] if flag == "--prefix" => Some(print_and_exit(&prefix.display().to_string())),
+        [flag] if flag == "--libdir" => Some(print_and_exit(&lib_dir.display().to_string())),
+        [flag] if flag == "--includedir" => Some(print_and_exit(&include_dir.display().to_string())),
+        [flag] if flag == "--build-mode" => Some(print_and_exit("Release")),
+        [flag] if flag == "--cflags" => {
+            Some(print_and_exit(&format!("-I{}", include_dir.display())))
+        }
+        [flag] if flag == "--ldflags" => {
+            Some(print_and_exit(&format!("-L{}", lib_dir.display())))
+        }
+        [flag, link] if flag == "--libnames" && link == "--link-static" => match libnames() {
+            Ok(value) => Some(print_and_exit(&value)),
+            Err(error) => {
+                eprintln!("failed to enumerate LLVM static libraries: {error}");
+                Some(ExitCode::from(1))
+            }
+        },
+        [flag, link] if flag == "--system-libs" && link == "--link-static" => {
+            Some(print_and_exit(""))
+        }
+        [flag, ..] if flag == "--libs" => match libnames() {
+            Ok(value) => Some(print_and_exit(&value)),
+            Err(error) => {
+                eprintln!("failed to enumerate LLVM static libraries: {error}");
+                Some(ExitCode::from(1))
+            }
+        },
+        _ => None,
+    }
+}
+
 fn library_name(path: &Path) -> Option<String> {
     let ext = path.extension().and_then(|ext| ext.to_str())?;
     let stem = path.file_stem().and_then(|stem| stem.to_str())?;
@@ -66,7 +103,10 @@ fn libnames() -> io::Result<String> {
 
 fn delegate(args: &[String]) -> ExitCode {
     let Some(real) = real_llvm_config() else {
-        eprintln!("unsupported llvm-config arguments without bundled llvm-config-real.exe: {args:?}");
+        if let Some(result) = fallback_query(args) {
+            return result;
+        }
+        eprintln!("unsupported llvm-config arguments without bundled llvm-config-real executable: {args:?}");
         return ExitCode::from(1);
     };
     let output = match Command::new(real).args(args).output() {
@@ -83,21 +123,9 @@ fn delegate(args: &[String]) -> ExitCode {
 
 fn main() -> ExitCode {
     let args = env::args().skip(1).collect::<Vec<_>>();
-    match args.as_slice() {
-        [flag] if flag == "--version" => print_and_exit("14.0.6"),
-        [flag] if flag == "--libdir" => print_and_exit(&prefix_dir().join("lib").display().to_string()),
-        [flag] if flag == "--cflags" => {
-            print_and_exit(&format!("-I{}", prefix_dir().join("include").display()))
-        }
-        [flag] if flag == "--build-mode" => print_and_exit("Release"),
-        [flag, link] if flag == "--libnames" && link == "--link-static" => match libnames() {
-            Ok(value) => print_and_exit(&value),
-            Err(error) => {
-                eprintln!("failed to enumerate LLVM static libraries: {error}");
-                ExitCode::from(1)
-            }
-        },
-        [flag, link] if flag == "--system-libs" && link == "--link-static" => delegate(&args),
-        _ => delegate(&args),
+    if let Some(result) = fallback_query(&args) {
+        result
+    } else {
+        delegate(&args)
     }
 }

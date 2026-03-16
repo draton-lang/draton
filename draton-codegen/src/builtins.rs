@@ -1,9 +1,15 @@
+use std::env;
+
 use inkwell::AddressSpace;
 
 use crate::codegen::CodeGen;
 use crate::error::CodeGenError;
 
 impl<'ctx> CodeGen<'ctx> {
+    fn should_emit_runtime_fallbacks() -> bool {
+        env::var_os("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS").is_none()
+    }
+
     pub(crate) fn declare_runtime(&mut self) -> Result<(), CodeGenError> {
         self.declare_libc()?;
         self.declare_safepoint_runtime()?;
@@ -84,28 +90,30 @@ impl<'ctx> CodeGen<'ctx> {
                 ),
                 None,
             );
-            let builder = self.context.create_builder();
-            let entry = self.context.append_basic_block(function, "entry");
-            builder.position_at_end(entry);
-            let size = function
-                .get_nth_param(0)
-                .ok_or_else(|| {
-                    CodeGenError::Llvm("missing draton_gc_alloc size param".to_string())
-                })?
-                .into_int_value();
-            let malloc = self
-                .module
-                .get_function("malloc")
-                .ok_or_else(|| CodeGenError::MissingSymbol("malloc".to_string()))?;
-            let ptr = builder
-                .build_call(malloc, &[size.into()], "gc.raw")
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-                .try_as_basic_value()
-                .left()
-                .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?;
-            builder
-                .build_return(Some(&ptr))
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            if Self::should_emit_runtime_fallbacks() {
+                let builder = self.context.create_builder();
+                let entry = self.context.append_basic_block(function, "entry");
+                builder.position_at_end(entry);
+                let size = function
+                    .get_nth_param(0)
+                    .ok_or_else(|| {
+                        CodeGenError::Llvm("missing draton_gc_alloc size param".to_string())
+                    })?
+                    .into_int_value();
+                let malloc = self
+                    .module
+                    .get_function("malloc")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("malloc".to_string()))?;
+                let ptr = builder
+                    .build_call(malloc, &[size.into()], "gc.raw")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?;
+                builder
+                    .build_return(Some(&ptr))
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            }
         }
         if self
             .module
@@ -120,12 +128,14 @@ impl<'ctx> CodeGen<'ctx> {
                     .fn_type(&[i8_ptr.into(), field_ptr_ty.into(), i8_ptr.into()], false),
                 None,
             );
-            let builder = self.context.create_builder();
-            let entry = self.context.append_basic_block(function, "entry");
-            builder.position_at_end(entry);
-            builder
-                .build_return(None)
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            if Self::should_emit_runtime_fallbacks() {
+                let builder = self.context.create_builder();
+                let entry = self.context.append_basic_block(function, "entry");
+                builder.position_at_end(entry);
+                builder
+                    .build_return(None)
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            }
         }
         if self.module.get_function("draton_alloc").is_none() {
             let function = self.module.add_function(
@@ -408,29 +418,31 @@ impl<'ctx> CodeGen<'ctx> {
             ),
             None,
         );
-        let builder = self.context.create_builder();
-        let entry = self.context.append_basic_block(function, "entry");
-        builder.position_at_end(entry);
-        let print = self
-            .module
-            .get_function("draton_print")
-            .ok_or_else(|| CodeGenError::MissingSymbol("draton_print".to_string()))?;
-        let abort = self
-            .module
-            .get_function("abort")
-            .ok_or_else(|| CodeGenError::MissingSymbol("abort".to_string()))?;
-        let msg = function
-            .get_nth_param(0)
-            .ok_or_else(|| CodeGenError::Llvm("missing draton_panic message param".to_string()))?;
-        let _ = builder
-            .build_call(print, &[msg.into()], "")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        let _ = builder
-            .build_call(abort, &[], "")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        builder
-            .build_unreachable()
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        if Self::should_emit_runtime_fallbacks() {
+            let builder = self.context.create_builder();
+            let entry = self.context.append_basic_block(function, "entry");
+            builder.position_at_end(entry);
+            let print = self
+                .module
+                .get_function("draton_print")
+                .ok_or_else(|| CodeGenError::MissingSymbol("draton_print".to_string()))?;
+            let abort = self
+                .module
+                .get_function("abort")
+                .ok_or_else(|| CodeGenError::MissingSymbol("abort".to_string()))?;
+            let msg = function.get_nth_param(0).ok_or_else(|| {
+                CodeGenError::Llvm("missing draton_panic message param".to_string())
+            })?;
+            let _ = builder
+                .build_call(print, &[msg.into()], "")
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            let _ = builder
+                .build_call(abort, &[], "")
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            builder
+                .build_unreachable()
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        }
         Ok(())
     }
 }

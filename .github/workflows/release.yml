@@ -146,31 +146,27 @@ jobs:
 
       - name: Install LLVM 14 (Windows)
         if: ${{ matrix.supported && matrix.llvm_source == 'llvm-package-windows' }}
-        shell: bash
+        shell: pwsh
         run: |
-          curl -L --retry 5 --retry-delay 2 \
-            -o llvm-installer.exe \
-            https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/LLVM-14.0.6-win64.exe
-          7z x llvm-installer.exe -o"$RUNNER_TEMP/llvm-src" > /dev/null
-          python - <<'PY'
-          import os
-          import shutil
-          from pathlib import Path
-
-          src = Path(os.environ["RUNNER_TEMP"]) / "llvm-src"
-          dirs = [path for path in src.iterdir() if path.is_dir()]
-          root = dirs[0] if len(dirs) == 1 else src
-          dst = Path(os.environ["GITHUB_WORKSPACE"]) / "llvm"
-          if dst.exists():
-              shutil.rmtree(dst)
-          shutil.move(str(root), str(dst))
-          print(dst)
-          PY
-          if [ -f "$GITHUB_WORKSPACE/llvm/bin/llvm-config.exe" ]; then
-            mv "$GITHUB_WORKSPACE/llvm/bin/llvm-config.exe" "$GITHUB_WORKSPACE/llvm/bin/llvm-config-real.exe"
-          fi
-          rustc scripts/llvm_config_shim.rs -O -o "$GITHUB_WORKSPACE/llvm/bin/llvm-config.exe"
-          echo "LLVM_PATH=$GITHUB_WORKSPACE/llvm" >> "$GITHUB_ENV"
+          $ProgressPreference = 'SilentlyContinue'
+          $installer = Join-Path $env:GITHUB_WORKSPACE 'llvm-installer.exe'
+          Invoke-WebRequest -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/LLVM-14.0.6-win64.exe' -OutFile $installer
+          $dest = (Join-Path $env:GITHUB_WORKSPACE 'llvm').Replace('/', '\')
+          if (Test-Path $dest) {
+            Remove-Item -Recurse -Force $dest
+          }
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Start-Process -FilePath $installer -ArgumentList '/S', "/D=$dest" -Wait -NoNewWindow
+          $header = Join-Path $dest 'include\llvm-c\Target.h'
+          if (-not (Test-Path $header)) {
+            throw "LLVM headers missing after install: $header"
+          }
+          $realConfig = Join-Path $dest 'bin\llvm-config.exe'
+          if (Test-Path $realConfig) {
+            Rename-Item -Path $realConfig -NewName 'llvm-config-real.exe'
+          }
+          rustc scripts/llvm_config_shim.rs -O -o (Join-Path $dest 'bin\llvm-config.exe')
+          "LLVM_PATH=$dest" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Configure LLVM environment
         if: ${{ matrix.supported }}
