@@ -1,0 +1,10 @@
+import { hello } from messages
+
+@type {
+    main: () -> Int
+}
+
+fn main() {
+    println(hello())
+    return 0
+}

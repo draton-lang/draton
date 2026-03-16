@@ -60,10 +60,22 @@ def copy_release_files(staging_root: Path, binary: Path, runtime_lib: Path) -> N
     shutil.copy2(runtime_lib, staging_root / runtime_lib.name)
     shutil.copy2(repo_root / "LICENSE", staging_root / "LICENSE")
     shutil.copy2(repo_root / "QUICKSTART.md", staging_root / "QUICKSTART.md")
+    shutil.copy2(repo_root / "docs" / "install.md", staging_root / "INSTALL.md")
+    shutil.copy2(repo_root / "docs" / "early-preview.md", staging_root / "EARLY-PREVIEW.md")
+    shutil.copy2(repo_root / "install.sh", staging_root / "install.sh")
+    shutil.copy2(repo_root / "install.ps1", staging_root / "install.ps1")
+    if staged_binary.suffix.lower() != ".exe":
+        ensure_executable(staging_root / "install.sh")
 
     examples_dir = staging_root / "examples"
     examples_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(repo_root / "examples" / "hello.dt", examples_dir / "hello.dt")
+    if (repo_root / "examples" / "early-preview").exists():
+        shutil.copytree(
+            repo_root / "examples" / "early-preview",
+            examples_dir / "early-preview",
+            dirs_exist_ok=True,
+        )
 
 
 def sha256(path: Path) -> str:

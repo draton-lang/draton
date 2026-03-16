@@ -1,0 +1,11 @@
+[tasks.fmt]
+description = "Check formatting for the sample project"
+run = "drat fmt --check src"
+
+[tasks.lint]
+description = "Lint the sample project"
+run = "drat lint src"
+
+[tasks.build]
+description = "Build the sample project"
+run = "drat build src/main.dt -o build/hello-preview"

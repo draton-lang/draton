@@ -51,7 +51,7 @@ If you are installing from a GitHub Release archive, start with [docs/install.md
 
 ### Install Prebuilt Releases
 
-Download the archive for your platform from the [GitHub Releases](https://github.com/draton-lang/draton/releases) page, extract it, add the extracted directory to `PATH`, then verify:
+Download the Early Tooling Preview archive for your platform from the [GitHub Releases](https://github.com/draton-lang/draton/releases) page, extract it, add the extracted directory to `PATH`, then verify:
 
 ```sh
 drat --version
@@ -60,11 +60,11 @@ drat run examples/hello.dt
 
 Release artifacts:
 
-- `draton-linux-x86_64.tar.gz`
-- `draton-linux-aarch64.tar.gz`
-- `draton-macos-x86_64.tar.gz`
-- `draton-macos-aarch64.tar.gz`
-- `draton-windows-x86_64.zip`
+- `draton-early-linux-x86_64.tar.gz`
+- `draton-early-linux-aarch64.tar.gz`
+- `draton-early-macos-x86_64.tar.gz`
+- `draton-early-macos-aarch64.tar.gz`
+- `draton-early-windows-x86_64.zip`
 
 ### Install from source
 
@@ -115,6 +115,31 @@ Tooling v0 is intentionally practical rather than speculative:
 - `drat lsp` provides diagnostics, hover, definition, symbols, and basic completion
 
 The repository ships a root [drat.tasks](drat.tasks) so early adopters can see the intended automation shape immediately.
+
+## Early Preview
+
+The first public Early Tooling Preview is aimed at real end-user installation and feedback, not just repository contributors.
+
+Get started here:
+
+- [docs/early-preview.md](docs/early-preview.md)
+- [docs/install.md](docs/install.md)
+- [docs/quickstart.md](docs/quickstart.md)
+- [GitHub Releases](https://github.com/draton-lang/draton/releases)
+
+Current published preview targets:
+
+- Linux x86_64
+- Linux aarch64
+- macOS x86_64
+- macOS aarch64
+- Windows x86_64
+
+Current blocked target:
+
+- Windows aarch64
+
+That blocker is tracked explicitly in [docs/early-preview.md](docs/early-preview.md). Draton does not claim support for that target until it is built and smoke-tested successfully.
 
 ## Language Tour
 

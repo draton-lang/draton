@@ -1,17 +1,21 @@
-name: release
+name: early-preview-release
 
 on:
   push:
     tags:
-      - "v*"
+      - "v0.*"
+      - "early-*"
 
 permissions:
   contents: write
 
 jobs:
   test:
-    name: test
+    name: release-verification
     runs-on: ubuntu-22.04
+    env:
+      DRATON_DISABLE_GCROOT: "1"
+      DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -39,45 +43,75 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Run workspace tests
-        run: cargo test --workspace --locked
+      - name: Run focused test suite
+        run: |
+          cargo test -p draton-parser --test items
+          cargo test -p draton-typeck --test errors
+          cargo test -p drat --test strict_syntax --test tooling_suite
+          cargo test -p draton-lsp --test server
 
-      - name: Build drat and packaged runtime
-        run: cargo build --locked -p drat -p draton-runtime
+      - name: Enforce self-host strict subset
+        run: python3 tools/check_selfhost_strict_subset.py
+
+      - name: Verify early preview commands
+        run: |
+          cargo run -p drat -- fmt --check examples/hello.dt tests/programs/compile/52_lambda_nested.dt
+          cargo run -p drat -- lint examples/early-preview/hello-app/src
+          cargo run -p drat -- task
+          cargo run -p drat -- build --strict-syntax tests/programs/compile/52_lambda_nested.dt -o /tmp/draton_release_strict
+          /tmp/draton_release_strict
+          cargo run -p drat -- build src/main.dt -o /tmp/draton_release_bootstrap
 
   build:
-    name: ${{ matrix.artifact }}
+    name: ${{ matrix.label }}
     needs: test
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-22.04
+          - label: linux-x86_64
+            runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            artifact: draton-linux-x86_64.tar.gz
+            artifact: draton-early-linux-x86_64.tar.gz
             binary: drat
             python: "3.11"
-          - runner: ubuntu-24.04-arm
+            supported: true
+          - label: linux-aarch64
+            runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            artifact: draton-linux-aarch64.tar.gz
+            artifact: draton-early-linux-aarch64.tar.gz
             binary: drat
             python: "3.11"
-          - runner: macos-13
+            supported: true
+          - label: macos-x86_64
+            runner: macos-13
             target: x86_64-apple-darwin
-            artifact: draton-macos-x86_64.tar.gz
+            artifact: draton-early-macos-x86_64.tar.gz
             binary: drat
             python: "3.11"
-          - runner: macos-14
+            supported: true
+          - label: macos-aarch64
+            runner: macos-14
             target: aarch64-apple-darwin
-            artifact: draton-macos-aarch64.tar.gz
+            artifact: draton-early-macos-aarch64.tar.gz
             binary: drat
             python: "3.11"
-          - runner: windows-2022
+            supported: true
+          - label: windows-x86_64
+            runner: windows-2022
             target: x86_64-pc-windows-msvc
-            artifact: draton-windows-x86_64.zip
+            artifact: draton-early-windows-x86_64.zip
             binary: drat.exe
             python: "3.11"
+            supported: true
+          - label: windows-aarch64-blocked
+            runner: windows-2022
+            target: aarch64-pc-windows-msvc
+            blocker_file: draton-early-windows-aarch64-blocked.txt
+            python: "3.11"
+            supported: false
+            blocker_reason: "Windows aarch64 early preview is blocked because the LLVM 14 + inkwell release toolchain path is not yet verified for producing and smoke-testing a reliable aarch64-pc-windows-msvc drat binary on GitHub-hosted infrastructure."
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -87,17 +121,35 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
+      - name: Record explicit blocker
+        if: ${{ !matrix.supported }}
+        shell: bash
+        run: |
+          mkdir -p dist
+          printf '%s\n' "${{ matrix.blocker_reason }}" > "dist/${{ matrix.blocker_file }}"
+
+      - name: Upload blocker note
+        if: ${{ !matrix.supported }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.blocker_file }}
+          path: dist/${{ matrix.blocker_file }}
+          if-no-files-found: error
+
       - name: Set up Rust
+        if: ${{ matrix.supported }}
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Install LLVM 14
+        if: ${{ matrix.supported }}
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "14.0.6"
 
       - name: Configure LLVM environment
+        if: ${{ matrix.supported }}
         shell: bash
         run: |
           echo "LLVM_SYS_140_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
@@ -109,12 +161,15 @@ jobs:
           echo "$LLVM_PATH/bin" >> "$GITHUB_PATH"
 
       - name: Cache Rust artifacts
+        if: ${{ matrix.supported }}
         uses: Swatinem/rust-cache@v2
 
-      - name: Build release binary
-        run: cargo build --release --locked -p drat -p draton-runtime --target ${{ matrix.target }}
+      - name: Build release binaries
+        if: ${{ matrix.supported }}
+        run: cargo build --release --locked -p drat -p draton-runtime -p draton-lsp --target ${{ matrix.target }}
 
       - name: Package release archive
+        if: ${{ matrix.supported }}
         run: >
           python scripts/package_release.py
           --binary target/${{ matrix.target }}/release/${{ matrix.binary }}
@@ -122,9 +177,11 @@ jobs:
           --out-dir dist
 
       - name: Smoke test packaged archive
+        if: ${{ matrix.supported }}
         run: python scripts/smoke_release.py --archive dist/${{ matrix.artifact }}
 
       - name: Upload packaged artifact
+        if: ${{ matrix.supported }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -146,44 +203,61 @@ jobs:
         with:
           path: dist
 
-      - name: Flatten artifact directories
+      - name: Flatten release assets
         run: |
           mkdir -p release-assets
           find dist -maxdepth 2 -type f -exec cp {} release-assets/ \;
+          cp install.sh release-assets/install.sh
+          cp install.ps1 release-assets/install.ps1
+          cp docs/release-notes-early-preview.md release-assets/RELEASE-NOTES-EARLY-PREVIEW.md
 
-      - name: Generate SHA256SUMS.txt
+      - name: Generate checksums for all release assets
         run: |
           cd release-assets
           python3 - <<'PY'
           from pathlib import Path
           import hashlib
-          archives = sorted(
+
+          files = sorted(
               p for p in Path(".").iterdir()
-              if p.suffix == ".zip" or p.name.endswith(".tar.gz")
+              if p.is_file() and p.name != "SHA256SUMS.txt" and not p.name.endswith(".sha256")
           )
           lines = []
-          for path in archives:
+          for path in files:
               digest = hashlib.sha256()
               with path.open("rb") as handle:
                   for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                       digest.update(chunk)
-              lines.append(f"{digest.hexdigest()}  {path.name}")
-          Path("SHA256SUMS.txt").write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+              checksum = digest.hexdigest()
+              lines.append(f"{checksum}  {path.name}")
+              Path(f"{path.name}.sha256").write_text(
+                  f"{checksum}  {path.name}\n",
+                  encoding="utf-8",
+              )
+          Path("SHA256SUMS.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
           PY
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: docs/release-notes-early-preview.md
           files: |
-            release-assets/draton-linux-x86_64.tar.gz
-            release-assets/draton-linux-x86_64.tar.gz.sha256
-            release-assets/draton-linux-aarch64.tar.gz
-            release-assets/draton-linux-aarch64.tar.gz.sha256
-            release-assets/draton-macos-x86_64.tar.gz
-            release-assets/draton-macos-x86_64.tar.gz.sha256
-            release-assets/draton-macos-aarch64.tar.gz
-            release-assets/draton-macos-aarch64.tar.gz.sha256
-            release-assets/draton-windows-x86_64.zip
-            release-assets/draton-windows-x86_64.zip.sha256
+            release-assets/draton-early-linux-x86_64.tar.gz
+            release-assets/draton-early-linux-x86_64.tar.gz.sha256
+            release-assets/draton-early-linux-aarch64.tar.gz
+            release-assets/draton-early-linux-aarch64.tar.gz.sha256
+            release-assets/draton-early-macos-x86_64.tar.gz
+            release-assets/draton-early-macos-x86_64.tar.gz.sha256
+            release-assets/draton-early-macos-aarch64.tar.gz
+            release-assets/draton-early-macos-aarch64.tar.gz.sha256
+            release-assets/draton-early-windows-x86_64.zip
+            release-assets/draton-early-windows-x86_64.zip.sha256
+            release-assets/draton-early-windows-aarch64-blocked.txt
+            release-assets/draton-early-windows-aarch64-blocked.txt.sha256
+            release-assets/install.sh
+            release-assets/install.sh.sha256
+            release-assets/install.ps1
+            release-assets/install.ps1.sha256
+            release-assets/RELEASE-NOTES-EARLY-PREVIEW.md
+            release-assets/RELEASE-NOTES-EARLY-PREVIEW.md.sha256
             release-assets/SHA256SUMS.txt

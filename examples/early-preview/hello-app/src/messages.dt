@@ -1,0 +1,7 @@
+@type {
+    hello: () -> String
+}
+
+fn hello() {
+    return "hello from Draton Early Preview"
+}

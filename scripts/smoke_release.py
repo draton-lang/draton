@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -45,6 +46,38 @@ def run(cmd: list[str], cwd: Path, extra_env: dict[str, str] | None = None) -> N
         raise SystemExit(completed.returncode)
 
 
+def expected_example_binary(example_root: Path) -> Path:
+    binary_name = "hello-preview"
+    return example_root / "build" / binary_name
+
+
+def smoke_lsp(binary: Path, cwd: Path, env: dict[str, str]) -> None:
+    payload = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"capabilities": {}, "rootUri": None},
+        }
+    )
+    message = f"Content-Length: {len(payload)}\r\n\r\n{payload}".encode("utf-8")
+    completed = subprocess.run(
+        [str(binary), "lsp"],
+        cwd=cwd,
+        env={**os.environ, **env},
+        input=message,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        sys.stderr.write(completed.stdout.decode(errors="replace"))
+        sys.stderr.write(completed.stderr.decode(errors="replace"))
+        raise SystemExit(completed.returncode)
+    if b"completionProvider" not in completed.stdout:
+        raise SystemExit("lsp initialize smoke test did not return capabilities")
+
+
 def main() -> int:
     args = parse_args()
     archive = Path(args.archive).resolve()
@@ -56,12 +89,27 @@ def main() -> int:
         if os.name != "nt":
             binary.chmod(binary.stat().st_mode | 0o111)
 
-        env = {}
-        if os.name == "nt":
-            env["PATH"] = str(root) + os.pathsep + os.environ.get("PATH", "")
+        env = {"PATH": str(root) + os.pathsep + os.environ.get("PATH", "")}
 
         run([str(binary), "--version"], cwd=root, extra_env=env)
+        run([str(binary), "fmt", "--check", "examples/early-preview/hello-app/src"], cwd=root, extra_env=env)
+        run([str(binary), "lint", "examples/early-preview/hello-app/src"], cwd=root, extra_env=env)
+        example_root = root / "examples" / "early-preview" / "hello-app"
+        run([str(binary), "task"], cwd=example_root, extra_env=env)
+        run([str(binary), "task", "build"], cwd=example_root, extra_env=env)
+        built_example = expected_example_binary(example_root)
+        if not built_example.exists():
+            raise SystemExit(f"expected built example binary at {built_example}")
+        run([str(built_example)], cwd=example_root, extra_env=env)
+        output_binary = root / ("hello-tooling.exe" if os.name == "nt" else "hello-tooling")
+        run(
+            [str(binary), "build", "examples/hello.dt", "-o", str(output_binary)],
+            cwd=root,
+            extra_env=env,
+        )
+        run([str(output_binary)], cwd=root, extra_env=env)
         run([str(binary), "run", "examples/hello.dt"], cwd=root, extra_env=env)
+        smoke_lsp(binary, root, env)
     return 0
 
 

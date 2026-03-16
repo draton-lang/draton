@@ -22,13 +22,34 @@ changelog:
     labels:
       - skip-changelog
   template: |
-    ## Install
+    ## Draton Early Tooling Preview
 
     Pick the archive for your platform from the assets below, extract it, add the extracted directory to `PATH`, then run:
 
     ```sh
     drat --version
     drat run examples/hello.dt
+    cd examples/early-preview/hello-app
+    drat task
+    drat task build
     ```
+
+    Install and preview docs:
+
+    - `docs/install.md`
+    - `docs/quickstart.md`
+    - `docs/early-preview.md`
+
+    Current supported preview targets:
+
+    - Linux x86_64
+    - Linux aarch64
+    - macOS x86_64
+    - macOS aarch64
+    - Windows x86_64
+
+    Current blocked target:
+
+    - Windows aarch64
 
     Full install instructions, checksum verification, and platform-specific troubleshooting are documented in `docs/install.md`.
