@@ -181,6 +181,14 @@ Strict mode currently targets the Rust frontend/tooling path. The self-host mirr
 
 Canonical `@type` blocks are currently supported at file, class, layer, interface, and function scope in the Rust frontend/tooling path.
 
+The repository now enforces a focused self-host strict-canonical subset in CI via [tools/check_selfhost_strict_subset.py](tools/check_selfhost_strict_subset.py). That subset intentionally excludes only:
+
+- `src/typeck/infer/item.dt`
+- `src/ast/dump.dt`
+- `src/typeck/dump.dt`
+
+Those remaining files are tracked explicitly in [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md). Full-tree self-host strict mode is not enabled yet.
+
 ### Enums and pattern matching
 
 ```draton

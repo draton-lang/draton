@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  rust-tests:
+    name: rust-tests
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run focused parser/typecheck tests
+        run: cargo test -p draton-parser --test items -p draton-typeck --test errors
+
+  selfhost-strict-subset:
+    name: selfhost-strict-subset
+    needs: rust-tests
+    runs-on: ubuntu-22.04
+    env:
+      DRATON_DISABLE_GCROOT: "1"
+      DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM 14
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "14.0.6"
+
+      - name: Configure LLVM environment
+        shell: bash
+        run: |
+          echo "LLVM_SYS_140_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
+          echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
+          echo "$LLVM_PATH/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Enforce self-host strict-canonical subset
+        run: python3 tools/check_selfhost_strict_subset.py
+
+      - name: Strict canonical fixture build
+        run: cargo run -p drat -- build --strict-syntax tests/programs/compile/52_lambda_nested.dt -o /tmp/draton_selfhost_subset_strict
+
+      - name: Run strict canonical fixture
+        run: /tmp/draton_selfhost_subset_strict
+
+      - name: Self-host-facing bootstrap build
+        run: cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_subset_bootstrap

@@ -116,6 +116,42 @@ What is not yet true:
 - the entire `src/` tree is not fully strict-clean because `src/typeck/infer/item.dt` still relies on compatibility-form syntax
 - full-tree strict self-host CI should wait until `src/typeck/infer/item.dt` and the two dump modules are migrated, or explicitly exclude them
 
+## Strict-Canonical CI Subset
+
+The repository now enforces a focused self-host strict-canonical subset in CI.
+
+Checker:
+
+- `python3 tools/check_selfhost_strict_subset.py`
+
+What it does:
+
+- scans the migrated self-host mirror under `src/`
+- fails if any non-excluded file reintroduces deprecated inline type syntax
+- fails if one of the tracked exclusions no longer needs to be excluded, so the list stays reviewable
+
+Intentionally excluded files:
+
+- `src/typeck/infer/item.dt`
+- `src/ast/dump.dt`
+- `src/typeck/dump.dt`
+
+This subset is intentional. It gives regression coverage for the migrated self-host tree without claiming that full-tree strict self-host support is complete.
+
+## CI Readiness
+
+A focused strict-canonical self-host CI subset is now practical and enabled:
+
+- parser/typecheck regression tests cover the Rust frontend/tooling path
+- `tools/check_selfhost_strict_subset.py` guards the migrated `src/` subset against compatibility-form regressions
+- CI also runs one representative strict canonical fixture build and one self-host-facing bootstrap build
+
+What would still be required for full-tree strict self-host CI:
+
+1. safely canonicalize `src/typeck/infer/item.dt`
+2. canonicalize or intentionally retire `src/ast/dump.dt`
+3. canonicalize or intentionally retire `src/typeck/dump.dt`
+
 ## Verification Run
 
 Historical focused verification from earlier canonical passes included:
