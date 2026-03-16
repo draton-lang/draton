@@ -183,7 +183,6 @@ Canonical `@type` blocks are currently supported at file, class, layer, interfac
 
 The repository now enforces a focused self-host strict-canonical subset in CI via [tools/check_selfhost_strict_subset.py](tools/check_selfhost_strict_subset.py). That subset intentionally excludes only:
 
-- `src/typeck/infer/item.dt`
 - `src/ast/dump.dt`
 - `src/typeck/dump.dt`
 

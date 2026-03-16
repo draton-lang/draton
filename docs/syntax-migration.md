@@ -122,5 +122,5 @@ Repository status tracking for the self-host mirror:
 CI status for the migrated self-host subset:
 
 - the repository enforces a strict-canonical subset with `python3 tools/check_selfhost_strict_subset.py`
-- that subset intentionally excludes only `src/typeck/infer/item.dt`, `src/ast/dump.dt`, and `src/typeck/dump.dt`
+- that subset intentionally excludes only `src/ast/dump.dt` and `src/typeck/dump.dt`
 - full-tree self-host strict mode is not enabled yet because those files remain tracked blockers

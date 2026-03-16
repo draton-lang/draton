@@ -18,7 +18,6 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src"
 
 EXCLUDED_FILES = {
-    Path("src/typeck/infer/item.dt"),
     Path("src/ast/dump.dt"),
     Path("src/typeck/dump.dt"),
 }

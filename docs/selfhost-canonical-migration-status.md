@@ -63,15 +63,38 @@ That earlier work also resolved the semantic parity gap for canonical contracts:
 
 ## Remaining Blocked Files
 
-The remaining unmigrated self-host files are now small and explicit.
+The remaining unmigrated self-host files are now explicit and non-executable.
 
 | File | Blocker | Classification |
 | --- | --- | --- |
-| `src/typeck/infer/item.dt` | A direct canonical rewrite was attempted in this pass, but the self-host-facing bootstrap build regressed with core inference failures. The compatibility-form source is still stable, so this file remains intentionally unmigrated until that inference gap is understood cleanly. | Mechanical, but not yet safe |
 | `src/ast/dump.dt` | Very large printer module with broad low-value mechanical churn; migrating it now would add review noise without affecting parser/typechecker/codegen behavior. | Deferred cleanup |
 | `src/typeck/dump.dt` | Similar large pretty-printer module; canonicalization is straightforward but noisy and low priority compared with executable self-host paths. | Deferred cleanup |
 
-No remaining `src/` blocker in this audit is a major frontend/backend semantic-parity gap. The main unresolved executable file is a migration-safety issue in `src/typeck/infer/item.dt`.
+No remaining `src/` blocker in this audit is a frontend/backend semantic-parity gap or an executable bootstrap issue.
+
+## Final Executable Blocker Resolved
+
+`src/typeck/infer/item.dt` was the last executable self-host file left in compatibility form.
+
+Root cause of the earlier bootstrap regression:
+
+- the previous direct rewrite removed inline helper-function signatures without restoring equivalent file-scope canonical contracts
+- two internal helpers, `predeclare_fn_scheme` and `predeclare_class`, were missing from the file-level contract block
+- once those helper schemes disappeared, bootstrap lost stable type information in the self-host inference pass and regressed
+
+Safe fix implemented:
+
+- converted the file-level `@type` block to canonical binding form
+- added canonical file-scope contracts for the previously missing helpers
+- moved typed local bindings to function-scope `@type`
+- removed deprecated inline parameter and return syntax from executable function definitions
+
+Current result:
+
+- `src/typeck/infer/item.dt` now builds cleanly in canonical form
+- self-host bootstrap passes again
+- compatibility warnings from that file are gone
+- the strict self-host CI exclusion list no longer includes it
 
 ## Files Completed Across The Final Phase
 
@@ -101,8 +124,8 @@ The final-phase blocker set has now been reduced as follows:
 The self-host mirror is now effectively at canonical syntax parity for executable compiler paths:
 
 - parser, typechecker, monomorphization, and backend/codegen slices are canonicalized where safe
-- only one executable self-host file remains in compatibility form: `src/typeck/infer/item.dt`
-- the other remaining debt is confined to two non-executable dump/printer modules
+- all executable self-host files are now canonicalized where safe
+- the remaining debt is confined to two non-executable dump/printer modules
 - a focused strict-canonical self-host CI subset is now practical
 
 Practical strict-canonical subset:
@@ -113,8 +136,8 @@ Practical strict-canonical subset:
 
 What is not yet true:
 
-- the entire `src/` tree is not fully strict-clean because `src/typeck/infer/item.dt` still relies on compatibility-form syntax
-- full-tree strict self-host CI should wait until `src/typeck/infer/item.dt` and the two dump modules are migrated, or explicitly exclude them
+- the entire `src/` tree is not fully strict-clean because two deferred dump/printer modules still rely on compatibility-form syntax
+- full-tree strict self-host CI should wait until `src/ast/dump.dt` and `src/typeck/dump.dt` are migrated, or explicitly exclude them
 
 ## Strict-Canonical CI Subset
 
@@ -132,7 +155,6 @@ What it does:
 
 Intentionally excluded files:
 
-- `src/typeck/infer/item.dt`
 - `src/ast/dump.dt`
 - `src/typeck/dump.dt`
 
@@ -148,9 +170,8 @@ A focused strict-canonical self-host CI subset is now practical and enabled:
 
 What would still be required for full-tree strict self-host CI:
 
-1. safely canonicalize `src/typeck/infer/item.dt`
-2. canonicalize or intentionally retire `src/ast/dump.dt`
-3. canonicalize or intentionally retire `src/typeck/dump.dt`
+1. canonicalize or intentionally retire `src/ast/dump.dt`
+2. canonicalize or intentionally retire `src/typeck/dump.dt`
 
 ## Verification Run
 
@@ -170,14 +191,13 @@ Focused verification for this final mechanical pass:
 Expected current behavior during bootstrap:
 
 - self-host bootstrap remains CPU-bound and may be slow
-- warning output now comes from `src/typeck/infer/item.dt` plus the deferred dump/printer modules
+- warning output now comes only from the deferred dump/printer modules
 - this is not a deadlock; the main remaining cost is normal bootstrap work plus residual warning volume
 
 ## Recommended Next Step
 
 Remaining cleanup order:
 
-1. Investigate and safely canonicalize `src/typeck/infer/item.dt`
-2. Canonicalize `src/ast/dump.dt`
-3. Canonicalize `src/typeck/dump.dt`
-4. Then enable full-tree strict self-host CI if desired
+1. Canonicalize `src/ast/dump.dt`
+2. Canonicalize `src/typeck/dump.dt`
+3. Then enable full-tree strict self-host CI if desired
