@@ -7,12 +7,26 @@
     "textMateRules": [
       {
         "scope": [
+          "source.draton meta.import.draton",
+          "source.draton meta.import.draton variable.other.import.draton",
+          "source.draton meta.import.draton entity.name.namespace.draton",
+          "source.draton meta.import.draton keyword.control.import.draton",
+          "source.draton meta.import.draton keyword.control.from.draton",
+          "source.draton meta.import.draton keyword.control.as.draton",
+          "source.draton meta.import.draton punctuation.definition.import.draton"
+        ],
+        "settings": {
+          "foreground": "#78DCE8"
+        }
+      },
+      {
+        "scope": [
           "source.draton variable.other.definition.draton",
           "source.draton variable.other.import.draton",
           "source.draton variable.other.readwrite.draton"
         ],
         "settings": {
-          "foreground": "#FFD166",
+          "foreground": "#D4AF37",
           "fontStyle": "italic"
         }
       }

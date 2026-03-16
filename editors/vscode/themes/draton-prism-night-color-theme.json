@@ -91,10 +91,17 @@
     {
       "scope": [
         "entity.name.section.layer.draton",
-        "entity.name.namespace.draton"
+        "entity.name.namespace.draton",
+        "meta.import.draton",
+        "meta.import.draton variable.other.import.draton",
+        "meta.import.draton entity.name.namespace.draton",
+        "meta.import.draton keyword.control.import.draton",
+        "meta.import.draton keyword.control.from.draton",
+        "meta.import.draton keyword.control.as.draton",
+        "meta.import.draton punctuation.definition.import.draton"
       ],
       "settings": {
-        "foreground": "#5EEAD4"
+        "foreground": "#78DCE8"
       }
     },
     {
@@ -123,7 +130,7 @@
         "variable.other.readwrite.draton"
       ],
       "settings": {
-        "foreground": "#FFD166",
+        "foreground": "#D4AF37",
         "fontStyle": "italic"
       }
     },
@@ -151,7 +158,7 @@
         "variable.language.wildcard.draton"
       ],
       "settings": {
-        "foreground": "#FFD166",
+        "foreground": "#D4AF37",
         "fontStyle": "bold"
       }
     },
