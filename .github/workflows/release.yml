@@ -76,7 +76,7 @@ jobs:
             artifact: draton-early-linux-x86_64.tar.gz
             binary: drat
             python: "3.11"
-            llvm_version: "14.0.0"
+            llvm_source: ubuntu-apt
             supported: true
           - label: linux-aarch64
             runner: ubuntu-24.04-arm
@@ -84,7 +84,7 @@ jobs:
             artifact: draton-early-linux-aarch64.tar.gz
             binary: drat
             python: "3.11"
-            llvm_version: "14.0.6"
+            llvm_source: ubuntu-apt
             supported: true
           - label: macos-x86_64
             runner: macos-15-intel
@@ -92,7 +92,7 @@ jobs:
             artifact: draton-early-macos-x86_64.tar.gz
             binary: drat
             python: "3.11"
-            llvm_version: "14.0.6"
+            llvm_source: install-llvm-action
             supported: true
           - label: macos-aarch64
             runner: macos-14
@@ -100,7 +100,7 @@ jobs:
             artifact: draton-early-macos-aarch64.tar.gz
             binary: drat
             python: "3.11"
-            llvm_version: "14.0.6"
+            llvm_source: install-llvm-action
             supported: true
           - label: windows-x86_64
             runner: windows-2022
@@ -108,7 +108,7 @@ jobs:
             artifact: draton-early-windows-x86_64.zip
             binary: drat.exe
             python: "3.11"
-            llvm_version: "14.0.6"
+            llvm_source: llvm-package-windows
             supported: true
     steps:
       - name: Check out repository
@@ -125,11 +125,42 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install LLVM 14
-        if: ${{ matrix.supported }}
+      - name: Install LLVM 14 (Linux)
+        if: ${{ matrix.supported && matrix.llvm_source == 'ubuntu-apt' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-14-dev clang-14 lld-14 libpolly-14-dev
+          echo "LLVM_PATH=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+
+      - name: Install LLVM 14 (macOS)
+        if: ${{ matrix.supported && matrix.llvm_source == 'install-llvm-action' }}
         uses: KyleMayes/install-llvm-action@v2
         with:
-          version: ${{ matrix.llvm_version }}
+          version: "14.0.6"
+
+      - name: Install LLVM 14 (Windows)
+        if: ${{ matrix.supported && matrix.llvm_source == 'llvm-package-windows' }}
+        shell: bash
+        run: |
+          curl -L --retry 5 --retry-delay 2 \
+            -o llvm.7z \
+            https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6/llvm-14.0.6-windows-amd64-msvc17-msvcrt.7z
+          7z x llvm.7z -o"$RUNNER_TEMP/llvm-src" > /dev/null
+          python - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+
+          src = Path(os.environ["RUNNER_TEMP"]) / "llvm-src"
+          dirs = [path for path in src.iterdir() if path.is_dir()]
+          root = dirs[0] if len(dirs) == 1 else src
+          dst = Path(os.environ["GITHUB_WORKSPACE"]) / "llvm"
+          if dst.exists():
+              shutil.rmtree(dst)
+          shutil.move(str(root), str(dst))
+          print(dst)
+          PY
+          echo "LLVM_PATH=$GITHUB_WORKSPACE/llvm" >> "$GITHUB_ENV"
 
       - name: Configure LLVM environment
         if: ${{ matrix.supported }}
@@ -138,6 +169,10 @@ jobs:
           echo "LLVM_SYS_140_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
           if [ "${{ runner.os }}" = "Windows" ]; then
             echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config.exe" >> "$GITHUB_ENV"
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
+            echo "DYLD_LIBRARY_PATH=" >> "$GITHUB_ENV"
+            echo "LD_LIBRARY_PATH=" >> "$GITHUB_ENV"
           else
             echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
           fi

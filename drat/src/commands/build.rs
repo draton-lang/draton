@@ -563,6 +563,7 @@ fn link_binary(
             "-lstdc++",
         ]);
     } else if cfg!(target_os = "macos") {
+        command.arg("-Wl,-multiply_defined,suppress");
         command.args(["-ldl", "-lpthread", "-lm", "-lc++"]);
     }
     let output = command
