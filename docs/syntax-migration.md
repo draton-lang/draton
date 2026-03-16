@@ -1,6 +1,6 @@
 # Syntax Migration Notes
 
-For the design rationale behind these syntax rules, see [language-manifesto.md](language-manifesto.md).
+For the design rationale behind these syntax rules, see [language-manifesto.md](language-manifesto.md). For exact style expectations, see [canonical-syntax-rules.md](canonical-syntax-rules.md). For contributor guardrails, see [contributor-language-rules.md](contributor-language-rules.md).
 
 This repository now documents and tests the following syntax as canonical:
 

@@ -175,7 +175,7 @@ What would still be required for full-tree strict self-host CI:
 
 ## Final Readiness
 
-Executable/compiler-path self-host canonical migration is complete.
+executable/compiler-path self-host canonical migration is complete.
 
 Current repository state:
 
