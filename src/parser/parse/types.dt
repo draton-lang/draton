@@ -4,11 +4,16 @@ import { TypeExpr, type_named, type_generic, type_fn_expr, type_pointer, type_in
          parser_skip_doc_comments }
 
 @type {
-    fn parse_type_expr(p: Parser) -> TypeExpr
-    fn str_eq_type_kind(a: String, b: String) -> Bool
+    parse_type_expr: (Parser) -> TypeExpr
+    str_eq_type_kind: (String, String) -> Bool
 }
 
-fn parse_type_expr(p: Parser) -> TypeExpr {
+fn parse_type_expr(p) {
+    @type {
+        params: Array[TypeExpr]
+        args: Array[TypeExpr]
+        option_args: Array[TypeExpr]
+    }
     parser_skip_doc_comments(p)
     let token = parser_current(p)
     let mut ty = type_infer(token_to_span(token))
@@ -17,7 +22,7 @@ fn parse_type_expr(p: Parser) -> TypeExpr {
         let start = token_to_span(token)
         let _advanced = parser_advance(p)
         let _lparen = parser_expect(p, "LParen", "(")
-        let params: Array[TypeExpr] = []
+        let params = []
         let mut done = false
         while !parser_is_eof(p) && !parser_check(p, "RParen") && !done {
             params.push(parse_type_expr(p))
@@ -32,7 +37,7 @@ fn parse_type_expr(p: Parser) -> TypeExpr {
     } else if str_eq_type_kind(token.kind, "LParen") {
         let start = token_to_span(token)
         let _advanced = parser_advance(p)
-        let params: Array[TypeExpr] = []
+        let params = []
         let mut done = false
         while !parser_is_eof(p) && !parser_check(p, "RParen") && !done {
             params.push(parse_type_expr(p))
@@ -57,7 +62,7 @@ fn parse_type_expr(p: Parser) -> TypeExpr {
         let name = token.lexeme
         let start = token_to_span(token)
         if parser_match_kind(p, "LBracket") {
-            let mut args: Array[TypeExpr] = []
+            let mut args = []
             let mut done = false
             while !parser_is_eof(p) && !parser_check(p, "RBracket") && !done {
                 args.push(parse_type_expr(p))
@@ -82,14 +87,14 @@ fn parse_type_expr(p: Parser) -> TypeExpr {
         parser_error_unexpected(p, token, "type expression")
     }
     while parser_match_kind(p, "QuestionQuestion") {
-        let option_args: Array[TypeExpr] = []
+        let option_args = []
         option_args.push(ty)
         ty = type_generic("Option", option_args, merge_spans(type_expr_span(ty), parser_token_span(p)))
     }
     ty
 }
 
-fn str_eq_type_kind(a: String, b: String) -> Bool {
+fn str_eq_type_kind(a, b) {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

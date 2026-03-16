@@ -8,24 +8,28 @@ class Substitution {
 }
 
 @type {
-    fn empty_subst() -> Substitution
-    fn subst_bind(s: Substitution, var_id: Int, ty: Type) -> TypeError
-    fn subst_apply_type(s: Substitution, ty: Type) -> Type
-    fn occurs_check(var_id: Int, ty: Type) -> Bool
-    fn subst_clear_error(s: Substitution)
+    empty_subst: () -> Substitution
+    subst_bind: (Substitution, Int, Type) -> TypeError
+    subst_apply_type: (Substitution, Type) -> Type
+    occurs_check: (Int, Type) -> Bool
+    subst_clear_error: (Substitution) -> Unit
 }
 
 fn empty_subst() {
+    @type {
+        vars: Array[Int]
+        values: Array[Type]
+    }
     let s = Substitution()
-    let vars: Array[Int] = []
-    let values: Array[Type] = []
+    let vars = []
+    let values = []
     s.vars = vars
     s.values = values
     s.last_error = new_type_error("", 0, 0)
     s
 }
 
-fn subst_bind(s: Substitution, var_id: Int, ty: Type) {
+fn subst_bind(s, var_id, ty) {
     let applied = subst_apply_type(s, ty)
     if str_eq_type(applied.type_kind, "Var") && applied.ty_id == var_id {
         s.last_error = new_type_error("", 0, 0)
@@ -53,7 +57,7 @@ fn subst_bind(s: Substitution, var_id: Int, ty: Type) {
     s.last_error
 }
 
-fn subst_apply_type(s: Substitution, ty: Type) {
+fn subst_apply_type(s, ty) {
     if str_eq_type(ty.type_kind, "Var") {
         let mut i = 0
         while i < s.vars.len() {
@@ -74,7 +78,10 @@ fn subst_apply_type(s: Substitution, ty: Type) {
         return type_set(subst_apply_type(s, ty.ty_inner))
     }
     if str_eq_type(ty.type_kind, "Tuple") {
-        let mut items: Array[Type] = []
+        @type {
+            items: Array[Type]
+        }
+        let mut items = []
         let mut i = 0
         while i < ty.ty_items.len() {
             items.push(subst_apply_type(s, ty.ty_items[i]))
@@ -92,7 +99,10 @@ fn subst_apply_type(s: Substitution, ty: Type) {
         return type_chan(subst_apply_type(s, ty.ty_inner))
     }
     if str_eq_type(ty.type_kind, "Fn") {
-        let mut params: Array[Type] = []
+        @type {
+            params: Array[Type]
+        }
+        let mut params = []
         let mut i = 0
         while i < ty.ty_params.len() {
             params.push(subst_apply_type(s, ty.ty_params[i]))
@@ -101,7 +111,10 @@ fn subst_apply_type(s: Substitution, ty: Type) {
         return type_fn(params, subst_apply_type(s, ty.ty_ret))
     }
     if str_eq_type(ty.type_kind, "Named") {
-        let mut args: Array[Type] = []
+        @type {
+            args: Array[Type]
+        }
+        let mut args = []
         let mut i = 0
         while i < ty.ty_args.len() {
             args.push(subst_apply_type(s, ty.ty_args[i]))
@@ -115,7 +128,7 @@ fn subst_apply_type(s: Substitution, ty: Type) {
     ty
 }
 
-fn occurs_check(var_id: Int, ty: Type) {
+fn occurs_check(var_id, ty) {
     if str_eq_type(ty.type_kind, "Var") {
         return ty.ty_id == var_id
     }
@@ -159,7 +172,7 @@ fn occurs_check(var_id: Int, ty: Type) {
     false
 }
 
-fn subst_clear_error(s: Substitution) {
+fn subst_clear_error(s) {
     s.last_error = new_type_error("", 0, 0)
     let _done = 0
 }

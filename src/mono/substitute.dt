@@ -13,34 +13,38 @@ class TypeVarSubst {
 }
 
 @type {
-    fn empty_type_subst() -> TypeVarSubst
-    fn build_var_subst(type_vars: Array[Int], type_args: Array[Type]) -> TypeVarSubst
-    fn substitute_type(ty: Type, subst: TypeVarSubst) -> Type
-    fn materialize_type(ty: Type, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) -> Type
-    fn specialize_function(function: TypedFnDef, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String, has_mangled_name: Bool, mangled_name: String) -> TypedFnDef
-    fn specialize_class(class_def: TypedClassDef, subst: TypeVarSubst, mangled_name: String) -> TypedClassDef
-    fn substitute_item(item: TypedItem, subst: TypeVarSubst) -> TypedItem
-    fn substitute_fn(function: TypedFnDef, subst: TypeVarSubst) -> TypedFnDef
-    fn substitute_class(class_def: TypedClassDef, subst: TypeVarSubst) -> TypedClassDef
-    fn substitute_block(block: TypedBlock, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) -> TypedBlock
-    fn substitute_stmt(stmt: TypedStmt, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) -> TypedStmt
-    fn substitute_else_branch(branch: TypedElseBranch, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) -> TypedElseBranch
-    fn substitute_expr(expr: TypedExpr, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) -> TypedExpr
-    fn mono_make_expr(tag: String, ty: Type, span: Span) -> TypedExpr
-    fn mono_find_var_index(subst: TypeVarSubst, var_id: Int) -> Int
-    fn mono_copy_type_array(items: Array[Type], subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) -> Array[Type]
+    empty_type_subst: () -> TypeVarSubst
+    build_var_subst: (Array[Int], Array[Type]) -> TypeVarSubst
+    substitute_type: (Type, TypeVarSubst) -> Type
+    materialize_type: (Type, TypeVarSubst, Bool, String, String) -> Type
+    specialize_function: (TypedFnDef, TypeVarSubst, Bool, String, String, Bool, String) -> TypedFnDef
+    specialize_class: (TypedClassDef, TypeVarSubst, String) -> TypedClassDef
+    substitute_item: (TypedItem, TypeVarSubst) -> TypedItem
+    substitute_fn: (TypedFnDef, TypeVarSubst) -> TypedFnDef
+    substitute_class: (TypedClassDef, TypeVarSubst) -> TypedClassDef
+    substitute_block: (TypedBlock, TypeVarSubst, Bool, String, String) -> TypedBlock
+    substitute_stmt: (TypedStmt, TypeVarSubst, Bool, String, String) -> TypedStmt
+    substitute_else_branch: (TypedElseBranch, TypeVarSubst, Bool, String, String) -> TypedElseBranch
+    substitute_expr: (TypedExpr, TypeVarSubst, Bool, String, String) -> TypedExpr
+    mono_make_expr: (String, Type, Span) -> TypedExpr
+    mono_find_var_index: (TypeVarSubst, Int) -> Int
+    mono_copy_type_array: (Array[Type], TypeVarSubst, Bool, String, String) -> Array[Type]
 }
 
 fn empty_type_subst() {
+    @type {
+        vars: Array[Int]
+        values: Array[Type]
+    }
     let subst = TypeVarSubst()
-    let vars: Array[Int] = []
-    let values: Array[Type] = []
+    let vars = []
+    let values = []
     subst.vars = vars
     subst.values = values
     subst
 }
 
-fn build_var_subst(type_vars: Array[Int], type_args: Array[Type]) {
+fn build_var_subst(type_vars, type_args) {
     let subst = empty_type_subst()
     let mut i = 0
     let mut n = type_vars.len()
@@ -55,7 +59,7 @@ fn build_var_subst(type_vars: Array[Int], type_args: Array[Type]) {
     subst
 }
 
-fn substitute_type(ty: Type, subst: TypeVarSubst) {
+fn substitute_type(ty, subst) {
     if str_eq_type(ty.type_kind, "Var") {
         let idx = mono_find_var_index(subst, ty.ty_id)
         if idx >= 0 {
@@ -73,7 +77,10 @@ fn substitute_type(ty: Type, subst: TypeVarSubst) {
         return type_set(substitute_type(ty.ty_inner, subst))
     }
     if str_eq_type(ty.type_kind, "Tuple") {
-        let mut items: Array[Type] = []
+        @type {
+            items: Array[Type]
+        }
+        let mut items = []
         let mut i = 0
         while i < ty.ty_items.len() {
             items.push(substitute_type(ty.ty_items[i], subst))
@@ -91,7 +98,10 @@ fn substitute_type(ty: Type, subst: TypeVarSubst) {
         return type_chan(substitute_type(ty.ty_inner, subst))
     }
     if str_eq_type(ty.type_kind, "Fn") {
-        let mut params: Array[Type] = []
+        @type {
+            params: Array[Type]
+        }
+        let mut params = []
         let mut i = 0
         while i < ty.ty_params.len() {
             params.push(substitute_type(ty.ty_params[i], subst))
@@ -100,7 +110,10 @@ fn substitute_type(ty: Type, subst: TypeVarSubst) {
         return type_fn(params, substitute_type(ty.ty_ret, subst))
     }
     if str_eq_type(ty.type_kind, "Named") {
-        let mut args: Array[Type] = []
+        @type {
+            args: Array[Type]
+        }
+        let mut args = []
         let mut i = 0
         while i < ty.ty_args.len() {
             args.push(substitute_type(ty.ty_args[i], subst))
@@ -117,7 +130,10 @@ fn substitute_type(ty: Type, subst: TypeVarSubst) {
     ty
 }
 
-fn materialize_type(ty: Type, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) {
+fn materialize_type(ty, subst, has_self_class, self_base, self_mangled) {
+    @type {
+        empty_args: Array[Type]
+    }
     let substituted = substitute_type(ty, subst)
     if str_eq_type(substituted.type_kind, "Array") {
         return type_array(materialize_type(substituted.ty_inner, subst, has_self_class, self_base, self_mangled))
@@ -155,13 +171,13 @@ fn materialize_type(ty: Type, subst: TypeVarSubst, has_self_class: Bool, self_ba
         let args = mono_copy_type_array(substituted.ty_args, subst, has_self_class, self_base, self_mangled)
         if args.len() == 0 {
             if has_self_class && str_eq_type(substituted.ty_name, self_base) {
-                let empty_args: Array[Type] = []
+                let empty_args = []
                 return ty_named(self_mangled, empty_args)
             }
-            let empty_args: Array[Type] = []
+            let empty_args = []
             return ty_named(substituted.ty_name, empty_args)
         }
-        let empty_args: Array[Type] = []
+        let empty_args = []
         return ty_named(mangle_class(substituted.ty_name, args), empty_args)
     }
     if str_eq_type(substituted.type_kind, "Row") {
@@ -173,9 +189,12 @@ fn materialize_type(ty: Type, subst: TypeVarSubst, has_self_class: Bool, self_ba
     substituted
 }
 
-fn specialize_function(function: TypedFnDef, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String, has_mangled_name: Bool, mangled_name: String) {
+fn specialize_function(function, subst, has_self_class, self_base, self_mangled, has_mangled_name, mangled_name) {
+    @type {
+        params: Array[TypedParam]
+    }
     let typed = TypedFnDef()
-    let params: Array[TypedParam] = []
+    let params = []
     typed.fn_is_pub = function.fn_is_pub
     if has_mangled_name {
         typed.fn_name = mangled_name
@@ -202,11 +221,16 @@ fn specialize_function(function: TypedFnDef, subst: TypeVarSubst, has_self_class
     typed
 }
 
-fn specialize_class(class_def: TypedClassDef, subst: TypeVarSubst, mangled_name: String) {
+fn specialize_class(class_def, subst, mangled_name) {
+    @type {
+        fields: Array[TypedFieldDef]
+        methods: Array[TypedFnDef]
+        type_blocks: Array[TypedTypeBlockDef]
+    }
     let typed = TypedClassDef()
-    let fields: Array[TypedFieldDef] = []
-    let methods: Array[TypedFnDef] = []
-    let type_blocks: Array[TypedTypeBlockDef] = []
+    let fields = []
+    let methods = []
+    let type_blocks = []
     typed.class_name = mangled_name
     typed.class_has_extends = class_def.class_has_extends
     typed.class_extends_name = class_def.class_extends_name
@@ -238,7 +262,7 @@ fn specialize_class(class_def: TypedClassDef, subst: TypeVarSubst, mangled_name:
     typed
 }
 
-fn substitute_item(item: TypedItem, subst: TypeVarSubst) {
+fn substitute_item(item, subst) {
     if str_eq_type(item.tag, "Fn") {
         let out = TypedItem()
         out.tag = "Fn"
@@ -266,17 +290,20 @@ fn substitute_item(item: TypedItem, subst: TypeVarSubst) {
     item
 }
 
-fn substitute_fn(function: TypedFnDef, subst: TypeVarSubst) {
+fn substitute_fn(function, subst) {
     specialize_function(function, subst, false, "", "", false, "")
 }
 
-fn substitute_class(class_def: TypedClassDef, subst: TypeVarSubst) {
+fn substitute_class(class_def, subst) {
     specialize_class(class_def, subst, class_def.class_name)
 }
 
-fn substitute_block(block: TypedBlock, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) {
+fn substitute_block(block, subst, has_self_class, self_base, self_mangled) {
+    @type {
+        stmts: Array[TypedStmt]
+    }
     let typed = TypedBlock()
-    let stmts: Array[TypedStmt] = []
+    let stmts = []
     typed.block_stmts = stmts
     typed.block_span = block.block_span
     typed.block_result_ty = materialize_type(block.block_result_ty, subst, has_self_class, self_base, self_mangled)
@@ -288,7 +315,7 @@ fn substitute_block(block: TypedBlock, subst: TypeVarSubst, has_self_class: Bool
     typed
 }
 
-fn substitute_stmt(stmt: TypedStmt, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) {
+fn substitute_stmt(stmt, subst, has_self_class, self_base, self_mangled) {
     let typed = TypedStmt()
     typed.tag = stmt.tag
     typed.stmt_span = stmt.stmt_span
@@ -393,8 +420,11 @@ fn substitute_stmt(stmt: TypedStmt, subst: TypeVarSubst, has_self_class: Bool, s
         return typed
     }
     if str_eq_type(stmt.tag, "GcConfig") {
+        @type {
+            entries: Array[TypedGcConfigEntry]
+        }
         let out = TypedGcConfigStmt()
-        let entries: Array[TypedGcConfigEntry] = []
+        let entries = []
         out.gc_entries = entries
         out.gc_span = stmt.stmt_gc_config.gc_span
         let mut i = 0
@@ -412,7 +442,7 @@ fn substitute_stmt(stmt: TypedStmt, subst: TypeVarSubst, has_self_class: Bool, s
     typed
 }
 
-fn substitute_else_branch(branch: TypedElseBranch, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) {
+fn substitute_else_branch(branch, subst, has_self_class, self_base, self_mangled) {
     let out = TypedElseBranch()
     out.tag = branch.tag
     if str_eq_type(branch.tag, "If") {
@@ -427,7 +457,7 @@ fn substitute_else_branch(branch: TypedElseBranch, subst: TypeVarSubst, has_self
     out
 }
 
-fn substitute_expr(expr: TypedExpr, subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) {
+fn substitute_expr(expr, subst, has_self_class, self_base, self_mangled) {
     let out = mono_make_expr(expr.tag, materialize_type(expr.expr_ty, subst, has_self_class, self_base, self_mangled), expr.expr_span)
     if str_eq_type(expr.tag, "IntLit") {
         out.int_value = expr.int_value
@@ -582,16 +612,26 @@ fn substitute_expr(expr: TypedExpr, subst: TypeVarSubst, has_self_class: Bool, s
     out
 }
 
-fn mono_make_expr(tag: String, ty: Type, span: Span) {
+fn mono_make_expr(tag, ty, span) {
+    @type {
+        empty_parts: Array[TypedFStrPart]
+        empty_items: Array[TypedExpr]
+        empty_entries: Array[TypedMapEntry]
+        empty_args: Array[TypedExpr]
+        empty_params: Array[String]
+        empty_arms: Array[TypedMatchArm]
+        empty_fields: Array[String]
+        empty_values: Array[TypedExpr]
+    }
     let out = TypedExpr()
-    let empty_parts: Array[TypedFStrPart] = []
-    let empty_items: Array[TypedExpr] = []
-    let empty_entries: Array[TypedMapEntry] = []
-    let empty_args: Array[TypedExpr] = []
-    let empty_params: Array[String] = []
-    let empty_arms: Array[TypedMatchArm] = []
-    let empty_fields: Array[String] = []
-    let empty_values: Array[TypedExpr] = []
+    let empty_parts = []
+    let empty_items = []
+    let empty_entries = []
+    let empty_args = []
+    let empty_params = []
+    let empty_arms = []
+    let empty_fields = []
+    let empty_values = []
     out.tag = tag
     out.expr_ty = ty
     out.expr_span = span
@@ -608,7 +648,7 @@ fn mono_make_expr(tag: String, ty: Type, span: Span) {
     out
 }
 
-fn mono_find_var_index(subst: TypeVarSubst, var_id: Int) {
+fn mono_find_var_index(subst, var_id) {
     let mut i = 0
     while i < subst.vars.len() {
         if subst.vars[i] == var_id {
@@ -619,8 +659,11 @@ fn mono_find_var_index(subst: TypeVarSubst, var_id: Int) {
     -1
 }
 
-fn mono_copy_type_array(items: Array[Type], subst: TypeVarSubst, has_self_class: Bool, self_base: String, self_mangled: String) {
-    let mut out: Array[Type] = []
+fn mono_copy_type_array(items, subst, has_self_class, self_base, self_mangled) {
+    @type {
+        out: Array[Type]
+    }
+    let mut out = []
     let mut i = 0
     while i < items.len() {
         out.push(materialize_type(items[i], subst, has_self_class, self_base, self_mangled))

@@ -8,12 +8,15 @@ class SubjectKind {
 }
 
 @type {
-    fn classify_type(ty: Type) -> SubjectKind
+    classify_type: (Type) -> SubjectKind
 }
 
-fn classify_type(ty: Type) {
+fn classify_type(ty) {
+    @type {
+        variants: Array[String]
+    }
     let out = SubjectKind()
-    let variants: Array[String] = []
+    let variants = []
     out.kind = "Other"
     out.name = ""
     out.variants = variants

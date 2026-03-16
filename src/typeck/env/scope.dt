@@ -7,25 +7,29 @@ class Scope {
 }
 
 @type {
-    fn new_scope() -> Scope
-    fn scope_define(s: Scope, name: String, scheme: Scheme)
-    fn scope_lookup(s: Scope, name: String) -> Scheme
-    fn scope_remove(s: Scope, name: String) -> Scheme
-    fn scope_contains(s: Scope, name: String) -> Bool
-    fn scope_all_names(s: Scope) -> Array[String]
-    fn str_eq_scope(a: String, b: String) -> Bool
+    new_scope: () -> Scope
+    scope_define: (Scope, String, Scheme) -> Unit
+    scope_lookup: (Scope, String) -> Scheme
+    scope_remove: (Scope, String) -> Scheme
+    scope_contains: (Scope, String) -> Bool
+    scope_all_names: (Scope) -> Array[String]
+    str_eq_scope: (String, String) -> Bool
 }
 
 fn new_scope() {
+    @type {
+        names: Array[String]
+        schemes: Array[Scheme]
+    }
     let s = Scope()
-    let names: Array[String] = []
-    let schemes: Array[Scheme] = []
+    let names = []
+    let schemes = []
     s.names = names
     s.schemes = schemes
     s
 }
 
-fn scope_define(s: Scope, name: String, scheme: Scheme) {
+fn scope_define(s, name, scheme) {
     let mut i = 0
     let mut done = false
     while i < s.names.len() && !done {
@@ -42,7 +46,7 @@ fn scope_define(s: Scope, name: String, scheme: Scheme) {
     let _done = 0
 }
 
-fn scope_lookup(s: Scope, name: String) {
+fn scope_lookup(s, name) {
     let mut out = empty_scheme()
     let mut i = 0
     while i < s.names.len() && !out.exists {
@@ -54,10 +58,14 @@ fn scope_lookup(s: Scope, name: String) {
     out
 }
 
-fn scope_remove(s: Scope, name: String) {
+fn scope_remove(s, name) {
+    @type {
+        names: Array[String]
+        schemes: Array[Scheme]
+    }
     let mut out = empty_scheme()
-    let mut names: Array[String] = []
-    let mut schemes: Array[Scheme] = []
+    let mut names = []
+    let mut schemes = []
     let mut i = 0
     while i < s.names.len() {
         if str_eq_scope(s.names[i], name) && !out.exists {
@@ -73,7 +81,7 @@ fn scope_remove(s: Scope, name: String) {
     out
 }
 
-fn scope_contains(s: Scope, name: String) {
+fn scope_contains(s, name) {
     let mut found = false
     let mut i = 0
     while i < s.names.len() && !found {
@@ -85,11 +93,11 @@ fn scope_contains(s: Scope, name: String) {
     found
 }
 
-fn scope_all_names(s: Scope) {
+fn scope_all_names(s) {
     s.names
 }
 
-fn str_eq_scope(a: String, b: String) {
+fn str_eq_scope(a, b) {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

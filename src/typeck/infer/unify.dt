@@ -1,10 +1,10 @@
 import { Type, TypeError, Substitution, Span }
 
 @type {
-    fn unify(s: Substitution, a: Type, b: Type, span: Span) -> Type
+    unify: (Substitution, Type, Type, Span) -> Type
 }
 
-fn unify(s: Substitution, a: Type, b: Type, span: Span) {
+fn unify(s, a, b, span) {
     subst_clear_error(s)
     let left = subst_apply_type(s, a)
     let right = subst_apply_type(s, b)
@@ -47,7 +47,10 @@ fn unify(s: Substitution, a: Type, b: Type, span: Span) {
             s.last_error = type_mismatch_error(type_display(left), type_display(right), span.line, span.col)
             return left
         }
-        let mut items: Array[Type] = []
+        @type {
+            items: Array[Type]
+        }
+        let mut items = []
         let mut i = 0
         while i < left.ty_items.len() {
             items.push(unify(s, left.ty_items[i], right.ty_items[i], span))
@@ -77,7 +80,10 @@ fn unify(s: Substitution, a: Type, b: Type, span: Span) {
             s.last_error = arity_mismatch_error(left.ty_params.len(), right.ty_params.len(), span.line, span.col)
             return left
         }
-        let mut params: Array[Type] = []
+        @type {
+            params: Array[Type]
+        }
+        let mut params = []
         let mut i = 0
         while i < left.ty_params.len() {
             params.push(unify(s, left.ty_params[i], right.ty_params[i], span))
@@ -91,7 +97,10 @@ fn unify(s: Substitution, a: Type, b: Type, span: Span) {
             s.last_error = type_mismatch_error(type_display(left), type_display(right), span.line, span.col)
             return left
         }
-        let mut args: Array[Type] = []
+        @type {
+            args: Array[Type]
+        }
+        let mut args = []
         let mut i = 0
         while i < left.ty_args.len() {
             args.push(unify(s, left.ty_args[i], right.ty_args[i], span))
