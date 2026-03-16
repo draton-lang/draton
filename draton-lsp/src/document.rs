@@ -41,4 +41,8 @@ impl DocumentStore {
     pub fn get(&self, uri: &str) -> Option<&Document> {
         self.docs.get(uri)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Document)> {
+        self.docs.iter()
+    }
 }

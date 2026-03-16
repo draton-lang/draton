@@ -1,8 +1,8 @@
 use crate::document::DocumentStore;
 use anyhow::Result;
 use lsp_types::{
-    HoverProviderCapability, InitializeResult, OneOf, PositionEncodingKind, ServerCapabilities,
-    ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
+    CompletionOptions, HoverProviderCapability, InitializeResult, OneOf, PositionEncodingKind,
+    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 use serde_json::{json, to_value, Value};
 
@@ -40,6 +40,9 @@ impl LspServer {
                             )),
                             hover_provider: Some(HoverProviderCapability::Simple(true)),
                             definition_provider: Some(OneOf::Left(true)),
+                            document_symbol_provider: Some(OneOf::Left(true)),
+                            workspace_symbol_provider: Some(OneOf::Left(true)),
+                            completion_provider: Some(CompletionOptions::default()),
                             ..ServerCapabilities::default()
                         },
                         server_info: Some(ServerInfo {
@@ -182,6 +185,67 @@ impl LspServer {
                 vec![self.respond(
                     id,
                     crate::goto_def::goto_definition(
+                        &self.docs,
+                        uri,
+                        line as usize,
+                        character as usize,
+                    )
+                    .unwrap_or(Value::Null),
+                )]
+            }
+            "textDocument/documentSymbol" => {
+                let Some(uri) = msg
+                    .get("params")
+                    .and_then(|params| params.get("textDocument"))
+                    .and_then(|doc| doc.get("uri"))
+                    .and_then(Value::as_str)
+                else {
+                    return Ok(Vec::new());
+                };
+                vec![self.respond(
+                    id,
+                    crate::symbols::document_symbols(&self.docs, uri).unwrap_or(Value::Null),
+                )]
+            }
+            "workspace/symbol" => {
+                let query = msg
+                    .get("params")
+                    .and_then(|params| params.get("query"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                vec![self.respond(
+                    id,
+                    crate::symbols::workspace_symbols(&self.docs, query),
+                )]
+            }
+            "textDocument/completion" => {
+                let Some(uri) = msg
+                    .get("params")
+                    .and_then(|params| params.get("textDocument"))
+                    .and_then(|doc| doc.get("uri"))
+                    .and_then(Value::as_str)
+                else {
+                    return Ok(Vec::new());
+                };
+                let Some(line) = msg
+                    .get("params")
+                    .and_then(|params| params.get("position"))
+                    .and_then(|position| position.get("line"))
+                    .and_then(Value::as_u64)
+                else {
+                    return Ok(Vec::new());
+                };
+                let Some(character) = msg
+                    .get("params")
+                    .and_then(|params| params.get("position"))
+                    .and_then(|position| position.get("character"))
+                    .and_then(Value::as_u64)
+                else {
+                    return Ok(Vec::new());
+                };
+                vec![self.respond(
+                    id,
+                    crate::completion::completion(
                         &self.docs,
                         uri,
                         line as usize,

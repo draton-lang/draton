@@ -1,0 +1,20 @@
+[tasks.build]
+description = "Build the main Draton CLI and language server"
+run = "cargo build -p drat -p draton-lsp"
+
+[tasks.test]
+description = "Run focused parser, typechecker, tooling, and LSP tests"
+run = [
+  "cargo test -p draton-parser --test items",
+  "cargo test -p draton-typeck --test errors",
+  "cargo test -p drat --test strict_syntax --test tooling_suite",
+  "cargo test -p draton-lsp --test server",
+]
+
+[tasks.lint]
+description = "Run the Draton linter across key repository sources"
+run = "cargo run -p drat -- lint examples tests draton-stdlib/dt src"
+
+[tasks.fmt]
+description = "Check deterministic formatting on canonical sample files"
+run = "cargo run -p drat -- fmt --check examples/hello.dt tests/programs/compile/52_lambda_nested.dt"

@@ -20,6 +20,13 @@ The compiler is written entirely in Rust and designed as a Cargo workspace of fo
 
 For the language design rationale behind the canonical syntax, see [docs/language-manifesto.md](docs/language-manifesto.md). For exact repository syntax expectations, see [docs/canonical-syntax-rules.md](docs/canonical-syntax-rules.md). For contributor anti-drift guardrails, see [docs/contributor-language-rules.md](docs/contributor-language-rules.md). For migration details and compatibility rules, see [docs/syntax-migration.md](docs/syntax-migration.md). For the next 12 months of project priorities, see [docs/roadmap-1year.md](docs/roadmap-1year.md).
 
+Tooling references:
+
+- [docs/tools/formatter.md](docs/tools/formatter.md)
+- [docs/tools/linter.md](docs/tools/linter.md)
+- [docs/tools/task.md](docs/tools/task.md)
+- [docs/tools/lsp.md](docs/tools/lsp.md)
+
 ## Features
 
 | | |
@@ -87,6 +94,27 @@ hello, draton!
 ```
 
 For full platform-specific install snippets, checksum verification, and troubleshooting, see [docs/install.md](docs/install.md).
+
+## Early Tooling Experience
+
+Draton now ships an official early tooling suite under `drat`:
+
+```sh
+drat fmt --check examples/hello.dt
+drat lint examples tests
+drat task
+drat task build
+drat lsp
+```
+
+Tooling v0 is intentionally practical rather than speculative:
+
+- `drat fmt` provides deterministic formatting and a safe `--check` mode
+- `drat lint` surfaces deprecated syntax, unused imports, unreachable code, and obvious contract issues
+- `drat task` runs repository or project automation from `drat.tasks`
+- `drat lsp` provides diagnostics, hover, definition, symbols, and basic completion
+
+The repository ships a root [drat.tasks](drat.tasks) so early adopters can see the intended automation shape immediately.
 
 ## Language Tour
 

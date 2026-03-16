@@ -1,9 +1,11 @@
 pub mod analysis;
+pub mod completion;
 pub mod diagnostics;
 pub mod document;
 pub mod goto_def;
 pub mod hover;
 pub mod server;
+pub mod symbols;
 
 use anyhow::{Context, Result};
 use serde_json::Value;

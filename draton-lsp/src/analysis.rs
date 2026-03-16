@@ -15,6 +15,7 @@ pub struct AnalysisResult {
     pub lex_errors: Vec<LexError>,
     pub parse_errors: Vec<ParseError>,
     pub type_errors: Vec<draton_typeck::TypeError>,
+    pub ast_program: Option<Program>,
     pub typed_program: Option<TypedProgram>,
     pub span_type_map: Vec<SpanType>,
     pub def_map: Vec<DefEntry>,
@@ -51,6 +52,7 @@ pub fn analyze(text: &str) -> AnalysisResult {
             lex_errors: lex_result.errors,
             parse_errors: Vec::new(),
             type_errors: Vec::new(),
+            ast_program: None,
             typed_program: None,
             span_type_map: Vec::new(),
             def_map: Vec::new(),
@@ -63,6 +65,7 @@ pub fn analyze(text: &str) -> AnalysisResult {
             lex_errors: Vec::new(),
             parse_errors: parse_result.errors,
             type_errors: Vec::new(),
+            ast_program: None,
             typed_program: None,
             span_type_map: Vec::new(),
             def_map: Vec::new(),
@@ -84,6 +87,7 @@ pub fn analyze(text: &str) -> AnalysisResult {
         lex_errors: Vec::new(),
         parse_errors: Vec::new(),
         type_errors: errors,
+        ast_program: Some(ast_program),
         typed_program: Some(typed_program),
         span_type_map,
         def_map,
@@ -300,7 +304,7 @@ fn push_span_type(text: &str, span: Span, type_str: String, out: &mut Vec<SpanTy
     });
 }
 
-fn offset_to_position(text: &str, offset: usize) -> (usize, usize) {
+pub(crate) fn offset_to_position(text: &str, offset: usize) -> (usize, usize) {
     let bounded = offset.min(text.len());
     let mut line = 0usize;
     let mut col = 0usize;
