@@ -35,6 +35,13 @@
         "path": "./syntaxes/draton.tmLanguage.json"
       }
     ],
+    "themes": [
+      {
+        "label": "Draton Prism Night",
+        "uiTheme": "vs-dark",
+        "path": "./themes/draton-prism-night-color-theme.json"
+      }
+    ],
     "configuration": {
       "title": "Draton",
       "properties": {

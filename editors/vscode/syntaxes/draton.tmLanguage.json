@@ -9,27 +9,117 @@
       "include": "#strings"
     },
     {
-      "include": "#keywords"
+      "include": "#declarations"
+    },
+    {
+      "include": "#imports"
+    },
+    {
+      "include": "#attributes"
+    },
+    {
+      "include": "#bindings"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#calls"
+    },
+    {
+      "include": "#members"
+    },
+    {
+      "include": "#constants"
     },
     {
       "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
     }
   ],
   "repository": {
     "comments": {
       "patterns": [
         {
+          "name": "comment.line.documentation.draton",
+          "match": "///.*$"
+        },
+        {
           "name": "comment.line.double-slash.draton",
           "match": "//.*$"
+        },
+        {
+          "name": "comment.block.draton",
+          "begin": "/\\*",
+          "end": "\\*/"
         }
       ]
     },
     "strings": {
       "patterns": [
         {
+          "name": "string.quoted.double.interpolated.draton",
+          "begin": "f\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.draton"
+            }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.draton"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.draton",
+              "match": "\\\\."
+            },
+            {
+              "name": "meta.interpolation.draton",
+              "begin": "\\{",
+              "beginCaptures": {
+                "0": {
+                  "name": "punctuation.section.interpolation.begin.draton"
+                }
+              },
+              "end": "\\}",
+              "endCaptures": {
+                "0": {
+                  "name": "punctuation.section.interpolation.end.draton"
+                }
+              },
+              "patterns": [
+                {
+                  "include": "#expression"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "name": "string.quoted.double.draton",
           "begin": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.draton"
+            }
+          },
           "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.draton"
+            }
+          },
           "patterns": [
             {
               "name": "constant.character.escape.draton",
@@ -39,19 +129,314 @@
         }
       ]
     },
-    "keywords": {
+    "declarations": {
       "patterns": [
         {
-          "name": "keyword.control.draton",
-          "match": "\\b(fn|class|interface|enum|error|let|mut|return|if|elif|else|for|while|match|spawn|import|pub|const)\\b"
+          "name": "meta.declaration.class.draton",
+          "match": "\\b(class)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.class.draton"
+            },
+            "2": {
+              "name": "entity.name.type.class.draton"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.interface.draton",
+          "match": "\\b(interface)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.interface.draton"
+            },
+            "2": {
+              "name": "entity.name.type.interface.draton"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.enum.draton",
+          "match": "\\b(enum)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.enum.draton"
+            },
+            "2": {
+              "name": "entity.name.type.enum.draton"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.error.draton",
+          "match": "\\b(error)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.error.draton"
+            },
+            "2": {
+              "name": "entity.name.type.error.draton"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.layer.draton",
+          "match": "\\b(layer)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.layer.draton"
+            },
+            "2": {
+              "name": "entity.name.section.layer.draton"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.function.draton",
+          "match": "\\b(pub\\s+)?(fn)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.access.draton"
+            },
+            "2": {
+              "name": "storage.type.function.draton"
+            },
+            "3": {
+              "name": "entity.name.function.draton"
+            }
+          }
+        }
+      ]
+    },
+    "imports": {
+      "patterns": [
+        {
+          "name": "meta.import.draton",
+          "begin": "\\bimport\\b",
+          "beginCaptures": {
+            "0": {
+              "name": "keyword.control.import.draton"
+            }
+          },
+          "end": "$",
+          "patterns": [
+            {
+              "name": "keyword.control.from.draton",
+              "match": "\\bfrom\\b"
+            },
+            {
+              "name": "keyword.control.as.draton",
+              "match": "\\bas\\b"
+            },
+            {
+              "name": "entity.name.namespace.draton",
+              "match": "\\b[a-zA-Z_][A-Za-z0-9_]*(?:\\.[a-zA-Z_][A-Za-z0-9_]*)+\\b"
+            },
+            {
+              "name": "variable.other.import.draton",
+              "match": "\\b[a-zA-Z_][A-Za-z0-9_]*\\b"
+            },
+            {
+              "name": "punctuation.definition.import.draton",
+              "match": "[{}.,]"
+            }
+          ]
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "name": "storage.modifier.attribute.draton",
+          "match": "@(?:type|unsafe|pointer|asm|comptime|if|gc_config|panic_handler|oom_handler|extern)\\b"
+        }
+      ]
+    },
+    "bindings": {
+      "patterns": [
+        {
+          "name": "meta.binding.mutable.draton",
+          "match": "\\b(let|const)\\s+(mut\\s+)?([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.binding.draton"
+            },
+            "2": {
+              "name": "storage.modifier.mutable.draton"
+            },
+            "3": {
+              "name": "variable.other.definition.draton"
+            }
+          }
+        },
+        {
+          "name": "variable.parameter.draton",
+          "match": "\\b([a-z_][A-Za-z0-9_]*)\\b(?=\\s*:)"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.builtin.draton",
+          "match": "\\b(Int|Float|Bool|String|Unit|Array|Map|Set|Tuple|Result|Option)\\b"
+        },
+        {
+          "name": "storage.type.channel.draton",
+          "match": "\\bchan\\b"
+        },
+        {
+          "name": "entity.name.type.draton",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "calls": {
+      "patterns": [
+        {
+          "name": "support.function.constructor.draton",
+          "match": "\\b(Ok|Err)\\b(?=\\s*\\()"
+        },
+        {
+          "name": "entity.name.function.call.draton",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\()"
+        },
+        {
+          "name": "entity.name.function.method.draton",
+          "match": "(?<=[.])\\b([A-Za-z_][A-Za-z0-9_]*)\\b(?=\\s*\\()"
+        }
+      ]
+    },
+    "members": {
+      "patterns": [
+        {
+          "name": "constant.other.enum-member.draton",
+          "match": "(?<=[.])\\b([A-Z][A-Za-z0-9_]*)\\b"
+        },
+        {
+          "name": "variable.other.property.draton",
+          "match": "(?<=[.])\\b([a-z_][A-Za-z0-9_]*)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.draton",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.null.draton",
+          "match": "\\bNone\\b"
+        },
+        {
+          "name": "variable.language.wildcard.draton",
+          "match": "\\b_\\b"
         }
       ]
     },
     "numbers": {
       "patterns": [
         {
-          "name": "constant.numeric.draton",
-          "match": "\\b\\d+(?:\\.\\d+)?\\b"
+          "name": "constant.numeric.hex.draton",
+          "match": "\\b0[xX][0-9A-Fa-f]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.draton",
+          "match": "\\b0[bB][01]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.draton",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.draton",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.draton",
+          "match": "\\b(return|if|elif|else|for|while|in|match|spawn|lambda|import|from|as)\\b"
+        },
+        {
+          "name": "keyword.declaration.relationship.draton",
+          "match": "\\b(extends|implements)\\b"
+        },
+        {
+          "name": "storage.modifier.access.draton",
+          "match": "\\bpub\\b"
+        },
+        {
+          "name": "storage.modifier.mutable.draton",
+          "match": "\\bmut\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.draton",
+          "match": "\\?\\?|=>|->|\\+\\+|--|\\+=|-=|\\*=|/=|%=|==|!=|<=|>=|&&|\\|\\||<<|>>|\\.\\.|[=+\\-*/%<>!&|^~?:]"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.comma.draton",
+          "match": ","
+        },
+        {
+          "name": "punctuation.terminator.statement.draton",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.definition.group.draton",
+          "match": "[(){}\\[\\]]"
+        },
+        {
+          "name": "punctuation.accessor.draton",
+          "match": "\\."
+        }
+      ]
+    },
+    "expression": {
+      "patterns": [
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#attributes"
+        },
+        {
+          "include": "#bindings"
+        },
+        {
+          "include": "#types"
+        },
+        {
+          "include": "#calls"
+        },
+        {
+          "include": "#members"
+        },
+        {
+          "include": "#constants"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#operators"
+        },
+        {
+          "include": "#punctuation"
         }
       ]
     }
