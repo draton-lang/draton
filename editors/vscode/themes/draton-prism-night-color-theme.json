@@ -130,8 +130,7 @@
         "variable.other.readwrite.draton"
       ],
       "settings": {
-        "foreground": "#D4AF37",
-        "fontStyle": "italic"
+        "foreground": "#FF9E64"
       }
     },
     {
