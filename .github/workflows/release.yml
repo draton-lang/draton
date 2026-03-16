@@ -148,15 +148,29 @@ jobs:
         if: ${{ matrix.supported && matrix.llvm_source == 'llvm-package-windows' }}
         shell: pwsh
         run: |
-          $installed = choco list --local-only --exact llvm --limit-output 2>$null
-          if ($LASTEXITCODE -eq 0 -and $installed) {
-            choco uninstall llvm -y --no-progress --all-versions
+          $ProgressPreference = 'SilentlyContinue'
+          $archive = Join-Path $env:GITHUB_WORKSPACE 'llvm-package.7z'
+          Invoke-WebRequest -Uri 'https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6/llvm-14.0.6-windows-amd64-msvc17-msvcrt.7z' -OutFile $archive
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'llvm-src'
+          if (Test-Path $extractRoot) {
+            Remove-Item -Recurse -Force $extractRoot
           }
-          choco install llvm --version=14.0.6 -y --no-progress
-          $dest = 'C:\Program Files\LLVM'
+          & 7z x $archive "-o$extractRoot" | Out-Null
+          $header = Get-ChildItem -Path $extractRoot -Recurse -Filter 'Target.h' |
+            Where-Object { $_.FullName -like '*\include\llvm-c\Target.h' } |
+            Select-Object -First 1
+          if (-not (Test-Path $header)) {
+            throw 'Could not locate llvm-c/Target.h in vovkos LLVM package'
+          }
+          $prefix = $header.Directory.Parent.Parent.FullName
+          $dest = (Join-Path $env:GITHUB_WORKSPACE 'llvm').Replace('/', '\')
+          if (Test-Path $dest) {
+            Remove-Item -Recurse -Force $dest
+          }
+          Copy-Item -Recurse -Force $prefix $dest
           $header = Join-Path $dest 'include\llvm-c\Target.h'
           if (-not (Test-Path $header)) {
-            throw "LLVM headers missing after Chocolatey install: $header"
+            throw "LLVM headers missing after install copy: $header"
           }
           $realConfig = Join-Path $dest 'bin\llvm-config.exe'
           if (Test-Path $realConfig) {
