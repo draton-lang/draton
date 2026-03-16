@@ -382,7 +382,7 @@
       "patterns": [
         {
           "name": "variable.other.readwrite.draton",
-          "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+          "match": "\\b(?!(?:let|mut|fn|return|if|elif|else|for|while|in|match|class|layer|extends|implements|interface|enum|error|pub|import|from|as|spawn|chan|const|lambda|true|false|None)\\b)[a-z_][A-Za-z0-9_]*\\b"
         }
       ]
     },
