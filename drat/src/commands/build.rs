@@ -68,43 +68,52 @@ pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOu
     }
 
     let entry_path = config.entry_path(project_root);
-    let compiled = compile_project(&entry_path, request.strict_syntax)?;
-    let Some(main_return_type) = compiled.main_return_type.clone() else {
-        bail!("khong tim thay fn main trong {}", entry_path.display());
-    };
-    let context = LlvmContext::create();
-    let module = CodeGen::new(&context, request.profile.to_codegen_mode())
-        .emit(&compiled.typed_program)
-        .map_err(|error| anyhow!(error.to_string()))?;
-    wrap_main_for_binary(&context, &module, &main_return_type)?;
+    let old_multi_defs = env::var_os("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS");
+    env::set_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", "1");
+    let built = (|| {
+        let compiled = compile_project(&entry_path, request.strict_syntax)?;
+        let Some(main_return_type) = compiled.main_return_type.clone() else {
+            bail!("khong tim thay fn main trong {}", entry_path.display());
+        };
+        let context = LlvmContext::create();
+        let module = CodeGen::new(&context, request.profile.to_codegen_mode())
+            .emit(&compiled.typed_program)
+            .map_err(|error| anyhow!(error.to_string()))?;
+        wrap_main_for_binary(&context, &module, &main_return_type)?;
 
-    let build_dir = project_root
-        .join("build")
-        .join(request.profile.as_dir_name());
-    fs::create_dir_all(&build_dir)
-        .with_context(|| format!("khong the tao {}", build_dir.display()))?;
-    let exe_name = if cfg!(windows) {
-        format!("{}.exe", config.project.name)
-    } else {
-        config.project.name.clone()
-    };
-    let ir_path = build_dir.join(format!("{}.ll", config.project.name));
-    let object_path = build_dir.join(format!("{}.o", config.project.name));
-    let binary_path = build_dir.join(exe_name);
-    CodeGen::write_ir(&module, &ir_path)?;
-    CodeGen::write_object(&module, &object_path)?;
-    link_binary(
-        request.profile,
-        &object_path,
-        &binary_path,
-        resolved_target.as_deref(),
-    )?;
+        let build_dir = project_root
+            .join("build")
+            .join(request.profile.as_dir_name());
+        fs::create_dir_all(&build_dir)
+            .with_context(|| format!("khong the tao {}", build_dir.display()))?;
+        let exe_name = if cfg!(windows) {
+            format!("{}.exe", config.project.name)
+        } else {
+            config.project.name.clone()
+        };
+        let ir_path = build_dir.join(format!("{}.ll", config.project.name));
+        let object_path = build_dir.join(format!("{}.o", config.project.name));
+        let binary_path = build_dir.join(exe_name);
+        CodeGen::write_ir(&module, &ir_path)?;
+        CodeGen::write_object(&module, &object_path)?;
+        link_binary(
+            request.profile,
+            &object_path,
+            &binary_path,
+            resolved_target.as_deref(),
+        )?;
 
-    Ok(BuildOutput {
-        binary_path,
-        object_path,
-        ir_path,
-    })
+        Ok(BuildOutput {
+            binary_path,
+            object_path,
+            ir_path,
+        })
+    })();
+    match old_multi_defs {
+        Some(value) => env::set_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", value),
+        None => env::remove_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS"),
+    }
+    built
 }
 
 pub(crate) fn run_file(
