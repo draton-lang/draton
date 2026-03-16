@@ -13,8 +13,13 @@ fn prefix_dir() -> PathBuf {
 }
 
 fn real_llvm_config() -> Option<PathBuf> {
-    let path = prefix_dir().join("bin").join("llvm-config-real.exe");
-    path.exists().then_some(path)
+    let bin_dir = prefix_dir().join("bin");
+    let exe = bin_dir.join("llvm-config-real.exe");
+    if exe.exists() {
+        return Some(exe);
+    }
+    let unix = bin_dir.join("llvm-config-real");
+    unix.exists().then_some(unix)
 }
 
 fn print_and_exit(message: &str) -> ExitCode {
@@ -22,20 +27,36 @@ fn print_and_exit(message: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn library_name(path: &Path) -> Option<String> {
+    let ext = path.extension().and_then(|ext| ext.to_str())?;
+    let stem = path.file_stem().and_then(|stem| stem.to_str())?;
+    match ext {
+        "lib" => {
+            if stem.starts_with("LLVM") || stem == "LTO" || stem == "Remarks" {
+                Some(format!("{stem}.lib"))
+            } else {
+                None
+            }
+        }
+        "a" => {
+            if let Some(stripped) = stem.strip_prefix("lib") {
+                if stripped.starts_with("LLVM") || stripped == "LTO" || stripped == "Remarks" {
+                    return Some(path.file_name()?.to_string_lossy().into_owned());
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 fn libnames() -> io::Result<String> {
     let mut names = Vec::new();
     for entry in fs::read_dir(prefix_dir().join("lib"))? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("lib") {
-            continue;
-        }
-        let stem = match path.file_stem().and_then(|stem| stem.to_str()) {
-            Some(stem) => stem,
-            None => continue,
-        };
-        if stem.starts_with("LLVM") || stem == "LTO" || stem == "Remarks" {
-            names.push(format!("{stem}.lib"));
+        if let Some(name) = library_name(&path) {
+            names.push(name);
         }
     }
     names.sort();

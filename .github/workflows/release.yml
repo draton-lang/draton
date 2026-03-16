@@ -127,9 +127,15 @@ jobs:
 
       - name: Install LLVM 14 (Linux)
         if: ${{ matrix.supported && matrix.llvm_source == 'ubuntu-apt' }}
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y llvm-14-dev clang-14 lld-14
+          if [ -f "/usr/lib/llvm-14/bin/llvm-config" ]; then
+            sudo mv /usr/lib/llvm-14/bin/llvm-config /usr/lib/llvm-14/bin/llvm-config-real
+          fi
+          rustc scripts/llvm_config_shim.rs -O -o /tmp/llvm-config
+          sudo mv /tmp/llvm-config /usr/lib/llvm-14/bin/llvm-config
           echo "LLVM_PATH=/usr/lib/llvm-14" >> "$GITHUB_ENV"
 
       - name: Install LLVM 14 (macOS)
@@ -143,9 +149,9 @@ jobs:
         shell: bash
         run: |
           curl -L --retry 5 --retry-delay 2 \
-            -o llvm.7z \
-            https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6/llvm-14.0.6-windows-amd64-msvc17-msvcrt.7z
-          7z x llvm.7z -o"$RUNNER_TEMP/llvm-src" > /dev/null
+            -o llvm-installer.exe \
+            https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.6/LLVM-14.0.6-win64.exe
+          7z x llvm-installer.exe -o"$RUNNER_TEMP/llvm-src" > /dev/null
           python - <<'PY'
           import os
           import shutil

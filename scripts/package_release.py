@@ -93,27 +93,46 @@ def bundle_macos_runtime_libs(staging_root: Path, staged_binary: Path) -> None:
     if not llvm_lib_dir.exists():
         return
 
-    inspect = subprocess.run(
-        ["otool", "-L", str(staged_binary)],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if inspect.returncode != 0:
-        return
+    def inspect_dependencies(path: Path) -> dict[str, str]:
+        inspect = subprocess.run(
+            ["otool", "-L", str(path)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if inspect.returncode != 0:
+            return {}
+        needed: dict[str, str] = {}
+        for line in inspect.stdout.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            dep = stripped.split(" ", 1)[0]
+            name = Path(dep).name
+            if name in {"libc++.1.dylib", "libc++abi.1.dylib", "libunwind.1.dylib"}:
+                needed[name] = dep
+        return needed
 
-    needed_paths: dict[str, str] = {}
-    for line in inspect.stdout.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        dep = stripped.split(" ", 1)[0]
-        name = Path(dep).name
-        if name in {"libc++.1.dylib", "libc++abi.1.dylib", "libunwind.1.dylib"}:
-            needed_paths[name] = dep
-
+    needed_paths = inspect_dependencies(staged_binary)
     if not needed_paths:
         return
+
+    copied_paths: dict[str, Path] = {}
+    pending = list(needed_paths)
+    while pending:
+        name = pending.pop()
+        if name in copied_paths:
+            continue
+        source = llvm_lib_dir / name
+        if not source.exists():
+            raise SystemExit(f"missing macOS runtime dependency for packaged drat: {source}")
+        target = staging_root / name
+        shutil.copy2(source, target)
+        copied_paths[name] = target
+        for nested_name, nested_dep in inspect_dependencies(target).items():
+            if nested_name not in needed_paths:
+                needed_paths[nested_name] = nested_dep
+                pending.append(nested_name)
 
     subprocess.run(
         ["install_name_tool", "-add_rpath", "@executable_path", str(staged_binary)],
@@ -123,16 +142,27 @@ def bundle_macos_runtime_libs(staging_root: Path, staged_binary: Path) -> None:
     )
 
     for name, original_path in needed_paths.items():
-        source = llvm_lib_dir / name
-        if not source.exists():
-            raise SystemExit(f"missing macOS runtime dependency for packaged drat: {source}")
-        shutil.copy2(source, staging_root / name)
         subprocess.run(
             ["install_name_tool", "-change", original_path, f"@executable_path/{name}", str(staged_binary)],
             check=True,
             capture_output=True,
             text=True,
         )
+
+    for name, dylib_path in copied_paths.items():
+        subprocess.run(
+            ["install_name_tool", "-id", f"@loader_path/{name}", str(dylib_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        for dep_name, dep_path in inspect_dependencies(dylib_path).items():
+            subprocess.run(
+                ["install_name_tool", "-change", dep_path, f"@loader_path/{dep_name}", str(dylib_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
 
 
 def sha256(path: Path) -> str:
