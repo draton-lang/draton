@@ -39,11 +39,15 @@ def run(cmd: list[str], cwd: Path, extra_env: dict[str, str] | None = None) -> N
     env = os.environ.copy()
     if extra_env:
         env.update(extra_env)
-    completed = subprocess.run(cmd, cwd=cwd, env=env, check=False, text=True, capture_output=True)
+    print(f"+ {' '.join(cmd)}", flush=True)
+    try:
+        completed = subprocess.run(cmd, cwd=cwd, env=env, check=False, text=True, capture_output=True)
+    except FileNotFoundError as exc:
+        raise SystemExit(f"failed to start command: {' '.join(cmd)} ({exc})") from exc
     if completed.returncode != 0:
         sys.stderr.write(completed.stdout)
         sys.stderr.write(completed.stderr)
-        raise SystemExit(completed.returncode)
+        raise SystemExit(f"command failed with exit code {completed.returncode}: {' '.join(cmd)}")
 
 
 def sanitized_runtime_env(root: Path) -> dict[str, str]:
@@ -115,8 +119,10 @@ def smoke_lsp(binary: Path, cwd: Path, env: dict[str, str]) -> None:
         }
     )
     message = f"Content-Length: {len(payload)}\r\n\r\n{payload}".encode("utf-8")
+    cmd = [str(binary), "lsp"]
+    print(f"+ {' '.join(cmd)} <initialize>", flush=True)
     completed = subprocess.run(
-        [str(binary), "lsp"],
+        cmd,
         cwd=cwd,
         env={**os.environ, **env},
         input=message,
@@ -127,7 +133,7 @@ def smoke_lsp(binary: Path, cwd: Path, env: dict[str, str]) -> None:
     if completed.returncode != 0:
         sys.stderr.write(completed.stdout.decode(errors="replace"))
         sys.stderr.write(completed.stderr.decode(errors="replace"))
-        raise SystemExit(completed.returncode)
+        raise SystemExit(f"command failed with exit code {completed.returncode}: {' '.join(cmd)}")
     if b"completionProvider" not in completed.stdout:
         raise SystemExit("lsp initialize smoke test did not return capabilities")
 
