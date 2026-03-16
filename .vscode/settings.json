@@ -1,5 +1,21 @@
 {
   "files.associations": {
     "*.dt": "draton"
+  },
+  "editor.semanticHighlighting.enabled": false,
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": [
+          "source.draton variable.other.definition.draton",
+          "source.draton variable.other.import.draton",
+          "source.draton variable.other.readwrite.draton"
+        ],
+        "settings": {
+          "foreground": "#FFD166",
+          "fontStyle": "italic"
+        }
+      }
+    ]
   }
 }
