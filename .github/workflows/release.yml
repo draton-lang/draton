@@ -205,9 +205,15 @@ jobs:
         run: |
           rustup target add x86_64-pc-windows-gnu
           cargo build --release --locked -p draton-runtime --target x86_64-pc-windows-gnu
-          Copy-Item -Force `
-            target/x86_64-pc-windows-gnu/release/libdraton_runtime.a `
-            target/${{ matrix.target }}/release/libdraton_runtime.a
+          $gnuRuntime = Get-ChildItem `
+            -Path target/x86_64-pc-windows-gnu/release `
+            -Recurse `
+            -Filter 'libdraton_runtime*.a' |
+            Select-Object -First 1
+          if (-not $gnuRuntime) {
+            throw 'Could not locate GNU draton runtime archive after build'
+          }
+          Copy-Item -Force $gnuRuntime.FullName target/${{ matrix.target }}/release/libdraton_runtime.a
           "DRATON_WINDOWS_GNU_ROOT=C:\mingw64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build release binaries
