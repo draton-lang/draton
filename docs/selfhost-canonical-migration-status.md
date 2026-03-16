@@ -52,11 +52,14 @@ The following self-host files were migrated safely to canonical syntax in this p
 - `src/codegen/closure/emit.dt`
 - `src/codegen/closure/env.dt`
 - `src/ast/expr.dt`
+- `src/ast/item.dt`
+- `src/parser/parse/expr.dt`
 - `src/parser/parse/types.dt`
 - `src/typeck/env/env.dt`
 - `src/typeck/env/scope.dt`
 - `src/typeck/exhaust/check.dt`
 - `src/typeck/exhaust/classify.dt`
+- `src/typeck/infer/expr.dt`
 - `src/typeck/infer/stmt.dt`
 - `src/typeck/infer/subst.dt`
 - `src/typeck/infer/unify.dt`
@@ -77,6 +80,9 @@ Migration techniques used:
 - parser/typechecker support helpers rewritten to canonical file-scope bindings
 - environment, exhaustiveness, substitution, and monomorphization locals moved to function-scope `@type`
 - statement inference locals moved to function-scope `@type`
+- expression parser helpers rewritten to canonical file-scope bindings and function-scope `@type`
+- expression inference helpers rewritten to canonical file-scope bindings and function-scope `@type`
+- AST item definitions now use class-scope `@type` and canonical helper contracts
 
 ## Semantic Parity Completed In This Pass
 
@@ -123,22 +129,12 @@ The backend slice is now substantially cleaner:
 
 The files below still contain deprecated inline syntax after this pass.
 
-### Blocker: Self-Host Semantic Coupling Still Present
-
-These files are still tightly coupled to older mirrored expression/typechecker structures. A purely mechanical rewrite would risk desynchronizing the self-host mirror from the Rust frontend behavior.
-
-| File | Exact blocker |
-| --- | --- |
-| `src/parser/parse/expr.dt` | Expression parser still carries the densest mix of legacy inline signatures plus older expression-parsing helper structure; it should be migrated together with `src/typeck/infer/expr.dt` to keep the mirror aligned. |
-| `src/typeck/infer/expr.dt` | Expression inference still has the broadest concentration of compatibility-form signatures and typed locals; it remains the main typechecker-side expression blocker. |
-
 ### Blocker: Mechanical Cleanup On Semantically-Unblocked Files
 
 These files are no longer blocked by missing canonical-contract semantics, but they still contain compatibility-form inline syntax in their own source. The remaining work is primarily source-level rewrite, kept separate here to avoid broad risky churn.
 
 | File | Exact blocker |
 | --- | --- |
-| `src/ast/item.dt` | Large AST constructor/helper surface still uses legacy inline signatures; migration is mostly mechanical but wide. |
 | `src/parser/parse/item.dt` | Parser item helpers are semantically unblocked but still have many compatibility-form function signatures. |
 | `src/parser/parse/stmt.dt` | Statement parser mirror is semantically unblocked but still source-level legacy syntax heavy. |
 | `src/typeck/infer/item.dt` | Item inference is semantically unblocked but still contains a large amount of compatibility-form syntax. |
@@ -147,11 +143,14 @@ These files are no longer blocked by missing canonical-contract semantics, but t
 Files that no longer appear here:
 
 - `src/ast/expr.dt` was mechanically canonicalized in this pass
+- `src/ast/item.dt` was mechanically canonicalized in this pass
+- `src/parser/parse/expr.dt` was mechanically canonicalized in this pass
 - `src/parser/parse/types.dt` was mechanically canonicalized in this pass
 - `src/typeck/env/env.dt` was mechanically canonicalized in this pass
 - `src/typeck/env/scope.dt` was mechanically canonicalized in this pass
 - `src/typeck/exhaust/check.dt` was mechanically canonicalized in this pass
 - `src/typeck/exhaust/classify.dt` was mechanically canonicalized in this pass
+- `src/typeck/infer/expr.dt` was mechanically canonicalized in this pass
 - `src/typeck/infer/stmt.dt` was mechanically canonicalized in this pass
 - `src/typeck/infer/subst.dt` was mechanically canonicalized in this pass
 - `src/typeck/infer/unify.dt` was mechanically canonicalized in this pass
@@ -168,9 +167,9 @@ These files are mechanically migratable, but were deferred in this pass because 
 | `src/ast/dump.dt` | Large printer module with more than a thousand lines of constructor-dump helpers; deferred to keep this pass reviewable. |
 | `src/typeck/dump.dt` | Large printer module with similar mechanical churn and low semantic payoff compared with parser/typechecker/codegen core files. |
 
-### Blocker: Generic Contract Syntax Still Missing
+### Blocker: Semantic Coupling Still Present
 
-No remaining `src/` files in this scan were blocked primarily by generic-contract syntax. The dominant blocker is still incomplete self-host semantic parity.
+No remaining `src/` files in this scan are blocked primarily by missing canonical-contract semantics in the core frontend/backend mirror. The remaining blockers are mechanical cleanup or intentionally deferred printer/dump churn.
 
 ## Current Parity Summary
 
@@ -188,15 +187,15 @@ After this pass, the self-host mirror is materially closer to canonical syntax i
 
 What is still not true:
 
-- the self-host mirror is **not yet** at full semantic parity with the Rust frontend for canonical syntax
+- the self-host mirror is **not yet** fully syntax-clean across every `src/` file
 - `--strict-syntax` still cannot be applied cleanly to the entire `src/` tree
-- the remaining debt is now concentrated primarily in `src/parser/parse/expr.dt`, `src/typeck/infer/expr.dt`, a small mechanical-cleanup set, and large deferred dump/printer modules
+- the remaining debt is now concentrated in a small mechanical-cleanup set plus large deferred dump/printer modules
 
 In practice, the repository is now in an intermediate state:
 
 - the Rust frontend/tooling path is authoritative for canonical syntax
 - the self-host source tree has been partially canonicalized where safe
-- the remaining migration work is no longer mostly mechanical; it requires coordinated mirror updates across AST, parser, typechecker, and backend layers
+- the remaining migration work is now mostly mechanical source cleanup, not missing canonical-contract semantics
 
 ## Verification Run In This Pass
 
@@ -221,15 +220,14 @@ In practice, the repository is now in an intermediate state:
 
 ## Recommended Next Steps
 
-1. Tackle the remaining expression-heavy pair `src/parser/parse/expr.dt` and `src/typeck/infer/expr.dt` as one coordinated pass.
-2. Canonicalize the source text of the remaining semantically-unblocked mechanical files, starting with `src/parser/parse/item.dt`, `src/parser/parse/stmt.dt`, `src/typeck/infer/item.dt`, and `src/mono/collector.dt`.
-3. Finish large deferred printer/dump modules only after the expression-heavy semantic slice is stable.
+1. Canonicalize the source text of the remaining semantically-unblocked mechanical files, starting with `src/parser/parse/item.dt`, `src/parser/parse/stmt.dt`, `src/typeck/infer/item.dt`, and `src/mono/collector.dt`.
+2. Finish large deferred printer/dump modules once the smaller mechanical set is out of the way.
 
 ## Near-Final State
 
 The self-host mirror is now close to full canonical syntax parity in the backend path:
 
 - `src/codegen/` no longer contains repository-known blockers caused by deprecated inline syntax in the audited files
-- a focused strict-canonical CI subset is now practical for canonical fixtures plus selected self-host-facing builds, because the backend and major support helpers are syntax-clean
-- the main remaining blockers are concentrated in a two-file frontend/typechecker expression slice plus a limited number of semantically-unblocked files still awaiting mechanical rewrite
-- the remaining skipped set is therefore mostly frontend cleanup plus a small amount of intentionally deferred dump/printer churn
+- a focused strict-canonical CI subset is now practical for canonical fixtures plus selected self-host-facing builds, because the backend, expression slice, and major support helpers are syntax-clean
+- the main remaining blockers are a small semantically-unblocked mechanical set plus intentionally deferred dump/printer cleanup
+- the remaining skipped set is now narrow enough that a near-final self-host strict-canonical CI subset is practical without waiting for full-tree cleanup

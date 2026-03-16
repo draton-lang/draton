@@ -11,51 +11,51 @@ import { Expr, MatchArm, MatchArmBody, FStrPart, MapEntry, expr_int_lit, expr_fl
          Block, Token, Span, tokenize, new_parser, parser_parse_expression_only }
 
 @type {
-    fn parse_expression(p: Parser) -> Expr
-    fn parse_nullish(p: Parser) -> Expr
-    fn parse_or(p: Parser) -> Expr
-    fn parse_and(p: Parser) -> Expr
-    fn parse_equality(p: Parser) -> Expr
-    fn parse_comparison(p: Parser) -> Expr
-    fn parse_range(p: Parser) -> Expr
-    fn parse_bit_or_xor(p: Parser) -> Expr
-    fn parse_bit_and(p: Parser) -> Expr
-    fn parse_shift(p: Parser) -> Expr
-    fn parse_additive(p: Parser) -> Expr
-    fn parse_multiplicative(p: Parser) -> Expr
-    fn parse_cast(p: Parser) -> Expr
-    fn parse_unary(p: Parser) -> Expr
-    fn parse_postfix(p: Parser) -> Expr
-    fn parse_primary(p: Parser) -> Expr
-    fn parse_arg_list(p: Parser) -> Array[Expr]
-    fn parse_class_literal_call(p: Parser, ident: Expr) -> Expr
-    fn parser_looks_like_type_args_before_class_literal(p: Parser) -> Bool
-    fn parser_skip_type_args(p: Parser)
-    fn parser_looks_like_class_literal(p: Parser) -> Bool
-    fn parse_fstring(token: Token, p: Parser) -> Expr
-    fn parse_inline_fstring_expr(source: String, span: Span) -> Expr
-    fn parse_array_literal(p: Parser) -> Expr
-    fn parse_brace_literal(p: Parser) -> Expr
-    fn parse_paren_or_tuple(p: Parser) -> Expr
-    fn parse_lambda(p: Parser) -> Expr
-    fn parse_match(p: Parser) -> Expr
-    fn parse_chan(p: Parser) -> Expr
-    fn unquote_string(raw: String) -> String
-    fn trim_string(value: String) -> String
-    fn is_space_code(code: Int) -> Bool
-    fn is_number_string(value: String) -> Bool
-    fn str_eq_expr_parse(a: String, b: String) -> Bool
-    fn string_parse_int(s: String) -> Int
-    fn string_parse_int_radix(s: String, radix: Int) -> Int
-    fn string_parse_float(s: String) -> Float
-    fn ascii_char(code: Int) -> String
+    parse_expression: (Parser) -> Expr
+    parse_nullish: (Parser) -> Expr
+    parse_or: (Parser) -> Expr
+    parse_and: (Parser) -> Expr
+    parse_equality: (Parser) -> Expr
+    parse_comparison: (Parser) -> Expr
+    parse_range: (Parser) -> Expr
+    parse_bit_or_xor: (Parser) -> Expr
+    parse_bit_and: (Parser) -> Expr
+    parse_shift: (Parser) -> Expr
+    parse_additive: (Parser) -> Expr
+    parse_multiplicative: (Parser) -> Expr
+    parse_cast: (Parser) -> Expr
+    parse_unary: (Parser) -> Expr
+    parse_postfix: (Parser) -> Expr
+    parse_primary: (Parser) -> Expr
+    parse_arg_list: (Parser) -> Array[Expr]
+    parse_class_literal_call: (Parser, Expr) -> Expr
+    parser_looks_like_type_args_before_class_literal: (Parser) -> Bool
+    parser_skip_type_args: (Parser) -> Unit
+    parser_looks_like_class_literal: (Parser) -> Bool
+    parse_fstring: (Token, Parser) -> Expr
+    parse_inline_fstring_expr: (String, Span) -> Expr
+    parse_array_literal: (Parser) -> Expr
+    parse_brace_literal: (Parser) -> Expr
+    parse_paren_or_tuple: (Parser) -> Expr
+    parse_lambda: (Parser) -> Expr
+    parse_match: (Parser) -> Expr
+    parse_chan: (Parser) -> Expr
+    unquote_string: (String) -> String
+    trim_string: (String) -> String
+    is_space_code: (Int) -> Bool
+    is_number_string: (String) -> Bool
+    str_eq_expr_parse: (String, String) -> Bool
+    string_parse_int: (String) -> Int
+    string_parse_int_radix: (String, Int) -> Int
+    string_parse_float: (String) -> Float
+    ascii_char: (Int) -> String
 }
 
-fn parse_expression(p: Parser) -> Expr {
+fn parse_expression(p) {
     parse_nullish(p)
 }
 
-fn parse_nullish(p: Parser) -> Expr {
+fn parse_nullish(p) {
     let mut expr = parse_or(p)
     while parser_match_kind(p, "QuestionQuestion") {
         let rhs = parse_or(p)
@@ -64,7 +64,7 @@ fn parse_nullish(p: Parser) -> Expr {
     expr
 }
 
-fn parse_or(p: Parser) -> Expr {
+fn parse_or(p) {
     let mut expr = parse_and(p)
     while parser_match_kind(p, "PipePipe") {
         let rhs = parse_and(p)
@@ -73,7 +73,7 @@ fn parse_or(p: Parser) -> Expr {
     expr
 }
 
-fn parse_and(p: Parser) -> Expr {
+fn parse_and(p) {
     let mut expr = parse_equality(p)
     while parser_match_kind(p, "AmpAmp") {
         let rhs = parse_equality(p)
@@ -82,7 +82,7 @@ fn parse_and(p: Parser) -> Expr {
     expr
 }
 
-fn parse_equality(p: Parser) -> Expr {
+fn parse_equality(p) {
     let mut expr = parse_comparison(p)
     let mut looping = true
     while looping {
@@ -99,7 +99,7 @@ fn parse_equality(p: Parser) -> Expr {
     expr
 }
 
-fn parse_comparison(p: Parser) -> Expr {
+fn parse_comparison(p) {
     let mut expr = parse_range(p)
     let mut looping = true
     while looping {
@@ -122,7 +122,7 @@ fn parse_comparison(p: Parser) -> Expr {
     expr
 }
 
-fn parse_range(p: Parser) -> Expr {
+fn parse_range(p) {
     let mut expr = parse_bit_or_xor(p)
     while parser_match_kind(p, "DotDot") {
         let rhs = parse_bit_or_xor(p)
@@ -131,7 +131,7 @@ fn parse_range(p: Parser) -> Expr {
     expr
 }
 
-fn parse_bit_or_xor(p: Parser) -> Expr {
+fn parse_bit_or_xor(p) {
     let mut expr = parse_bit_and(p)
     let mut looping = true
     while looping {
@@ -148,7 +148,7 @@ fn parse_bit_or_xor(p: Parser) -> Expr {
     expr
 }
 
-fn parse_bit_and(p: Parser) -> Expr {
+fn parse_bit_and(p) {
     let mut expr = parse_shift(p)
     while parser_match_kind(p, "Amp") {
         let rhs = parse_shift(p)
@@ -157,7 +157,7 @@ fn parse_bit_and(p: Parser) -> Expr {
     expr
 }
 
-fn parse_shift(p: Parser) -> Expr {
+fn parse_shift(p) {
     let mut expr = parse_additive(p)
     let mut looping = true
     while looping {
@@ -174,7 +174,7 @@ fn parse_shift(p: Parser) -> Expr {
     expr
 }
 
-fn parse_additive(p: Parser) -> Expr {
+fn parse_additive(p) {
     let mut expr = parse_multiplicative(p)
     let mut looping = true
     while looping {
@@ -191,7 +191,7 @@ fn parse_additive(p: Parser) -> Expr {
     expr
 }
 
-fn parse_multiplicative(p: Parser) -> Expr {
+fn parse_multiplicative(p) {
     let mut expr = parse_cast(p)
     let mut looping = true
     while looping {
@@ -211,7 +211,7 @@ fn parse_multiplicative(p: Parser) -> Expr {
     expr
 }
 
-fn parse_cast(p: Parser) -> Expr {
+fn parse_cast(p) {
     let mut expr = parse_unary(p)
     while parser_match_kind(p, "As") {
         let ty = parse_type_expr(p)
@@ -220,7 +220,7 @@ fn parse_cast(p: Parser) -> Expr {
     expr
 }
 
-fn parse_unary(p: Parser) -> Expr {
+fn parse_unary(p) {
     let token = parser_current(p)
     let mut expr = expr_ident("", token_to_span(token))
     if str_eq_expr_parse(token.kind, "Minus") {
@@ -249,7 +249,7 @@ fn parse_unary(p: Parser) -> Expr {
     expr
 }
 
-fn parse_postfix(p: Parser) -> Expr {
+fn parse_postfix(p) {
     let mut expr = parse_primary(p)
     let mut looping = true
     while looping {
@@ -285,7 +285,7 @@ fn parse_postfix(p: Parser) -> Expr {
     expr
 }
 
-fn parser_looks_like_type_args_before_class_literal(p: Parser) -> Bool {
+fn parser_looks_like_type_args_before_class_literal(p) {
     if !parser_check(p, "LBracket") {
         return false
     }
@@ -309,7 +309,7 @@ fn parser_looks_like_type_args_before_class_literal(p: Parser) -> Bool {
     false
 }
 
-fn parser_skip_type_args(p: Parser) {
+fn parser_skip_type_args(p) {
     let _lbracket = parser_expect(p, "LBracket", "[")
     let mut depth = 1
     while !parser_is_eof(p) && depth > 0 {
@@ -324,7 +324,7 @@ fn parser_skip_type_args(p: Parser) {
     let _done = 0
 }
 
-fn parser_looks_like_class_literal(p: Parser) -> Bool {
+fn parser_looks_like_class_literal(p) {
     if !parser_check(p, "LBrace") {
         return false
     }
@@ -344,10 +344,14 @@ fn parser_looks_like_class_literal(p: Parser) -> Bool {
     str_eq_expr_parse(p.tokens[p.pos + 2].kind, "Colon")
 }
 
-fn parse_class_literal_call(p: Parser, ident: Expr) -> Expr {
+fn parse_class_literal_call(p, ident) {
+    @type {
+        entries: Array[MapEntry]
+        args: Array[Expr]
+    }
     let start = expr_span(ident)
     let _lbrace = parser_expect(p, "LBrace", "{")
-    let mut entries: Array[MapEntry] = []
+    let mut entries = []
     let mut done = false
     while !parser_is_eof(p) && !parser_check(p, "RBrace") && !done {
         let key_token = parser_consume_ident(p, "field name")
@@ -360,13 +364,16 @@ fn parse_class_literal_call(p: Parser, ident: Expr) -> Expr {
     }
     let end = parser_token_span(p)
     let _rbrace = parser_expect(p, "RBrace", "}")
-    let args: Array[Expr] = []
+    let args = []
     args.push(expr_map(entries, merge_spans(start, end)))
     expr_call(ident, args, merge_spans(start, end))
 }
 
-fn parse_arg_list(p: Parser) -> Array[Expr] {
-    let mut args: Array[Expr] = []
+fn parse_arg_list(p) {
+    @type {
+        args: Array[Expr]
+    }
+    let mut args = []
     let mut done = false
     while !parser_is_eof(p) && !parser_check(p, "RParen") && !done {
         args.push(parse_expression(p))
@@ -378,7 +385,7 @@ fn parse_arg_list(p: Parser) -> Array[Expr] {
     args
 }
 
-fn parse_primary(p: Parser) -> Expr {
+fn parse_primary(p) {
     parser_skip_doc_comments(p)
     let token = parser_current(p)
     let mut expr = expr_ident("", token_to_span(token))
@@ -429,10 +436,13 @@ fn parse_primary(p: Parser) -> Expr {
     expr
 }
 
-fn parse_fstring(token: Token, p: Parser) -> Expr {
+fn parse_fstring(token, p) {
+    @type {
+        parts: Array[FStrPart]
+    }
     let span = token_to_span(token)
     let inner = str_slice(token.lexeme, 2, str_len(token.lexeme) - 1)
-    let mut parts: Array[FStrPart] = []
+    let mut parts = []
     let mut buffer = ""
     let mut i = 0
     let mut done = false
@@ -482,7 +492,7 @@ fn parse_fstring(token: Token, p: Parser) -> Expr {
     expr_fstr_lit(parts, span)
 }
 
-fn parse_inline_fstring_expr(source: String, span: Span) -> Expr {
+fn parse_inline_fstring_expr(source, span) {
     let mut expr = expr_ident(source, span)
     if str_len(source) == 0 {
         expr = expr_ident("", span)
@@ -492,10 +502,13 @@ fn parse_inline_fstring_expr(source: String, span: Span) -> Expr {
     expr
 }
 
-fn parse_array_literal(p: Parser) -> Expr {
+fn parse_array_literal(p) {
+    @type {
+        items: Array[Expr]
+    }
     let start = parser_token_span(p)
     let _lbracket = parser_expect(p, "LBracket", "[")
-    let mut items: Array[Expr] = []
+    let mut items = []
     let mut done = false
     let mut end = start
     while !parser_is_eof(p) && !parser_check(p, "RBracket") && !done {
@@ -513,31 +526,40 @@ fn parse_array_literal(p: Parser) -> Expr {
     expr_array(items, merge_spans(start, end))
 }
 
-fn parse_brace_literal(p: Parser) -> Expr {
+fn parse_brace_literal(p) {
+    @type {
+        empty_entries: Array[MapEntry]
+        entries: Array[MapEntry]
+        first: Expr
+        value: Expr
+        key: Expr
+        entry_value: Expr
+        items: Array[Expr]
+    }
     let start = parser_token_span(p)
     let _lbrace = parser_expect(p, "LBrace", "{")
-    let empty_entries: Array[MapEntry] = []
+    let empty_entries = []
     let mut expr = expr_map(empty_entries, start)
     if parser_match_kind(p, "RBrace") {
-        let entries: Array[MapEntry] = []
+        let entries = []
         expr = expr_map(entries, start)
     } else {
-        let first: Expr = parse_expression(p)
+        let first = parse_expression(p)
         if parser_match_kind(p, "Colon") {
-        let mut entries: Array[MapEntry] = []
-        let value: Expr = parse_expression(p)
+        let mut entries = []
+        let value = parse_expression(p)
         entries.push(new_map_entry(first, value))
         while parser_match_kind(p, "Comma") && !parser_check(p, "RBrace") {
-            let key: Expr = parse_expression(p)
+            let key = parse_expression(p)
             let _colon = parser_expect(p, "Colon", ":")
-            let entry_value: Expr = parse_expression(p)
+            let entry_value = parse_expression(p)
             entries.push(new_map_entry(key, entry_value))
         }
         let end = parser_token_span(p)
         let _rbrace = parser_expect(p, "RBrace", "}")
             expr = expr_map(entries, merge_spans(start, end))
         } else {
-            let mut items: Array[Expr] = [first]
+            let mut items = [first]
             while parser_match_kind(p, "Comma") && !parser_check(p, "RBrace") {
                 items.push(parse_expression(p))
             }
@@ -549,18 +571,23 @@ fn parse_brace_literal(p: Parser) -> Expr {
     expr
 }
 
-fn parse_paren_or_tuple(p: Parser) -> Expr {
+fn parse_paren_or_tuple(p) {
+    @type {
+        empty_items: Array[Expr]
+        items: Array[Expr]
+        first: Expr
+    }
     let start = parser_token_span(p)
     let _lparen = parser_expect(p, "LParen", "(")
-    let empty_items: Array[Expr] = []
+    let empty_items = []
     let mut expr = expr_tuple(empty_items, start)
     if parser_match_kind(p, "RParen") {
-        let items: Array[Expr] = []
+        let items = []
         expr = expr_tuple(items, start)
     } else {
-        let first: Expr = parse_expression(p)
+        let first = parse_expression(p)
         if parser_match_kind(p, "Comma") {
-            let mut items: Array[Expr] = [first]
+            let mut items = [first]
             let mut done = false
             while !parser_is_eof(p) && !parser_check(p, "RParen") && !done {
                 items.push(parse_expression(p))
@@ -584,48 +611,61 @@ fn parse_paren_or_tuple(p: Parser) -> Expr {
     expr
 }
 
-fn parse_lambda(p: Parser) -> Expr {
+fn parse_lambda(p) {
+    @type {
+        params: Array[String]
+        empty_params: Array[String]
+        body: Expr
+    }
     let start = parser_token_span(p)
     let _lambda = parser_expect(p, "Lambda", "lambda")
-    let mut params: Array[String] = []
+    let mut params = []
     let mut done = false
-    let empty_params: Array[String] = []
+    let empty_params = []
     let mut expr = expr_lambda(empty_params, expr_ident("", start), start)
     while !parser_is_eof(p) && !parser_check(p, "FatArrow") && !done {
         params.push(parser_consume_ident(p, "lambda parameter").lexeme)
         if !parser_match_kind(p, "Comma") {
             let _fat_arrow = parser_expect(p, "FatArrow", "=>")
-            let body: Expr = parse_expression(p)
+            let body = parse_expression(p)
             expr = expr_lambda(params, body, merge_spans(start, expr_span(body)))
             done = true
         }
     }
     if !done {
         let _fat_arrow = parser_expect(p, "FatArrow", "=>")
-        let body: Expr = parse_expression(p)
+        let body = parse_expression(p)
         expr = expr_lambda(params, body, merge_spans(start, expr_span(body)))
     }
     expr
 }
 
-fn parse_match(p: Parser) -> Expr {
+fn parse_match(p) {
+    @type {
+        subject: Expr
+        arms: Array[MatchArm]
+        pattern: Expr
+        body: MatchArmBody
+        block: Block
+        expr: Expr
+    }
     let start = parser_token_span(p)
     let _match = parser_expect(p, "Match", "match")
-    let subject: Expr = parse_expression(p)
+    let subject = parse_expression(p)
     let _lbrace = parser_expect(p, "LBrace", "{")
-    let mut arms: Array[MatchArm] = []
+    let mut arms = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         let arm_start = parser_token_span(p)
-        let pattern: Expr = parse_expression(p)
+        let pattern = parse_expression(p)
         let _fat_arrow = parser_expect(p, "FatArrow", "=>")
-        let mut body: MatchArmBody = match_arm_body_expr(expr_ident("", arm_start))
+        let mut body = match_arm_body_expr(expr_ident("", arm_start))
         let mut end = arm_start
         if parser_check(p, "LBrace") {
-            let block: Block = parse_block(p)
+            let block = parse_block(p)
             body = match_arm_body_block(block)
             end = block.span
         } else {
-            let expr: Expr = parse_expression(p)
+            let expr = parse_expression(p)
             body = match_arm_body_expr(expr)
             end = expr_span(expr)
         }
@@ -637,7 +677,7 @@ fn parse_match(p: Parser) -> Expr {
     expr_match(subject, arms, merge_spans(start, end))
 }
 
-fn parse_chan(p: Parser) -> Expr {
+fn parse_chan(p) {
     let start = parser_token_span(p)
     let _chan = parser_expect(p, "Chan", "chan")
     let _lbracket = parser_expect(p, "LBracket", "[")
@@ -647,7 +687,7 @@ fn parse_chan(p: Parser) -> Expr {
     expr_chan(ty, merge_spans(start, end))
 }
 
-fn unquote_string(raw: String) -> String {
+fn unquote_string(raw) {
     let mut out = raw
     if str_len(raw) >= 2 {
         out = str_slice(raw, 1, str_len(raw) - 1)
@@ -655,7 +695,7 @@ fn unquote_string(raw: String) -> String {
     out
 }
 
-fn trim_string(value: String) -> String {
+fn trim_string(value) {
     let mut start = 0
     let mut end = str_len(value)
     while start < end && is_space_code(str_byte_at(value, start)) {
@@ -667,11 +707,11 @@ fn trim_string(value: String) -> String {
     str_slice(value, start, end)
 }
 
-fn is_space_code(code: Int) -> Bool {
+fn is_space_code(code) {
     code == 32 || code == 9 || code == 10 || code == 13
 }
 
-fn is_number_string(value: String) -> Bool {
+fn is_number_string(value) {
     let mut i = 0
     let mut ok = str_len(value) > 0
     while ok && i < str_len(value) {
@@ -684,7 +724,7 @@ fn is_number_string(value: String) -> Bool {
     ok
 }
 
-fn str_eq_expr_parse(a: String, b: String) -> Bool {
+fn str_eq_expr_parse(a, b) {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

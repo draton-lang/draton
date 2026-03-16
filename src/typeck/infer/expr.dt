@@ -3,25 +3,31 @@ import { Checker, Type, Scheme, TypedExpr, TypedMapEntry, TypedMatchArm, TypedMa
          TypeExpr }
 
 @type {
-    fn infer_expr(c: Checker, expr: Expr) -> TypedExpr
-    fn infer_binop(c: Checker, lhs: Expr, op: String, rhs: Expr, span: Span) -> TypedExpr
-    fn infer_unop(c: Checker, op: String, expr: Expr, span: Span) -> TypedExpr
-    fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) -> TypedExpr
-    fn infer_class_literal_call(c: Checker, class_name: String, field_map: Expr, span: Span) -> TypedExpr
-    fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], span: Span) -> TypedExpr
-    fn infer_field(c: Checker, target: Expr, name: String, span: Span) -> TypedExpr
-    fn infer_index(c: Checker, target: Expr, index: Expr, span: Span) -> TypedExpr
-    fn infer_lambda(c: Checker, params: Array[String], body: Expr, span: Span) -> TypedExpr
-    fn infer_cast(c: Checker, expr: Expr, ty_expr: TypeExpr, span: Span) -> TypedExpr
-    fn infer_match(c: Checker, subject: Expr, arms: Array[MatchArm], span: Span) -> TypedExpr
-    fn infer_nullish(c: Checker, lhs: Expr, rhs: Expr, span: Span) -> TypedExpr
-    fn infer_fstr(c: Checker, parts: Array[FStrPart], span: Span) -> TypedExpr
-    fn expect_numeric(c: Checker, ty: Type, span: Span) -> Type
-    fn make_typed(kind: String, ty: Type, span: Span) -> TypedExpr
-    fn infer_arg_type_for_call(c: Checker, actual: Type, expected: Type) -> Type
+    infer_expr: (Checker, Expr) -> TypedExpr
+    infer_binop: (Checker, Expr, String, Expr, Span) -> TypedExpr
+    infer_unop: (Checker, String, Expr, Span) -> TypedExpr
+    infer_call: (Checker, Expr, Array[Expr], Span) -> TypedExpr
+    infer_class_literal_call: (Checker, String, Expr, Span) -> TypedExpr
+    infer_method_call: (Checker, Expr, String, Array[Expr], Span) -> TypedExpr
+    infer_field: (Checker, Expr, String, Span) -> TypedExpr
+    infer_index: (Checker, Expr, Expr, Span) -> TypedExpr
+    infer_lambda: (Checker, Array[String], Expr, Span) -> TypedExpr
+    infer_cast: (Checker, Expr, TypeExpr, Span) -> TypedExpr
+    infer_match: (Checker, Expr, Array[MatchArm], Span) -> TypedExpr
+    infer_nullish: (Checker, Expr, Expr, Span) -> TypedExpr
+    infer_fstr: (Checker, Array[FStrPart], Span) -> TypedExpr
+    expect_numeric: (Checker, Type, Span) -> Type
+    make_typed: (String, Type, Span) -> TypedExpr
+    infer_arg_type_for_call: (Checker, Type, Type) -> Type
 }
 
-fn infer_expr(c: Checker, expr: Expr) {
+fn infer_expr(c, expr) {
+    @type {
+        items: Array[TypedExpr]
+        entries: Array[TypedMapEntry]
+        empty_tuple_items: Array[Type]
+        item_types: Array[Type]
+    }
     if expr_kind_is(expr, "IntLit") {
         let out = make_typed("IntLit", type_int(), expr.span)
         out.int_value = expr.int_value
@@ -67,7 +73,7 @@ fn infer_expr(c: Checker, expr: Expr) {
     }
     if expr_kind_is(expr, "Array") {
         let out = make_typed("Array", type_array(checker_fresh_var(c)), expr.span)
-        let items: Array[TypedExpr] = []
+        let items = []
         out.expr_items = items
         let elem_ty = out.expr_ty.ty_inner
         let mut i = 0
@@ -82,7 +88,7 @@ fn infer_expr(c: Checker, expr: Expr) {
     }
     if expr_kind_is(expr, "Set") {
         let out = make_typed("Set", type_set(checker_fresh_var(c)), expr.span)
-        let items: Array[TypedExpr] = []
+        let items = []
         out.expr_items = items
         let elem_ty = out.expr_ty.ty_inner
         let mut i = 0
@@ -97,7 +103,7 @@ fn infer_expr(c: Checker, expr: Expr) {
     }
     if expr_kind_is(expr, "Map") {
         let out = make_typed("Map", type_map(checker_fresh_var(c), checker_fresh_var(c)), expr.span)
-        let entries: Array[TypedMapEntry] = []
+        let entries = []
         out.map_entries = entries
         let key_ty = out.expr_ty.ty_key
         let value_ty = out.expr_ty.ty_value
@@ -115,10 +121,10 @@ fn infer_expr(c: Checker, expr: Expr) {
         return out
     }
     if expr_kind_is(expr, "Tuple") {
-        let empty_tuple_items: Array[Type] = []
+        let empty_tuple_items = []
         let out = make_typed("Tuple", type_tuple(empty_tuple_items), expr.span)
-        let items: Array[TypedExpr] = []
-        let item_types: Array[Type] = []
+        let items = []
+        let item_types = []
         out.expr_items = items
         let mut i = 0
         while i < expr.items.len() {
@@ -181,7 +187,7 @@ fn infer_expr(c: Checker, expr: Expr) {
     make_typed("Unknown", checker_fresh_var(c), expr.span)
 }
 
-fn infer_binop(c: Checker, lhs: Expr, op: String, rhs: Expr, span: Span) {
+fn infer_binop(c, lhs, op, rhs, span) {
     let left = infer_expr(c, lhs)
     let right = infer_expr(c, rhs)
     let out = make_typed("BinOp", checker_fresh_var(c), span)
@@ -207,7 +213,7 @@ fn infer_binop(c: Checker, lhs: Expr, op: String, rhs: Expr, span: Span) {
     out
 }
 
-fn infer_unop(c: Checker, op: String, expr: Expr, span: Span) {
+fn infer_unop(c, op, expr, span) {
     let inner = infer_expr(c, expr)
     let out = make_typed("UnOp", inner.expr_ty, span)
     out.un_op = op
@@ -231,7 +237,12 @@ fn infer_unop(c: Checker, op: String, expr: Expr, span: Span) {
     out
 }
 
-fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) {
+fn infer_call(c, callee, args, span) {
+    @type {
+        typed_args: Array[TypedExpr]
+        arg_types: Array[Type]
+        expected_params: Array[Type]
+    }
     let callee_typed = infer_expr(c, callee)
     if expr_kind_is(callee, "Ident") {
         if args.len() == 1 {
@@ -246,11 +257,11 @@ fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) {
         }
     }
     let out = make_typed("Call", checker_fresh_var(c), span)
-    let typed_args: Array[TypedExpr] = []
-    let arg_types: Array[Type] = []
+    let typed_args = []
+    let arg_types = []
     out.call_callee = callee_typed
     out.call_args = typed_args
-    let expected_params: Array[Type] = []
+    let expected_params = []
     if str_eq_type(out.call_callee.expr_ty.type_kind, "Fn") {
         let mut param_i = 0
         while param_i < out.call_callee.expr_ty.ty_params.len() {
@@ -283,9 +294,15 @@ fn infer_call(c: Checker, callee: Expr, args: Array[Expr], span: Span) {
     out
 }
 
-fn infer_class_literal_call(c: Checker, class_name: String, field_map: Expr, span: Span) {
+fn infer_class_literal_call(c, class_name, field_map, span) {
+    @type {
+        class_type_args: Array[Type]
+        field_names: Array[String]
+        field_values: Array[TypedExpr]
+        matched: Array[Bool]
+    }
     let idx = find_class_index(c, class_name)
-    let class_type_args: Array[Type] = []
+    let class_type_args = []
     if idx >= 0 {
         let mut type_i = 0
         while type_i < c.class_type_args[idx].len() {
@@ -294,13 +311,13 @@ fn infer_class_literal_call(c: Checker, class_name: String, field_map: Expr, spa
         }
     }
     let out = make_typed("ClassNew", ty_named(class_name, class_type_args), span)
-    let field_names: Array[String] = []
-    let field_values: Array[TypedExpr] = []
+    let field_names = []
+    let field_values = []
     out.class_name = class_name
     out.field_names = field_names
     out.field_values = field_values
     let raw_entries = field_map.entries
-    let mut matched: Array[Bool] = []
+    let mut matched = []
     let mut i = 0
     while i < raw_entries.len() {
         matched.push(false)
@@ -363,11 +380,16 @@ fn infer_class_literal_call(c: Checker, class_name: String, field_map: Expr, spa
     out
 }
 
-fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], span: Span) {
+fn infer_method_call(c, target, name, args, span) {
+    @type {
+        typed_args: Array[TypedExpr]
+        arg_types: Array[Type]
+        full_arg_types: Array[Type]
+    }
     let recv = infer_expr(c, target)
     let out = make_typed("MethodCall", checker_fresh_var(c), span)
-    let typed_args: Array[TypedExpr] = []
-    let arg_types: Array[Type] = []
+    let typed_args = []
+    let arg_types = []
     out.access_target = recv
     out.ident_name = name
     out.call_args = typed_args
@@ -432,7 +454,7 @@ fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], 
                 if str_eq_type(c.class_method_names[idx][i], name) {
                     let method_ty = env_instantiate(c.env, c.class_method_schemes[idx][i])
                     let ret_ty = checker_fresh_var(c)
-                    let full_arg_types: Array[Type] = []
+                    let full_arg_types = []
                     if str_eq_type(method_ty.type_kind, "Fn") && method_ty.ty_params.len() > 0 {
                         full_arg_types.push(method_ty.ty_params[0])
                     } else {
@@ -457,7 +479,7 @@ fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], 
                 if str_eq_type(c.interface_method_names[iface_idx][i], name) {
                     let method_ty = env_instantiate(c.env, c.interface_method_schemes[iface_idx][i])
                     let ret_ty = checker_fresh_var(c)
-                    let full_arg_types: Array[Type] = []
+                    let full_arg_types = []
                     if str_eq_type(method_ty.type_kind, "Fn") && method_ty.ty_params.len() > 0 {
                         full_arg_types.push(method_ty.ty_params[0])
                     } else {
@@ -483,7 +505,7 @@ fn infer_method_call(c: Checker, target: Expr, name: String, args: Array[Expr], 
     out
 }
 
-fn infer_field(c: Checker, target: Expr, name: String, span: Span) {
+fn infer_field(c, target, name, span) {
     let recv = infer_expr(c, target)
     let out = make_typed("Field", checker_fresh_var(c), span)
     out.access_target = recv
@@ -510,7 +532,7 @@ fn infer_field(c: Checker, target: Expr, name: String, span: Span) {
     out
 }
 
-fn infer_index(c: Checker, target: Expr, index: Expr, span: Span) {
+fn infer_index(c, target, index, span) {
     let recv = infer_expr(c, target)
     let idx = infer_expr(c, index)
     let out = make_typed("Index", checker_fresh_var(c), span)
@@ -523,12 +545,18 @@ fn infer_index(c: Checker, target: Expr, index: Expr, span: Span) {
     out
 }
 
-fn infer_lambda(c: Checker, params: Array[String], body: Expr, span: Span) {
+fn infer_lambda(c, params, body, span) {
+    @type {
+        empty_lambda_types: Array[Type]
+        raw_param_types: Array[Type]
+        typed_params: Array[String]
+        final_params: Array[Type]
+    }
     env_push_scope(c.env)
-    let empty_lambda_types: Array[Type] = []
+    let empty_lambda_types = []
     let out = make_typed("Lambda", type_fn(empty_lambda_types, type_unit()), span)
-    let raw_param_types: Array[Type] = []
-    let typed_params: Array[String] = []
+    let raw_param_types = []
+    let typed_params = []
     out.lambda_params = typed_params
     let mut i = 0
     while i < params.len() {
@@ -540,7 +568,7 @@ fn infer_lambda(c: Checker, params: Array[String], body: Expr, span: Span) {
     }
     out.lambda_body = infer_expr(c, body)
     env_pop_scope(c.env)
-    let final_params: Array[Type] = []
+    let final_params = []
     i = 0
     while i < raw_param_types.len() {
         final_params.push(checker_apply_subst(c, raw_param_types[i]))
@@ -550,7 +578,7 @@ fn infer_lambda(c: Checker, params: Array[String], body: Expr, span: Span) {
     out
 }
 
-fn infer_cast(c: Checker, expr: Expr, ty_expr: TypeExpr, span: Span) {
+fn infer_cast(c, expr, ty_expr, span) {
     let inner = infer_expr(c, expr)
     let out = make_typed("Cast", type_from_annotation(c, ty_expr), span)
     out.inner_expr = inner
@@ -558,13 +586,17 @@ fn infer_cast(c: Checker, expr: Expr, ty_expr: TypeExpr, span: Span) {
     out
 }
 
-fn infer_match(c: Checker, subject: Expr, arms: Array[MatchArm], span: Span) {
+fn infer_match(c, subject, arms, span) {
+    @type {
+        typed_arms: Array[TypedMatchArm]
+        patterns: Array[Pattern]
+    }
     let out = make_typed("Match", checker_fresh_var(c), span)
-    let typed_arms: Array[TypedMatchArm] = []
+    let typed_arms = []
     out.match_subject = infer_expr(c, subject)
     out.match_arms = typed_arms
     let result_ty = checker_fresh_var(c)
-    let patterns: Array[Pattern] = []
+    let patterns = []
     let mut i = 0
     while i < arms.len() {
         let arm = TypedMatchArm()
@@ -620,7 +652,7 @@ fn infer_match(c: Checker, subject: Expr, arms: Array[MatchArm], span: Span) {
     out
 }
 
-fn infer_nullish(c: Checker, lhs: Expr, rhs: Expr, span: Span) {
+fn infer_nullish(c, lhs, rhs, span) {
     let left = infer_expr(c, lhs)
     let right = infer_expr(c, rhs)
     let out = make_typed("Nullish", checker_fresh_var(c), span)
@@ -633,9 +665,12 @@ fn infer_nullish(c: Checker, lhs: Expr, rhs: Expr, span: Span) {
     out
 }
 
-fn infer_fstr(c: Checker, parts: Array[FStrPart], span: Span) {
+fn infer_fstr(c, parts, span) {
+    @type {
+        typed_parts: Array[TypedFStrPart]
+    }
     let out = make_typed("FStrLit", type_string(), span)
-    let typed_parts: Array[TypedFStrPart] = []
+    let typed_parts = []
     out.fstr_parts = typed_parts
     let mut i = 0
     while i < parts.len() {
@@ -653,20 +688,30 @@ fn infer_fstr(c: Checker, parts: Array[FStrPart], span: Span) {
     out
 }
 
-fn expect_numeric(c: Checker, ty: Type, span: Span) {
+fn expect_numeric(c, ty, span) {
     checker_unify(c, ty, type_int(), span)
 }
 
-fn make_typed(kind: String, ty: Type, span: Span) {
+fn make_typed(kind, ty, span) {
+    @type {
+        empty_parts: Array[TypedFStrPart]
+        empty_items: Array[TypedExpr]
+        empty_entries: Array[TypedMapEntry]
+        empty_args: Array[TypedExpr]
+        empty_params: Array[String]
+        empty_arms: Array[TypedMatchArm]
+        empty_fields: Array[String]
+        empty_values: Array[TypedExpr]
+    }
     let out = TypedExpr()
-    let empty_parts: Array[TypedFStrPart] = []
-    let empty_items: Array[TypedExpr] = []
-    let empty_entries: Array[TypedMapEntry] = []
-    let empty_args: Array[TypedExpr] = []
-    let empty_params: Array[String] = []
-    let empty_arms: Array[TypedMatchArm] = []
-    let empty_fields: Array[String] = []
-    let empty_values: Array[TypedExpr] = []
+    let empty_parts = []
+    let empty_items = []
+    let empty_entries = []
+    let empty_args = []
+    let empty_params = []
+    let empty_arms = []
+    let empty_fields = []
+    let empty_values = []
     out.tag = kind
     out.expr_ty = ty
     out.expr_span = span
@@ -681,7 +726,7 @@ fn make_typed(kind: String, ty: Type, span: Span) {
     out
 }
 
-fn infer_arg_type_for_call(c: Checker, actual: Type, expected: Type) {
+fn infer_arg_type_for_call(c, actual, expected) {
     let resolved_actual = checker_apply_subst(c, actual)
     let resolved_expected = checker_apply_subst(c, expected)
     if str_eq_type(resolved_actual.type_kind, "Named") &&
