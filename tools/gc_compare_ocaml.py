@@ -19,40 +19,43 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 OCAML_WORKLOADS: dict[str, str] = {
     "young-burst": """
-        let iterations = int_of_string Sys.argv.(1)
-        let started = Unix.gettimeofday () in
-        for i = 0 to iterations - 1 do
-          ignore (Array.make 8 i)
-        done;
-        let elapsed_ns = int_of_float ((Unix.gettimeofday () -. started) *. 1_000_000_000.) in
-        Printf.printf "{\"scenario\":\"young-burst\",\"elapsed_ns\":%d}\\n" elapsed_ns
+        let () =
+          let iterations = int_of_string Sys.argv.(1) in
+          let started = Unix.gettimeofday () in
+          for i = 0 to iterations - 1 do
+            ignore (Array.make 8 i)
+          done;
+          let elapsed_ns = int_of_float ((Unix.gettimeofday () -. started) *. 1_000_000_000.) in
+          Printf.printf "{\"scenario\":\"young-burst\",\"elapsed_ns\":%d}\\n" elapsed_ns
     """,
     "promotion-chain": """
         type node = { mutable next: node option; payload: int array }
-        let iterations = int_of_string Sys.argv.(1)
-        let started = Unix.gettimeofday () in
-        let rec build n acc =
-          if n = 0 then acc
-          else build (n - 1) (Some { next = acc; payload = Array.make 8 n })
-        in
-        let root = build iterations None in
-        Gc.full_major ();
-        ignore root;
-        let elapsed_ns = int_of_float ((Unix.gettimeofday () -. started) *. 1_000_000_000.) in
-        Printf.printf "{\"scenario\":\"promotion-chain\",\"elapsed_ns\":%d}\\n" elapsed_ns
+        let () =
+          let iterations = int_of_string Sys.argv.(1) in
+          let started = Unix.gettimeofday () in
+          let rec build n acc =
+            if n = 0 then acc
+            else build (n - 1) (Some { next = acc; payload = Array.make 8 n })
+          in
+          let root = build iterations None in
+          Gc.full_major ();
+          ignore root;
+          let elapsed_ns = int_of_float ((Unix.gettimeofday () -. started) *. 1_000_000_000.) in
+          Printf.printf "{\"scenario\":\"promotion-chain\",\"elapsed_ns\":%d}\\n" elapsed_ns
     """,
     "barrier-churn": """
         type child = { payload: int array }
         type parent = { mutable child: child option }
-        let iterations = int_of_string Sys.argv.(1)
-        let holder = { child = None } in
-        let started = Unix.gettimeofday () in
-        for i = 0 to iterations - 1 do
-          holder.child <- Some { payload = Array.make 8 i }
-        done;
-        Gc.full_major ();
-        let elapsed_ns = int_of_float ((Unix.gettimeofday () -. started) *. 1_000_000_000.) in
-        Printf.printf "{\"scenario\":\"barrier-churn\",\"elapsed_ns\":%d}\\n" elapsed_ns
+        let () =
+          let iterations = int_of_string Sys.argv.(1) in
+          let holder = { child = None } in
+          let started = Unix.gettimeofday () in
+          for i = 0 to iterations - 1 do
+            holder.child <- Some { payload = Array.make 8 i }
+          done;
+          Gc.full_major ();
+          let elapsed_ns = int_of_float ((Unix.gettimeofday () -. started) *. 1_000_000_000.) in
+          Printf.printf "{\"scenario\":\"barrier-churn\",\"elapsed_ns\":%d}\\n" elapsed_ns
     """,
 }
 
@@ -121,7 +124,8 @@ def ocaml_runtime_stats(workdir: Path, rounds: int) -> dict[str, dict[str, objec
         "barrier-churn": 16_000,
     }
     for scenario, source in OCAML_WORKLOADS.items():
-        ml = workdir / f"{scenario}.ml"
+        module_name = scenario.replace("-", "_")
+        ml = workdir / f"{module_name}.ml"
         binary = workdir / scenario
         ml.write_text(textwrap.dedent(source).strip() + "\n", encoding="utf-8")
         build = run(["ocamlopt", "unix.cmxa", "-o", str(binary), str(ml)], cwd=workdir)
