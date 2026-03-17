@@ -1,0 +1,128 @@
+name: vscode-extension-release
+
+on:
+  push:
+    tags:
+      - "vscode-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build-vsix
+    runs-on: ubuntu-latest
+    outputs:
+      vsix_name: ${{ steps.package.outputs.vsix_name }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: editors/vscode
+        run: npm install
+
+      - name: Package VSIX
+        id: package
+        working-directory: editors/vscode
+        run: |
+          npx @vscode/vsce package
+          VSIX=$(ls *.vsix | head -1)
+          echo "vsix_name=$VSIX" >> "$GITHUB_OUTPUT"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: draton-vsix
+          path: editors/vscode/*.vsix
+          if-no-files-found: error
+
+  publish-github:
+    name: publish-github-release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: draton-vsix
+          path: vsix-dist
+
+      - name: Generate checksum
+        run: |
+          cd vsix-dist
+          sha256sum *.vsix > SHA256SUMS.txt
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Draton VS Code Extension ${{ github.ref_name }}"
+          body: |
+            ## Draton VS Code Extension
+
+            Install by downloading the `.vsix` file and running:
+
+            ```sh
+            code --install-extension draton-*.vsix
+            ```
+
+            Or install directly from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=draton-lang.draton).
+          files: |
+            vsix-dist/*.vsix
+            vsix-dist/SHA256SUMS.txt
+
+  publish-marketplace:
+    name: publish-vscode-marketplace
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ vars.PUBLISH_TO_MARKETPLACE == 'true' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: editors/vscode
+        run: npm install
+
+      - name: Publish to VS Code Marketplace
+        working-directory: editors/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx @vscode/vsce publish --pat "$VSCE_PAT"
+
+  publish-openvsx:
+    name: publish-open-vsx
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ vars.PUBLISH_TO_OPENVSX == 'true' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: editors/vscode
+        run: npm install
+
+      - name: Publish to Open VSX Registry
+        working-directory: editors/vscode
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx ovsx publish --pat "$OVSX_PAT"
