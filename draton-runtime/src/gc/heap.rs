@@ -1,5 +1,5 @@
+use std::cell::Cell;
 use std::collections::HashMap;
-use std::mem::size_of;
 use std::ptr;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -7,47 +7,35 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use super::config::GcConfig;
 
 // ── LLVM shadow-stack types ────────────────────────────────────────────────────
-/// Per-function frame map: lives in read-only data, one per function.
-/// Layout: { num_roots: i32, num_meta: i32, meta[num_meta]: *const () }
 #[repr(C)]
 pub struct FrameMap {
     pub num_roots: i32,
     pub num_meta:  i32,
-    // metadata pointers follow in memory (we ignore them in a non-moving GC)
 }
 
-/// Per-call-frame shadow stack entry: allocated on the machine stack.
-/// Layout: { next: *mut StackEntry, map: *const FrameMap, roots[num_roots]: *mut *mut u8 }
-/// Each `roots[i]` is the address of the stack alloca slot (i.e. a `*mut *mut u8`).
-/// The actual GC pointer is `*roots[i]`.
 #[repr(C)]
 pub struct StackEntry {
     pub next: *mut StackEntry,
     pub map:  *const FrameMap,
-    // root slots follow in memory
 }
 
 // ── Flags ─────────────────────────────────────────────────────────────────────
-pub const GC_MARKED:  u8 = 1 << 0; // reachable in the current GC cycle
-pub const GC_OLD:     u8 = 1 << 1; // lives in old gen or large-object space
-pub const GC_PINNED:  u8 = 1 << 2; // must not be collected regardless of roots
-pub const GC_LARGE:   u8 = 1 << 3; // allocated in the large-object space
+pub const GC_MARKED:  u8 = 1 << 0;
+pub const GC_OLD:     u8 = 1 << 1;
+pub const GC_PINNED:  u8 = 1 << 2;
+pub const GC_LARGE:   u8 = 1 << 3;
+/// Slot in OldArena has been freed and is available for reuse.
+pub const GC_FREE:    u8 = 1 << 4;
 
-/// Card-table granularity: one dirty bit covers this many bytes of heap.
 pub const CARD_BYTES: usize = 512;
 
 // ── Object header (8 bytes) ───────────────────────────────────────────────────
-/// Header stored immediately before every managed object payload.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObjHeader {
-    /// Payload size in bytes.
     pub size:     u32,
-    /// Index into the type-descriptor table; 0 means "opaque / no pointer fields".
     pub type_id:  u16,
-    /// GC status flags: GC_MARKED | GC_OLD | GC_PINNED | GC_LARGE.
     pub gc_flags: u8,
-    /// Number of minor GC cycles this object has survived (diagnostic only).
     pub age:      u8,
 }
 
@@ -66,137 +54,267 @@ pub struct TypeDescriptor {
 
 // ── Logical heap space ────────────────────────────────────────────────────────
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HeapSpace {
-    Young,
-    Old,
-    Large,
-}
+pub enum HeapSpace { Young, Old, Large }
 
-// ── Young generation ──────────────────────────────────────────────────────────
-/// Lock-free bump-pointer arena for newly allocated objects.
-///
-/// All state mutations (other than the bump CAS) are done only during a
-/// stop-the-world GC pause, so no additional synchronisation is needed for
-/// header reads/writes during collection.
-pub struct YoungArena {
-    pub buffer:     Vec<u8>,
-    /// Atomic bump pointer — CAS gives each allocating thread an exclusive slice.
+pub const HEADER: usize = std::mem::size_of::<ObjHeader>(); // 8 bytes
+
+// ── Per-thread young arena ────────────────────────────────────────────────────
+pub const MAX_THREADS: usize = 16;
+
+/// One per-thread bump arena, padded to a single cache line (64 bytes)
+/// so concurrent allocations on different threads don't share a cache line.
+#[repr(C, align(64))]
+pub struct PerThreadArena {
     pub bump:       AtomicUsize,
-    /// Number of objects that are logically live in this arena.
     pub live_count: AtomicUsize,
+    _pad: [u64; 6], // 48 bytes; bump(8) + live_count(8) + pad(48) = 64
 }
 
-// SAFETY: YoungArena is `Sync` because:
-// - bump and live_count are AtomicUsize (inherently Sync).
-// - buffer bytes are written to non-overlapping regions (guaranteed by CAS) or
-//   exclusively during a stop-the-world GC pause.
-unsafe impl Sync for YoungArena {}
-
-pub const HEADER: usize = size_of::<ObjHeader>(); // 8 bytes
-
-impl YoungArena {
-    pub fn new(size: usize) -> Self {
-        Self {
-            buffer:     vec![0u8; size],
-            bump:       AtomicUsize::new(0),
-            live_count: AtomicUsize::new(0),
-        }
+impl PerThreadArena {
+    fn new() -> Self {
+        Self { bump: AtomicUsize::new(0), live_count: AtomicUsize::new(0), _pad: [0u64; 6] }
     }
-
-    /// Lock-free bump-pointer allocation.
-    ///
-    /// Uses `fetch_add` to atomically reserve `[old, old+aligned)` in the buffer.
-    /// Two threads can allocate concurrently; each gets an exclusive sub-range.
-    pub fn try_alloc(&self, size: usize, type_id: u16) -> Option<*mut u8> {
-        let aligned = (HEADER + size + 7) & !7;
-        let old = self.bump.fetch_add(aligned, Ordering::AcqRel);
-        if old + aligned > self.buffer.len() {
-            // Roll back; arena is full.
-            self.bump.fetch_sub(aligned, Ordering::AcqRel);
-            return None;
-        }
-        // Write the header into the exclusively reserved region.
-        // SAFETY: [old, old+aligned) is owned by this thread via the CAS above.
-        let hdr_ptr = self.buffer.as_ptr().wrapping_add(old) as *mut ObjHeader;
-        unsafe { ptr::write(hdr_ptr, ObjHeader::new(size as u32, type_id, 0)); }
-        self.live_count.fetch_add(1, Ordering::Relaxed);
-        Some(self.buffer.as_ptr().wrapping_add(old + HEADER) as *mut u8)
-    }
-
-    /// Reset the arena.  Only call during a stop-the-world GC pause.
     pub fn reset(&self) {
         self.bump.store(0, Ordering::Release);
         self.live_count.store(0, Ordering::Release);
     }
+}
 
-    /// Reset if no objects remain live.
-    pub fn try_reset(&self) {
-        if self.live_count.load(Ordering::Relaxed) == 0 {
-            self.reset();
+thread_local! {
+    /// Index into `YoungPool::slots` assigned to the current OS thread.
+    /// `usize::MAX` means "not yet assigned".
+    static THREAD_SLOT: Cell<usize> = Cell::new(usize::MAX);
+}
+
+/// Pool of per-thread bump arenas backed by one contiguous allocation.
+///
+/// Layout: `buffer[i * per_thread_size .. (i+1) * per_thread_size]` is owned
+/// by thread slot `i`.  The entire pool range is a single O(1) range check
+/// for `contains_ptr`, making write-barrier fast paths cheap.
+pub struct YoungPool {
+    /// Backing store for all per-thread segments.
+    pub buffer: Vec<u8>,
+    /// Bytes per thread slot — always a power of two.
+    pub per_thread_size: usize,
+    /// log2(per_thread_size) for O(1) slot index via bit-shift.
+    pub slot_shift: u32,
+    /// One bumper per thread, cache-line isolated.
+    pub slots: Vec<PerThreadArena>,
+    /// Monotonic counter for assigning slot indices to new threads.
+    next_slot: AtomicUsize,
+}
+
+// SAFETY: YoungPool is Sync because:
+// - AtomicUsize fields are Sync.
+// - buffer bytes are written to non-overlapping per-thread regions (enforced by
+//   the CAS in try_alloc) or exclusively during a stop-the-world GC pause.
+unsafe impl Sync for YoungPool {}
+
+impl YoungPool {
+    pub fn new(total_size: usize) -> Self {
+        // Each slot must be a power-of-two size (enables O(1) slot lookup via
+        // bit-shift instead of division) and at least 64 KiB.
+        let raw = (total_size / MAX_THREADS).max(64 * 1024);
+        let per = raw.next_power_of_two();
+        let actual = per * MAX_THREADS;
+        let mut slots = Vec::with_capacity(MAX_THREADS);
+        for _ in 0..MAX_THREADS { slots.push(PerThreadArena::new()); }
+        Self {
+            buffer:          vec![0u8; actual],
+            per_thread_size: per,
+            slot_shift:      per.trailing_zeros(),
+            slots,
+            next_slot:       AtomicUsize::new(0),
         }
     }
 
-    /// Returns `true` when `ptr` is a valid payload in the live (allocated) region.
+    /// Returns the slot index for the calling thread, assigning one if needed.
+    pub fn current_slot_idx(&self) -> usize {
+        THREAD_SLOT.with(|cell| {
+            let s = cell.get();
+            if s != usize::MAX { return s; }
+            let new_s = self.next_slot.fetch_add(1, Ordering::Relaxed) % MAX_THREADS;
+            cell.set(new_s);
+            new_s
+        })
+    }
+
+    /// Lock-free bump allocation in the calling thread's private arena.
+    pub fn try_alloc(&self, size: usize, type_id: u16) -> Option<*mut u8> {
+        let idx     = self.current_slot_idx();
+        let arena   = &self.slots[idx];
+        let aligned = (HEADER + size + 7) & !7;
+        let old     = arena.bump.fetch_add(aligned, Ordering::AcqRel);
+        if old + aligned > self.per_thread_size {
+            arena.bump.fetch_sub(aligned, Ordering::AcqRel);
+            return None;
+        }
+        let base = self.buffer.as_ptr().wrapping_add(idx * self.per_thread_size);
+        unsafe { ptr::write(base.wrapping_add(old) as *mut ObjHeader,
+                            ObjHeader::new(size as u32, type_id, 0)); }
+        arena.live_count.fetch_add(1, Ordering::Relaxed);
+        Some(base.wrapping_add(old + HEADER) as *mut u8)
+    }
+
+    /// True when `ptr` is the payload of a live (not-yet-reset) object in
+    /// any per-thread slot.
+    ///
+    /// Uses a bit-shift to locate the owning slot in O(1), then compares the
+    /// payload offset against the slot's atomic bump pointer.  Returns `false`
+    /// for any address in a slot that has been reset to bump=0.
+    #[inline]
     pub fn contains_ptr(&self, ptr: *const u8) -> bool {
         let base = self.buffer.as_ptr() as usize;
         let addr = ptr as usize;
-        let bump = self.bump.load(Ordering::Relaxed);
-        addr >= base + HEADER && addr < base + bump
+        if addr < base { return false; }
+        let pool_off = addr - base;
+        let slot_idx = pool_off >> self.slot_shift;
+        if slot_idx >= MAX_THREADS { return false; }
+        let slot_off = pool_off & (self.per_thread_size - 1);
+        // `slot_off` is the byte offset of the *payload* within the slot segment.
+        // The header sits at `slot_off - HEADER`; for that header to exist the
+        // header offset must be non-negative and strictly less than slot's bump.
+        if slot_off < HEADER { return false; }
+        let header_off  = slot_off - HEADER;
+        let slot_bump   = self.slots[slot_idx].bump.load(Ordering::Relaxed);
+        header_off < slot_bump
     }
 
-    /// Read the header given the payload address.
-    ///
-    /// # Safety
-    /// `payload` must have been returned by `try_alloc` on this arena and the
-    /// caller must have exclusive access (GC pause or freshly allocated slot).
     pub unsafe fn read_header(&self, payload: *const u8) -> ObjHeader {
         ptr::read(payload.sub(HEADER).cast::<ObjHeader>())
     }
-
-    /// Write the header given the payload address.
-    ///
-    /// # Safety
-    /// Same as `read_header`; caller must have exclusive access.
     pub unsafe fn write_header(&self, payload: *mut u8, hdr: ObjHeader) {
-        ptr::write(payload.sub(HEADER).cast::<ObjHeader>(), hdr);
+        ptr::write(payload.sub(HEADER).cast::<ObjHeader>(), hdr)
+    }
+
+    /// True when the calling thread's slot is ≥ 90 % full.
+    #[inline]
+    pub fn current_slot_nearly_full(&self) -> bool {
+        let bump = self.slots[self.current_slot_idx()]
+            .bump.load(Ordering::Relaxed);
+        bump >= self.per_thread_size.saturating_sub(self.per_thread_size / 10)
+    }
+
+    /// Reset all per-thread arenas. Call only during a stop-the-world pause.
+    pub fn reset_all(&self) {
+        for slot in &self.slots { slot.reset(); }
     }
 }
 
 // ── Card table ────────────────────────────────────────────────────────────────
-pub struct CardTable {
-    cards: Vec<u8>,
-}
+pub struct CardTable { cards: Vec<u8> }
 
 impl CardTable {
     pub fn new(max_heap_bytes: usize) -> Self {
         let n = (max_heap_bytes / CARD_BYTES) + 2;
         Self { cards: vec![0u8; n] }
     }
-
-    #[inline]
-    fn index(addr: usize) -> usize { addr / CARD_BYTES }
-
-    #[inline]
-    pub fn mark_dirty(&mut self, addr: usize) {
+    #[inline] fn index(addr: usize) -> usize { addr / CARD_BYTES }
+    #[inline] pub fn mark_dirty(&mut self, addr: usize) {
         let i = Self::index(addr);
         if i < self.cards.len() { self.cards[i] = 1; }
     }
-
-    #[inline]
-    pub fn is_dirty(&self, addr: usize) -> bool {
+    #[inline] pub fn is_dirty(&self, addr: usize) -> bool {
         let i = Self::index(addr);
         i < self.cards.len() && self.cards[i] != 0
     }
-
     pub fn clear(&mut self, addr: usize) {
         let i = Self::index(addr);
         if i < self.cards.len() { self.cards[i] = 0; }
     }
-
     pub fn iter_dirty(&self) -> impl Iterator<Item = usize> + '_ {
         self.cards.iter().enumerate()
             .filter(|(_, &v)| v != 0)
             .map(|(i, _)| i * CARD_BYTES)
+    }
+}
+
+// ── Old-gen contiguous arena ──────────────────────────────────────────────────
+/// A freed slot in OldArena, eligible for reuse.
+pub struct FreeSlot {
+    pub offset: usize,
+    pub total:  usize, // header + payload, aligned to 8 bytes
+}
+
+/// Contiguous bump arena for old-generation objects.
+///
+/// Objects are allocated by bumping `bump` forward.  When an object is swept
+/// (dead after major GC), its header is marked `GC_FREE` and a `FreeSlot` is
+/// appended to the free list for future reuse.  Major GC sweep is a single
+/// linear scan — O(old-gen size), cache-friendly.
+pub struct OldArena {
+    /// Backing store.  Never reallocated; internal pointers are stable.
+    pub buffer:    Vec<u8>,
+    /// Next free byte offset (increases monotonically until free list reuse).
+    pub bump:      usize,
+    /// Sorted list of freed slots available for reuse.
+    pub free_list: Vec<FreeSlot>,
+}
+
+impl OldArena {
+    pub fn new(capacity: usize) -> Self {
+        Self { buffer: vec![0u8; capacity], bump: 0, free_list: Vec::new() }
+    }
+
+    /// Allocate `size` payload bytes with the given header flags.
+    /// Returns null on OOM (arena full and no suitable free slot).
+    pub fn alloc(&mut self, size: usize, flags: u8, type_id: u16) -> *mut u8 {
+        let aligned = (HEADER + size + 7) & !7;
+
+        // First-fit from free list.
+        for i in 0..self.free_list.len() {
+            let slot_total = self.free_list[i].total;
+            if slot_total >= aligned {
+                let off = self.free_list[i].offset;
+                // If the remainder is large enough to hold at least a header +
+                // 1 byte, split the slot so we don't waste space.
+                if slot_total > aligned + HEADER {
+                    let rem_off   = off + aligned;
+                    let rem_total = slot_total - aligned;
+                    // Write a synthetic FREE header in the remainder.
+                    let rem_hdr = ObjHeader::new((rem_total - HEADER) as u32, 0, GC_FREE | GC_OLD);
+                    unsafe {
+                        ptr::write(self.buffer.as_mut_ptr().add(rem_off).cast::<ObjHeader>(),
+                                   rem_hdr);
+                    }
+                    self.free_list[i] = FreeSlot { offset: rem_off, total: rem_total };
+                } else {
+                    self.free_list.swap_remove(i);
+                }
+                let hdr = ObjHeader::new(size as u32, type_id, flags);
+                unsafe { ptr::write(self.buffer.as_mut_ptr().add(off).cast::<ObjHeader>(), hdr); }
+                return unsafe { self.buffer.as_mut_ptr().add(off + HEADER) };
+            }
+        }
+
+        // Bump allocate.
+        if self.bump + aligned > self.buffer.len() { return ptr::null_mut(); }
+        let off = self.bump;
+        self.bump += aligned;
+        let hdr = ObjHeader::new(size as u32, type_id, flags);
+        unsafe { ptr::write(self.buffer.as_mut_ptr().add(off).cast::<ObjHeader>(), hdr); }
+        unsafe { self.buffer.as_mut_ptr().add(off + HEADER) }
+    }
+
+    /// True when `payload` is a non-freed object inside this arena.
+    #[inline]
+    pub fn contains_ptr(&self, payload: *const u8) -> bool {
+        let base = self.buffer.as_ptr() as usize;
+        let addr = payload as usize;
+        if addr < base + HEADER || addr >= base + self.bump { return false; }
+        // Quick free check — avoids treating freed slots as live objects.
+        let hdr = unsafe { ptr::read((addr - HEADER) as *const ObjHeader) };
+        hdr.gc_flags & GC_FREE == 0
+    }
+
+    /// Read the header of an object payload in this arena.
+    #[inline]
+    pub fn header_of(&self, payload: *const u8) -> Option<ObjHeader> {
+        let base = self.buffer.as_ptr() as usize;
+        let addr = payload as usize;
+        if addr < base + HEADER || addr >= base + self.bump { return None; }
+        let hdr = unsafe { ptr::read((addr - HEADER) as *const ObjHeader) };
+        if hdr.gc_flags & GC_FREE != 0 { None } else { Some(hdr) }
     }
 }
 
@@ -206,7 +324,9 @@ pub struct HeapState {
     pub config: GcConfig,
 
     // ── Old generation ────────────────────────────────────────────────────────
-    pub old_objects:  HashMap<usize, Box<[u8]>>,
+    /// Contiguous old-gen arena (regular objects).
+    pub old:           OldArena,
+    /// Large objects (≥ large_threshold) live here; infrequent.
     pub large_objects: HashMap<usize, Box<[u8]>>,
 
     // ── Type descriptor table ─────────────────────────────────────────────────
@@ -216,21 +336,18 @@ pub struct HeapState {
     pub roots: HashMap<usize, usize>,
 
     // ── Promotion forwarding table ─────────────────────────────────────────────
-    /// Maps old young-arena payload address → new old-gen payload address.
+    /// Maps old young-arena payload address → current old-gen payload address.
     /// Allows callers holding pre-promotion raw pointers to resolve the object.
     /// Entries are pruned when the promoted object is later collected.
     pub young_forwarding: HashMap<usize, usize>,
 
     // ── Write-barrier bookkeeping ─────────────────────────────────────────────
-    /// Old-gen parent addresses that may have pointer fields into young gen.
-    /// Using a Vec (not HashSet): append is O(1) with no hash overhead;
-    /// duplicates are deduplicated at the start of collect_minor.
     pub remembered_set: Vec<usize>,
-    pub card_table: CardTable,
+    pub card_table:     CardTable,
 
     // ── Incremental major GC ──────────────────────────────────────────────────
-    pub mark_stack: Vec<usize>,
-    pub is_marking: bool,
+    pub mark_stack:      Vec<usize>,
+    pub is_marking:      bool,
     pub mark_slice_size: usize,
 
     // ── Statistics ────────────────────────────────────────────────────────────
@@ -238,7 +355,8 @@ pub struct HeapState {
     pub major_cycles:    u64,
     pub bytes_allocated: u64,
     pub live_bytes:      usize,
-    pub old_bytes:       usize, // sum of old_objects + large_objects sizes, O(1)
+    /// Sum of live bytes in old + large spaces; maintained in O(1).
+    pub old_bytes:       usize,
 }
 
 impl HeapState {
@@ -246,7 +364,7 @@ impl HeapState {
         let config = config.normalized();
         let card_table = CardTable::new(config.max_heap);
         Self {
-            old_objects:      HashMap::new(),
+            old:              OldArena::new(config.old_size),
             large_objects:    HashMap::new(),
             type_descriptors: HashMap::new(),
             roots:            HashMap::new(),
@@ -274,16 +392,10 @@ impl HeapState {
         });
     }
 
-    // ── Allocation (old gen / large object only) ──────────────────────────────
-    // Young-gen allocation is handled by GcRuntime::young.try_alloc() without
-    // acquiring the heap lock.
+    // ── Allocation ────────────────────────────────────────────────────────────
 
-    /// Allocate in the appropriate space (not young gen).
-    /// Called when the lock-free young fast path failed.
     pub fn alloc_slow(&mut self, size: usize, type_id: u16) -> *mut u8 {
-        if size >= self.config.large_threshold {
-            return self.alloc_large(size, type_id);
-        }
+        if size >= self.config.large_threshold { return self.alloc_large(size, type_id); }
         self.alloc_old(size, type_id)
     }
 
@@ -293,16 +405,13 @@ impl HeapState {
     }
 
     pub(crate) fn alloc_old(&mut self, size: usize, type_id: u16) -> *mut u8 {
-        let total = HEADER + size;
-        let mut bytes = vec![0u8; total].into_boxed_slice();
-        let hdr = ObjHeader::new(size as u32, type_id, GC_OLD);
-        unsafe { ptr::write(bytes.as_mut_ptr().cast::<ObjHeader>(), hdr); }
-        let payload = unsafe { bytes.as_mut_ptr().add(HEADER) };
-        let payload_addr = payload as usize;
-        self.old_objects.insert(payload_addr, bytes);
-        self.bytes_allocated += total as u64;
-        self.live_bytes += total;
-        self.old_bytes  += total;
+        let aligned = (HEADER + size + 7) & !7;
+        let payload = self.old.alloc(size, GC_OLD, type_id);
+        if !payload.is_null() {
+            self.bytes_allocated += aligned as u64;
+            self.live_bytes += aligned;
+            self.old_bytes  += aligned;
+        }
         payload
     }
 
@@ -322,20 +431,24 @@ impl HeapState {
 
     // ── Header / space access ─────────────────────────────────────────────────
 
-    /// Look up the object header.  `young` is the live young-gen arena.
-    pub fn header_of(&self, young: &YoungArena, payload: *mut u8) -> Option<ObjHeader> {
+    pub fn header_of(&self, pool: &YoungPool, payload: *mut u8) -> Option<ObjHeader> {
         let addr = payload as usize;
-        // Forwarding must be checked FIRST: a promoted object's old arena bytes
-        // may still be in the buffer, so contains_ptr would return true.
+        // Check forwarding first: a promoted object's young-arena addr maps to
+        // the current old-gen addr.
         if let Some(&new_addr) = self.young_forwarding.get(&addr) {
-            if let Some(bytes) = self.old_objects.get(&new_addr) {
-                return Some(unsafe { ptr::read(bytes.as_ptr().cast::<ObjHeader>()) });
-            }
+            return self.old.header_of(new_addr as *const u8)
+                .or_else(|| {
+                    self.large_objects.get(&new_addr)
+                        .map(|b| unsafe { ptr::read(b.as_ptr().cast::<ObjHeader>()) })
+                });
         }
-        if young.contains_ptr(payload as *const u8) {
-            return Some(unsafe { young.read_header(payload) });
+        if pool.contains_ptr(payload as *const u8) {
+            return Some(unsafe { pool.read_header(payload) });
         }
-        if let Some(bytes) = self.old_objects.get(&addr).or_else(|| self.large_objects.get(&addr)) {
+        if let Some(hdr) = self.old.header_of(payload as *const u8) {
+            return Some(hdr);
+        }
+        if let Some(bytes) = self.large_objects.get(&addr) {
             return Some(unsafe { ptr::read(bytes.as_ptr().cast::<ObjHeader>()) });
         }
         None
@@ -343,45 +456,45 @@ impl HeapState {
 
     pub(crate) fn set_header_old(&mut self, payload: *mut u8, hdr: ObjHeader) {
         let addr = payload as usize;
-        if let Some(bytes) = self.old_objects.get_mut(&addr)
-            .or_else(|| self.large_objects.get_mut(&addr))
-        {
+        if self.old.contains_ptr(payload as *const u8) {
+            unsafe { ptr::write((addr - HEADER) as *mut ObjHeader, hdr); }
+        } else if let Some(bytes) = self.large_objects.get_mut(&addr) {
             unsafe { ptr::write(bytes.as_mut_ptr().cast::<ObjHeader>(), hdr); }
         }
     }
 
-    pub fn space_of(&self, young: &YoungArena, payload: *mut u8) -> Option<HeapSpace> {
+    pub fn space_of(&self, pool: &YoungPool, payload: *mut u8) -> Option<HeapSpace> {
         let addr = payload as usize;
-        if self.young_forwarding.contains_key(&addr) { return Some(HeapSpace::Old); }
-        if young.contains_ptr(payload as *const u8)  { return Some(HeapSpace::Young); }
-        if self.old_objects.contains_key(&addr)       { return Some(HeapSpace::Old);   }
-        if self.large_objects.contains_key(&addr)     { return Some(HeapSpace::Large); }
+        if self.young_forwarding.contains_key(&addr)        { return Some(HeapSpace::Old);   }
+        if pool.contains_ptr(payload as *const u8)          { return Some(HeapSpace::Young); }
+        if self.old.contains_ptr(payload as *const u8)      { return Some(HeapSpace::Old);   }
+        if self.large_objects.contains_key(&addr)           { return Some(HeapSpace::Large); }
         None
     }
 
     // ── Pin / unpin ───────────────────────────────────────────────────────────
 
-    pub fn pin(&mut self, young: &YoungArena, payload: *mut u8) {
-        if young.contains_ptr(payload as *const u8) {
-            let mut hdr = unsafe { young.read_header(payload) };
+    pub fn pin(&mut self, pool: &YoungPool, payload: *mut u8) {
+        if pool.contains_ptr(payload as *const u8) {
+            let mut hdr = unsafe { pool.read_header(payload) };
             hdr.gc_flags |= GC_PINNED;
-            unsafe { young.write_header(payload, hdr); }
-        } else if let Some(hdr) = self.header_of(young, payload) {
-            let mut hdr = hdr;
-            hdr.gc_flags |= GC_PINNED;
-            self.set_header_old(payload, hdr);
+            unsafe { pool.write_header(payload, hdr); }
+        } else if let Some(hdr) = self.header_of(pool, payload) {
+            let mut h = hdr;
+            h.gc_flags |= GC_PINNED;
+            self.set_header_old(payload, h);
         }
     }
 
-    pub fn unpin(&mut self, young: &YoungArena, payload: *mut u8) {
-        if young.contains_ptr(payload as *const u8) {
-            let mut hdr = unsafe { young.read_header(payload) };
+    pub fn unpin(&mut self, pool: &YoungPool, payload: *mut u8) {
+        if pool.contains_ptr(payload as *const u8) {
+            let mut hdr = unsafe { pool.read_header(payload) };
             hdr.gc_flags &= !GC_PINNED;
-            unsafe { young.write_header(payload, hdr); }
-        } else if let Some(hdr) = self.header_of(young, payload) {
-            let mut hdr = hdr;
-            hdr.gc_flags &= !GC_PINNED;
-            self.set_header_old(payload, hdr);
+            unsafe { pool.write_header(payload, hdr); }
+        } else if let Some(hdr) = self.header_of(pool, payload) {
+            let mut h = hdr;
+            h.gc_flags &= !GC_PINNED;
+            self.set_header_old(payload, h);
         }
     }
 
@@ -403,12 +516,8 @@ impl HeapState {
 
     // ── Utilities ─────────────────────────────────────────────────────────────
 
-    pub fn old_usage(&self)   -> usize { self.old_bytes }
+    pub fn old_usage(&self) -> usize { self.old_bytes }
 
-    /// Read a pointer field from a managed object payload.
-    ///
-    /// # Safety
-    /// `payload` must be a valid managed object and `offset` within bounds.
     pub unsafe fn read_ptr_field(payload: *const u8, offset: u32) -> *mut u8 {
         let field = payload.add(offset as usize) as *const *mut u8;
         ptr::read(field)
@@ -418,12 +527,11 @@ impl HeapState {
 // ── GC runtime handle ─────────────────────────────────────────────────────────
 
 pub struct GcRuntime {
-    /// Lock-free young-gen arena.  Allocation never requires the heap lock.
-    pub young: YoungArena,
+    /// Per-thread lock-free young-gen pool. Allocation never requires the heap lock.
+    pub pool: YoungPool,
     /// Old gen + large-object space + GC metadata.
-    pub heap:  Mutex<HeapState>,
+    pub heap: Mutex<HeapState>,
     /// Cached from config for the lock-free alloc hot path.
-    /// Updated atomically when `gc::configure()` is called.
     pub large_threshold: AtomicUsize,
     pub young_size:      AtomicUsize,
 }
@@ -434,7 +542,7 @@ impl GcRuntime {
         Self {
             large_threshold: AtomicUsize::new(config.large_threshold),
             young_size:      AtomicUsize::new(config.young_size),
-            young:           YoungArena::new(config.young_size),
+            pool:            YoungPool::new(config.young_size),
             heap:            Mutex::new(HeapState::new(config)),
         }
     }
