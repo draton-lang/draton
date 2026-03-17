@@ -1,4 +1,5 @@
 use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::atomic::Ordering;
 
 use draton_runtime::gc;
 use draton_runtime::gc::heap::{GC_OLD, GC_PINNED};
@@ -354,6 +355,65 @@ fn major_mark_barrier_traces_new_old_edge_from_marked_parent() {
         "incremental-update major barrier should keep a newly linked old child alive"
     );
 
+    gc::release(parent);
+}
+
+#[test]
+fn active_major_cycle_rearms_safepoint_flag() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 1024,
+        old_size: 64 * 1024,
+        gc_threshold: 0.01,
+        pause_target_ns: 1,
+        ..gc::config::GcConfig::default()
+    });
+    gc::register_type(13, 8, &[0]);
+    gc::register_type(14, (gc::LARGE_OBJECT_THRESHOLD + 128) as u32, &[0]);
+    gc::reset_stats();
+
+    let parent = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 128, 14);
+    gc::protect(parent);
+    let mut chain = Vec::new();
+    for _ in 0..8000 {
+        let ptr = gc::alloc(8, 13);
+        gc::protect(ptr);
+        chain.push(ptr);
+    }
+    for index in 0..chain.len() - 1 {
+        unsafe { write_ptr_field(chain[index], chain[index + 1]); }
+    }
+    unsafe { write_ptr_field(parent, chain[0]); }
+    gc::write_barrier(parent, std::ptr::null_mut(), chain[0]);
+
+    while gc::header_of(chain[0]).map(|hdr| hdr.gc_flags & GC_OLD == 0).unwrap_or(true) {
+        let _ = gc::alloc(8, 13);
+    }
+    for ptr in &chain {
+        gc::release(*ptr);
+    }
+
+    draton_runtime::draton_safepoint_flag.store(1, Ordering::Release);
+    draton_runtime::draton_safepoint_slow();
+
+    let stats = gc::stats();
+    assert_eq!(
+        stats.major_phase, 1,
+        "first rearmed slow-path should leave the cycle in mark phase: {stats:?}"
+    );
+    assert_eq!(
+        draton_runtime::draton_safepoint_flag.load(Ordering::Acquire),
+        1,
+        "active major cycle should rearm the safepoint flag for the next poll"
+    );
+    assert!(
+        stats.safepoint_rearms >= 1,
+        "rearm activity should be visible in telemetry: {stats:?}"
+    );
+
+    gc::collect();
     gc::release(parent);
 }
 

@@ -23,6 +23,8 @@ The baseline report tracks these metrics:
 - bytes reclaimed in major old-gen sweep
 - bytes reclaimed in large-object sweep
 - write-barrier slow-path calls
+- safepoint rearms when the runtime keeps an active GC cycle progressing across
+  multiple polls
 - major-mark barrier traces for newly linked old/large children during an active
   mark phase
 - remembered-set insertions and deduplicated entries
@@ -54,6 +56,10 @@ Current baseline assumptions:
 The `major_mark_barrier_traces` metric is expected to stay at zero on many
 synthetic runs. It becomes non-zero only when mutator stores overlap with an
 active major mark phase.
+
+The `safepoint_rearms` metric is also workload-dependent. It increases only
+when a single slow-path poll is not enough to finish the current GC work and the
+runtime deliberately re-requests another safepoint poll.
 
 ## Runtime scenarios
 

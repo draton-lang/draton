@@ -171,6 +171,12 @@ fn signal_gc_flag() {
     { crate::draton_safepoint_flag.store(1, Ordering::Release); }
 }
 
+#[inline]
+fn rearm_safepoint_flag(rt: &GcRuntime) {
+    rt.telemetry.record_safepoint_rearm();
+    signal_gc_flag();
+}
+
 // ── Safepoint slow path ────────────────────────────────────────────────────────
 
 /// Called by the runtime safepoint slow path when `draton_safepoint_flag != 0`.
@@ -184,6 +190,16 @@ pub fn safepoint() {
     };
     if needs_minor { rt.collect_minor(); }
     if needs_major { rt.collect_major_slice(); }
+
+    let should_rearm = {
+        let heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+        rt.pool.current_slot_nearly_full()
+            || heap.major_phase != MajorPhase::Idle
+            || heap.old_usage() >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize
+    };
+    if should_rearm {
+        rearm_safepoint_flag(&rt);
+    }
 }
 
 // ── Write barrier ─────────────────────────────────────────────────────────────
