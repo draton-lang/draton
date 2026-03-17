@@ -140,6 +140,7 @@ pub fn alloc(size: usize, type_id: u16) -> *mut u8 {
 
         // Thread's arena full — collect before returning a valid pointer.
         rt.collect_minor();
+        assist_major_work_if_requested(&rt);
 
         if let Some(payload) = rt.pool.try_alloc(size, type_id) {
             rt.telemetry.record_young_alloc(aligned);

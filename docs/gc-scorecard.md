@@ -24,7 +24,8 @@ The baseline report tracks these metrics:
 - bytes reclaimed in large-object sweep
 - write-barrier slow-path calls
 - major-work requests when runtime pressure arms or rearms the next major slice
-- major-mutator assists when a slow allocation path helps drain pending major work
+- major-mutator assists when an allocation slow path, including young refills,
+  helps drain pending major work
 - whether major work is currently requested at the time the snapshot is taken
 - safepoint rearms when the runtime keeps an active GC cycle progressing across
   multiple polls
@@ -54,9 +55,10 @@ Current baseline assumptions:
 - major-GC scheduling uses an explicit request flag, so promotion pressure and
   active major cycles do not depend only on re-deriving threshold state at each
   individual safepoint
-- slow allocation paths may assist pending major work with one bounded slice,
-  reducing the runtime's dependence on a separate safepoint poll before the
-  next chunk of major work can run
+- allocation slow paths may assist pending major work with one bounded slice,
+  including the young-refill path after a minor collection, reducing the
+  runtime's dependence on a separate safepoint poll before the next chunk of
+  major work can run
 - a major cycle that has already started must continue progressing at
   safepoints until it returns to `Idle`
 - stores from already-marked old/large objects must trace newly linked

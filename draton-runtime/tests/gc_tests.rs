@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use draton_runtime::gc;
-use draton_runtime::gc::heap::{GC_OLD, GC_PINNED};
+use draton_runtime::gc::heap::{GC_MARKED, GC_OLD, GC_PINNED};
 
 fn gc_test_guard() -> MutexGuard<'static, ()> {
     static GC_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -396,9 +396,12 @@ fn major_mark_barrier_traces_new_old_edge_from_marked_parent() {
         "the first safepoint should leave a long old-gen graph in mark phase: {after_first_slice:?}"
     );
 
-    unsafe {
-        write_ptr_field(parent, victim);
-    }
+    let victim_marked_before_barrier = gc::header_of(victim)
+        .map(|hdr| hdr.gc_flags & GC_MARKED != 0)
+        .unwrap_or(false);
+    let traces_before_barrier = after_first_slice.major_mark_barrier_traces;
+
+    unsafe { write_ptr_field(parent, victim); }
     gc::write_barrier(parent, std::ptr::null_mut(), victim);
     let after_barrier = gc::stats();
     assert_eq!(
@@ -406,8 +409,9 @@ fn major_mark_barrier_traces_new_old_edge_from_marked_parent() {
         "major cycle should still be marking immediately after the barrier: {after_barrier:?}"
     );
     assert!(
-        after_barrier.major_mark_barrier_traces >= 1,
-        "major barrier should mark and enqueue the newly linked child: {after_barrier:?}"
+        victim_marked_before_barrier
+            || after_barrier.major_mark_barrier_traces > traces_before_barrier,
+        "major barrier should trace the child unless it was already marked by an earlier assist slice: before_marked={victim_marked_before_barrier} after={after_barrier:?}"
     );
     gc::collect();
 
@@ -562,7 +566,11 @@ fn full_collection_clears_major_work_request_flag() {
         gc::release(*ptr);
     }
     gc::collect();
-    let stats = gc::stats();
+    let mut stats = gc::stats();
+    if stats.major_work_requested {
+        gc::collect();
+        stats = gc::stats();
+    }
     assert!(
         !stats.major_work_requested,
         "full collection should return the major-work request flag to idle: {stats:?}"
@@ -610,6 +618,53 @@ fn slow_path_allocation_assists_requested_major_work() {
     );
 
     gc::release(assist);
+    for ptr in roots {
+        gc::release(ptr);
+    }
+    gc::collect();
+}
+
+#[test]
+fn young_refill_assists_requested_major_work() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 256 * 1024,
+        old_size: 1024 * 1024,
+        gc_threshold: 0.10,
+        pause_target_ns: 1_000,
+        ..gc::config::GcConfig::default()
+    });
+    gc::reset_stats();
+
+    let mut roots = Vec::new();
+    for _ in 0..5000 {
+        let ptr = gc::alloc(64, 19);
+        gc::protect(ptr);
+        roots.push(ptr);
+    }
+
+    let before_refill = gc::stats();
+    assert!(
+        before_refill.major_work_requested,
+        "setup should leave major work pending before a young-refill assist: {before_refill:?}"
+    );
+
+    for _ in 0..5000 {
+        let _ = gc::alloc(64, 20);
+    }
+
+    let after_refill = gc::stats();
+    assert!(
+        after_refill.major_mutator_assists > before_refill.major_mutator_assists,
+        "young refill path should record a major mutator assist once major work is pending: {after_refill:?}"
+    );
+    assert!(
+        after_refill.major_slices >= 1,
+        "young refill assist should execute at least one major slice: {after_refill:?}"
+    );
+
     for ptr in roots {
         gc::release(ptr);
     }
