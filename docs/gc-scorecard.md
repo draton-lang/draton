@@ -180,6 +180,13 @@ python3 tools/gc_scorecard.py --out build/gc-scorecard.json
 
 The report is JSON so it can feed CI, dashboards, or manual comparison runs.
 
+Published benchmark artifacts for the current repository state live in:
+
+- [docs/benchmarks/gc-results-2026-03-17.md](benchmarks/gc-results-2026-03-17.md)
+- [docs/benchmarks/gc-scorecard-local-2026-03-17-d3523f5.json](benchmarks/gc-scorecard-local-2026-03-17-d3523f5.json)
+- [docs/benchmarks/gc-scorecard-gha-2026-03-17-run-23203853670.json](benchmarks/gc-scorecard-gha-2026-03-17-run-23203853670.json)
+- [docs/benchmarks/gc-ocaml-compare-gha-2026-03-17-run-23203853670.json](benchmarks/gc-ocaml-compare-gha-2026-03-17-run-23203853670.json)
+
 For a matching OCaml comparison harness on Linux with `ocamlopt` installed:
 
 ```sh
