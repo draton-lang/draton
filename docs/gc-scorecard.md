@@ -186,6 +186,12 @@ For a matching OCaml comparison harness on Linux with `ocamlopt` installed:
 python3 tools/gc_compare_ocaml.py --out build/gc-ocaml-compare.json
 ```
 
+The OCaml comparison harness now runs multiple rounds per scenario, keeps the
+best single sample for detailed runtime stats, and reports median-based speed
+ratios plus a geometric-mean summary across scenarios. That still does not
+constitute a blanket victory claim, but it is strong enough to catch obvious
+"Draton got slower than OCaml on our core microbenchmarks" regressions in CI.
+
 ## Interpretation
 
 This scorecard is a baseline, not a victory claim over OCaml.

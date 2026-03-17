@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import shutil
+import statistics
 import subprocess
 import tempfile
 import textwrap
@@ -68,7 +70,7 @@ def run(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProc
     return completed
 
 
-def draton_runtime_stats() -> dict[str, dict[str, object]]:
+def draton_runtime_stats(rounds: int) -> dict[str, dict[str, object]]:
     stats: dict[str, dict[str, object]] = {}
     iterations = {
         "young-burst": 20_000,
@@ -76,30 +78,36 @@ def draton_runtime_stats() -> dict[str, dict[str, object]]:
         "barrier-churn": 16_000,
     }
     for scenario, count in iterations.items():
-        completed = run(
-            [
-                "cargo",
-                "run",
-                "-q",
-                "-p",
-                "draton-runtime",
-                "--example",
-                "gc_scorecard",
-                "--",
-                scenario,
-                str(count),
-            ]
-        )
-        if completed.returncode != 0:
-            raise SystemExit(
-                f"draton runtime scenario failed: {scenario}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        samples: list[dict[str, object]] = []
+        for _ in range(rounds):
+            completed = run(
+                [
+                    "cargo",
+                    "run",
+                    "-q",
+                    "-p",
+                    "draton-runtime",
+                    "--example",
+                    "gc_scorecard",
+                    "--",
+                    scenario,
+                    str(count),
+                ]
             )
-        payload = json.loads(completed.stdout)
-        stats[scenario] = payload
+            if completed.returncode != 0:
+                raise SystemExit(
+                    f"draton runtime scenario failed: {scenario}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+                )
+            samples.append(json.loads(completed.stdout))
+        elapsed_samples = [int(sample["elapsed_ns"]) for sample in samples]
+        best = min(samples, key=lambda sample: int(sample["elapsed_ns"]))
+        best["elapsed_samples_ns"] = elapsed_samples
+        best["median_elapsed_ns"] = int(statistics.median(elapsed_samples))
+        stats[scenario] = best
     return stats
 
 
-def ocaml_runtime_stats(workdir: Path) -> dict[str, dict[str, object]]:
+def ocaml_runtime_stats(workdir: Path, rounds: int) -> dict[str, dict[str, object]]:
     if shutil.which("ocamlopt") is None:
         return {
             "status": "blocked",
@@ -123,14 +131,21 @@ def ocaml_runtime_stats(workdir: Path) -> dict[str, dict[str, object]]:
                 "reason": f"failed to compile OCaml workload {scenario}",
                 "stderr": build.stderr.strip(),
             }
-        executed = run([str(binary), str(iterations[scenario])], cwd=workdir)
-        if executed.returncode != 0:
-            return {
-                "status": "blocked",
-                "reason": f"failed to run OCaml workload {scenario}",
-                "stderr": executed.stderr.strip(),
-            }
-        results[scenario] = json.loads(executed.stdout)
+        samples: list[dict[str, object]] = []
+        for _ in range(rounds):
+            executed = run([str(binary), str(iterations[scenario])], cwd=workdir)
+            if executed.returncode != 0:
+                return {
+                    "status": "blocked",
+                    "reason": f"failed to run OCaml workload {scenario}",
+                    "stderr": executed.stderr.strip(),
+                }
+            samples.append(json.loads(executed.stdout))
+        elapsed_samples = [int(sample["elapsed_ns"]) for sample in samples]
+        best = min(samples, key=lambda sample: int(sample["elapsed_ns"]))
+        best["elapsed_samples_ns"] = elapsed_samples
+        best["median_elapsed_ns"] = int(statistics.median(elapsed_samples))
+        results[scenario] = best
     return results
 
 
@@ -140,19 +155,28 @@ def compare(draton: dict[str, dict[str, object]], ocaml: dict[str, dict[str, obj
 
     workloads = []
     wins = 0
+    median_ratios: list[float] = []
     for scenario, draton_payload in draton.items():
         ocaml_payload = ocaml[scenario]
         draton_elapsed = int(draton_payload["elapsed_ns"])
         ocaml_elapsed = int(ocaml_payload["elapsed_ns"])
         ratio = ocaml_elapsed / draton_elapsed if draton_elapsed else 0.0
+        draton_median = int(draton_payload.get("median_elapsed_ns", draton_elapsed))
+        ocaml_median = int(ocaml_payload.get("median_elapsed_ns", ocaml_elapsed))
+        median_ratio = ocaml_median / draton_median if draton_median else 0.0
         if ratio > 1.0:
             wins += 1
+        if median_ratio > 0.0:
+            median_ratios.append(median_ratio)
         workloads.append(
             {
                 "scenario": scenario,
                 "draton_elapsed_ns": draton_elapsed,
+                "draton_median_elapsed_ns": draton_median,
                 "ocaml_elapsed_ns": ocaml_elapsed,
+                "ocaml_median_elapsed_ns": ocaml_median,
                 "ocaml_over_draton_speed_ratio": ratio,
+                "ocaml_over_draton_median_speed_ratio": median_ratio,
                 "draton_major_slices": draton_payload["stats"]["major_slices"],
                 "draton_major_background_slices": draton_payload["stats"].get(
                     "major_background_slices", 0
@@ -162,10 +186,19 @@ def compare(draton: dict[str, dict[str, object]], ocaml: dict[str, dict[str, obj
                 ),
             }
         )
+    geometric_mean_ratio = (
+        math.exp(sum(math.log(ratio) for ratio in median_ratios) / len(median_ratios))
+        if median_ratios
+        else 0.0
+    )
     return {
         "status": "ok",
         "draton_wins": wins,
         "scenario_count": len(workloads),
+        "geometric_mean_ocaml_over_draton_median_speed_ratio": geometric_mean_ratio,
+        "scorecard_result": "draton-faster"
+        if wins == len(workloads) and geometric_mean_ratio > 1.0
+        else "mixed",
         "workloads": workloads,
     }
 
@@ -173,13 +206,20 @@ def compare(draton: dict[str, dict[str, object]], ocaml: dict[str, dict[str, obj
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=None, help="Optional JSON output path")
+    parser.add_argument(
+        "--rounds",
+        type=int,
+        default=5,
+        help="Benchmark rounds per scenario before computing medians",
+    )
     args = parser.parse_args()
 
-    draton = draton_runtime_stats()
+    draton = draton_runtime_stats(args.rounds)
     with tempfile.TemporaryDirectory(prefix="draton-ocaml-compare-") as temp_dir:
-        ocaml = ocaml_runtime_stats(Path(temp_dir))
+        ocaml = ocaml_runtime_stats(Path(temp_dir), args.rounds)
     report = {
         "generated_at_epoch_ns": time.time_ns(),
+        "rounds": args.rounds,
         "draton": draton,
         "ocaml": ocaml,
         "comparison": compare(draton, ocaml),
