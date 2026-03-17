@@ -1,4 +1,4 @@
-use super::heap::{GcRuntime, HeapState, ObjHeader, GC_FREE, GC_MARKED, GC_OLD, HEADER};
+use super::heap::{GcRuntime, HeapState, MajorPhase, ObjHeader, GC_FREE, GC_MARKED, GC_OLD, HEADER};
 
 impl GcRuntime {
     /// Write barrier invoked by generated code on every GC-pointer store.
@@ -35,7 +35,7 @@ impl GcRuntime {
         heap.card_table.mark_dirty(parent_addr);
         self.telemetry.record_write_barrier_slow();
 
-        if heap.is_marking {
+        if heap.major_phase == MajorPhase::Mark {
             mark_old_object(&mut heap, parent_addr);
         }
     }

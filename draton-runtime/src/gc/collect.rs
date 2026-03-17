@@ -1,7 +1,7 @@
 use std::mem::size_of;
 use std::time::Instant;
 
-use super::heap::{GcRuntime, HeapState, ObjHeader, YoungPool,
+use super::heap::{GcRuntime, HeapState, MajorPhase, ObjHeader, YoungPool,
                   GC_FREE, GC_MARKED, GC_OLD, GC_PINNED, HEADER, MAX_THREADS};
 
 // ── Tracing helpers ───────────────────────────────────────────────────────────
@@ -198,35 +198,35 @@ impl GcRuntime {
     pub fn collect_major_slice(&self) {
         let Ok(mut heap) = self.heap.lock() else { return };
 
-        if !heap.is_marking {
-            heap.major_cycles = heap.major_cycles.saturating_add(1);
+        if heap.major_phase == MajorPhase::Idle {
+            Self::begin_major_cycle(&self.pool, &mut heap);
             self.telemetry.record_major_cycle_start();
-            heap.is_marking = true;
-            heap.mark_stack.clear();
-
-            let shadow_roots  = unsafe { super::shadow_stack_roots() };
-            let explicit_roots: Vec<usize> = heap.roots.keys().copied().collect();
-            for addr in shadow_roots.into_iter().chain(explicit_roots.into_iter()) {
-                if heap.header_of(&self.pool, addr as *mut u8).is_some() {
-                    set_marked(&self.pool, &mut heap, addr);
-                    heap.mark_stack.push(addr);
-                }
-            }
         }
 
         let t0    = Instant::now();
-        let slice = heap.mark_slice_size;
+        let mut reclaimed_old = 0usize;
+        let mut reclaimed_large = 0usize;
 
-        for _ in 0..slice {
-            let Some(addr) = heap.mark_stack.pop() else { break };
-            let mut children: Vec<usize> = Vec::new();
-            enqueue_children(&self.pool, &heap, addr, &mut children);
-            for child_addr in children {
-                if heap.header_of(&self.pool, child_addr as *mut u8)
-                    .map_or(false, |h| h.gc_flags & GC_MARKED == 0)
-                {
-                    set_marked(&self.pool, &mut heap, child_addr);
-                    heap.mark_stack.push(child_addr);
+        match heap.major_phase {
+            MajorPhase::Idle => {}
+            MajorPhase::Mark => {
+                Self::drain_mark_slice(&self.pool, &mut heap);
+                if heap.mark_stack.is_empty() {
+                    heap.major_phase = MajorPhase::SweepOld;
+                    heap.old_sweep_cursor = 0;
+                }
+            }
+            MajorPhase::SweepOld => {
+                reclaimed_old = Self::sweep_old_slice(&mut heap);
+                if heap.old_sweep_cursor >= heap.old.bump {
+                    heap.major_phase = MajorPhase::SweepLarge;
+                    heap.large_sweep_pending = heap.large_objects.keys().copied().collect();
+                }
+            }
+            MajorPhase::SweepLarge => {
+                reclaimed_large = Self::sweep_large_slice(&mut heap);
+                if heap.large_sweep_pending.is_empty() {
+                    Self::finish_major_cycle(&mut heap);
                 }
             }
         }
@@ -238,23 +238,50 @@ impl GcRuntime {
         } else if elapsed_ns < target / 2 {
             heap.mark_slice_size = (heap.mark_slice_size * 5 / 4).min(65536);
         }
-
-        if heap.mark_stack.is_empty() {
-            heap.is_marking = false;
-            let reclaimed_old = Self::sweep_old(&mut heap);
-            let reclaimed_large = Self::sweep_large(&mut heap);
-            self.telemetry
-                .record_major_slice(elapsed_ns, reclaimed_old, reclaimed_large);
-            return;
-        }
-        self.telemetry.record_major_slice(elapsed_ns, 0, 0);
+        self.telemetry
+            .record_major_slice(elapsed_ns, reclaimed_old, reclaimed_large);
     }
 
-    /// Linear sweep of the contiguous old-gen arena.
-    fn sweep_old(heap: &mut HeapState) -> usize {
+    fn begin_major_cycle(pool: &YoungPool, heap: &mut HeapState) {
+        heap.major_cycles = heap.major_cycles.saturating_add(1);
+        heap.major_phase = MajorPhase::Mark;
+        heap.mark_stack.clear();
+        heap.old_sweep_cursor = 0;
+        heap.large_sweep_pending.clear();
+
+        let shadow_roots  = unsafe { super::shadow_stack_roots() };
+        let explicit_roots: Vec<usize> = heap.roots.keys().copied().collect();
+        for addr in shadow_roots.into_iter().chain(explicit_roots.into_iter()) {
+            if heap.header_of(pool, addr as *mut u8).is_some() {
+                set_marked(pool, heap, addr);
+                heap.mark_stack.push(addr);
+            }
+        }
+    }
+
+    fn drain_mark_slice(pool: &YoungPool, heap: &mut HeapState) {
+        let slice = heap.mark_slice_size;
+        for _ in 0..slice {
+            let Some(addr) = heap.mark_stack.pop() else { break };
+            let mut children: Vec<usize> = Vec::new();
+            enqueue_children(pool, heap, addr, &mut children);
+            for child_addr in children {
+                if heap.header_of(pool, child_addr as *mut u8)
+                    .map_or(false, |h| h.gc_flags & GC_MARKED == 0)
+                {
+                    set_marked(pool, heap, child_addr);
+                    heap.mark_stack.push(child_addr);
+                }
+            }
+        }
+    }
+
+    /// Incremental sweep of the contiguous old-gen arena.
+    fn sweep_old_slice(heap: &mut HeapState) -> usize {
         let mut reclaimed = 0usize;
-        let mut offset = 0usize;
-        while offset < heap.old.bump {
+        let mut swept = 0usize;
+        while heap.old_sweep_cursor < heap.old.bump && swept < heap.mark_slice_size {
+            let offset = heap.old_sweep_cursor;
             let hdr_ptr = heap.old.buffer.as_ptr().wrapping_add(offset) as *mut ObjHeader;
             let hdr     = unsafe { std::ptr::read(hdr_ptr) };
             let size    = hdr.size as usize;
@@ -262,7 +289,7 @@ impl GcRuntime {
 
             if hdr.gc_flags & GC_FREE != 0 {
                 // Already a free slot — keep going.
-                offset += aligned;
+                heap.old_sweep_cursor += aligned;
                 continue;
             }
 
@@ -281,8 +308,51 @@ impl GcRuntime {
                 new_hdr.gc_flags &= !GC_MARKED;
                 unsafe { std::ptr::write(hdr_ptr, new_hdr); }
             }
-            offset += aligned;
+            heap.old_sweep_cursor += aligned;
+            swept += 1;
         }
+        reclaimed
+    }
+
+    fn sweep_large_slice(heap: &mut HeapState) -> usize {
+        let mut reclaimed = 0usize;
+        let budget = heap.mark_slice_size.max(1);
+        let mut processed = 0usize;
+
+        while processed < budget {
+            let Some(addr) = heap.large_sweep_pending.pop() else { break };
+            processed += 1;
+            let is_dead = heap
+                .large_objects
+                .get(&addr)
+                .map(|bytes| {
+                    let hdr = unsafe { std::ptr::read(bytes.as_ptr().cast::<ObjHeader>()) };
+                    hdr.gc_flags & GC_MARKED == 0 && hdr.gc_flags & GC_PINNED == 0
+                })
+                .unwrap_or(false);
+
+            if is_dead {
+                if let Some(bytes) = heap.large_objects.remove(&addr) {
+                    heap.live_bytes = heap.live_bytes.saturating_sub(bytes.len());
+                    heap.old_bytes  = heap.old_bytes.saturating_sub(bytes.len());
+                    reclaimed += bytes.len();
+                }
+            } else if let Some(bytes) = heap.large_objects.get_mut(&addr) {
+                let hdr_ptr = bytes.as_mut_ptr().cast::<ObjHeader>();
+                unsafe {
+                    let mut hdr = std::ptr::read(hdr_ptr);
+                    hdr.gc_flags &= !GC_MARKED;
+                    std::ptr::write(hdr_ptr, hdr);
+                }
+            }
+        }
+        reclaimed
+    }
+
+    fn finish_major_cycle(heap: &mut HeapState) {
+        heap.major_phase = MajorPhase::Idle;
+        heap.old_sweep_cursor = 0;
+        heap.large_sweep_pending.clear();
 
         // Prune forwarding entries whose promoted object has since been freed.
         let to_remove: Vec<usize> = heap.young_forwarding.iter()
@@ -293,33 +363,27 @@ impl GcRuntime {
             })
             .collect();
         for k in to_remove { heap.young_forwarding.remove(&k); }
-        reclaimed
     }
 
-    fn sweep_large(heap: &mut HeapState) -> usize {
+    fn major_cycle_active(heap: &HeapState) -> bool {
+        heap.major_phase != MajorPhase::Idle
+    }
+
+    #[allow(dead_code)]
+    fn sweep_old(heap: &mut HeapState) -> usize {
         let mut reclaimed = 0usize;
-        let dead: Vec<usize> = heap.large_objects.iter()
-            .filter(|(_, bytes)| {
-                let hdr = unsafe { std::ptr::read(bytes.as_ptr().cast::<ObjHeader>()) };
-                hdr.gc_flags & GC_MARKED == 0 && hdr.gc_flags & GC_PINNED == 0
-            })
-            .map(|(&addr, _)| addr)
-            .collect();
-
-        for addr in dead {
-            if let Some(bytes) = heap.large_objects.remove(&addr) {
-                heap.live_bytes = heap.live_bytes.saturating_sub(bytes.len());
-                heap.old_bytes  = heap.old_bytes.saturating_sub(bytes.len());
-                reclaimed += bytes.len();
+        while heap.major_phase != MajorPhase::Idle {
+            match heap.major_phase {
+                MajorPhase::SweepOld => reclaimed += Self::sweep_old_slice(heap),
+                MajorPhase::SweepLarge => reclaimed += Self::sweep_large_slice(heap),
+                _ => break,
             }
-        }
-
-        for (_, bytes) in heap.large_objects.iter_mut() {
-            let hdr_ptr = bytes.as_mut_ptr().cast::<ObjHeader>();
-            unsafe {
-                let mut hdr = std::ptr::read(hdr_ptr);
-                hdr.gc_flags &= !GC_MARKED;
-                std::ptr::write(hdr_ptr, hdr);
+            if heap.major_phase == MajorPhase::SweepOld && heap.old_sweep_cursor >= heap.old.bump {
+                heap.major_phase = MajorPhase::SweepLarge;
+                heap.large_sweep_pending = heap.large_objects.keys().copied().collect();
+            }
+            if heap.major_phase == MajorPhase::SweepLarge && heap.large_sweep_pending.is_empty() {
+                Self::finish_major_cycle(heap);
             }
         }
         reclaimed
@@ -333,7 +397,7 @@ impl GcRuntime {
         loop {
             self.collect_major_slice();
             let Ok(heap) = self.heap.lock() else { break };
-            if !heap.is_marking { break; }
+            if !Self::major_cycle_active(&heap) { break; }
         }
         self.telemetry
             .record_full_cycle(t0.elapsed().as_nanos() as u64);

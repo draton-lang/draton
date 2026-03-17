@@ -57,6 +57,14 @@ pub struct TypeDescriptor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeapSpace { Young, Old, Large }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MajorPhase {
+    Idle,
+    Mark,
+    SweepOld,
+    SweepLarge,
+}
+
 pub const HEADER: usize = std::mem::size_of::<ObjHeader>(); // 8 bytes
 
 // ── Per-thread young arena ────────────────────────────────────────────────────
@@ -494,9 +502,11 @@ pub struct HeapState {
     pub card_table:     CardTable,
 
     // ── Incremental major GC ──────────────────────────────────────────────────
-    pub mark_stack:      Vec<usize>,
-    pub is_marking:      bool,
-    pub mark_slice_size: usize,
+    pub mark_stack:           Vec<usize>,
+    pub mark_slice_size:      usize,
+    pub major_phase:          MajorPhase,
+    pub old_sweep_cursor:     usize,
+    pub large_sweep_pending:  Vec<usize>,
 
     // ── Statistics ────────────────────────────────────────────────────────────
     pub minor_cycles:    u64,
@@ -519,9 +529,11 @@ impl HeapState {
             young_forwarding: HashMap::new(),
             remembered_set:   Vec::new(),
             card_table,
-            mark_stack:      Vec::new(),
-            is_marking:      false,
-            mark_slice_size: 256,
+            mark_stack:          Vec::new(),
+            mark_slice_size:     256,
+            major_phase:         MajorPhase::Idle,
+            old_sweep_cursor:    0,
+            large_sweep_pending: Vec::new(),
             minor_cycles:    0,
             major_cycles:    0,
             bytes_allocated: 0,
