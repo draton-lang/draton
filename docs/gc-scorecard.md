@@ -188,9 +188,12 @@ python3 tools/gc_compare_ocaml.py --out build/gc-ocaml-compare.json
 
 The OCaml comparison harness now runs multiple rounds per scenario, keeps the
 best single sample for detailed runtime stats, and reports median-based speed
-ratios plus a geometric-mean summary across scenarios. That still does not
-constitute a blanket victory claim, but it is strong enough to catch obvious
-"Draton got slower than OCaml on our core microbenchmarks" regressions in CI.
+ratios plus a geometric-mean summary across scenarios. The Draton side is built
+once in `--release` mode and then executed directly, so the comparison does not
+accidentally include repeated `cargo run` process and compilation overhead.
+That still does not constitute a blanket victory claim, but it is strong enough
+to catch obvious "Draton got slower than OCaml on our core microbenchmarks"
+regressions in CI.
 
 ## Interpretation
 
