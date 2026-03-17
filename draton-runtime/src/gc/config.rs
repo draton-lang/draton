@@ -15,9 +15,6 @@ pub struct GcConfig {
     /// Objects larger than this bypass the young gen and go to the large-object space
     /// (default: 32 KB).
     pub large_threshold: usize,
-    /// Number of minor-GC survivals before a young object is eligible for promotion
-    /// (default: 2).
-    pub promotion_age: u8,
 }
 
 impl Default for GcConfig {
@@ -29,7 +26,6 @@ impl Default for GcConfig {
             gc_threshold:   0.75,
             pause_target_ns: 1_000_000,
             large_threshold: 32 * 1024,
-            promotion_age:   2,
         }
     }
 }
@@ -43,15 +39,6 @@ impl GcConfig {
         let gc_threshold    = self.gc_threshold.clamp(0.1, 0.95);
         let pause_target_ns = self.pause_target_ns.max(1_000);
         let large_threshold = self.large_threshold.max(4 * 1024);
-        let promotion_age   = self.promotion_age.max(1);
-        Self {
-            young_size,
-            old_size,
-            max_heap,
-            gc_threshold,
-            pause_target_ns,
-            large_threshold,
-            promotion_age,
-        }
+        Self { young_size, old_size, max_heap, gc_threshold, pause_target_ns, large_threshold }
     }
 }

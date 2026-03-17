@@ -6,6 +6,7 @@ pub mod config;
 pub mod heap;
 
 use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::Ordering;
 
 use config::GcConfig;
 pub use heap::{GcRuntime, HeapSpace, ObjHeader, CARD_BYTES};
@@ -35,16 +36,13 @@ pub unsafe fn shadow_stack_roots() -> Vec<usize> {
     let mut entry = llvm_gc_root_chain;
     while !entry.is_null() {
         let num_roots = (*(*entry).map).num_roots as usize;
-        // Root slots start immediately after the StackEntry header.
         let base = (entry as *const u8).add(size_of::<StackEntry>())
-                   as *const *mut *mut u8; // &[alloca_ptr; num_roots]
+                   as *const *mut *mut u8;
         for i in 0..num_roots {
-            let alloca = *base.add(i); // pointer to the stack slot
+            let alloca = *base.add(i);
             if alloca.is_null() { continue; }
-            let val = *alloca;         // current value of the GC root
-            if !val.is_null() {
-                roots.push(val as usize);
-            }
+            let val = *alloca;
+            if !val.is_null() { roots.push(val as usize); }
         }
         entry = (*entry).next;
     }
@@ -63,9 +61,7 @@ fn runtime() -> Arc<GcRuntime> {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    if let Some(rt) = guard.as_ref() {
-        return Arc::clone(rt);
-    }
+    if let Some(rt) = guard.as_ref() { return Arc::clone(rt); }
     let rt = Arc::new(GcRuntime::new(GcConfig::default()));
     *guard = Some(Arc::clone(&rt));
     rt
@@ -73,127 +69,110 @@ fn runtime() -> Arc<GcRuntime> {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
-/// Initialises the global GC runtime (idempotent).
-pub fn init() {
-    let _ = runtime();
-}
+pub fn init()     { let _ = runtime(); }
 
-/// Shuts the GC down and frees all tracked heap state.
 pub fn shutdown() {
     let slot = global_slot();
-    let mut guard = match slot.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let mut guard = match slot.lock() { Ok(g) => g, Err(p) => p.into_inner() };
     *guard = None;
 }
 
 /// Applies a new configuration to the GC.
 pub fn configure(config: GcConfig) {
     let rt = runtime();
-    let mut heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    heap.config = config.normalized();
+    let norm = config.normalized();
+    // Update cached fast-path values atomically.
+    rt.large_threshold.store(norm.large_threshold, Ordering::Relaxed);
+    rt.young_size.store(norm.young_size, Ordering::Relaxed);
+    let mut heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+    heap.config = norm;
 }
 
 // ── Type registration ─────────────────────────────────────────────────────────
 
-/// Register a type descriptor so the GC can precisely trace pointer fields.
-///
-/// Must be called before any allocations of `type_id`.
-/// `offsets` is a slice of byte offsets from the payload start where GC-managed
-/// pointer fields reside.
 pub fn register_type(type_id: u16, size: u32, offsets: &[u32]) {
     let rt = runtime();
-    let mut heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let mut heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
     heap.register_type(type_id, size, offsets);
 }
 
 // ── Allocation ────────────────────────────────────────────────────────────────
 
 /// Allocates a GC-managed object payload.
+///
+/// Fast path (lock-free): bumps the young-arena pointer via `fetch_add`.
+/// Slow path: acquires the heap lock for old-gen / large-object allocation or
+/// when the young arena is full and needs to be collected.
 pub fn alloc(size: usize, type_id: u16) -> *mut u8 {
     let rt = runtime();
-    let mut heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    let payload = heap.alloc(size, type_id);
 
-    // Compute whether collection is needed before releasing the lock.
-    let old_usage = heap.old_usage();
-    let threshold = (heap.config.old_size as f64 * heap.config.gc_threshold) as usize;
-    let needs_major = old_usage >= threshold;
-    let needs_minor = heap.young_usage() >= heap.config.young_size.saturating_sub(64);
+    // ── Fast path: lock-free young-gen bump ───────────────────────────────────
+    let large_threshold = rt.large_threshold.load(Ordering::Relaxed);
+    if size < large_threshold {
+        if let Some(payload) = rt.young.try_alloc(size, type_id) {
+            let bump = rt.young.bump.load(Ordering::Relaxed);
+            let young_size = rt.young_size.load(Ordering::Relaxed);
+            if bump >= young_size.saturating_sub(64) {
+                // Young arena nearly full — request GC at next safepoint.
+                signal_gc_flag();
+            }
+            return payload;
+        }
+
+        // Young arena full — must collect before we can return a valid pointer.
+        rt.collect_minor();
+
+        if let Some(payload) = rt.young.try_alloc(size, type_id) {
+            return payload;
+        }
+        // After GC the arena is reset.  If it's still full (shouldn't happen
+        // unless young_size is tiny), fall through to old-gen allocation.
+    }
+
+    // ── Slow path: old-gen / large-object allocation (heap lock required) ─────
+    let mut heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+    let payload = heap.alloc_slow(size, type_id);
+    let needs_major = heap.old_usage()
+        >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize;
     drop(heap);
 
-    signal_gc(rt, needs_minor, needs_major);
+    if needs_major { signal_gc_flag(); }
     payload
 }
 
 /// Allocates a GC-managed array payload.
 pub fn alloc_array(elem_size: usize, len: usize, type_id: u16) -> *mut u8 {
     let rt = runtime();
-    let mut heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let mut heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
     let payload = heap.alloc_array(elem_size, len, type_id);
-    let old_usage = heap.old_usage();
-    let threshold = (heap.config.old_size as f64 * heap.config.gc_threshold) as usize;
-    let needs_major = old_usage >= threshold;
+    let needs_major = heap.old_usage()
+        >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize;
     drop(heap);
 
-    signal_gc(rt, false, needs_major);
+    if needs_major { signal_gc_flag(); }
     payload
 }
 
-/// Decide how to request a GC cycle depending on build context.
-///
-/// In non-test builds, generated code contains safepoint polls that read
-/// `draton_safepoint_flag`; setting it to 1 requests collection at the next
-/// poll without blocking the alloc hot path.
-///
-/// In test builds there are no generated safepoint polls (pure Rust test
-/// driver), so we fall back to direct in-line collection.
+/// Request GC at the next safepoint (non-test) or run it immediately (test).
 #[inline]
-fn signal_gc(rt: Arc<GcRuntime>, needs_minor: bool, needs_major: bool) {
+fn signal_gc_flag() {
     #[cfg(not(test))]
-    {
-        if needs_minor || needs_major {
-            use std::sync::atomic::Ordering;
-            crate::draton_safepoint_flag.store(1, Ordering::Release);
-        }
-    }
-    #[cfg(test)]
-    {
-        if needs_minor { rt.collect_minor(); }
-        if needs_major { rt.collect_major_slice(); }
-    }
-    // Suppress unused-variable warning in non-test builds.
-    #[cfg(not(test))]
-    { let _ = (rt, needs_minor, needs_major); }
+    { crate::draton_safepoint_flag.store(1, Ordering::Release); }
+    // In test builds there are no safepoint polls in generated code; the
+    // collection will be triggered by the next alloc or explicit gc::collect().
 }
 
 // ── Safepoint slow path ────────────────────────────────────────────────────────
 
 /// Called by the runtime safepoint slow path when `draton_safepoint_flag != 0`.
-/// Clears the flag, then runs whichever collection passes are needed.
 pub fn safepoint() {
     let rt = runtime();
-    let (needs_minor, needs_major) = {
-        let heap = match rt.heap.lock() {
-            Ok(g) => g,
-            Err(p) => p.into_inner(),
-        };
-        let nm = heap.young_usage() >= heap.config.young_size.saturating_sub(64);
-        let nj = heap.old_usage() >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize;
-        (nm, nj)
+    let young_size = rt.young_size.load(Ordering::Relaxed);
+    let bump       = rt.young.bump.load(Ordering::Relaxed);
+    let needs_minor = bump >= young_size.saturating_sub(64);
+    let needs_major = {
+        let heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+        heap.old_usage() >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize
     };
     if needs_minor { rt.collect_minor(); }
     if needs_major { rt.collect_major_slice(); }
@@ -201,55 +180,39 @@ pub fn safepoint() {
 
 // ── Write barrier ─────────────────────────────────────────────────────────────
 
-/// Applies the write barrier for a pointer store.
 pub fn write_barrier(obj: *mut u8, field: *mut u8, new_val: *mut u8) {
     runtime().write_barrier(obj, field, new_val);
 }
 
 // ── Manual collection ─────────────────────────────────────────────────────────
 
-/// Triggers a full (minor + complete major) GC cycle.
-pub fn collect() {
-    runtime().collect_full();
-}
+pub fn collect() { runtime().collect_full(); }
 
 // ── Pinning ───────────────────────────────────────────────────────────────────
 
 pub fn pin(obj: *mut u8) {
     let rt = runtime();
-    let mut heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    heap.pin(obj);
+    let mut heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+    heap.pin(&rt.young, obj);
 }
 
 pub fn unpin(obj: *mut u8) {
     let rt = runtime();
-    let mut heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    heap.unpin(obj);
+    let mut heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+    heap.unpin(&rt.young, obj);
 }
 
 // ── Explicit root management ──────────────────────────────────────────────────
 
 pub fn protect(obj: *mut u8) {
     let rt = runtime();
-    let mut heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let mut heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
     heap.protect(obj);
 }
 
 pub fn release(obj: *mut u8) {
     let rt = runtime();
-    let mut heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let mut heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
     heap.release(obj);
 }
 
@@ -257,27 +220,18 @@ pub fn release(obj: *mut u8) {
 
 pub fn header_of(obj: *mut u8) -> Option<ObjHeader> {
     let rt = runtime();
-    let heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    heap.header_of(obj)
+    let heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+    heap.header_of(&rt.young, obj)
 }
 
 pub fn space_of(obj: *mut u8) -> Option<HeapSpace> {
     let rt = runtime();
-    let heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
-    heap.space_of(obj)
+    let heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+    heap.space_of(&rt.young, obj)
 }
 
 pub fn current_config() -> GcConfig {
     let rt = runtime();
-    let heap = match rt.heap.lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
     heap.config
 }
