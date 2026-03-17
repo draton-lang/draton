@@ -125,20 +125,14 @@ pub fn alloc(size: usize, type_id: u16) -> *mut u8 {
     };
     let payload = heap.alloc(size, type_id);
 
-    // Trigger collection heuristics after the alloc.
+    // Compute whether collection is needed before releasing the lock.
     let old_usage = heap.old_usage();
     let threshold = (heap.config.old_size as f64 * heap.config.gc_threshold) as usize;
     let needs_major = old_usage >= threshold;
     let needs_minor = heap.young_usage() >= heap.config.young_size.saturating_sub(64);
     drop(heap);
 
-    if needs_minor {
-        rt.collect_minor();
-    }
-    if needs_major {
-        rt.collect_major_slice(); // incremental — bounded pause
-    }
-
+    signal_gc(rt, needs_minor, needs_major);
     payload
 }
 
@@ -155,11 +149,54 @@ pub fn alloc_array(elem_size: usize, len: usize, type_id: u16) -> *mut u8 {
     let needs_major = old_usage >= threshold;
     drop(heap);
 
-    if needs_major {
-        rt.collect_major_slice();
-    }
-
+    signal_gc(rt, false, needs_major);
     payload
+}
+
+/// Decide how to request a GC cycle depending on build context.
+///
+/// In non-test builds, generated code contains safepoint polls that read
+/// `draton_safepoint_flag`; setting it to 1 requests collection at the next
+/// poll without blocking the alloc hot path.
+///
+/// In test builds there are no generated safepoint polls (pure Rust test
+/// driver), so we fall back to direct in-line collection.
+#[inline]
+fn signal_gc(rt: Arc<GcRuntime>, needs_minor: bool, needs_major: bool) {
+    #[cfg(not(test))]
+    {
+        if needs_minor || needs_major {
+            use std::sync::atomic::Ordering;
+            crate::draton_safepoint_flag.store(1, Ordering::Release);
+        }
+    }
+    #[cfg(test)]
+    {
+        if needs_minor { rt.collect_minor(); }
+        if needs_major { rt.collect_major_slice(); }
+    }
+    // Suppress unused-variable warning in non-test builds.
+    #[cfg(not(test))]
+    { let _ = (rt, needs_minor, needs_major); }
+}
+
+// ── Safepoint slow path ────────────────────────────────────────────────────────
+
+/// Called by the runtime safepoint slow path when `draton_safepoint_flag != 0`.
+/// Clears the flag, then runs whichever collection passes are needed.
+pub fn safepoint() {
+    let rt = runtime();
+    let (needs_minor, needs_major) = {
+        let heap = match rt.heap.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let nm = heap.young_usage() >= heap.config.young_size.saturating_sub(64);
+        let nj = heap.old_usage() >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize;
+        (nm, nj)
+    };
+    if needs_minor { rt.collect_minor(); }
+    if needs_major { rt.collect_major_slice(); }
 }
 
 // ── Write barrier ─────────────────────────────────────────────────────────────

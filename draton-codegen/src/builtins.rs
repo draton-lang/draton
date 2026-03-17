@@ -54,24 +54,21 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn declare_safepoint_runtime(&mut self) -> Result<(), CodeGenError> {
+        // Emit External references — the authoritative definitions live in
+        // draton-runtime/src/lib.rs.  No initializer → external global;
+        // no basic blocks → external function declaration.
         if self.module.get_global("draton_safepoint_flag").is_none() {
-            let flag =
-                self.module
-                    .add_global(self.context.i32_type(), None, "draton_safepoint_flag");
-            flag.set_initializer(&self.context.i32_type().const_zero());
+            self.module
+                .add_global(self.context.i32_type(), None, "draton_safepoint_flag");
+            // No set_initializer call → LLVM IR: `@draton_safepoint_flag = external global i32`
         }
         if self.module.get_function("draton_safepoint_slow").is_none() {
-            let function = self.module.add_function(
+            // No basic blocks appended → LLVM IR: `declare void @draton_safepoint_slow()`
+            self.module.add_function(
                 "draton_safepoint_slow",
                 self.context.void_type().fn_type(&[], false),
                 None,
             );
-            let builder = self.context.create_builder();
-            let entry = self.context.append_basic_block(function, "entry");
-            builder.position_at_end(entry);
-            builder
-                .build_return(None)
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         }
         Ok(())
     }

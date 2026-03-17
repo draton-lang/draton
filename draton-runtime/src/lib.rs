@@ -12,6 +12,22 @@ pub mod scheduler;
 #[no_mangle]
 pub static mut llvm_gc_root_chain: *mut gc::heap::StackEntry = std::ptr::null_mut();
 
+// ── Safepoint mechanism ────────────────────────────────────────────────────────
+// Generated code reads this flag at every safepoint poll (loop back-edges and
+// after calls).  When non-zero, it jumps to draton_safepoint_slow().
+// This is the authoritative definition; the codegen emits an External reference.
+#[no_mangle]
+pub static draton_safepoint_flag: std::sync::atomic::AtomicI32 =
+    std::sync::atomic::AtomicI32::new(0);
+
+/// Safepoint slow-path called by generated code when `draton_safepoint_flag != 0`.
+/// Resets the flag and drives GC collection.
+#[no_mangle]
+pub extern "C" fn draton_safepoint_slow() {
+    draton_safepoint_flag.store(0, std::sync::atomic::Ordering::Release);
+    gc::safepoint();
+}
+
 use std::env;
 use std::fs;
 use std::path::Path;
