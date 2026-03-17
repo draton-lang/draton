@@ -17,6 +17,7 @@ pub use stats::{GcPauseStats, GcStats};
 /// Objects larger than this are allocated directly in the large-object space.
 /// Matches `GcConfig::default().large_threshold`.
 pub const LARGE_OBJECT_THRESHOLD: usize = 32 * 1024;
+const MAX_MAJOR_WORK_BUDGET: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MajorWorkReason {
@@ -110,12 +111,13 @@ pub fn configure(config: GcConfig) {
         Err(p) => p.into_inner(),
     };
     heap.config = norm;
-    let request_reason = major_work_reason(&heap);
+    let request =
+        major_work_reason(&heap).map(|reason| (reason, desired_major_work_budget(&heap, reason)));
     let should_request_major = sync_major_work_request(&rt, &heap);
     drop(heap);
     if should_request_major {
-        if let Some(reason) = request_reason {
-            request_major_work_for_reason(&rt, reason);
+        if let Some((reason, desired_budget)) = request {
+            request_major_work_for_reason(&rt, reason, desired_budget);
         }
     }
 }
@@ -260,38 +262,88 @@ fn major_work_reason(heap: &HeapState) -> Option<MajorWorkReason> {
 }
 
 #[inline]
-fn request_major_work_for_reason(rt: &GcRuntime, reason: MajorWorkReason) {
+fn desired_major_work_budget(heap: &HeapState, reason: MajorWorkReason) -> usize {
+    match reason {
+        MajorWorkReason::Threshold => {
+            let threshold =
+                ((heap.config.old_size as f64 * heap.config.gc_threshold) as usize).max(1);
+            let usage = heap.old_usage();
+            let pressure_steps = usage
+                .saturating_sub(threshold)
+                .saturating_mul(4)
+                .checked_div(threshold)
+                .unwrap_or(0)
+                .min(4);
+            (2 + pressure_steps).min(MAX_MAJOR_WORK_BUDGET)
+        }
+        MajorWorkReason::Continuation => match heap.major_phase {
+            MajorPhase::Mark => {
+                let slice = heap.mark_slice_size.max(1);
+                let backlog = heap.mark_stack.len().saturating_add(slice - 1) / slice;
+                (2 + backlog.min(4)).min(MAX_MAJOR_WORK_BUDGET)
+            }
+            MajorPhase::SweepOld => {
+                let total = heap.old.bump.max(1);
+                let remaining = total.saturating_sub(heap.old_sweep_cursor);
+                let steps = remaining
+                    .saturating_mul(4)
+                    .checked_div(total)
+                    .unwrap_or(0)
+                    .min(4);
+                (2 + steps).min(MAX_MAJOR_WORK_BUDGET)
+            }
+            MajorPhase::SweepLarge => {
+                let slice = heap.mark_slice_size.max(1);
+                let backlog = heap.large_sweep_pending.len().saturating_add(slice - 1) / slice;
+                (2 + backlog.min(4)).min(MAX_MAJOR_WORK_BUDGET)
+            }
+            MajorPhase::Idle => 1,
+        },
+    }
+}
+
+#[inline]
+fn raise_major_work_budget(rt: &GcRuntime, desired: usize) -> usize {
+    let desired = desired.clamp(1, MAX_MAJOR_WORK_BUDGET);
+    let mut current = rt.major_work_budget.load(Ordering::Acquire);
+    loop {
+        let next = current.max(desired);
+        match rt.major_work_budget.compare_exchange(
+            current,
+            next,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => return next,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
+#[inline]
+fn request_major_work_for_reason(rt: &GcRuntime, reason: MajorWorkReason, desired_budget: usize) {
     rt.telemetry.record_major_work_request();
     match reason {
         MajorWorkReason::Threshold => rt.telemetry.record_major_work_threshold_request(),
         MajorWorkReason::Continuation => rt.telemetry.record_major_work_continuation_request(),
     }
-    let mut current = rt.major_work_budget.load(Ordering::Acquire);
-    loop {
-        let next = current.saturating_add(1).min(16);
-        match rt
-            .major_work_budget
-            .compare_exchange(current, next, Ordering::AcqRel, Ordering::Acquire)
-        {
-            Ok(_) => break,
-            Err(observed) => current = observed,
-        }
-    }
+    let budget = raise_major_work_budget(rt, desired_budget);
+    rt.telemetry.record_major_work_budget_peak(budget);
     rt.major_work_requested.store(true, Ordering::Release);
     signal_gc_flag();
 }
 
 #[inline]
 pub(super) fn request_major_work(rt: &GcRuntime) {
-    let reason = {
+    let work = {
         let heap = match rt.heap.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
-        major_work_reason(&heap)
+        major_work_reason(&heap).map(|reason| (reason, desired_major_work_budget(&heap, reason)))
     };
-    if let Some(reason) = reason {
-        request_major_work_for_reason(rt, reason);
+    if let Some((reason, desired_budget)) = work {
+        request_major_work_for_reason(rt, reason, desired_budget);
     }
 }
 

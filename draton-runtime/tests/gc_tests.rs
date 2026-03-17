@@ -401,7 +401,9 @@ fn major_mark_barrier_traces_new_old_edge_from_marked_parent() {
         .unwrap_or(false);
     let traces_before_barrier = after_first_slice.major_mark_barrier_traces;
 
-    unsafe { write_ptr_field(parent, victim); }
+    unsafe {
+        write_ptr_field(parent, victim);
+    }
     gc::write_barrier(parent, std::ptr::null_mut(), victim);
     let after_barrier = gc::stats();
     assert_eq!(
@@ -492,6 +494,10 @@ fn active_major_cycle_rearms_safepoint_flag() {
         stats.major_work_budget >= 1,
         "active major cycles should keep at least one pending major-slice budget after rearming: {stats:?}"
     );
+    assert!(
+        stats.major_work_budget_peak >= 2,
+        "active major-cycle continuation should raise the queued slice budget above a single slice: {stats:?}"
+    );
 
     gc::collect();
     gc::release(parent);
@@ -538,6 +544,10 @@ fn promotion_pressure_requests_major_work() {
     assert!(
         stats.major_work_threshold_requests >= 1,
         "promotion pressure should register at least one threshold-driven major-work request: {stats:?}"
+    );
+    assert!(
+        stats.major_work_budget_peak >= 2,
+        "threshold pressure should now queue more than one major slice when backlog is real: {stats:?}"
     );
 
     gc::safepoint();

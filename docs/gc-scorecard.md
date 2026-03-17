@@ -29,6 +29,7 @@ The baseline report tracks these metrics:
 - major-mutator assists when an allocation slow path, including young refills,
   helps drain pending major work
 - current pending major-slice budget in the runtime control plane
+- peak queued major-slice budget seen during the current telemetry window
 - whether major work is currently requested at the time the snapshot is taken
 - safepoint rearms when the runtime keeps an active GC cycle progressing across
   multiple polls
@@ -65,6 +66,9 @@ Current baseline assumptions:
 - the runtime now tracks an explicit major-slice budget, so safepoints and
   mutator assists consume the same queue of pending major work instead of
   relying only on a boolean request flag
+- major-work requests now raise that queue to an adaptive target based on
+  threshold pressure or the current major-GC phase backlog, instead of blindly
+  adding one slice per request signal
 - a major cycle that has already started must continue progressing at
   safepoints until it returns to `Idle`
 - stores from already-marked old/large objects must trace newly linked
@@ -89,6 +93,11 @@ one pending major-GC slice immediately instead of waiting for a later poll.
 The `major_work_budget` metric is the current number of queued major slices in
 that control plane. It should drop back to zero when the runtime returns to an
 idle major-GC state.
+
+The `major_work_budget_peak` metric records the highest queued major-slice
+budget seen since the last telemetry reset. It is the easiest way to tell
+whether a workload is merely nudging the major collector or building a real
+backlog that should influence future scheduler tuning.
 
 The `safepoint_rearms` metric is also workload-dependent. It increases only
 when a single slow-path poll is not enough to finish the current GC work and the

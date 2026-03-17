@@ -30,6 +30,7 @@ pub struct GcStats {
     pub major_work_continuation_requests: u64,
     pub major_mutator_assists: u64,
     pub major_work_budget: usize,
+    pub major_work_budget_peak: usize,
     pub major_work_requested: bool,
     pub safepoint_rearms: u64,
     pub major_mark_barrier_traces: u64,
@@ -74,6 +75,7 @@ pub struct GcTelemetry {
     major_work_threshold_requests: AtomicU64,
     major_work_continuation_requests: AtomicU64,
     major_mutator_assists: AtomicU64,
+    major_work_budget_peak: AtomicU64,
     safepoint_rearms: AtomicU64,
     major_mark_barrier_traces: AtomicU64,
     remembered_set_entries_added: AtomicU64,
@@ -110,6 +112,7 @@ impl GcTelemetry {
             major_work_threshold_requests: AtomicU64::new(0),
             major_work_continuation_requests: AtomicU64::new(0),
             major_mutator_assists: AtomicU64::new(0),
+            major_work_budget_peak: AtomicU64::new(0),
             safepoint_rearms: AtomicU64::new(0),
             major_mark_barrier_traces: AtomicU64::new(0),
             remembered_set_entries_added: AtomicU64::new(0),
@@ -146,6 +149,7 @@ impl GcTelemetry {
             &self.major_work_threshold_requests,
             &self.major_work_continuation_requests,
             &self.major_mutator_assists,
+            &self.major_work_budget_peak,
             &self.safepoint_rearms,
             &self.major_mark_barrier_traces,
             &self.remembered_set_entries_added,
@@ -267,6 +271,13 @@ impl GcTelemetry {
     }
 
     #[inline]
+    pub fn record_major_work_budget_peak(&self, budget: usize) {
+        let _ = self
+            .major_work_budget_peak
+            .fetch_max(budget as u64, Ordering::Relaxed);
+    }
+
+    #[inline]
     pub fn record_safepoint_rearm(&self) {
         self.safepoint_rearms.fetch_add(1, Ordering::Relaxed);
     }
@@ -310,6 +321,7 @@ impl GcTelemetry {
                 .load(Ordering::Relaxed),
             major_mutator_assists: self.major_mutator_assists.load(Ordering::Relaxed),
             major_work_budget: runtime.major_work_budget.load(Ordering::Acquire),
+            major_work_budget_peak: self.major_work_budget_peak.load(Ordering::Relaxed) as usize,
             major_work_requested: runtime.major_work_requested.load(Ordering::Acquire),
             safepoint_rearms: self.safepoint_rearms.load(Ordering::Relaxed),
             major_mark_barrier_traces: self.major_mark_barrier_traces.load(Ordering::Relaxed),
