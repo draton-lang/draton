@@ -205,6 +205,12 @@ pub fn reset_stats() {
     rt.telemetry.reset();
 }
 
+pub fn verify() -> Result<(), String> {
+    let rt = runtime();
+    let heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+    heap.verify_invariants(&rt.pool)
+}
+
 // ── Pinning ───────────────────────────────────────────────────────────────────
 
 pub fn pin(obj: *mut u8) {

@@ -1,7 +1,7 @@
 use std::mem::size_of;
 use std::time::Instant;
 
-use super::heap::{FreeSlot, GcRuntime, HeapState, ObjHeader, YoungPool,
+use super::heap::{GcRuntime, HeapState, ObjHeader, YoungPool,
                   GC_FREE, GC_MARKED, GC_OLD, GC_PINNED, HEADER, MAX_THREADS};
 
 // ── Tracing helpers ───────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ impl GcRuntime {
                 let mut dead_hdr = hdr;
                 dead_hdr.gc_flags = GC_FREE | GC_OLD;
                 unsafe { std::ptr::write(hdr_ptr, dead_hdr); }
-                heap.old.free_list.push(FreeSlot { offset, total: aligned });
+                heap.old.push_free_slot(super::heap::FreeSlot { offset, total: aligned });
                 heap.old_bytes  = heap.old_bytes.saturating_sub(aligned);
                 heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
                 reclaimed += aligned;

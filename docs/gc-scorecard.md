@@ -25,6 +25,7 @@ The baseline report tracks these metrics:
 - write-barrier slow-path calls
 - remembered-set insertions and deduplicated entries
 - current young, old, and total heap usage
+- old-generation reusable bytes, free-slot count, and largest reusable slot
 - current large-object count
 - current root count
 - current remembered-set length
@@ -35,6 +36,9 @@ The baseline report tracks these metrics:
 These are the metrics future GC work should improve. New GC changes should not
 be merged based only on subjective speed claims.
 
+The runtime also exposes heap-invariant verification. Any allocator or collector
+change that improves scorecard numbers but breaks verifier checks is invalid.
+
 ## Runtime scenarios
 
 The runtime probe currently runs four scenarios:
@@ -42,6 +46,7 @@ The runtime probe currently runs four scenarios:
 - `young-burst`: short-lived small-object allocation pressure
 - `promotion-chain`: survivor-heavy pressure that forces promotion
 - `barrier-churn`: old-to-young pointer traffic and remembered-set activity
+- `old-reuse-churn`: old-generation slot reuse and fragmentation pressure
 - `large-object-burst`: repeated large-object allocation and reclamation
 
 These scenarios are implemented in

@@ -17,6 +17,7 @@ SCENARIOS = (
     ("young-burst", 20000),
     ("promotion-chain", 4000),
     ("barrier-churn", 16000),
+    ("old-reuse-churn", 4096),
     ("large-object-burst", 256),
 )
 

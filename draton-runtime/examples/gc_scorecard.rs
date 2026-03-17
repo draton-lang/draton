@@ -20,6 +20,7 @@ fn main() {
         "young-burst" => run_young_burst(iterations),
         "promotion-chain" => run_promotion_chain(iterations),
         "barrier-churn" => run_barrier_churn(iterations),
+        "old-reuse-churn" => run_old_reuse_churn(iterations),
         "large-object-burst" => run_large_object_burst(iterations),
         other => {
             eprintln!("unknown scenario: {other}");
@@ -60,6 +61,8 @@ fn main() {
             "\"roots_count\":{},",
             "\"remembered_set_len\":{},",
             "\"old_free_slot_count\":{},",
+            "\"old_free_bytes\":{},",
+            "\"old_largest_free_slot\":{},",
             "\"current_mark_stack_len\":{},",
             "\"current_mark_slice_size\":{},",
             "\"is_marking\":{},",
@@ -99,6 +102,8 @@ fn main() {
         stats.roots_count,
         stats.remembered_set_len,
         stats.old_free_slot_count,
+        stats.old_free_bytes,
+        stats.old_largest_free_slot,
         stats.current_mark_stack_len,
         stats.current_mark_slice_size,
         if stats.is_marking { "true" } else { "false" },
@@ -178,6 +183,36 @@ fn run_large_object_burst(iterations: usize) -> &'static str {
     }
     gc::collect();
     for ptr in roots {
+        gc::release(ptr);
+    }
+    gc::collect();
+    "ok"
+}
+
+fn run_old_reuse_churn(iterations: usize) -> &'static str {
+    let count = iterations.max(512);
+    let mut first_batch = Vec::new();
+    for _ in 0..count {
+        let ptr = gc::alloc(48, 6);
+        gc::protect(ptr);
+        first_batch.push(ptr);
+    }
+    gc::collect();
+    gc::collect();
+    for ptr in first_batch {
+        gc::release(ptr);
+    }
+    gc::collect();
+
+    let mut second_batch = Vec::new();
+    for _ in 0..count {
+        let ptr = gc::alloc(48, 6);
+        gc::protect(ptr);
+        second_batch.push(ptr);
+    }
+    gc::collect();
+    gc::collect();
+    for ptr in second_batch {
         gc::release(ptr);
     }
     gc::collect();

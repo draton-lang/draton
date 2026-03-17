@@ -239,29 +239,59 @@ impl CardTable {
 
 // ── Old-gen contiguous arena ──────────────────────────────────────────────────
 /// A freed slot in OldArena, eligible for reuse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FreeSlot {
     pub offset: usize,
     pub total:  usize, // header + payload, aligned to 8 bytes
 }
 
+const OLD_BIN_LIMITS: [usize; 12] = [
+    32,
+    64,
+    128,
+    256,
+    512,
+    1024,
+    2048,
+    4096,
+    8192,
+    16384,
+    32768,
+    65536,
+];
+
 /// Contiguous bump arena for old-generation objects.
 ///
 /// Objects are allocated by bumping `bump` forward.  When an object is swept
 /// (dead after major GC), its header is marked `GC_FREE` and a `FreeSlot` is
-/// appended to the free list for future reuse.  Major GC sweep is a single
-/// linear scan — O(old-gen size), cache-friendly.
+/// appended to a size-classed free list for future reuse.  Major GC sweep is a
+/// single linear scan — O(old-gen size), cache-friendly.
 pub struct OldArena {
     /// Backing store.  Never reallocated; internal pointers are stable.
-    pub buffer:    Vec<u8>,
+    pub buffer: Vec<u8>,
     /// Next free byte offset (increases monotonically until free list reuse).
-    pub bump:      usize,
-    /// Sorted list of freed slots available for reuse.
-    pub free_list: Vec<FreeSlot>,
+    pub bump: usize,
+    /// Size-classed freed slots for fast reuse in the old generation.
+    bins: Vec<Vec<FreeSlot>>,
+    /// Spill list for slots larger than the largest bin.
+    large_free_list: Vec<FreeSlot>,
+    /// Total bytes currently free and reusable in old gen.
+    free_bytes: usize,
 }
 
 impl OldArena {
     pub fn new(capacity: usize) -> Self {
-        Self { buffer: vec![0u8; capacity], bump: 0, free_list: Vec::new() }
+        let mut bins = Vec::with_capacity(OLD_BIN_LIMITS.len());
+        for _ in 0..OLD_BIN_LIMITS.len() {
+            bins.push(Vec::new());
+        }
+        Self {
+            buffer: vec![0u8; capacity],
+            bump: 0,
+            bins,
+            large_free_list: Vec::new(),
+            free_bytes: 0,
+        }
     }
 
     /// Allocate `size` payload bytes with the given header flags.
@@ -269,30 +299,10 @@ impl OldArena {
     pub fn alloc(&mut self, size: usize, flags: u8, type_id: u16) -> *mut u8 {
         let aligned = (HEADER + size + 7) & !7;
 
-        // First-fit from free list.
-        for i in 0..self.free_list.len() {
-            let slot_total = self.free_list[i].total;
-            if slot_total >= aligned {
-                let off = self.free_list[i].offset;
-                // If the remainder is large enough to hold at least a header +
-                // 1 byte, split the slot so we don't waste space.
-                if slot_total > aligned + HEADER {
-                    let rem_off   = off + aligned;
-                    let rem_total = slot_total - aligned;
-                    // Write a synthetic FREE header in the remainder.
-                    let rem_hdr = ObjHeader::new((rem_total - HEADER) as u32, 0, GC_FREE | GC_OLD);
-                    unsafe {
-                        ptr::write(self.buffer.as_mut_ptr().add(rem_off).cast::<ObjHeader>(),
-                                   rem_hdr);
-                    }
-                    self.free_list[i] = FreeSlot { offset: rem_off, total: rem_total };
-                } else {
-                    self.free_list.swap_remove(i);
-                }
-                let hdr = ObjHeader::new(size as u32, type_id, flags);
-                unsafe { ptr::write(self.buffer.as_mut_ptr().add(off).cast::<ObjHeader>(), hdr); }
-                return unsafe { self.buffer.as_mut_ptr().add(off + HEADER) };
-            }
+        if let Some(off) = self.alloc_from_free_lists(aligned) {
+            let hdr = ObjHeader::new(size as u32, type_id, flags);
+            unsafe { ptr::write(self.buffer.as_mut_ptr().add(off).cast::<ObjHeader>(), hdr); }
+            return unsafe { self.buffer.as_mut_ptr().add(off + HEADER) };
         }
 
         // Bump allocate.
@@ -323,6 +333,136 @@ impl OldArena {
         if addr < base + HEADER || addr >= base + self.bump { return None; }
         let hdr = unsafe { ptr::read((addr - HEADER) as *const ObjHeader) };
         if hdr.gc_flags & GC_FREE != 0 { None } else { Some(hdr) }
+    }
+
+    pub fn push_free_slot(&mut self, slot: FreeSlot) {
+        self.free_bytes = self.free_bytes.saturating_add(slot.total);
+        if let Some(index) = Self::class_index(slot.total) {
+            self.bins[index].push(slot);
+        } else {
+            self.large_free_list.push(slot);
+        }
+    }
+
+    pub fn free_slot_count(&self) -> usize {
+        self.large_free_list.len()
+            + self.bins.iter().map(Vec::len).sum::<usize>()
+    }
+
+    pub fn free_bytes(&self) -> usize {
+        self.free_bytes
+    }
+
+    pub fn largest_free_slot(&self) -> usize {
+        let mut largest = self.large_free_list.iter().map(|slot| slot.total).max().unwrap_or(0);
+        for (index, slots) in self.bins.iter().enumerate().rev() {
+            if !slots.is_empty() {
+                largest = largest.max(OLD_BIN_LIMITS[index]);
+                break;
+            }
+        }
+        largest
+    }
+
+    fn alloc_from_free_lists(&mut self, aligned: usize) -> Option<usize> {
+        if let Some(index) = Self::class_index(aligned) {
+            for probe in index..self.bins.len() {
+                if let Some(slot) = self.bins[probe].pop() {
+                    return Some(self.consume_free_slot(slot, aligned));
+                }
+            }
+        }
+
+        let mut i = 0usize;
+        while i < self.large_free_list.len() {
+            if self.large_free_list[i].total >= aligned {
+                let slot = self.large_free_list.swap_remove(i);
+                return Some(self.consume_free_slot(slot, aligned));
+            }
+            i += 1;
+        }
+        None
+    }
+
+    fn consume_free_slot(&mut self, slot: FreeSlot, aligned: usize) -> usize {
+        self.free_bytes = self.free_bytes.saturating_sub(slot.total);
+        let off = slot.offset;
+        if slot.total > aligned + HEADER {
+            let rem_off = off + aligned;
+            let rem_total = slot.total - aligned;
+            let rem_hdr = ObjHeader::new((rem_total - HEADER) as u32, 0, GC_FREE | GC_OLD);
+            unsafe {
+                ptr::write(self.buffer.as_mut_ptr().add(rem_off).cast::<ObjHeader>(), rem_hdr);
+            }
+            self.push_free_slot(FreeSlot { offset: rem_off, total: rem_total });
+        }
+        off
+    }
+
+    fn class_index(total: usize) -> Option<usize> {
+        OLD_BIN_LIMITS.iter().position(|&limit| total <= limit)
+    }
+
+    pub fn verify_invariants(&self) -> Result<(), String> {
+        let mut computed_free_bytes = 0usize;
+        let mut slot_count = 0usize;
+
+        for (index, slots) in self.bins.iter().enumerate() {
+            for slot in slots {
+                slot_count += 1;
+                computed_free_bytes = computed_free_bytes.saturating_add(slot.total);
+                if slot.total > OLD_BIN_LIMITS[index] {
+                    return Err(format!(
+                        "old free slot {} exceeds bin {} limit {}",
+                        slot.total, index, OLD_BIN_LIMITS[index]
+                    ));
+                }
+                self.verify_slot_header(*slot)?;
+            }
+        }
+
+        for slot in &self.large_free_list {
+            slot_count += 1;
+            computed_free_bytes = computed_free_bytes.saturating_add(slot.total);
+            self.verify_slot_header(*slot)?;
+        }
+
+        if computed_free_bytes != self.free_bytes {
+            return Err(format!(
+                "old free bytes mismatch: tracked {} computed {}",
+                self.free_bytes, computed_free_bytes
+            ));
+        }
+        if slot_count != self.free_slot_count() {
+            return Err(format!(
+                "old free slot count mismatch: counted {} reported {}",
+                slot_count,
+                self.free_slot_count()
+            ));
+        }
+        Ok(())
+    }
+
+    fn verify_slot_header(&self, slot: FreeSlot) -> Result<(), String> {
+        if slot.offset + slot.total > self.bump {
+            return Err(format!(
+                "free slot out of range: offset {} total {} bump {}",
+                slot.offset, slot.total, self.bump
+            ));
+        }
+        if slot.total < HEADER {
+            return Err(format!("free slot too small: {}", slot.total));
+        }
+        let hdr = unsafe {
+            ptr::read(self.buffer.as_ptr().add(slot.offset).cast::<ObjHeader>())
+        };
+        if hdr.gc_flags & GC_FREE == 0 {
+            return Err(format!(
+                "free slot header missing GC_FREE at offset {}",
+                slot.offset
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -523,6 +663,50 @@ impl HeapState {
     // ── Utilities ─────────────────────────────────────────────────────────────
 
     pub fn old_usage(&self) -> usize { self.old_bytes }
+
+    pub fn verify_invariants(&self, pool: &YoungPool) -> Result<(), String> {
+        self.old.verify_invariants()?;
+
+        let mut computed_young_forwarding = 0usize;
+        for (&old_addr, &new_addr) in &self.young_forwarding {
+            computed_young_forwarding += 1;
+            if old_addr < HEADER {
+                return Err(format!(
+                    "forwarding source {:x} is not a plausible payload address",
+                    old_addr
+                ));
+            }
+            if !self.old.contains_ptr(new_addr as *const u8)
+                && !self.large_objects.contains_key(&new_addr)
+            {
+                return Err(format!(
+                    "forwarding target {:x} is not live in old or large space",
+                    new_addr
+                ));
+            }
+        }
+
+        if computed_young_forwarding != self.young_forwarding.len() {
+            return Err("forwarding table iteration mismatch".to_string());
+        }
+
+        for &root in self.roots.keys() {
+            if self.header_of(pool, root as *mut u8).is_none() {
+                return Err(format!("root {:x} does not point to a live object", root));
+            }
+        }
+
+        for &parent in &self.remembered_set {
+            if self.header_of(pool, parent as *mut u8).is_none() {
+                return Err(format!(
+                    "remembered-set parent {:x} does not point to a live object",
+                    parent
+                ));
+            }
+        }
+
+        Ok(())
+    }
 
     pub unsafe fn read_ptr_field(payload: *const u8, offset: u32) -> *mut u8 {
         let field = payload.add(offset as usize) as *const *mut u8;

@@ -107,6 +107,8 @@ pub struct DratonGcStats {
     pub roots_count: usize,
     pub remembered_set_len: usize,
     pub old_free_slot_count: usize,
+    pub old_free_bytes: usize,
+    pub old_largest_free_slot: usize,
     pub current_mark_stack_len: usize,
     pub current_mark_slice_size: usize,
     pub is_marking: bool,
@@ -148,6 +150,8 @@ fn export_gc_stats(stats: gc::GcStats) -> DratonGcStats {
         roots_count: stats.roots_count,
         remembered_set_len: stats.remembered_set_len,
         old_free_slot_count: stats.old_free_slot_count,
+        old_free_bytes: stats.old_free_bytes,
+        old_largest_free_slot: stats.old_largest_free_slot,
         current_mark_stack_len: stats.current_mark_stack_len,
         current_mark_slice_size: stats.current_mark_slice_size,
         is_marking: stats.is_marking,
@@ -727,6 +731,12 @@ pub extern "C" fn draton_gc_stats() -> DratonGcStats {
 #[no_mangle]
 pub extern "C" fn draton_gc_reset_stats() {
     gc::reset_stats();
+}
+
+/// Verifies internal GC heap invariants and returns 1 on success, 0 on failure.
+#[no_mangle]
+pub extern "C" fn draton_gc_verify() -> i64 {
+    if gc::verify().is_ok() { 1 } else { 0 }
 }
 
 /// Pins an object so it is not moved by collection.

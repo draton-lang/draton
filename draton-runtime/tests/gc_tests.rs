@@ -180,6 +180,75 @@ fn gc_reset_stats_clears_counters_without_disrupting_heap() {
     gc::release(ptr);
 }
 
+#[test]
+fn gc_heap_verifier_accepts_live_and_reclaimed_objects() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+
+    let mut roots = Vec::new();
+    for index in 0..256 {
+        let ptr = gc::alloc(40 + (index % 3) * 8, 8);
+        if index % 4 == 0 {
+            gc::protect(ptr);
+            roots.push(ptr);
+        }
+    }
+    gc::collect();
+    gc::collect();
+    assert!(gc::verify().is_ok(), "heap verifier should accept promoted live state");
+
+    for ptr in roots {
+        gc::release(ptr);
+    }
+    gc::collect();
+    assert!(gc::verify().is_ok(), "heap verifier should accept reclaimed old-gen state");
+}
+
+#[test]
+fn old_generation_reuses_swept_slots() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::reset_stats();
+
+    let mut first_batch = Vec::new();
+    for _ in 0..1024 {
+        let ptr = gc::alloc(48, 6);
+        gc::protect(ptr);
+        first_batch.push(ptr);
+    }
+    gc::collect();
+    gc::collect();
+    for ptr in &first_batch {
+        gc::release(*ptr);
+    }
+    gc::collect();
+
+    let after_free = gc::stats();
+    assert!(after_free.old_free_slot_count > 0, "sweeping old gen should create reusable slots");
+    assert!(after_free.old_free_bytes > 0, "old gen should report reusable bytes");
+
+    let mut second_batch = Vec::new();
+    for _ in 0..1024 {
+        let ptr = gc::alloc(48, 6);
+        gc::protect(ptr);
+        second_batch.push(ptr);
+    }
+    gc::collect();
+    gc::collect();
+
+    let after_reuse = gc::stats();
+    assert!(
+        after_reuse.old_free_bytes < after_free.old_free_bytes,
+        "promoted objects should consume old free bytes instead of leaving fragmentation unchanged"
+    );
+
+    for ptr in &second_batch {
+        gc::release(*ptr);
+    }
+}
+
 // ── Pin / unpin ───────────────────────────────────────────────────────────────
 
 /// pin() must set GC_PINNED; unpin() must clear it.
