@@ -341,6 +341,40 @@ fn old_generation_coalesces_adjacent_free_runs() {
 }
 
 #[test]
+fn large_object_space_reuses_freed_blocks() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::reset_stats();
+
+    let ptr = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 4096, 22);
+    gc::protect(ptr);
+    gc::collect();
+    gc::release(ptr);
+    gc::collect();
+
+    let after_free = gc::stats();
+    assert!(
+        after_free.large_free_pool_count >= 1,
+        "sweeping a dead large object should cache its block for reuse: {after_free:?}"
+    );
+    assert!(
+        after_free.large_free_bytes >= gc::LARGE_OBJECT_THRESHOLD,
+        "large free pool should account for reusable bytes: {after_free:?}"
+    );
+
+    let reused = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 2048, 22);
+    gc::protect(reused);
+    let after_reuse = gc::stats();
+    assert!(
+        after_reuse.large_free_bytes < after_free.large_free_bytes,
+        "reusing a cached large block should consume large free bytes: before={after_free:?} after={after_reuse:?}"
+    );
+    gc::release(reused);
+    gc::collect();
+}
+
+#[test]
 fn major_mark_barrier_traces_new_old_edge_from_marked_parent() {
     let _guard = gc_test_guard();
     gc::shutdown();
@@ -606,6 +640,43 @@ fn full_collection_clears_major_work_request_flag() {
     assert_eq!(
         stats.major_work_budget, 0,
         "full collection should clear pending major-slice budget: {stats:?}"
+    );
+}
+
+#[test]
+fn major_autotune_adjusts_threshold_after_reclaim_heavy_cycle() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 256 * 1024,
+        old_size: 1024 * 1024,
+        gc_threshold: 0.40,
+        pause_target_ns: 1_000,
+        autotune: true,
+        ..gc::config::GcConfig::default()
+    });
+    gc::reset_stats();
+
+    let mut roots = Vec::new();
+    for _ in 0..6000 {
+        let ptr = gc::alloc(64, 23);
+        gc::protect(ptr);
+        roots.push(ptr);
+    }
+    for ptr in &roots {
+        gc::release(*ptr);
+    }
+    gc::collect();
+
+    let stats = gc::stats();
+    assert!(
+        stats.major_autotune_adjustments >= 1,
+        "reclaim-heavy major cycle should trigger at least one autotune adjustment: {stats:?}"
+    );
+    assert!(
+        stats.current_gc_threshold_milli < 400,
+        "autotune should lower the threshold after reclaim-heavy cycles: {stats:?}"
     );
 }
 

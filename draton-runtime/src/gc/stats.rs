@@ -30,6 +30,7 @@ pub struct GcStats {
     pub major_work_continuation_requests: u64,
     pub major_mutator_assists: u64,
     pub major_background_slices: u64,
+    pub major_autotune_adjustments: u64,
     pub major_work_budget: usize,
     pub major_work_budget_peak: usize,
     pub major_work_requested: bool,
@@ -41,6 +42,8 @@ pub struct GcStats {
     pub old_usage_bytes: usize,
     pub heap_usage_bytes: usize,
     pub large_object_count: usize,
+    pub large_free_pool_count: usize,
+    pub large_free_bytes: usize,
     pub roots_count: usize,
     pub remembered_set_len: usize,
     pub old_free_slot_count: usize,
@@ -48,6 +51,7 @@ pub struct GcStats {
     pub old_largest_free_slot: usize,
     pub current_mark_stack_len: usize,
     pub current_mark_slice_size: usize,
+    pub current_gc_threshold_milli: u32,
     pub major_phase: u8,
     pub old_sweep_cursor: usize,
     pub large_sweep_pending: usize,
@@ -77,6 +81,7 @@ pub struct GcTelemetry {
     major_work_continuation_requests: AtomicU64,
     major_mutator_assists: AtomicU64,
     major_background_slices: AtomicU64,
+    major_autotune_adjustments: AtomicU64,
     major_work_budget_peak: AtomicU64,
     safepoint_rearms: AtomicU64,
     major_mark_barrier_traces: AtomicU64,
@@ -115,6 +120,7 @@ impl GcTelemetry {
             major_work_continuation_requests: AtomicU64::new(0),
             major_mutator_assists: AtomicU64::new(0),
             major_background_slices: AtomicU64::new(0),
+            major_autotune_adjustments: AtomicU64::new(0),
             major_work_budget_peak: AtomicU64::new(0),
             safepoint_rearms: AtomicU64::new(0),
             major_mark_barrier_traces: AtomicU64::new(0),
@@ -153,6 +159,7 @@ impl GcTelemetry {
             &self.major_work_continuation_requests,
             &self.major_mutator_assists,
             &self.major_background_slices,
+            &self.major_autotune_adjustments,
             &self.major_work_budget_peak,
             &self.safepoint_rearms,
             &self.major_mark_barrier_traces,
@@ -280,6 +287,12 @@ impl GcTelemetry {
     }
 
     #[inline]
+    pub fn record_major_autotune_adjustment(&self) {
+        self.major_autotune_adjustments
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
     pub fn record_major_work_budget_peak(&self, budget: usize) {
         let _ = self
             .major_work_budget_peak
@@ -330,6 +343,9 @@ impl GcTelemetry {
                 .load(Ordering::Relaxed),
             major_mutator_assists: self.major_mutator_assists.load(Ordering::Relaxed),
             major_background_slices: self.major_background_slices.load(Ordering::Relaxed),
+            major_autotune_adjustments: self
+                .major_autotune_adjustments
+                .load(Ordering::Relaxed),
             major_work_budget: runtime.major_work_budget.load(Ordering::Acquire),
             major_work_budget_peak: self.major_work_budget_peak.load(Ordering::Relaxed) as usize,
             major_work_requested: runtime.major_work_requested.load(Ordering::Acquire),
@@ -343,6 +359,8 @@ impl GcTelemetry {
             old_usage_bytes: old_usage,
             heap_usage_bytes: young_usage.saturating_add(old_usage),
             large_object_count: heap.large_objects.len(),
+            large_free_pool_count: heap.large_free_block_count(),
+            large_free_bytes: heap.large_free_bytes,
             roots_count: heap.roots.len(),
             remembered_set_len: heap.remembered_set.len(),
             old_free_slot_count: heap.old.free_slot_count(),
@@ -350,6 +368,7 @@ impl GcTelemetry {
             old_largest_free_slot: heap.old.largest_free_slot(),
             current_mark_stack_len: heap.mark_stack.len(),
             current_mark_slice_size: heap.mark_slice_size,
+            current_gc_threshold_milli: (heap.config.gc_threshold * 1000.0) as u32,
             major_phase: match heap.major_phase {
                 super::heap::MajorPhase::Idle => 0,
                 super::heap::MajorPhase::Mark => 1,

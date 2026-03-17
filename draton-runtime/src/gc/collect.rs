@@ -275,7 +275,7 @@ impl GcRuntime {
             MajorPhase::SweepLarge => {
                 reclaimed_large = Self::sweep_large_slice(&mut heap);
                 if heap.large_sweep_pending.is_empty() {
-                    Self::finish_major_cycle(&mut heap);
+                    Self::finish_major_cycle(self, &mut heap);
                 }
             }
         }
@@ -290,6 +290,9 @@ impl GcRuntime {
         } else if elapsed_ns < target / 2 {
             heap.mark_slice_size = (heap.mark_slice_size * 5 / 4).min(65536);
         }
+        heap.major_cycle_reclaimed = heap
+            .major_cycle_reclaimed
+            .saturating_add(reclaimed_old.saturating_add(reclaimed_large));
         self.telemetry
             .record_major_slice(elapsed_ns, reclaimed_old, reclaimed_large);
         drop(heap);
@@ -305,6 +308,8 @@ impl GcRuntime {
         heap.old_sweep_cursor = 0;
         heap.old_sweep_pending = None;
         heap.large_sweep_pending.clear();
+        heap.major_cycle_start_old_bytes = heap.old_bytes;
+        heap.major_cycle_reclaimed = 0;
 
         let shadow_roots = unsafe { super::shadow_stack_roots() };
         let explicit_roots: Vec<usize> = heap.roots.keys().copied().collect();
@@ -438,6 +443,7 @@ impl GcRuntime {
                     heap.live_bytes = heap.live_bytes.saturating_sub(bytes.len());
                     heap.old_bytes = heap.old_bytes.saturating_sub(bytes.len());
                     reclaimed += bytes.len();
+                    heap.push_large_free_block(bytes);
                 }
             } else if let Some(bytes) = heap.large_objects.get_mut(&addr) {
                 let hdr_ptr = bytes.as_mut_ptr().cast::<ObjHeader>();
@@ -451,11 +457,36 @@ impl GcRuntime {
         reclaimed
     }
 
-    fn finish_major_cycle(heap: &mut HeapState) {
+    fn finish_major_cycle(this: &GcRuntime, heap: &mut HeapState) {
+        if heap.config.autotune {
+            let reclaim_ratio =
+                heap.major_cycle_reclaimed as f64 / heap.major_cycle_start_old_bytes.max(1) as f64;
+            let current_threshold = heap.config.gc_threshold;
+            let tuned_threshold = if reclaim_ratio > 0.35 {
+                (current_threshold - 0.03).max(0.15)
+            } else if reclaim_ratio < 0.08 {
+                (current_threshold + 0.02).min(0.90)
+            } else {
+                current_threshold
+            };
+            if (tuned_threshold - current_threshold).abs() > f64::EPSILON {
+                this.telemetry.record_major_autotune_adjustment();
+            }
+            heap.config.gc_threshold = tuned_threshold;
+
+            let target_large_cache = heap.config.old_size / 4;
+            if heap.large_free_bytes > target_large_cache {
+                if heap.trim_large_free_pool(target_large_cache) != 0 {
+                    this.telemetry.record_major_autotune_adjustment();
+                }
+            }
+        }
         heap.major_phase = MajorPhase::Idle;
         heap.old_sweep_cursor = 0;
         heap.old_sweep_pending = None;
         heap.large_sweep_pending.clear();
+        heap.major_cycle_start_old_bytes = 0;
+        heap.major_cycle_reclaimed = 0;
 
         // Prune forwarding entries whose promoted object has since been freed.
         let to_remove: Vec<usize> = heap
@@ -481,7 +512,7 @@ impl GcRuntime {
     }
 
     #[allow(dead_code)]
-    fn sweep_old(heap: &mut HeapState) -> usize {
+    fn sweep_old(this: &GcRuntime, heap: &mut HeapState) -> usize {
         let mut reclaimed = 0usize;
         while heap.major_phase != MajorPhase::Idle {
             match heap.major_phase {
@@ -495,7 +526,7 @@ impl GcRuntime {
                 heap.large_sweep_pending = heap.large_objects.keys().copied().collect();
             }
             if heap.major_phase == MajorPhase::SweepLarge && heap.large_sweep_pending.is_empty() {
-                Self::finish_major_cycle(heap);
+                Self::finish_major_cycle(this, heap);
             }
         }
         reclaimed

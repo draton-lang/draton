@@ -506,6 +506,18 @@ pub fn stats() -> GcStats {
 
 pub fn reset_stats() {
     let rt = runtime();
+    let _worker_guard = match rt.major_worker_lock.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    let heap = match rt.heap.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    if heap.major_phase == MajorPhase::Idle {
+        clear_major_work_state(&rt);
+    }
+    drop(heap);
     rt.telemetry.reset();
 }
 

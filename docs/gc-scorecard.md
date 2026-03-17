@@ -29,6 +29,7 @@ The baseline report tracks these metrics:
 - major-mutator assists when an allocation slow path, including young refills,
   helps drain pending major work
 - background major-worker slices drained without an explicit mutator assist
+- major autotune adjustments applied after a completed major cycle
 - current pending major-slice budget in the runtime control plane
 - peak queued major-slice budget seen during the current telemetry window
 - whether major work is currently requested at the time the snapshot is taken
@@ -40,6 +41,7 @@ The baseline report tracks these metrics:
 - current young, old, and total heap usage
 - old-generation reusable bytes, free-slot count, and largest reusable slot
 - current large-object count
+- large-object free-pool block count and cached reusable bytes
 - current root count
 - current remembered-set length
 - current mark-stack length and mark-slice size
@@ -70,6 +72,10 @@ Current baseline assumptions:
 - a background major worker can now drain that same budget even when the
   mutator stops allocating after the mutator or safepoint path has already
   started a major cycle
+- large-object sweep now feeds a reusable large-object free pool instead of
+  always returning every dead block directly to the system allocator
+- major-cycle completion can autotune the old-generation threshold and trim the
+  large-object free pool based on live reclaim ratios
 - major-work requests now raise that queue to an adaptive target based on
   threshold pressure or the current major-GC phase backlog, instead of blindly
   adding one slice per request signal
@@ -100,6 +106,9 @@ collector is making forward progress without needing another explicit mutator
 assist, not that it is allowed to begin a new root-scanning cycle entirely on
 its own.
 
+The `major_autotune_adjustments` metric counts automatic tuning decisions such
+as threshold changes or large free-pool trims at the end of a major cycle.
+
 The `major_work_budget` metric is the current number of queued major slices in
 that control plane. It should drop back to zero when the runtime returns to an
 idle major-GC state.
@@ -108,6 +117,13 @@ The `major_work_budget_peak` metric records the highest queued major-slice
 budget seen since the last telemetry reset. It is the easiest way to tell
 whether a workload is merely nudging the major collector or building a real
 backlog that should influence future scheduler tuning.
+
+The `large_free_pool_count` and `large_free_bytes` metrics track reusable
+large-object blocks that have been swept but kept in-process for future reuse.
+
+The `current_gc_threshold_milli` metric snapshots the effective old-generation
+threshold in thousandths, so autotuning runs can be compared without parsing the
+runtime config separately.
 
 The `safepoint_rearms` metric is also workload-dependent. It increases only
 when a single slow-path poll is not enough to finish the current GC work and the
@@ -156,6 +172,12 @@ python3 tools/gc_scorecard.py --out build/gc-scorecard.json
 ```
 
 The report is JSON so it can feed CI, dashboards, or manual comparison runs.
+
+For a matching OCaml comparison harness on Linux with `ocamlopt` installed:
+
+```sh
+python3 tools/gc_compare_ocaml.py --out build/gc-ocaml-compare.json
+```
 
 ## Interpretation
 

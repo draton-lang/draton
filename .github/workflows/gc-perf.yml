@@ -1,0 +1,62 @@
+name: gc-perf
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "draton-runtime/**"
+      - "tools/gc_scorecard.py"
+      - "tools/gc_compare_ocaml.py"
+      - ".github/workflows/gc-perf.yml"
+
+jobs:
+  gc-scorecard:
+    runs-on: ubuntu-22.04
+    env:
+      DRATON_DISABLE_GCROOT: "1"
+      DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM 14 and OCaml
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-14 llvm-14-dev clang-14 ocaml-nox ocaml-native-compilers
+
+      - name: Configure LLVM environment
+        shell: bash
+        run: |
+          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
+          echo "LLVM_CONFIG_PATH=/usr/lib/llvm-14/bin/llvm-config" >> "$GITHUB_ENV"
+          echo "/usr/lib/llvm-14/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run GC runtime tests
+        run: cargo test -p draton-runtime --test gc_tests
+
+      - name: Generate Draton GC scorecard
+        run: python3 tools/gc_scorecard.py --out build/gc-scorecard.json
+
+      - name: Compare Draton GC against OCaml microbenchmarks
+        run: python3 tools/gc_compare_ocaml.py --out build/gc-ocaml-compare.json
+
+      - name: Upload GC benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gc-perf-artifacts
+          path: |
+            build/gc-scorecard.json
+            build/gc-ocaml-compare.json

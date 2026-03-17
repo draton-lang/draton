@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex};
@@ -554,6 +554,9 @@ pub struct HeapState {
     pub old: OldArena,
     /// Large objects (≥ large_threshold) live here; infrequent.
     pub large_objects: HashMap<usize, Box<[u8]>>,
+    /// Reusable large-object blocks keyed by total allocation bytes.
+    pub large_free_pool: BTreeMap<usize, Vec<Box<[u8]>>>,
+    pub large_free_bytes: usize,
 
     // ── Type descriptor table ─────────────────────────────────────────────────
     pub type_descriptors: HashMap<u16, TypeDescriptor>,
@@ -578,6 +581,8 @@ pub struct HeapState {
     pub old_sweep_cursor: usize,
     pub old_sweep_pending: Option<FreeSlot>,
     pub large_sweep_pending: Vec<usize>,
+    pub major_cycle_start_old_bytes: usize,
+    pub major_cycle_reclaimed: usize,
 
     // ── Statistics ────────────────────────────────────────────────────────────
     pub minor_cycles: u64,
@@ -595,6 +600,8 @@ impl HeapState {
         Self {
             old: OldArena::new(config.old_size),
             large_objects: HashMap::new(),
+            large_free_pool: BTreeMap::new(),
+            large_free_bytes: 0,
             type_descriptors: HashMap::new(),
             roots: HashMap::new(),
             young_forwarding: HashMap::new(),
@@ -606,6 +613,8 @@ impl HeapState {
             old_sweep_cursor: 0,
             old_sweep_pending: None,
             large_sweep_pending: Vec::new(),
+            major_cycle_start_old_bytes: 0,
+            major_cycle_reclaimed: 0,
             minor_cycles: 0,
             major_cycles: 0,
             bytes_allocated: 0,
@@ -655,16 +664,19 @@ impl HeapState {
 
     pub(crate) fn alloc_large(&mut self, size: usize, type_id: u16) -> *mut u8 {
         let total = HEADER + size;
-        let mut bytes = vec![0u8; total].into_boxed_slice();
+        let mut bytes = self
+            .take_large_free_block(total)
+            .unwrap_or_else(|| vec![0u8; total].into_boxed_slice());
         let hdr = ObjHeader::new(size as u32, type_id, GC_OLD | GC_LARGE);
         unsafe {
             ptr::write(bytes.as_mut_ptr().cast::<ObjHeader>(), hdr);
         }
         let payload = unsafe { bytes.as_mut_ptr().add(HEADER) };
         let payload_addr = payload as usize;
+        let block_len = bytes.len();
         self.large_objects.insert(payload_addr, bytes);
-        self.live_bytes += total;
-        self.old_bytes += total;
+        self.live_bytes += block_len;
+        self.old_bytes += block_len;
         payload
     }
 
@@ -777,6 +789,67 @@ impl HeapState {
 
     pub fn old_usage(&self) -> usize {
         self.old_bytes
+    }
+
+    pub fn large_free_block_count(&self) -> usize {
+        self.large_free_pool.values().map(Vec::len).sum()
+    }
+
+    pub fn take_large_free_block(&mut self, minimum_total: usize) -> Option<Box<[u8]>> {
+        let key = self
+            .large_free_pool
+            .range(minimum_total..)
+            .find_map(|(&size, blocks)| (!blocks.is_empty()).then_some(size))?;
+        let block = {
+            let blocks = self
+                .large_free_pool
+                .get_mut(&key)
+                .expect("large free pool bucket should exist");
+            let block = blocks.pop();
+            (block, blocks.is_empty())
+        };
+        if block.1 {
+            self.large_free_pool.remove(&key);
+        }
+        if let Some(block) = block.0 {
+            self.large_free_bytes = self.large_free_bytes.saturating_sub(block.len());
+            Some(block)
+        } else {
+            None
+        }
+    }
+
+    pub fn push_large_free_block(&mut self, block: Box<[u8]>) {
+        self.large_free_bytes = self.large_free_bytes.saturating_add(block.len());
+        self.large_free_pool.entry(block.len()).or_default().push(block);
+    }
+
+    pub fn trim_large_free_pool(&mut self, target_bytes: usize) -> usize {
+        let mut released = 0usize;
+        while self.large_free_bytes > target_bytes {
+            let Some(key) = self.large_free_pool.keys().next_back().copied() else {
+                break;
+            };
+            let released_block = {
+                let blocks = self
+                    .large_free_pool
+                    .get_mut(&key)
+                    .expect("large free pool bucket should exist");
+                let block = blocks.pop();
+                (block, blocks.is_empty())
+            };
+            if released_block.1 {
+                self.large_free_pool.remove(&key);
+            }
+            if let Some(block) = released_block.0 {
+                self.large_free_bytes = self.large_free_bytes.saturating_sub(block.len());
+                released = released.saturating_add(block.len());
+                drop(block);
+            } else {
+                break;
+            }
+        }
+        released
     }
 
     pub fn verify_invariants(&self, pool: &YoungPool) -> Result<(), String> {
