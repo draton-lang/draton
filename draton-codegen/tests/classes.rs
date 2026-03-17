@@ -76,6 +76,23 @@ class Node {
 }
 
 #[test]
+fn skips_write_barrier_for_null_field_zeroing() {
+    let ir = compile_ir(
+        r#"
+class Node {
+    let next: Node
+}
+"#,
+    );
+    let ctor_start = ir.find("define %Node* @Node_new()").expect("Node_new");
+    let ctor_ir = &ir[ctor_start..];
+    assert!(
+        !ctor_ir.contains("call void @draton_gc_write_barrier"),
+        "{ctor_ir}"
+    );
+}
+
+#[test]
 fn emits_gc_roots_for_pointer_backed_locals() {
     let ir = compile_ir(
         r#"

@@ -353,6 +353,9 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             return Ok(());
         };
+        if value_ptr.is_null() {
+            return Ok(());
+        }
         let barrier = self
             .module
             .get_function("draton_gc_write_barrier")
