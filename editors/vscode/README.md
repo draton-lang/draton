@@ -2,8 +2,8 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/visual-studio-marketplace/v/draton-lang.draton?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=draton-lang.draton)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/draton-lang.draton?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=draton-lang.draton)
+[![Version](https://img.shields.io/visual-studio-marketplace/v/draton.draton?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=draton.draton)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/draton.draton?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=draton.draton)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](https://github.com/draton-lang/draton/blob/main/LICENSE)
 
 </div>
@@ -62,7 +62,7 @@ Search for **Draton** in the Extensions view (`Ctrl+Shift+X` / `Cmd+Shift+X`) an
 Or via the terminal:
 
 ```sh
-code --install-extension draton-lang.draton-<version>.vsix
+code --install-extension draton.draton-<version>.vsix
 ```
 
 ---

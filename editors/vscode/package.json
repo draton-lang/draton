@@ -1,6 +1,6 @@
 {
   "name": "draton",
-  "publisher": "draton-lang",
+  "publisher": "draton",
   "displayName": "Draton",
   "description": "Syntax highlighting, LSP diagnostics, and the Draton Prism Night theme for the Draton programming language.",
   "version": "0.1.0",

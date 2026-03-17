@@ -75,7 +75,7 @@ jobs:
             code --install-extension draton-*.vsix
             ```
 
-            Or install directly from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=draton-lang.draton).
+            Or install directly from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=draton.draton).
           files: |
             vsix-dist/*.vsix
             vsix-dist/SHA256SUMS.txt
