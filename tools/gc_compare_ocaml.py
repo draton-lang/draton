@@ -26,7 +26,7 @@ OCAML_WORKLOADS: dict[str, str] = {
             ignore (Array.make 8 i)
           done;
           let elapsed_ns = int_of_float ((Unix.gettimeofday () -. started) *. 1_000_000_000.) in
-          Printf.printf "{\"scenario\":\"young-burst\",\"elapsed_ns\":%d}\\n" elapsed_ns
+          print_endline (Printf.sprintf {|{"scenario":"young-burst","elapsed_ns":%d}|} elapsed_ns)
     """,
     "promotion-chain": """
         type node = { mutable next: node option; payload: int array }
@@ -41,7 +41,7 @@ OCAML_WORKLOADS: dict[str, str] = {
           Gc.full_major ();
           ignore root;
           let elapsed_ns = int_of_float ((Unix.gettimeofday () -. started) *. 1_000_000_000.) in
-          Printf.printf "{\"scenario\":\"promotion-chain\",\"elapsed_ns\":%d}\\n" elapsed_ns
+          print_endline (Printf.sprintf {|{"scenario":"promotion-chain","elapsed_ns":%d}|} elapsed_ns)
     """,
     "barrier-churn": """
         type child = { payload: int array }
@@ -55,7 +55,7 @@ OCAML_WORKLOADS: dict[str, str] = {
           done;
           Gc.full_major ();
           let elapsed_ns = int_of_float ((Unix.gettimeofday () -. started) *. 1_000_000_000.) in
-          Printf.printf "{\"scenario\":\"barrier-churn\",\"elapsed_ns\":%d}\\n" elapsed_ns
+          print_endline (Printf.sprintf {|{"scenario":"barrier-churn","elapsed_ns":%d}|} elapsed_ns)
     """,
 }
 
