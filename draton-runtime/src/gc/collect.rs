@@ -193,6 +193,7 @@ impl GcRuntime {
                 heap.remembered_set.insert(new_payload);
             }
             heap.old_objects.insert(new_payload, bytes);
+            heap.old_bytes += total;
 
             // Remove from young index and decrement young live count.
             if let Some((_, aligned)) = heap.young_index.remove(&addr) {
@@ -282,6 +283,7 @@ impl GcRuntime {
         for addr in dead {
             if let Some(bytes) = heap.old_objects.remove(&addr) {
                 heap.live_bytes = heap.live_bytes.saturating_sub(bytes.len());
+                heap.old_bytes  = heap.old_bytes.saturating_sub(bytes.len());
                 heap.remembered_set.remove(&addr);
                 heap.roots.remove(&addr);
             }
@@ -312,6 +314,7 @@ impl GcRuntime {
         for addr in dead {
             if let Some(bytes) = heap.large_objects.remove(&addr) {
                 heap.live_bytes = heap.live_bytes.saturating_sub(bytes.len());
+                heap.old_bytes  = heap.old_bytes.saturating_sub(bytes.len());
                 heap.roots.remove(&addr);
             }
         }

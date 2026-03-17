@@ -221,6 +221,7 @@ pub struct HeapState {
     pub major_cycles:    u64,
     pub bytes_allocated: u64,
     pub live_bytes:      usize, // maintained as an O(1) counter
+    pub old_bytes:       usize, // sum of old_objects + large_objects sizes, O(1)
 }
 
 impl HeapState {
@@ -243,6 +244,7 @@ impl HeapState {
             major_cycles:    0,
             bytes_allocated: 0,
             live_bytes:      0,
+            old_bytes:       0,
             config,
         }
     }
@@ -312,6 +314,7 @@ impl HeapState {
         self.roots.insert(payload_addr, 1);
         self.bytes_allocated += total as u64;
         self.live_bytes += total;
+        self.old_bytes   += total;
         payload
     }
 
@@ -326,6 +329,7 @@ impl HeapState {
         self.roots.insert(payload_addr, 1);
         self.bytes_allocated += total as u64;
         self.live_bytes += total;
+        self.old_bytes   += total;
         payload
     }
 
@@ -428,8 +432,7 @@ impl HeapState {
     }
 
     pub fn old_usage(&self) -> usize {
-        self.old_objects.values().map(|b| b.len()).sum::<usize>()
-            + self.large_objects.values().map(|b| b.len()).sum::<usize>()
+        self.old_bytes
     }
 
     pub fn young_usage(&self) -> usize {
