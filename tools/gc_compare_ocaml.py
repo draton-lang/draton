@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import shutil
 import statistics
 import subprocess
@@ -73,8 +74,30 @@ def run(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProc
     return completed
 
 
+def build_draton_probe() -> Path:
+    completed = run(
+        [
+            "cargo",
+            "build",
+            "-q",
+            "-p",
+            "draton-runtime",
+            "--example",
+            "gc_scorecard",
+            "--release",
+        ]
+    )
+    if completed.returncode != 0:
+        raise SystemExit(
+            f"failed to build draton gc probe\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
+    exe_name = "gc_scorecard.exe" if os.name == "nt" else "gc_scorecard"
+    return REPO_ROOT / "target" / "release" / "examples" / exe_name
+
+
 def draton_runtime_stats(rounds: int) -> dict[str, dict[str, object]]:
     stats: dict[str, dict[str, object]] = {}
+    probe = build_draton_probe()
     iterations = {
         "young-burst": 20_000,
         "promotion-chain": 4_000,
@@ -85,14 +108,7 @@ def draton_runtime_stats(rounds: int) -> dict[str, dict[str, object]]:
         for _ in range(rounds):
             completed = run(
                 [
-                    "cargo",
-                    "run",
-                    "-q",
-                    "-p",
-                    "draton-runtime",
-                    "--example",
-                    "gc_scorecard",
-                    "--",
+                    str(probe),
                     scenario,
                     str(count),
                 ]
