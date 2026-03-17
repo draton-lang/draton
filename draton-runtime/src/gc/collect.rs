@@ -1,4 +1,5 @@
 use std::mem::size_of;
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use super::heap::{FreeSlot, GcRuntime, HeapState, MajorPhase, ObjHeader, YoungPool,
@@ -233,6 +234,8 @@ impl GcRuntime {
                 }
             }
         }
+        self.major_mark_active
+            .store(heap.major_phase == MajorPhase::Mark, Ordering::Relaxed);
 
         let elapsed_ns = t0.elapsed().as_nanos() as u64;
         let target = heap.config.pause_target_ns;

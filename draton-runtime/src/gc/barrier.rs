@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use super::heap::{GcRuntime, HeapState, MajorPhase, ObjHeader, GC_FREE, GC_MARKED, GC_OLD, HEADER};
 
 impl GcRuntime {
@@ -23,36 +25,86 @@ impl GcRuntime {
 
         if child.is_null() { return; }
 
-        // Fast path ②: is child in the young pool?
-        // Lock-free: contains_ptr is a single range check on the pool buffer.
-        if !self.pool.contains_ptr(child as *const u8) { return; }
+        let child_is_young = self.pool.contains_ptr(child as *const u8);
 
-        // Slow path: old→young pointer — record it.
+        // Fast path ②: if this is neither an old→young store nor a store during
+        // an active major-mark phase, there is nothing to record.
+        if !child_is_young && !self.major_mark_active.load(Ordering::Relaxed) {
+            return;
+        }
+
         let Ok(mut heap) = self.heap.lock() else { return };
         let parent_addr = parent as usize;
+        let parent_marked = is_marked_object(&heap, parent_addr);
 
-        heap.remembered_set.push(parent_addr);
-        heap.card_table.mark_dirty(parent_addr);
-        self.telemetry.record_write_barrier_slow();
+        // Slow path ①: old→young pointer — record it for minor GC.
+        if child_is_young {
+            heap.remembered_set.push(parent_addr);
+            heap.card_table.mark_dirty(parent_addr);
+            self.telemetry.record_write_barrier_slow();
+        }
 
-        if heap.major_phase == MajorPhase::Mark {
-            mark_old_object(&mut heap, parent_addr);
+        // Slow path ②: incremental-update barrier for active major marking.
+        // If a marked old/large parent stores a pointer to an unmarked old/large
+        // child while the major mark phase is active, mark and enqueue the child
+        // so the next slice traces it before sweeping begins.
+        if heap.major_phase == MajorPhase::Mark && parent_marked {
+            if trace_major_mark_barrier_child(&self.pool, &mut heap, child as usize) {
+                self.telemetry.record_major_mark_barrier_trace();
+            }
         }
     }
 }
 
-/// Set GC_MARKED on an old-gen or large-object-space object.
-fn mark_old_object(heap: &mut HeapState, addr: usize) {
+fn is_marked_object(heap: &HeapState, addr: usize) -> bool {
     if heap.old.contains_ptr(addr as *const u8) {
-        let hdr_ptr = (addr - HEADER) as *mut ObjHeader;
+        let hdr = unsafe { std::ptr::read((addr - HEADER) as *const ObjHeader) };
+        return hdr.gc_flags & GC_MARKED != 0;
+    }
+    if let Some(bytes) = heap.large_objects.get(&addr) {
+        let hdr = unsafe { std::ptr::read(bytes.as_ptr().cast::<ObjHeader>()) };
+        return hdr.gc_flags & GC_MARKED != 0;
+    }
+    false
+}
+
+fn trace_major_mark_barrier_child(
+    pool: &super::heap::YoungPool,
+    heap: &mut HeapState,
+    child_addr: usize,
+) -> bool {
+    let child = child_addr as *mut u8;
+    if child.is_null() || pool.contains_ptr(child as *const u8) {
+        return false;
+    }
+
+    if heap.old.contains_ptr(child as *const u8) {
+        let hdr_ptr = (child_addr - HEADER) as *mut ObjHeader;
         unsafe {
             let mut hdr = std::ptr::read(hdr_ptr);
-            if hdr.gc_flags & GC_FREE == 0 {
-                hdr.gc_flags |= GC_MARKED;
-                std::ptr::write(hdr_ptr, hdr);
+            if hdr.gc_flags & (GC_FREE | GC_MARKED) != 0 {
+                return false;
             }
+            hdr.gc_flags |= GC_MARKED;
+            std::ptr::write(hdr_ptr, hdr);
         }
-    } else if let Some(bytes) = heap.large_objects.get_mut(&addr) {
-        unsafe { (*bytes.as_mut_ptr().cast::<ObjHeader>()).gc_flags |= GC_MARKED; }
+        heap.mark_stack.push(child_addr);
+        return true;
     }
+
+    if let Some(bytes) = heap.large_objects.get_mut(&child_addr) {
+        let hdr_ptr = bytes.as_mut_ptr().cast::<ObjHeader>();
+        unsafe {
+            let mut hdr = std::ptr::read(hdr_ptr);
+            if hdr.gc_flags & GC_MARKED != 0 {
+                return false;
+            }
+            hdr.gc_flags |= GC_MARKED;
+            std::ptr::write(hdr_ptr, hdr);
+        }
+        heap.mark_stack.push(child_addr);
+        return true;
+    }
+
+    false
 }

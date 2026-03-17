@@ -23,6 +23,8 @@ The baseline report tracks these metrics:
 - bytes reclaimed in major old-gen sweep
 - bytes reclaimed in large-object sweep
 - write-barrier slow-path calls
+- major-mark barrier traces for newly linked old/large children during an active
+  mark phase
 - remembered-set insertions and deduplicated entries
 - current young, old, and total heap usage
 - old-generation reusable bytes, free-slot count, and largest reusable slot
@@ -46,6 +48,12 @@ Current baseline assumptions:
   boundaries before they re-enter the allocator free lists
 - a major cycle that has already started must continue progressing at
   safepoints until it returns to `Idle`
+- stores from already-marked old/large objects must trace newly linked
+  old/large children before sweep begins
+
+The `major_mark_barrier_traces` metric is expected to stay at zero on many
+synthetic runs. It becomes non-zero only when mutator stores overlap with an
+active major mark phase.
 
 ## Runtime scenarios
 

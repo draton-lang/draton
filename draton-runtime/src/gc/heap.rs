@@ -2,7 +2,7 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::ptr;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use super::config::GcConfig;
 use super::stats::GcTelemetry;
@@ -744,6 +744,7 @@ pub struct GcRuntime {
     /// Cached from config for the lock-free alloc hot path.
     pub large_threshold: AtomicUsize,
     pub young_size:      AtomicUsize,
+    pub major_mark_active: AtomicBool,
     pub telemetry:       GcTelemetry,
 }
 
@@ -753,6 +754,7 @@ impl GcRuntime {
         Self {
             large_threshold: AtomicUsize::new(config.large_threshold),
             young_size:      AtomicUsize::new(config.young_size),
+            major_mark_active: AtomicBool::new(false),
             pool:            YoungPool::new(config.young_size),
             heap:            Mutex::new(HeapState::new(config)),
             telemetry:       GcTelemetry::new(),

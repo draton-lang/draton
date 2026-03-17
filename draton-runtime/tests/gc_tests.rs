@@ -12,6 +12,10 @@ fn gc_test_guard() -> MutexGuard<'static, ()> {
     }
 }
 
+unsafe fn write_ptr_field(obj: *mut u8, value: *mut u8) {
+    std::ptr::write(obj.cast::<*mut u8>(), value);
+}
+
 // ── Root semantics ────────────────────────────────────────────────────────────
 
 /// An explicitly protect()-ed object must survive GC.
@@ -279,6 +283,78 @@ fn old_generation_coalesces_adjacent_free_runs() {
         stats.old_largest_free_slot, stats.old_free_bytes,
         "largest free slot should cover the full reclaimed run after coalescing: {stats:?}"
     );
+}
+
+#[test]
+fn major_mark_barrier_traces_new_old_edge_from_marked_parent() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 1024,
+        old_size: 64 * 1024,
+        gc_threshold: 0.01,
+        pause_target_ns: 1,
+        ..gc::config::GcConfig::default()
+    });
+    gc::register_type(11, 8, &[0]);
+    gc::register_type(12, (gc::LARGE_OBJECT_THRESHOLD + 128) as u32, &[0]);
+    gc::reset_stats();
+
+    let parent = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 128, 12);
+    gc::protect(parent);
+
+    let mut chain = Vec::new();
+    for _ in 0..8000 {
+        let ptr = gc::alloc(8, 11);
+        gc::protect(ptr);
+        chain.push(ptr);
+    }
+    for index in 0..chain.len() - 1 {
+        unsafe { write_ptr_field(chain[index], chain[index + 1]); }
+    }
+
+    unsafe { write_ptr_field(parent, chain[0]); }
+    gc::write_barrier(parent, std::ptr::null_mut(), chain[0]);
+
+    let victim = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 128, 12);
+    gc::protect(victim);
+
+    while gc::header_of(chain[0]).map(|hdr| hdr.gc_flags & GC_OLD == 0).unwrap_or(true) {
+        let _ = gc::alloc(8, 11);
+    }
+
+    for ptr in &chain {
+        gc::release(*ptr);
+    }
+    gc::release(victim);
+
+    gc::safepoint();
+    let after_first_slice = gc::stats();
+    assert_eq!(
+        after_first_slice.major_phase, 1,
+        "the first safepoint should leave a long old-gen graph in mark phase: {after_first_slice:?}"
+    );
+
+    unsafe { write_ptr_field(parent, victim); }
+    gc::write_barrier(parent, std::ptr::null_mut(), victim);
+    let after_barrier = gc::stats();
+    assert_eq!(
+        after_barrier.major_phase, 1,
+        "major cycle should still be marking immediately after the barrier: {after_barrier:?}"
+    );
+    assert!(
+        after_barrier.major_mark_barrier_traces >= 1,
+        "major barrier should mark and enqueue the newly linked child: {after_barrier:?}"
+    );
+    gc::collect();
+
+    assert!(
+        gc::header_of(victim).is_some(),
+        "incremental-update major barrier should keep a newly linked old child alive"
+    );
+
+    gc::release(parent);
 }
 
 // ── Pin / unpin ───────────────────────────────────────────────────────────────
