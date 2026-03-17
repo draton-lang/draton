@@ -20,6 +20,10 @@ The compiler is written entirely in Rust and designed as a Cargo workspace of fo
 
 For the language design rationale behind the canonical syntax, see [docs/language-manifesto.md](docs/language-manifesto.md). For exact repository syntax expectations, see [docs/canonical-syntax-rules.md](docs/canonical-syntax-rules.md). For contributor anti-drift guardrails, see [docs/contributor-language-rules.md](docs/contributor-language-rules.md). For migration details and compatibility rules, see [docs/syntax-migration.md](docs/syntax-migration.md). For the next 12 months of project priorities, see [docs/roadmap-1year.md](docs/roadmap-1year.md).
 
+Runtime and performance references:
+
+- [docs/gc-scorecard.md](docs/gc-scorecard.md)
+
 Tooling references:
 
 - [docs/tools/formatter.md](docs/tools/formatter.md)
