@@ -39,6 +39,14 @@ be merged based only on subjective speed claims.
 The runtime also exposes heap-invariant verification. Any allocator or collector
 change that improves scorecard numbers but breaks verifier checks is invalid.
 
+Current baseline assumptions:
+
+- major GC mark and sweep both run incrementally in bounded slices
+- old-generation free runs are rebuilt during sweep and coalesced across slice
+  boundaries before they re-enter the allocator free lists
+- a major cycle that has already started must continue progressing at
+  safepoints until it returns to `Idle`
+
 ## Runtime scenarios
 
 The runtime probe currently runs four scenarios:

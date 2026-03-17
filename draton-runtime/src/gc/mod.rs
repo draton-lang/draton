@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::sync::atomic::Ordering;
 
 use config::GcConfig;
+use heap::MajorPhase;
 pub use heap::{GcRuntime, HeapSpace, ObjHeader, CARD_BYTES};
 pub use stats::{GcPauseStats, GcStats};
 
@@ -178,7 +179,8 @@ pub fn safepoint() {
     let needs_minor = rt.pool.current_slot_nearly_full();
     let needs_major = {
         let heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
-        heap.old_usage() >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize
+        heap.major_phase != MajorPhase::Idle
+            || heap.old_usage() >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize
     };
     if needs_minor { rt.collect_minor(); }
     if needs_major { rt.collect_major_slice(); }

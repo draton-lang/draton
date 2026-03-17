@@ -362,14 +362,12 @@ impl OldArena {
     }
 
     pub fn largest_free_slot(&self) -> usize {
-        let mut largest = self.large_free_list.iter().map(|slot| slot.total).max().unwrap_or(0);
-        for (index, slots) in self.bins.iter().enumerate().rev() {
-            if !slots.is_empty() {
-                largest = largest.max(OLD_BIN_LIMITS[index]);
-                break;
-            }
-        }
-        largest
+        let large = self.large_free_list.iter().map(|slot| slot.total).max().unwrap_or(0);
+        let binned = self.bins.iter()
+            .flat_map(|slots| slots.iter().map(|slot| slot.total))
+            .max()
+            .unwrap_or(0);
+        large.max(binned)
     }
 
     fn alloc_from_free_lists(&mut self, aligned: usize) -> Option<usize> {
@@ -409,6 +407,14 @@ impl OldArena {
 
     fn class_index(total: usize) -> Option<usize> {
         OLD_BIN_LIMITS.iter().position(|&limit| total <= limit)
+    }
+
+    pub fn clear_free_lists(&mut self) {
+        self.free_bytes = 0;
+        for slots in &mut self.bins {
+            slots.clear();
+        }
+        self.large_free_list.clear();
     }
 
     pub fn verify_invariants(&self) -> Result<(), String> {
@@ -506,6 +512,7 @@ pub struct HeapState {
     pub mark_slice_size:      usize,
     pub major_phase:          MajorPhase,
     pub old_sweep_cursor:     usize,
+    pub old_sweep_pending:    Option<FreeSlot>,
     pub large_sweep_pending:  Vec<usize>,
 
     // ── Statistics ────────────────────────────────────────────────────────────
@@ -533,6 +540,7 @@ impl HeapState {
             mark_slice_size:     256,
             major_phase:         MajorPhase::Idle,
             old_sweep_cursor:    0,
+            old_sweep_pending:   None,
             large_sweep_pending: Vec::new(),
             minor_cycles:    0,
             major_cycles:    0,

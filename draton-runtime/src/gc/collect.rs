@@ -1,7 +1,7 @@
 use std::mem::size_of;
 use std::time::Instant;
 
-use super::heap::{GcRuntime, HeapState, MajorPhase, ObjHeader, YoungPool,
+use super::heap::{FreeSlot, GcRuntime, HeapState, MajorPhase, ObjHeader, YoungPool,
                   GC_FREE, GC_MARKED, GC_OLD, GC_PINNED, HEADER, MAX_THREADS};
 
 // ── Tracing helpers ───────────────────────────────────────────────────────────
@@ -213,12 +213,15 @@ impl GcRuntime {
                 Self::drain_mark_slice(&self.pool, &mut heap);
                 if heap.mark_stack.is_empty() {
                     heap.major_phase = MajorPhase::SweepOld;
+                    heap.old.clear_free_lists();
                     heap.old_sweep_cursor = 0;
+                    heap.old_sweep_pending = None;
                 }
             }
             MajorPhase::SweepOld => {
                 reclaimed_old = Self::sweep_old_slice(&mut heap);
                 if heap.old_sweep_cursor >= heap.old.bump {
+                    Self::flush_pending_old_free(&mut heap);
                     heap.major_phase = MajorPhase::SweepLarge;
                     heap.large_sweep_pending = heap.large_objects.keys().copied().collect();
                 }
@@ -247,6 +250,7 @@ impl GcRuntime {
         heap.major_phase = MajorPhase::Mark;
         heap.mark_stack.clear();
         heap.old_sweep_cursor = 0;
+        heap.old_sweep_pending = None;
         heap.large_sweep_pending.clear();
 
         let shadow_roots  = unsafe { super::shadow_stack_roots() };
@@ -288,30 +292,66 @@ impl GcRuntime {
             let aligned = (HEADER + size + 7) & !7;
 
             if hdr.gc_flags & GC_FREE != 0 {
-                // Already a free slot — keep going.
+                Self::extend_pending_old_free(heap, offset, aligned);
                 heap.old_sweep_cursor += aligned;
+                swept += 1;
                 continue;
             }
 
             if hdr.gc_flags & GC_MARKED == 0 && hdr.gc_flags & GC_PINNED == 0 {
-                // Dead: mark free, return to free list.
+                // Dead: mark free and coalesce adjacent runs as we sweep.
                 let mut dead_hdr = hdr;
                 dead_hdr.gc_flags = GC_FREE | GC_OLD;
                 unsafe { std::ptr::write(hdr_ptr, dead_hdr); }
-                heap.old.push_free_slot(super::heap::FreeSlot { offset, total: aligned });
+                Self::extend_pending_old_free(heap, offset, aligned);
                 heap.old_bytes  = heap.old_bytes.saturating_sub(aligned);
                 heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
                 reclaimed += aligned;
-            } else if hdr.gc_flags & GC_MARKED != 0 {
+            } else {
+                Self::flush_pending_old_free(heap);
+                if hdr.gc_flags & GC_MARKED != 0 {
                 // Live: clear the mark bit for next cycle.
-                let mut new_hdr = hdr;
-                new_hdr.gc_flags &= !GC_MARKED;
-                unsafe { std::ptr::write(hdr_ptr, new_hdr); }
+                    let mut new_hdr = hdr;
+                    new_hdr.gc_flags &= !GC_MARKED;
+                    unsafe { std::ptr::write(hdr_ptr, new_hdr); }
+                }
             }
             heap.old_sweep_cursor += aligned;
             swept += 1;
         }
         reclaimed
+    }
+
+    fn extend_pending_old_free(heap: &mut HeapState, offset: usize, total: usize) {
+        if heap.old_sweep_pending.is_some() {
+            let (run_offset, run_total) = {
+                let run = heap.old_sweep_pending.as_mut().expect("pending free run");
+                debug_assert_eq!(run.offset + run.total, offset);
+                run.total += total;
+                (run.offset, run.total)
+            };
+            Self::write_free_slot_header(heap, run_offset, run_total);
+            return;
+        }
+        heap.old_sweep_pending = Some(FreeSlot { offset, total });
+        Self::write_free_slot_header(heap, offset, total);
+    }
+
+    fn flush_pending_old_free(heap: &mut HeapState) {
+        if let Some(run) = heap.old_sweep_pending.take() {
+            Self::write_free_slot_header(heap, run.offset, run.total);
+            heap.old.push_free_slot(run);
+        }
+    }
+
+    fn write_free_slot_header(heap: &mut HeapState, offset: usize, total: usize) {
+        let hdr = ObjHeader::new((total - HEADER) as u32, 0, GC_FREE | GC_OLD);
+        unsafe {
+            std::ptr::write(
+                heap.old.buffer.as_mut_ptr().add(offset).cast::<ObjHeader>(),
+                hdr,
+            );
+        }
     }
 
     fn sweep_large_slice(heap: &mut HeapState) -> usize {
@@ -352,6 +392,7 @@ impl GcRuntime {
     fn finish_major_cycle(heap: &mut HeapState) {
         heap.major_phase = MajorPhase::Idle;
         heap.old_sweep_cursor = 0;
+        heap.old_sweep_pending = None;
         heap.large_sweep_pending.clear();
 
         // Prune forwarding entries whose promoted object has since been freed.
@@ -379,6 +420,7 @@ impl GcRuntime {
                 _ => break,
             }
             if heap.major_phase == MajorPhase::SweepOld && heap.old_sweep_cursor >= heap.old.bump {
+                Self::flush_pending_old_free(heap);
                 heap.major_phase = MajorPhase::SweepLarge;
                 heap.large_sweep_pending = heap.large_objects.keys().copied().collect();
             }

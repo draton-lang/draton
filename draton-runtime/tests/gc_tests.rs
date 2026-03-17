@@ -249,6 +249,38 @@ fn old_generation_reuses_swept_slots() {
     }
 }
 
+#[test]
+fn old_generation_coalesces_adjacent_free_runs() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::reset_stats();
+
+    let mut batch = Vec::new();
+    for _ in 0..256 {
+        let ptr = gc::alloc(64, 10);
+        gc::protect(ptr);
+        batch.push(ptr);
+    }
+    gc::collect();
+    gc::collect();
+
+    for ptr in &batch {
+        gc::release(*ptr);
+    }
+    gc::collect();
+
+    let stats = gc::stats();
+    assert_eq!(
+        stats.old_free_slot_count, 1,
+        "fully reclaimed adjacent old-gen objects should coalesce into one free run: {stats:?}"
+    );
+    assert_eq!(
+        stats.old_largest_free_slot, stats.old_free_bytes,
+        "largest free slot should cover the full reclaimed run after coalescing: {stats:?}"
+    );
+}
+
 // ── Pin / unpin ───────────────────────────────────────────────────────────────
 
 /// pin() must set GC_PINNED; unpin() must clear it.
