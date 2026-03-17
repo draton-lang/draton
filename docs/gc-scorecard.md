@@ -24,6 +24,7 @@ The baseline report tracks these metrics:
 - bytes reclaimed in large-object sweep
 - write-barrier slow-path calls
 - major-work requests when runtime pressure arms or rearms the next major slice
+- major-mutator assists when a slow allocation path helps drain pending major work
 - whether major work is currently requested at the time the snapshot is taken
 - safepoint rearms when the runtime keeps an active GC cycle progressing across
   multiple polls
@@ -53,6 +54,9 @@ Current baseline assumptions:
 - major-GC scheduling uses an explicit request flag, so promotion pressure and
   active major cycles do not depend only on re-deriving threshold state at each
   individual safepoint
+- slow allocation paths may assist pending major work with one bounded slice,
+  reducing the runtime's dependence on a separate safepoint poll before the
+  next chunk of major work can run
 - a major cycle that has already started must continue progressing at
   safepoints until it returns to `Idle`
 - stores from already-marked old/large objects must trace newly linked
@@ -66,6 +70,9 @@ The `major_work_requests` metric counts transitions where the runtime explicitly
 requests more major-GC work. `major_work_requested` is the current snapshot of
 that control flag and is expected to be `true` when promotion pressure or an
 active cycle still wants another safepoint-driven slice.
+
+The `major_mutator_assists` metric counts slow-path allocations that helped run
+one pending major-GC slice immediately instead of waiting for a later poll.
 
 The `safepoint_rearms` metric is also workload-dependent. It increases only
 when a single slow-path poll is not enough to finish the current GC work and the

@@ -569,6 +569,53 @@ fn full_collection_clears_major_work_request_flag() {
     );
 }
 
+#[test]
+fn slow_path_allocation_assists_requested_major_work() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 256 * 1024,
+        old_size: 1024 * 1024,
+        gc_threshold: 0.10,
+        pause_target_ns: 1_000,
+        ..gc::config::GcConfig::default()
+    });
+    gc::reset_stats();
+
+    let mut roots = Vec::new();
+    for _ in 0..5000 {
+        let ptr = gc::alloc(64, 17);
+        gc::protect(ptr);
+        roots.push(ptr);
+    }
+
+    let requested = gc::stats();
+    assert!(
+        requested.major_work_requested,
+        "setup should leave major work pending before the assist allocation: {requested:?}"
+    );
+
+    let assist = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 256, 18);
+    gc::protect(assist);
+
+    let after_assist = gc::stats();
+    assert!(
+        after_assist.major_mutator_assists >= 1,
+        "slow-path allocation should record a major mutator assist: {after_assist:?}"
+    );
+    assert!(
+        after_assist.major_slices >= 1,
+        "slow-path allocation assist should execute at least one major slice: {after_assist:?}"
+    );
+
+    gc::release(assist);
+    for ptr in roots {
+        gc::release(ptr);
+    }
+    gc::collect();
+}
+
 // ── Pin / unpin ───────────────────────────────────────────────────────────────
 
 /// pin() must set GC_PINNED; unpin() must clear it.

@@ -168,6 +168,7 @@ pub fn alloc(size: usize, type_id: u16) -> *mut u8 {
     if needs_major {
         request_major_work(&rt);
     }
+    assist_major_work_if_requested(&rt);
     payload
 }
 
@@ -195,6 +196,7 @@ pub fn alloc_array(elem_size: usize, len: usize, type_id: u16) -> *mut u8 {
     if needs_major {
         request_major_work(&rt);
     }
+    assist_major_work_if_requested(&rt);
     payload
 }
 
@@ -232,6 +234,14 @@ pub(super) fn request_major_work(rt: &GcRuntime) {
         rt.telemetry.record_major_work_request();
     }
     signal_gc_flag();
+}
+
+#[inline]
+fn assist_major_work_if_requested(rt: &GcRuntime) {
+    if rt.major_work_requested.load(Ordering::Acquire) {
+        rt.telemetry.record_major_mutator_assist();
+        rt.collect_major_slice();
+    }
 }
 
 // ── Safepoint slow path ────────────────────────────────────────────────────────

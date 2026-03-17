@@ -53,6 +53,7 @@ fn main() {
             "\"bytes_reclaimed_large\":{},",
             "\"write_barrier_slow_calls\":{},",
             "\"major_work_requests\":{},",
+            "\"major_mutator_assists\":{},",
             "\"major_work_requested\":{},",
             "\"safepoint_rearms\":{},",
             "\"major_mark_barrier_traces\":{},",
@@ -100,6 +101,7 @@ fn main() {
         stats.bytes_reclaimed_large,
         stats.write_barrier_slow_calls,
         stats.major_work_requests,
+        stats.major_mutator_assists,
         if stats.major_work_requested {
             "true"
         } else {
