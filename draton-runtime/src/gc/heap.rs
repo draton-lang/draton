@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::config::GcConfig;
+use super::stats::GcTelemetry;
 
 // ── LLVM shadow-stack types ────────────────────────────────────────────────────
 #[repr(C)]
@@ -193,6 +194,13 @@ impl YoungPool {
         let bump = self.slots[self.current_slot_idx()]
             .bump.load(Ordering::Relaxed);
         bump >= self.per_thread_size.saturating_sub(self.per_thread_size / 10)
+    }
+
+    pub fn used_bytes(&self) -> usize {
+        self.slots
+            .iter()
+            .map(|slot| slot.bump.load(Ordering::Relaxed))
+            .sum()
     }
 
     /// Reset all per-thread arenas. Call only during a stop-the-world pause.
@@ -408,7 +416,6 @@ impl HeapState {
         let aligned = (HEADER + size + 7) & !7;
         let payload = self.old.alloc(size, GC_OLD, type_id);
         if !payload.is_null() {
-            self.bytes_allocated += aligned as u64;
             self.live_bytes += aligned;
             self.old_bytes  += aligned;
         }
@@ -423,7 +430,6 @@ impl HeapState {
         let payload = unsafe { bytes.as_mut_ptr().add(HEADER) };
         let payload_addr = payload as usize;
         self.large_objects.insert(payload_addr, bytes);
-        self.bytes_allocated += total as u64;
         self.live_bytes += total;
         self.old_bytes  += total;
         payload
@@ -534,6 +540,7 @@ pub struct GcRuntime {
     /// Cached from config for the lock-free alloc hot path.
     pub large_threshold: AtomicUsize,
     pub young_size:      AtomicUsize,
+    pub telemetry:       GcTelemetry,
 }
 
 impl GcRuntime {
@@ -544,6 +551,7 @@ impl GcRuntime {
             young_size:      AtomicUsize::new(config.young_size),
             pool:            YoungPool::new(config.young_size),
             heap:            Mutex::new(HeapState::new(config)),
+            telemetry:       GcTelemetry::new(),
         }
     }
 }

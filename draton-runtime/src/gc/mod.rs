@@ -4,12 +4,14 @@ pub mod barrier;
 pub mod collect;
 pub mod config;
 pub mod heap;
+pub mod stats;
 
 use std::sync::{Arc, Mutex, OnceLock};
 use std::sync::atomic::Ordering;
 
 use config::GcConfig;
 pub use heap::{GcRuntime, HeapSpace, ObjHeader, CARD_BYTES};
+pub use stats::{GcPauseStats, GcStats};
 
 /// Objects larger than this are allocated directly in the large-object space.
 /// Matches `GcConfig::default().large_threshold`.
@@ -100,11 +102,13 @@ pub fn register_type(type_id: u16, size: u32, offsets: &[u32]) {
 /// when the thread's arena is full and needs to be collected first.
 pub fn alloc(size: usize, type_id: u16) -> *mut u8 {
     let rt = runtime();
+    let aligned = (heap::HEADER + size + 7) & !7;
 
     // ── Fast path: lock-free per-thread young-gen bump ────────────────────────
     let large_threshold = rt.large_threshold.load(Ordering::Relaxed);
     if size < large_threshold {
         if let Some(payload) = rt.pool.try_alloc(size, type_id) {
+            rt.telemetry.record_young_alloc(aligned);
             if rt.pool.current_slot_nearly_full() { signal_gc_flag(); }
             return payload;
         }
@@ -113,6 +117,7 @@ pub fn alloc(size: usize, type_id: u16) -> *mut u8 {
         rt.collect_minor();
 
         if let Some(payload) = rt.pool.try_alloc(size, type_id) {
+            rt.telemetry.record_young_alloc(aligned);
             return payload;
         }
         // If still full (tiny young_size), fall through to old-gen.
@@ -121,6 +126,13 @@ pub fn alloc(size: usize, type_id: u16) -> *mut u8 {
     // ── Slow path: old-gen / large-object allocation ──────────────────────────
     let mut heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
     let payload = heap.alloc_slow(size, type_id);
+    if !payload.is_null() {
+        if size >= heap.config.large_threshold {
+            rt.telemetry.record_large_alloc(heap::HEADER + size);
+        } else {
+            rt.telemetry.record_old_alloc(aligned);
+        }
+    }
     let needs_major = heap.old_usage()
         >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize;
     drop(heap);
@@ -134,6 +146,16 @@ pub fn alloc_array(elem_size: usize, len: usize, type_id: u16) -> *mut u8 {
     let rt = runtime();
     let mut heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
     let payload = heap.alloc_array(elem_size, len, type_id);
+    if !payload.is_null() {
+        rt.telemetry.record_array_alloc();
+        let size = elem_size.saturating_mul(len);
+        if size >= heap.config.large_threshold {
+            rt.telemetry.record_large_alloc(heap::HEADER + size);
+        } else {
+            let aligned = (heap::HEADER + size + 7) & !7;
+            rt.telemetry.record_old_alloc(aligned);
+        }
+    }
     let needs_major = heap.old_usage()
         >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize;
     drop(heap);
@@ -171,6 +193,17 @@ pub fn write_barrier(obj: *mut u8, field: *mut u8, new_val: *mut u8) {
 // ── Manual collection ─────────────────────────────────────────────────────────
 
 pub fn collect() { runtime().collect_full(); }
+
+pub fn stats() -> GcStats {
+    let rt = runtime();
+    let heap = match rt.heap.lock() { Ok(g) => g, Err(p) => p.into_inner() };
+    rt.telemetry.snapshot(&rt, &heap)
+}
+
+pub fn reset_stats() {
+    let rt = runtime();
+    rt.telemetry.reset();
+}
 
 // ── Pinning ───────────────────────────────────────────────────────────────────
 

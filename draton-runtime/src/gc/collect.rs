@@ -59,11 +59,17 @@ impl GcRuntime {
 
     /// Collect unreachable young-generation objects (promote-all-survivors).
     pub fn collect_minor(&self) {
+        let t0 = Instant::now();
         let Ok(mut heap) = self.heap.lock() else { return };
         heap.minor_cycles = heap.minor_cycles.saturating_add(1);
 
+        let remembered_before = heap.remembered_set.len();
         heap.remembered_set.sort_unstable();
         heap.remembered_set.dedup();
+        let deduped = remembered_before.saturating_sub(heap.remembered_set.len());
+        if deduped != 0 {
+            self.telemetry.record_remembered_set_deduped(deduped);
+        }
 
         let shadow_roots  = unsafe { super::shadow_stack_roots() };
         let explicit_roots: Vec<usize> = heap.roots.keys().copied().collect();
@@ -143,6 +149,7 @@ impl GcRuntime {
         heap.live_bytes = heap.live_bytes.saturating_sub(dead_bytes);
 
         // Phase 5: copy survivors to old gen and record forwarding.
+        let mut promoted_bytes = 0usize;
         for (addr, size) in promoted {
             let ptr     = addr as *mut u8;
             let hdr     = unsafe { self.pool.read_header(ptr) };
@@ -170,6 +177,7 @@ impl GcRuntime {
             heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
             heap.live_bytes += aligned;
             heap.young_forwarding.insert(addr, new_payload_addr);
+            promoted_bytes += aligned;
         }
 
         // Phase 6: fix up stale pointers in shadow stack and remembered-set parents.
@@ -178,6 +186,11 @@ impl GcRuntime {
 
         // Phase 7: reset all pool slots (all survivors are in old gen now).
         self.pool.reset_all();
+        self.telemetry.record_minor_cycle(
+            t0.elapsed().as_nanos() as u64,
+            promoted_bytes,
+            dead_bytes,
+        );
     }
 
     // ── Major GC (incremental, stop-the-world per slice) ─────────────────────
@@ -187,6 +200,7 @@ impl GcRuntime {
 
         if !heap.is_marking {
             heap.major_cycles = heap.major_cycles.saturating_add(1);
+            self.telemetry.record_major_cycle_start();
             heap.is_marking = true;
             heap.mark_stack.clear();
 
@@ -227,13 +241,18 @@ impl GcRuntime {
 
         if heap.mark_stack.is_empty() {
             heap.is_marking = false;
-            Self::sweep_old(&mut heap);
-            Self::sweep_large(&mut heap);
+            let reclaimed_old = Self::sweep_old(&mut heap);
+            let reclaimed_large = Self::sweep_large(&mut heap);
+            self.telemetry
+                .record_major_slice(elapsed_ns, reclaimed_old, reclaimed_large);
+            return;
         }
+        self.telemetry.record_major_slice(elapsed_ns, 0, 0);
     }
 
     /// Linear sweep of the contiguous old-gen arena.
-    fn sweep_old(heap: &mut HeapState) {
+    fn sweep_old(heap: &mut HeapState) -> usize {
+        let mut reclaimed = 0usize;
         let mut offset = 0usize;
         while offset < heap.old.bump {
             let hdr_ptr = heap.old.buffer.as_ptr().wrapping_add(offset) as *mut ObjHeader;
@@ -255,6 +274,7 @@ impl GcRuntime {
                 heap.old.free_list.push(FreeSlot { offset, total: aligned });
                 heap.old_bytes  = heap.old_bytes.saturating_sub(aligned);
                 heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
+                reclaimed += aligned;
             } else if hdr.gc_flags & GC_MARKED != 0 {
                 // Live: clear the mark bit for next cycle.
                 let mut new_hdr = hdr;
@@ -273,9 +293,11 @@ impl GcRuntime {
             })
             .collect();
         for k in to_remove { heap.young_forwarding.remove(&k); }
+        reclaimed
     }
 
-    fn sweep_large(heap: &mut HeapState) {
+    fn sweep_large(heap: &mut HeapState) -> usize {
+        let mut reclaimed = 0usize;
         let dead: Vec<usize> = heap.large_objects.iter()
             .filter(|(_, bytes)| {
                 let hdr = unsafe { std::ptr::read(bytes.as_ptr().cast::<ObjHeader>()) };
@@ -288,6 +310,7 @@ impl GcRuntime {
             if let Some(bytes) = heap.large_objects.remove(&addr) {
                 heap.live_bytes = heap.live_bytes.saturating_sub(bytes.len());
                 heap.old_bytes  = heap.old_bytes.saturating_sub(bytes.len());
+                reclaimed += bytes.len();
             }
         }
 
@@ -299,17 +322,21 @@ impl GcRuntime {
                 std::ptr::write(hdr_ptr, hdr);
             }
         }
+        reclaimed
     }
 
     // ── Full collection ───────────────────────────────────────────────────────
 
     pub fn collect_full(&self) {
+        let t0 = Instant::now();
         self.collect_minor();
         loop {
             self.collect_major_slice();
             let Ok(heap) = self.heap.lock() else { break };
             if !heap.is_marking { break; }
         }
+        self.telemetry
+            .record_full_cycle(t0.elapsed().as_nanos() as u64);
     }
 }
 

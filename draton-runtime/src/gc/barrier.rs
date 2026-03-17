@@ -33,6 +33,7 @@ impl GcRuntime {
 
         heap.remembered_set.push(parent_addr);
         heap.card_table.mark_dirty(parent_addr);
+        self.telemetry.record_write_barrier_slow();
 
         if heap.is_marking {
             mark_old_object(&mut heap, parent_addr);

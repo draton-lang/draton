@@ -122,6 +122,64 @@ fn gc_config_applies_custom_values() {
     assert_eq!(config.max_heap, 256 * 1024 * 1024);
 }
 
+#[test]
+fn gc_stats_capture_alloc_collect_and_barrier_activity() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::reset_stats();
+
+    let parent = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 96, 1);
+    gc::protect(parent);
+
+    let child = gc::alloc(24, 2);
+    gc::protect(child);
+    gc::write_barrier(parent, std::ptr::null_mut(), child);
+    let large = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 64, 3);
+    gc::protect(large);
+    let _array = gc::alloc_array(8, 4, 4);
+    gc::collect();
+
+    let stats = gc::stats();
+    assert!(stats.young_allocations >= 1, "young allocations should be tracked: {stats:?}");
+    assert!(stats.large_allocations >= 1, "large allocations should be tracked: {stats:?}");
+    assert!(stats.array_allocations >= 1, "array allocations should be tracked");
+    assert!(stats.minor_cycles >= 1, "minor collections should be tracked");
+    assert!(stats.full_cycles >= 1, "full collections should be tracked");
+    assert!(stats.bytes_allocated > 0, "allocated bytes should accumulate");
+    assert!(stats.bytes_promoted > 0, "promotion bytes should accumulate");
+    assert!(stats.write_barrier_slow_calls >= 1, "barrier slow path should be counted");
+    assert!(stats.minor_pause.total_ns > 0, "minor pause telemetry should be recorded");
+    assert!(stats.full_pause.total_ns > 0, "full pause telemetry should be recorded");
+    assert!(stats.heap_usage_bytes >= stats.old_usage_bytes);
+
+    gc::release(parent);
+    gc::release(child);
+    gc::release(large);
+}
+
+#[test]
+fn gc_reset_stats_clears_counters_without_disrupting_heap() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::reset_stats();
+
+    let ptr = gc::alloc(32, 5);
+    gc::protect(ptr);
+    gc::collect();
+    assert!(gc::stats().bytes_allocated > 0);
+
+    gc::reset_stats();
+    let stats = gc::stats();
+    assert_eq!(stats.bytes_allocated, 0);
+    assert_eq!(stats.minor_cycles, 0);
+    assert_eq!(stats.major_slices, 0);
+    assert!(gc::header_of(ptr).is_some(), "resetting stats must not free live objects");
+
+    gc::release(ptr);
+}
+
 // ── Pin / unpin ───────────────────────────────────────────────────────────────
 
 /// pin() must set GC_PINNED; unpin() must clear it.

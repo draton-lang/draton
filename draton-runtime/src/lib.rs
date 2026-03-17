@@ -75,6 +75,88 @@ pub struct DratonIntArray {
     pub ptr: *mut i64,
 }
 
+#[repr(C)]
+pub struct DratonGcPauseStats {
+    pub total_ns: u64,
+    pub last_ns: u64,
+    pub max_ns: u64,
+}
+
+#[repr(C)]
+pub struct DratonGcStats {
+    pub minor_cycles: u64,
+    pub major_cycles: u64,
+    pub major_slices: u64,
+    pub full_cycles: u64,
+    pub young_allocations: u64,
+    pub old_allocations: u64,
+    pub large_allocations: u64,
+    pub array_allocations: u64,
+    pub bytes_allocated: u64,
+    pub bytes_promoted: u64,
+    pub bytes_reclaimed_minor: u64,
+    pub bytes_reclaimed_major: u64,
+    pub bytes_reclaimed_large: u64,
+    pub write_barrier_slow_calls: u64,
+    pub remembered_set_entries_added: u64,
+    pub remembered_set_entries_deduped: u64,
+    pub young_usage_bytes: usize,
+    pub old_usage_bytes: usize,
+    pub heap_usage_bytes: usize,
+    pub large_object_count: usize,
+    pub roots_count: usize,
+    pub remembered_set_len: usize,
+    pub old_free_slot_count: usize,
+    pub current_mark_stack_len: usize,
+    pub current_mark_slice_size: usize,
+    pub is_marking: bool,
+    pub minor_pause: DratonGcPauseStats,
+    pub major_pause: DratonGcPauseStats,
+    pub full_pause: DratonGcPauseStats,
+}
+
+fn export_gc_pause(stats: gc::GcPauseStats) -> DratonGcPauseStats {
+    DratonGcPauseStats {
+        total_ns: stats.total_ns,
+        last_ns: stats.last_ns,
+        max_ns: stats.max_ns,
+    }
+}
+
+fn export_gc_stats(stats: gc::GcStats) -> DratonGcStats {
+    DratonGcStats {
+        minor_cycles: stats.minor_cycles,
+        major_cycles: stats.major_cycles,
+        major_slices: stats.major_slices,
+        full_cycles: stats.full_cycles,
+        young_allocations: stats.young_allocations,
+        old_allocations: stats.old_allocations,
+        large_allocations: stats.large_allocations,
+        array_allocations: stats.array_allocations,
+        bytes_allocated: stats.bytes_allocated,
+        bytes_promoted: stats.bytes_promoted,
+        bytes_reclaimed_minor: stats.bytes_reclaimed_minor,
+        bytes_reclaimed_major: stats.bytes_reclaimed_major,
+        bytes_reclaimed_large: stats.bytes_reclaimed_large,
+        write_barrier_slow_calls: stats.write_barrier_slow_calls,
+        remembered_set_entries_added: stats.remembered_set_entries_added,
+        remembered_set_entries_deduped: stats.remembered_set_entries_deduped,
+        young_usage_bytes: stats.young_usage_bytes,
+        old_usage_bytes: stats.old_usage_bytes,
+        heap_usage_bytes: stats.heap_usage_bytes,
+        large_object_count: stats.large_object_count,
+        roots_count: stats.roots_count,
+        remembered_set_len: stats.remembered_set_len,
+        old_free_slot_count: stats.old_free_slot_count,
+        current_mark_stack_len: stats.current_mark_stack_len,
+        current_mark_slice_size: stats.current_mark_slice_size,
+        is_marking: stats.is_marking,
+        minor_pause: export_gc_pause(stats.minor_pause),
+        major_pause: export_gc_pause(stats.major_pause),
+        full_pause: export_gc_pause(stats.full_pause),
+    }
+}
+
 fn string_bytes(value: DratonString) -> &'static [u8] {
     if value.ptr.is_null() || value.len <= 0 {
         &[]
@@ -633,6 +715,18 @@ pub extern "C" fn draton_gc_write_barrier(
 #[no_mangle]
 pub extern "C" fn draton_gc_collect() {
     gc::collect();
+}
+
+/// Returns a snapshot of GC telemetry counters and current heap state.
+#[no_mangle]
+pub extern "C" fn draton_gc_stats() -> DratonGcStats {
+    export_gc_stats(gc::stats())
+}
+
+/// Resets GC telemetry counters without changing the current heap contents.
+#[no_mangle]
+pub extern "C" fn draton_gc_reset_stats() {
+    gc::reset_stats();
 }
 
 /// Pins an object so it is not moved by collection.
