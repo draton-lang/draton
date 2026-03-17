@@ -86,6 +86,40 @@ fn write_barrier_tracks_old_to_young_reference() {
     gc::release(parent);
 }
 
+#[test]
+fn write_barrier_deduplicates_same_parent_until_minor_gc() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::register_type(31, (gc::LARGE_OBJECT_THRESHOLD + 128) as u32, &[0]);
+    gc::register_type(32, 8, &[]);
+
+    let parent = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 128, 31);
+    gc::protect(parent);
+    let parent_hdr = gc::header_of(parent).expect("parent header");
+    assert_ne!(parent_hdr.gc_flags & GC_OLD, 0, "parent must be in old gen");
+
+    gc::reset_stats();
+
+    let child_a = gc::alloc(8, 32);
+    let child_b = gc::alloc(8, 32);
+    gc::write_barrier(parent, std::ptr::null_mut(), child_a);
+    gc::write_barrier(parent, std::ptr::null_mut(), child_b);
+
+    let stats = gc::stats();
+    assert_eq!(
+        stats.write_barrier_slow_calls, 1,
+        "the same dirty parent should be remembered once until minor GC clears its card: {stats:?}"
+    );
+    assert_eq!(
+        stats.remembered_set_entries_added, 1,
+        "deduplicated remembered-set insertion should only count the first parent add: {stats:?}"
+    );
+
+    gc::collect();
+    gc::release(parent);
+}
+
 // ── Promotion ─────────────────────────────────────────────────────────────────
 
 /// An object that survives enough minor GC cycles must be promoted to old gen.

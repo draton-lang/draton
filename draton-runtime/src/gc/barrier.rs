@@ -39,9 +39,11 @@ impl GcRuntime {
 
         // Slow path ①: old→young pointer — record it for minor GC.
         if child_is_young {
-            heap.remembered_set.push(parent_addr);
-            heap.card_table.mark_dirty(parent_addr);
-            self.telemetry.record_write_barrier_slow();
+            if heap.remembered_set.last().copied() != Some(parent_addr) {
+                heap.remembered_set.push(parent_addr);
+                heap.card_table.mark_dirty(parent_addr);
+                self.telemetry.record_write_barrier_slow();
+            }
         }
 
         // Slow path ②: incremental-update barrier for active major marking.
