@@ -29,15 +29,14 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install LLVM 14
+      - name: Install LLVM 14 and OCaml
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y llvm-14 llvm-14-dev clang-14
-
-      - name: Set up OCaml
-        uses: ocaml/setup-ocaml@v3
-        with:
-          ocaml-compiler: "5.2"
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends llvm-14 llvm-14-dev clang-14 ocaml-nox ocaml-native-compilers
+          ocamlopt -version
 
       - name: Configure LLVM environment
         shell: bash
