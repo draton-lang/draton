@@ -204,9 +204,10 @@ pub struct HeapState {
     pub config: GcConfig,
 
     // ── Young generation ──────────────────────────────────────────────────────
+    /// Bump-pointer allocation arena for new objects.
+    /// All surviving young objects are promoted to old gen on minor GC, so
+    /// the arena fully resets after every collection — O(live) collection cost.
     pub young: YoungArena,
-    // young_index removed: membership is tested via young.contains_ptr() (pointer
-    // arithmetic), aligned size is derived from the in-arena ObjHeader.
 
     // ── Old generation ────────────────────────────────────────────────────────
     /// Payload address → Box<[u8]> (ObjHeader + payload).

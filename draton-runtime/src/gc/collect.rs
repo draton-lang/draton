@@ -71,12 +71,14 @@ impl GcRuntime {
 
     /// Collect unreachable young-generation objects.
     ///
-    /// Algorithm:
+    /// Algorithm (promote-all-survivors):
     /// 1. Seed mark stack from roots that are in the young gen.
-    /// 2. Trace through remembered_set (old objects pointing into young gen).
-    /// 3. Mark all reachable young objects.
-    /// 4. Sweep: remove unreachable young objects from the index.
-    /// 5. If young_index is empty after sweep: reset the bump pointer.
+    /// 2. Trace through remembered_set (old→young cross-gen pointers).
+    /// 3. Mark all reachable young objects (transitive closure).
+    /// 4. Linear arena scan: promote ALL marked/pinned young objects to old gen;
+    ///    dead objects are simply skipped (no per-object free-list work).
+    /// 5. Arena fully resets after every collection (live_count drops to 0),
+    ///    giving O(live) copy work and O(1) dead-object reclamation.
     pub fn collect_minor(&self) {
         let Ok(mut heap) = self.heap.lock() else { return };
         heap.minor_cycles = heap.minor_cycles.saturating_add(1);
@@ -135,10 +137,10 @@ impl GcRuntime {
             }
         }
 
-        // Phase 4: age live young objects; sweep dead ones via linear arena scan.
-        // This replaces the old young_index.keys() iteration with a cache-friendly
-        // walk of the bump-pointer buffer — O(bump) instead of O(HashMap entries).
-        let promotion_age = heap.config.promotion_age;
+        // Phase 4: linear arena scan — promote ALL live young objects to old gen;
+        // dead objects are skipped (bump-pointer arena has no free list).
+        // After promoting every survivor, live_count drops to 0 and the arena
+        // resets completely → O(live) copy work + O(1) dead-object reclamation.
         let mut dead_bytes = 0usize;
         let mut dead_count = 0usize;
         let mut promoted: Vec<(usize, usize)> = Vec::new(); // (payload_addr, size)
@@ -154,23 +156,10 @@ impl GcRuntime {
             let payload_addr = unsafe { heap.young.buffer.as_ptr().add(offset + HEADER) } as usize;
 
             if hdr.gc_flags & GC_MARKED != 0 || hdr.gc_flags & GC_PINNED != 0 {
-                // Alive: clear mark bit, increment age.
-                let mut new_hdr = hdr;
-                new_hdr.gc_flags &= !GC_MARKED;
-                new_hdr.age = new_hdr.age.saturating_add(1);
-                if new_hdr.age >= promotion_age {
-                    promoted.push((payload_addr, size));
-                    // Header will be rewritten at actual promotion time below.
-                } else {
-                    unsafe {
-                        std::ptr::write(
-                            heap.young.buffer.as_mut_ptr().add(offset) as *mut ObjHeader,
-                            new_hdr,
-                        );
-                    }
-                }
+                // Alive: promote to old gen unconditionally.
+                promoted.push((payload_addr, size));
             } else {
-                // Dead: account for reclaimed bytes.
+                // Dead: account for reclaimed bytes (arena resets, no per-object free).
                 dead_bytes += aligned;
                 dead_count += 1;
             }
@@ -183,14 +172,15 @@ impl GcRuntime {
         // Dead objects are accounted for already (dead_bytes/dead_count above).
         // No per-object cleanup needed since young arena is bump-pointer (no free list).
 
-        // Promote long-lived young objects to old gen by copying to a Box<[u8]>.
+        // Promote all surviving young objects to old gen by copying to a Box<[u8]>.
         for (addr, size) in promoted {
             let ptr = addr as *mut u8;
             let hdr = unsafe { heap.young.read_header(ptr) };
             let total = HEADER + size;
             let aligned = (HEADER + size + 7) & !7;
             let mut bytes = vec![0u8; total].into_boxed_slice();
-            let new_hdr = ObjHeader { gc_flags: GC_OLD, age: hdr.age, ..hdr };
+            // Clear mark bit, set GC_OLD; keep age for diagnostic purposes.
+            let new_hdr = ObjHeader { gc_flags: GC_OLD | (hdr.gc_flags & GC_PINNED), age: hdr.age, ..hdr };
             unsafe {
                 std::ptr::write(bytes.as_mut_ptr().cast::<ObjHeader>(), new_hdr);
                 std::ptr::copy_nonoverlapping(ptr, bytes.as_mut_ptr().add(HEADER), size);
