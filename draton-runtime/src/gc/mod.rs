@@ -151,9 +151,9 @@ pub fn alloc(size: usize, type_id: u16) -> *mut u8 {
     // ── Fast path: lock-free per-thread young-gen bump ────────────────────────
     let large_threshold = rt.large_threshold.load(Ordering::Relaxed);
     if size < large_threshold {
-        if let Some(payload) = rt.pool.try_alloc(size, type_id) {
+        if let Some((payload, crossed_nearly_full)) = rt.pool.try_alloc(size, type_id) {
             rt.telemetry.record_young_alloc(aligned);
-            if rt.pool.current_slot_nearly_full() {
+            if crossed_nearly_full {
                 signal_gc_flag();
             }
             return payload;
@@ -163,7 +163,7 @@ pub fn alloc(size: usize, type_id: u16) -> *mut u8 {
         rt.collect_minor();
         assist_major_work_if_requested(&rt);
 
-        if let Some(payload) = rt.pool.try_alloc(size, type_id) {
+        if let Some((payload, _)) = rt.pool.try_alloc(size, type_id) {
             rt.telemetry.record_young_alloc(aligned);
             return payload;
         }

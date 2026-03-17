@@ -225,10 +225,12 @@ impl GcRuntime {
         }
 
         // Phase 6: fix up stale pointers in shadow stack and remembered-set parents.
-        unsafe {
-            fix_shadow_stack_slots(&heap);
+        if !heap.young_forwarding.is_empty() {
+            unsafe {
+                fix_shadow_stack_slots(&heap);
+            }
+            fix_old_gen_fields(&mut heap, &rs_snapshot);
         }
-        fix_old_gen_fields(&mut heap, &rs_snapshot);
 
         // Phase 7: reset all pool slots (all survivors are in old gen now).
         self.pool.reset_all();

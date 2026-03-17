@@ -167,7 +167,7 @@ impl YoungPool {
     }
 
     /// Lock-free bump allocation in the calling thread's private arena.
-    pub fn try_alloc(&self, size: usize, type_id: u16) -> Option<*mut u8> {
+    pub fn try_alloc(&self, size: usize, type_id: u16) -> Option<(*mut u8, bool)> {
         let idx = self.current_slot_idx();
         let arena = &self.slots[idx];
         let aligned = (HEADER + size + 7) & !7;
@@ -187,7 +187,13 @@ impl YoungPool {
             );
         }
         arena.live_count.fetch_add(1, Ordering::Relaxed);
-        Some(base.wrapping_add(old + HEADER) as *mut u8)
+        let nearly_full_before = old >= self.per_thread_size.saturating_sub(self.per_thread_size / 10);
+        let nearly_full_after =
+            old + aligned >= self.per_thread_size.saturating_sub(self.per_thread_size / 10);
+        Some((
+            base.wrapping_add(old + HEADER) as *mut u8,
+            !nearly_full_before && nearly_full_after,
+        ))
     }
 
     /// True when `ptr` is the payload of a live (not-yet-reset) object in
