@@ -632,16 +632,10 @@ impl<'ctx> CodeGen<'ctx> {
             &args.iter().map(|arg| arg.ty.clone()).collect::<Vec<_>>(),
         )?;
         if symbol == "print" || symbol == "println" {
-            let value = args
-                .first()
-                .ok_or_else(|| {
-                    CodeGenError::UnsupportedExpr(format!("{symbol} requires one argument"))
-                })
-                .and_then(|arg| {
-                    self.emit_expr(arg)?.ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr(format!("{symbol} arg missing value"))
-                    })
-                })?;
+            let arg = args.first().ok_or_else(|| {
+                CodeGenError::UnsupportedExpr(format!("{symbol} requires one argument"))
+            })?;
+            let value = self.emit_coerce_to_string(arg)?;
             let function = self
                 .module
                 .get_function("draton_print")
@@ -689,6 +683,145 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         self.emit_safepoint_poll()?;
         Ok(call.try_as_basic_value().left())
+    }
+
+    fn emit_coerce_to_string(
+        &mut self,
+        arg: &TypedExpr,
+    ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
+        match &arg.ty {
+            Type::String => self.emit_expr(arg)?.ok_or_else(|| {
+                CodeGenError::UnsupportedExpr("print string arg missing value".to_string())
+            }),
+            Type::Int
+            | Type::Int8
+            | Type::Int16
+            | Type::Int32
+            | Type::Int64
+            | Type::UInt8
+            | Type::UInt16
+            | Type::UInt32
+            | Type::UInt64 => {
+                let fn_int_to_str = self
+                    .module
+                    .get_function("draton_int_to_string")
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_int_to_string".to_string())
+                    })?;
+                let val = self
+                    .emit_expr(arg)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("print int arg missing value".to_string())
+                    })?
+                    .into_int_value();
+                let i64_val = if val.get_type().get_bit_width() < 64 {
+                    self.builder
+                        .build_int_s_extend(val, self.context.i64_type(), "sext")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                } else {
+                    val
+                };
+                self.builder
+                    .build_call(fn_int_to_str, &[i64_val.into()], "int.to_string")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "int_to_string returned void".to_string(),
+                        )
+                    })
+            }
+            Type::Bool => {
+                let val = self
+                    .emit_expr(arg)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("print bool arg missing value".to_string())
+                    })?
+                    .into_int_value();
+                let true_str = self.emit_string_literal("true")?;
+                let false_str = self.emit_string_literal("false")?;
+                self.builder
+                    .build_select(val, true_str, false_str, "bool.to_string")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))
+            }
+            Type::Float | Type::Float64 => {
+                if self
+                    .module
+                    .get_function("__draton_std_float_to_string")
+                    .is_none()
+                {
+                    self.module.add_function(
+                        "__draton_std_float_to_string",
+                        self.string_type
+                            .fn_type(&[self.context.f64_type().into()], false),
+                        None,
+                    );
+                }
+                let fn_float_to_str = self
+                    .module
+                    .get_function("__draton_std_float_to_string")
+                    .unwrap();
+                let val = self
+                    .emit_expr(arg)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("print float arg missing value".to_string())
+                    })?;
+                self.builder
+                    .build_call(fn_float_to_str, &[val.into()], "float.to_string")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "float_to_string returned void".to_string(),
+                        )
+                    })
+            }
+            Type::Float32 => {
+                if self
+                    .module
+                    .get_function("__draton_std_float_to_string")
+                    .is_none()
+                {
+                    self.module.add_function(
+                        "__draton_std_float_to_string",
+                        self.string_type
+                            .fn_type(&[self.context.f64_type().into()], false),
+                        None,
+                    );
+                }
+                let fn_float_to_str = self
+                    .module
+                    .get_function("__draton_std_float_to_string")
+                    .unwrap();
+                let val = self
+                    .emit_expr(arg)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "print float32 arg missing value".to_string(),
+                        )
+                    })?
+                    .into_float_value();
+                let f64_val = self
+                    .builder
+                    .build_float_ext(val, self.context.f64_type(), "fpext")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                self.builder
+                    .build_call(fn_float_to_str, &[f64_val.into()], "float32.to_string")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr(
+                            "float32_to_string returned void".to_string(),
+                        )
+                    })
+            }
+            _ => self.emit_expr(arg)?.ok_or_else(|| {
+                CodeGenError::UnsupportedExpr("print arg missing value".to_string())
+            }),
+        }
     }
 
     fn emit_class_literal_call(
