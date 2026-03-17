@@ -8,6 +8,7 @@ pub mod stats;
 
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
 
 use config::GcConfig;
 pub use heap::{GcRuntime, HeapSpace, ObjHeader, CARD_BYTES};
@@ -74,6 +75,7 @@ fn runtime() -> Arc<GcRuntime> {
         return Arc::clone(rt);
     }
     let rt = Arc::new(GcRuntime::new(GcConfig::default()));
+    GcRuntime::start_major_worker(&rt);
     *guard = Some(Arc::clone(&rt));
     rt
 }
@@ -96,7 +98,9 @@ pub fn shutdown() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
-    *guard = None;
+    if let Some(rt) = guard.take() {
+        rt.stop_major_worker();
+    }
 }
 
 /// Applies a new configuration to the GC.
@@ -330,6 +334,7 @@ fn request_major_work_for_reason(rt: &GcRuntime, reason: MajorWorkReason, desire
     let budget = raise_major_work_budget(rt, desired_budget);
     rt.telemetry.record_major_work_budget_peak(budget);
     rt.major_work_requested.store(true, Ordering::Release);
+    rt.major_worker_signal.notify_one();
     signal_gc_flag();
 }
 
@@ -370,6 +375,72 @@ fn try_take_major_work_budget(rt: &GcRuntime) -> bool {
         }
     }
     false
+}
+
+impl GcRuntime {
+    fn start_major_worker(this: &Arc<Self>) {
+        if this.major_worker_running.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        this.major_worker_stop.store(false, Ordering::Release);
+        let weak = Arc::downgrade(this);
+        let handle = thread::Builder::new()
+            .name("draton-gc-major".to_string())
+            .spawn(move || major_worker_loop(weak))
+            .expect("failed to spawn draton gc major worker");
+        let mut slot = match this.major_worker_handle.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        *slot = Some(handle);
+    }
+
+    fn stop_major_worker(&self) {
+        self.major_worker_stop.store(true, Ordering::Release);
+        self.major_worker_signal.notify_all();
+        let mut slot = match self.major_worker_handle.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        if let Some(handle) = slot.take() {
+            let _ = handle.join();
+        }
+        self.major_worker_running.store(false, Ordering::Release);
+    }
+}
+
+fn major_worker_loop(weak: std::sync::Weak<GcRuntime>) {
+    loop {
+        let Some(rt) = weak.upgrade() else {
+            break;
+        };
+
+        let mut guard = match rt.major_worker_lock.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        while !rt.major_worker_stop.load(Ordering::Acquire)
+            && rt.major_work_budget.load(Ordering::Acquire) == 0
+        {
+            guard = match rt.major_worker_signal.wait(guard) {
+                Ok(g) => g,
+                Err(p) => p.into_inner(),
+            };
+        }
+        let should_stop = rt.major_worker_stop.load(Ordering::Acquire);
+        drop(guard);
+        if should_stop {
+            break;
+        }
+
+        while try_take_major_work_budget(&rt) {
+            rt.telemetry.record_major_background_slice();
+            rt.collect_major_slice();
+            if rt.major_worker_stop.load(Ordering::Acquire) {
+                break;
+            }
+        }
+    }
 }
 
 // ── Safepoint slow path ────────────────────────────────────────────────────────

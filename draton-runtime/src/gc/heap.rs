@@ -2,7 +2,8 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex};
+use std::thread::JoinHandle;
 
 use super::config::GcConfig;
 use super::stats::GcTelemetry;
@@ -841,6 +842,11 @@ pub struct GcRuntime {
     pub major_work_budget: AtomicUsize,
     pub major_work_requested: AtomicBool,
     pub major_mark_active: AtomicBool,
+    pub major_worker_running: AtomicBool,
+    pub major_worker_stop: AtomicBool,
+    pub major_worker_signal: Condvar,
+    pub major_worker_lock: Mutex<()>,
+    pub major_worker_handle: Mutex<Option<JoinHandle<()>>>,
     pub telemetry: GcTelemetry,
 }
 
@@ -853,6 +859,11 @@ impl GcRuntime {
             major_work_budget: AtomicUsize::new(0),
             major_work_requested: AtomicBool::new(false),
             major_mark_active: AtomicBool::new(false),
+            major_worker_running: AtomicBool::new(false),
+            major_worker_stop: AtomicBool::new(false),
+            major_worker_signal: Condvar::new(),
+            major_worker_lock: Mutex::new(()),
+            major_worker_handle: Mutex::new(None),
             pool: YoungPool::new(config.young_size),
             heap: Mutex::new(HeapState::new(config)),
             telemetry: GcTelemetry::new(),

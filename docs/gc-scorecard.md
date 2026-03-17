@@ -28,6 +28,7 @@ The baseline report tracks these metrics:
 - active-cycle continuation request signals
 - major-mutator assists when an allocation slow path, including young refills,
   helps drain pending major work
+- background major-worker slices drained without an explicit mutator assist
 - current pending major-slice budget in the runtime control plane
 - peak queued major-slice budget seen during the current telemetry window
 - whether major work is currently requested at the time the snapshot is taken
@@ -66,6 +67,8 @@ Current baseline assumptions:
 - the runtime now tracks an explicit major-slice budget, so safepoints and
   mutator assists consume the same queue of pending major work instead of
   relying only on a boolean request flag
+- a background major worker can now drain that same budget even when the
+  mutator stops allocating after triggering a major cycle
 - major-work requests now raise that queue to an adaptive target based on
   threshold pressure or the current major-GC phase backlog, instead of blindly
   adding one slice per request signal
@@ -89,6 +92,10 @@ slice.
 
 The `major_mutator_assists` metric counts slow-path allocations that helped run
 one pending major-GC slice immediately instead of waiting for a later poll.
+
+The `major_background_slices` metric counts slices drained by the background
+major worker. Rising values here mean the collector is making forward progress
+without needing another explicit mutator assist.
 
 The `major_work_budget` metric is the current number of queued major slices in
 that control plane. It should drop back to zero when the runtime returns to an

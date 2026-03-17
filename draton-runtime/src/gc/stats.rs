@@ -29,6 +29,7 @@ pub struct GcStats {
     pub major_work_threshold_requests: u64,
     pub major_work_continuation_requests: u64,
     pub major_mutator_assists: u64,
+    pub major_background_slices: u64,
     pub major_work_budget: usize,
     pub major_work_budget_peak: usize,
     pub major_work_requested: bool,
@@ -75,6 +76,7 @@ pub struct GcTelemetry {
     major_work_threshold_requests: AtomicU64,
     major_work_continuation_requests: AtomicU64,
     major_mutator_assists: AtomicU64,
+    major_background_slices: AtomicU64,
     major_work_budget_peak: AtomicU64,
     safepoint_rearms: AtomicU64,
     major_mark_barrier_traces: AtomicU64,
@@ -112,6 +114,7 @@ impl GcTelemetry {
             major_work_threshold_requests: AtomicU64::new(0),
             major_work_continuation_requests: AtomicU64::new(0),
             major_mutator_assists: AtomicU64::new(0),
+            major_background_slices: AtomicU64::new(0),
             major_work_budget_peak: AtomicU64::new(0),
             safepoint_rearms: AtomicU64::new(0),
             major_mark_barrier_traces: AtomicU64::new(0),
@@ -149,6 +152,7 @@ impl GcTelemetry {
             &self.major_work_threshold_requests,
             &self.major_work_continuation_requests,
             &self.major_mutator_assists,
+            &self.major_background_slices,
             &self.major_work_budget_peak,
             &self.safepoint_rearms,
             &self.major_mark_barrier_traces,
@@ -271,6 +275,11 @@ impl GcTelemetry {
     }
 
     #[inline]
+    pub fn record_major_background_slice(&self) {
+        self.major_background_slices.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
     pub fn record_major_work_budget_peak(&self, budget: usize) {
         let _ = self
             .major_work_budget_peak
@@ -320,6 +329,7 @@ impl GcTelemetry {
                 .major_work_continuation_requests
                 .load(Ordering::Relaxed),
             major_mutator_assists: self.major_mutator_assists.load(Ordering::Relaxed),
+            major_background_slices: self.major_background_slices.load(Ordering::Relaxed),
             major_work_budget: runtime.major_work_budget.load(Ordering::Acquire),
             major_work_budget_peak: self.major_work_budget_peak.load(Ordering::Relaxed) as usize,
             major_work_requested: runtime.major_work_requested.load(Ordering::Acquire),

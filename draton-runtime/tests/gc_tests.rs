@@ -1,5 +1,7 @@
 use std::sync::atomic::Ordering;
 use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use draton_runtime::gc;
 use draton_runtime::gc::heap::{GC_MARKED, GC_OLD, GC_PINNED};
@@ -693,6 +695,58 @@ fn young_refill_assists_requested_major_work() {
     assert!(
         after_refill.major_slices >= 1,
         "young refill assist should execute at least one major slice: {after_refill:?}"
+    );
+
+    for ptr in roots {
+        gc::release(ptr);
+    }
+    gc::collect();
+}
+
+#[test]
+fn background_major_worker_drains_requested_work() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 128 * 1024,
+        old_size: 512 * 1024,
+        gc_threshold: 0.05,
+        pause_target_ns: 1_000,
+        ..gc::config::GcConfig::default()
+    });
+    gc::reset_stats();
+
+    let mut roots = Vec::new();
+    for _ in 0..20_000 {
+        let ptr = gc::alloc(64, 21);
+        gc::protect(ptr);
+        roots.push(ptr);
+    }
+
+    let before_wait = gc::stats();
+    assert!(
+        before_wait.major_work_requested || before_wait.major_phase != 0,
+        "setup should leave background-drainable major work pending: {before_wait:?}"
+    );
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut after_wait = before_wait;
+    while Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(10));
+        after_wait = gc::stats();
+        if after_wait.major_background_slices > before_wait.major_background_slices {
+            break;
+        }
+    }
+
+    assert!(
+        after_wait.major_background_slices > before_wait.major_background_slices,
+        "background worker should drain at least one major slice without an explicit safepoint or new allocation: before={before_wait:?} after={after_wait:?}"
+    );
+    assert!(
+        after_wait.major_slices >= after_wait.major_background_slices,
+        "background slices should contribute to total major slice progress: {after_wait:?}"
     );
 
     for ptr in roots {
