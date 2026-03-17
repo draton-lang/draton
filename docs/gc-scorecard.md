@@ -68,7 +68,8 @@ Current baseline assumptions:
   mutator assists consume the same queue of pending major work instead of
   relying only on a boolean request flag
 - a background major worker can now drain that same budget even when the
-  mutator stops allocating after triggering a major cycle
+  mutator stops allocating after the mutator or safepoint path has already
+  started a major cycle
 - major-work requests now raise that queue to an adaptive target based on
   threshold pressure or the current major-GC phase backlog, instead of blindly
   adding one slice per request signal
@@ -94,8 +95,10 @@ The `major_mutator_assists` metric counts slow-path allocations that helped run
 one pending major-GC slice immediately instead of waiting for a later poll.
 
 The `major_background_slices` metric counts slices drained by the background
-major worker. Rising values here mean the collector is making forward progress
-without needing another explicit mutator assist.
+major worker after a major cycle is already active. Rising values here mean the
+collector is making forward progress without needing another explicit mutator
+assist, not that it is allowed to begin a new root-scanning cycle entirely on
+its own.
 
 The `major_work_budget` metric is the current number of queued major slices in
 that control plane. It should drop back to zero when the runtime returns to an

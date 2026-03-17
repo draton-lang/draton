@@ -729,6 +729,12 @@ fn background_major_worker_drains_requested_work() {
         before_wait.major_work_requested || before_wait.major_phase != 0,
         "setup should leave background-drainable major work pending: {before_wait:?}"
     );
+    gc::safepoint();
+    let before_wait = gc::stats();
+    assert_ne!(
+        before_wait.major_phase, 0,
+        "background worker must only continue a major cycle that the mutator or safepoint path has already started: {before_wait:?}"
+    );
 
     let deadline = Instant::now() + Duration::from_secs(2);
     let mut after_wait = before_wait;

@@ -334,7 +334,9 @@ fn request_major_work_for_reason(rt: &GcRuntime, reason: MajorWorkReason, desire
     let budget = raise_major_work_budget(rt, desired_budget);
     rt.telemetry.record_major_work_budget_peak(budget);
     rt.major_work_requested.store(true, Ordering::Release);
-    rt.major_worker_signal.notify_one();
+    if matches!(reason, MajorWorkReason::Continuation) {
+        rt.major_worker_signal.notify_one();
+    }
     signal_gc_flag();
 }
 
@@ -420,7 +422,8 @@ fn major_worker_loop(weak: std::sync::Weak<GcRuntime>) {
             Err(p) => p.into_inner(),
         };
         while !rt.major_worker_stop.load(Ordering::Acquire)
-            && rt.major_work_budget.load(Ordering::Acquire) == 0
+            && (rt.major_work_budget.load(Ordering::Acquire) == 0
+                || !background_major_cycle_active(&rt))
         {
             guard = match rt.major_worker_signal.wait(guard) {
                 Ok(g) => g,
@@ -433,7 +436,7 @@ fn major_worker_loop(weak: std::sync::Weak<GcRuntime>) {
             break;
         }
 
-        while try_take_major_work_budget(&rt) {
+        while background_major_cycle_active(&rt) && try_take_major_work_budget(&rt) {
             rt.telemetry.record_major_background_slice();
             rt.collect_major_slice();
             if rt.major_worker_stop.load(Ordering::Acquire) {
@@ -441,6 +444,14 @@ fn major_worker_loop(weak: std::sync::Weak<GcRuntime>) {
             }
         }
     }
+}
+
+fn background_major_cycle_active(rt: &GcRuntime) -> bool {
+    let heap = match rt.heap.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    heap.major_phase != MajorPhase::Idle
 }
 
 // ── Safepoint slow path ────────────────────────────────────────────────────────
