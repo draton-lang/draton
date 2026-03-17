@@ -29,10 +29,15 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install LLVM 14 and OCaml
+      - name: Install LLVM 14
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm-14 llvm-14-dev clang-14 ocaml-nox ocaml-native-compilers
+          sudo apt-get install -y llvm-14 llvm-14-dev clang-14
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.2"
 
       - name: Configure LLVM environment
         shell: bash
