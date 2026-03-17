@@ -559,6 +559,7 @@ pub fn protect(obj: *mut u8) {
         Err(p) => p.into_inner(),
     };
     heap.protect(obj);
+    heap.trace_protected_during_major_mark(&rt.pool, obj);
 }
 
 pub fn release(obj: *mut u8) {

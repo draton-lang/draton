@@ -190,7 +190,13 @@ impl GcRuntime {
             let hdr = unsafe { self.pool.read_header(ptr) };
             let aligned = (HEADER + size + 7) & !7;
             let new_hdr = ObjHeader {
-                gc_flags: GC_OLD | (hdr.gc_flags & GC_PINNED),
+                gc_flags: GC_OLD
+                    | (hdr.gc_flags & GC_PINNED)
+                    | if heap.major_phase == MajorPhase::Mark {
+                        GC_MARKED
+                    } else {
+                        0
+                    },
                 age: hdr.age.saturating_add(1),
                 ..hdr
             };
@@ -212,6 +218,9 @@ impl GcRuntime {
             heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
             heap.live_bytes += aligned;
             heap.young_forwarding.insert(addr, new_payload_addr);
+            if heap.major_phase == MajorPhase::Mark {
+                heap.mark_stack.push(new_payload_addr);
+            }
             promoted_bytes += aligned;
         }
 

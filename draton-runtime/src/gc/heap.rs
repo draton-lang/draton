@@ -654,7 +654,12 @@ impl HeapState {
 
     pub(crate) fn alloc_old(&mut self, size: usize, type_id: u16) -> *mut u8 {
         let aligned = (HEADER + size + 7) & !7;
-        let payload = self.old.alloc(size, GC_OLD, type_id);
+        let flags = if self.major_phase == MajorPhase::Mark {
+            GC_OLD | GC_MARKED
+        } else {
+            GC_OLD
+        };
+        let payload = self.old.alloc(size, flags, type_id);
         if !payload.is_null() {
             self.live_bytes += aligned;
             self.old_bytes += aligned;
@@ -667,7 +672,12 @@ impl HeapState {
         let mut bytes = self
             .take_large_free_block(total)
             .unwrap_or_else(|| vec![0u8; total].into_boxed_slice());
-        let hdr = ObjHeader::new(size as u32, type_id, GC_OLD | GC_LARGE);
+        let flags = if self.major_phase == MajorPhase::Mark {
+            GC_OLD | GC_LARGE | GC_MARKED
+        } else {
+            GC_OLD | GC_LARGE
+        };
+        let hdr = ObjHeader::new(size as u32, type_id, flags);
         unsafe {
             ptr::write(bytes.as_mut_ptr().cast::<ObjHeader>(), hdr);
         }
@@ -771,6 +781,49 @@ impl HeapState {
         let addr = payload as usize;
         let canonical = self.young_forwarding.get(&addr).copied().unwrap_or(addr);
         *self.roots.entry(canonical).or_insert(0) += 1;
+    }
+
+    pub fn trace_protected_during_major_mark(&mut self, pool: &YoungPool, payload: *mut u8) -> bool {
+        if self.major_phase != MajorPhase::Mark {
+            return false;
+        }
+
+        let addr = payload as usize;
+        let canonical = self.young_forwarding.get(&addr).copied().unwrap_or(addr);
+        let ptr = canonical as *mut u8;
+        if ptr.is_null() || pool.contains_ptr(ptr as *const u8) {
+            return false;
+        }
+
+        if self.old.contains_ptr(ptr as *const u8) {
+            let hdr_ptr = (canonical - HEADER) as *mut ObjHeader;
+            unsafe {
+                let mut hdr = ptr::read(hdr_ptr);
+                if hdr.gc_flags & (GC_FREE | GC_MARKED) != 0 {
+                    return false;
+                }
+                hdr.gc_flags |= GC_MARKED;
+                ptr::write(hdr_ptr, hdr);
+            }
+            self.mark_stack.push(canonical);
+            return true;
+        }
+
+        if let Some(bytes) = self.large_objects.get_mut(&canonical) {
+            let hdr_ptr = bytes.as_mut_ptr().cast::<ObjHeader>();
+            unsafe {
+                let mut hdr = ptr::read(hdr_ptr);
+                if hdr.gc_flags & GC_MARKED != 0 {
+                    return false;
+                }
+                hdr.gc_flags |= GC_MARKED;
+                ptr::write(hdr_ptr, hdr);
+            }
+            self.mark_stack.push(canonical);
+            return true;
+        }
+
+        false
     }
 
     pub fn release(&mut self, payload: *mut u8) {

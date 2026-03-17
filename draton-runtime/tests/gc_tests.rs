@@ -4,7 +4,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use draton_runtime::gc;
-use draton_runtime::gc::heap::{GC_MARKED, GC_OLD, GC_PINNED};
+use draton_runtime::gc::heap::{ObjHeader, GC_MARKED, GC_OLD, GC_PINNED, HEADER};
 
 fn gc_test_guard() -> MutexGuard<'static, ()> {
     static GC_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -458,6 +458,239 @@ fn major_mark_barrier_traces_new_old_edge_from_marked_parent() {
         "incremental-update major barrier should keep a newly linked old child alive"
     );
 
+    gc::release(parent);
+}
+
+#[test]
+fn protected_old_object_is_traced_when_added_during_active_mark() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 1024,
+        old_size: 64 * 1024,
+        gc_threshold: 0.01,
+        pause_target_ns: 1,
+        ..gc::config::GcConfig::default()
+    });
+    gc::register_type(24, 8, &[0]);
+    gc::register_type(25, (gc::LARGE_OBJECT_THRESHOLD + 128) as u32, &[0]);
+    gc::reset_stats();
+
+    let parent = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 128, 25);
+    gc::protect(parent);
+
+    let mut chain = Vec::new();
+    for _ in 0..8000 {
+        let ptr = gc::alloc(8, 24);
+        gc::protect(ptr);
+        chain.push(ptr);
+    }
+    for index in 0..chain.len() - 1 {
+        unsafe {
+            write_ptr_field(chain[index], chain[index + 1]);
+        }
+    }
+    unsafe {
+        write_ptr_field(parent, chain[0]);
+    }
+    gc::write_barrier(parent, std::ptr::null_mut(), chain[0]);
+
+    while gc::header_of(chain[0])
+        .map(|hdr| hdr.gc_flags & GC_OLD == 0)
+        .unwrap_or(true)
+    {
+        let _ = gc::alloc(8, 24);
+    }
+    for ptr in &chain {
+        gc::release(*ptr);
+    }
+
+    gc::safepoint();
+    let after_first_slice = gc::stats();
+    assert_eq!(
+        after_first_slice.major_phase, 1,
+        "setup should leave the collector in mark phase: {after_first_slice:?}"
+    );
+
+    let victim = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 128, 25);
+    let mut victim_before = gc::header_of(victim).expect("victim header before protect");
+    victim_before.gc_flags &= !GC_MARKED;
+    unsafe {
+        std::ptr::write(victim.sub(HEADER).cast::<ObjHeader>(), victim_before);
+    }
+    let victim_before = gc::header_of(victim).expect("victim header before protect");
+    assert_eq!(
+        victim_before.gc_flags & GC_MARKED,
+        0,
+        "test setup should force the victim white before protect() during mark"
+    );
+
+    gc::protect(victim);
+    let victim_after = gc::header_of(victim).expect("victim header after protect");
+    assert_ne!(
+        victim_after.gc_flags & GC_MARKED,
+        0,
+        "protect() during mark should trace and blacken the protected old object"
+    );
+
+    gc::collect();
+    assert!(
+        gc::header_of(victim).is_some(),
+        "object protected during active major mark must survive the cycle"
+    );
+
+    gc::release(victim);
+    gc::release(parent);
+}
+
+#[test]
+fn large_allocation_during_active_mark_is_born_marked() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 1024,
+        old_size: 64 * 1024,
+        gc_threshold: 0.01,
+        pause_target_ns: 1,
+        ..gc::config::GcConfig::default()
+    });
+    gc::register_type(26, 8, &[0]);
+    gc::register_type(27, (gc::LARGE_OBJECT_THRESHOLD + 128) as u32, &[0]);
+    gc::reset_stats();
+
+    let parent = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 128, 27);
+    gc::protect(parent);
+
+    let mut chain = Vec::new();
+    for _ in 0..8000 {
+        let ptr = gc::alloc(8, 26);
+        gc::protect(ptr);
+        chain.push(ptr);
+    }
+    for index in 0..chain.len() - 1 {
+        unsafe {
+            write_ptr_field(chain[index], chain[index + 1]);
+        }
+    }
+    unsafe {
+        write_ptr_field(parent, chain[0]);
+    }
+    gc::write_barrier(parent, std::ptr::null_mut(), chain[0]);
+
+    while gc::header_of(chain[0])
+        .map(|hdr| hdr.gc_flags & GC_OLD == 0)
+        .unwrap_or(true)
+    {
+        let _ = gc::alloc(8, 26);
+    }
+    for ptr in &chain {
+        gc::release(*ptr);
+    }
+
+    gc::safepoint();
+    let after_first_slice = gc::stats();
+    assert_eq!(
+        after_first_slice.major_phase, 1,
+        "setup should leave the collector in mark phase: {after_first_slice:?}"
+    );
+
+    let late = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 256, 27);
+    gc::protect(late);
+    let late_hdr = gc::header_of(late).expect("late allocation header");
+    assert_ne!(
+        late_hdr.gc_flags & GC_MARKED,
+        0,
+        "old/large allocations created during mark must be born marked"
+    );
+
+    gc::collect();
+    assert!(
+        gc::header_of(late).is_some(),
+        "large allocation born during active mark must survive the same cycle"
+    );
+
+    gc::release(late);
+    gc::release(parent);
+}
+
+#[test]
+fn promoted_survivor_during_active_mark_is_born_marked() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 1024,
+        old_size: 128 * 1024,
+        gc_threshold: 0.01,
+        pause_target_ns: 1,
+        ..gc::config::GcConfig::default()
+    });
+    gc::register_type(28, 8, &[]);
+    gc::register_type(29, 8, &[0]);
+    gc::register_type(30, (gc::LARGE_OBJECT_THRESHOLD + 128) as u32, &[0]);
+    gc::reset_stats();
+
+    let parent = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 128, 30);
+    gc::protect(parent);
+
+    let mut chain = Vec::new();
+    for _ in 0..8000 {
+        let ptr = gc::alloc(8, 29);
+        gc::protect(ptr);
+        chain.push(ptr);
+    }
+    for index in 0..chain.len() - 1 {
+        unsafe {
+            write_ptr_field(chain[index], chain[index + 1]);
+        }
+    }
+    unsafe {
+        write_ptr_field(parent, chain[0]);
+    }
+    gc::write_barrier(parent, std::ptr::null_mut(), chain[0]);
+
+    while gc::header_of(chain[0])
+        .map(|hdr| hdr.gc_flags & GC_OLD == 0)
+        .unwrap_or(true)
+    {
+        let _ = gc::alloc(8, 29);
+    }
+    for ptr in &chain {
+        gc::release(*ptr);
+    }
+
+    gc::safepoint();
+    let after_first_slice = gc::stats();
+    assert_eq!(
+        after_first_slice.major_phase, 1,
+        "setup should leave the collector in mark phase: {after_first_slice:?}"
+    );
+
+    let survivor = gc::alloc(8, 28);
+    gc::protect(survivor);
+    while gc::header_of(survivor)
+        .map(|hdr| hdr.gc_flags & GC_OLD == 0)
+        .unwrap_or(true)
+    {
+        let _ = gc::alloc(8, 28);
+    }
+
+    let survivor_hdr = gc::header_of(survivor).expect("promoted survivor header");
+    assert_ne!(
+        survivor_hdr.gc_flags & GC_MARKED,
+        0,
+        "young survivor promoted during major mark must be born marked in old gen"
+    );
+
+    gc::collect();
+    assert!(
+        gc::header_of(survivor).is_some(),
+        "promoted survivor should remain live after the active major cycle completes"
+    );
+
+    gc::release(survivor);
     gc::release(parent);
 }
 

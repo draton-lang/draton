@@ -83,6 +83,13 @@ Current baseline assumptions:
   safepoints until it returns to `Idle`
 - stores from already-marked old/large objects must trace newly linked
   old/large children before sweep begins
+- old/large objects allocated during an active major mark are born marked so
+  the current cycle cannot sweep them before the mutator publishes their
+  outgoing edges
+- explicit `protect()` calls that add an old/large object to the root set
+  during an active major mark must mark and enqueue that object immediately
+- young survivors promoted into old generation during an active major mark must
+  arrive in old gen already marked and queued for tracing
 
 The `major_mark_barrier_traces` metric is expected to stay at zero on many
 synthetic runs. It becomes non-zero only when mutator stores overlap with an
@@ -131,7 +138,7 @@ runtime deliberately re-requests another safepoint poll.
 
 ## Runtime scenarios
 
-The runtime probe currently runs four scenarios:
+The runtime probe currently runs five scenarios:
 
 - `young-burst`: short-lived small-object allocation pressure
 - `promotion-chain`: survivor-heavy pressure that forces promotion
