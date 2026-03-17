@@ -23,7 +23,9 @@ The baseline report tracks these metrics:
 - bytes reclaimed in major old-gen sweep
 - bytes reclaimed in large-object sweep
 - write-barrier slow-path calls
-- major-work requests when runtime pressure arms or rearms the next major slice
+- total major-work request signals
+- threshold-driven major-work request signals
+- active-cycle continuation request signals
 - major-mutator assists when an allocation slow path, including young refills,
   helps drain pending major work
 - whether major work is currently requested at the time the snapshot is taken
@@ -68,10 +70,14 @@ The `major_mark_barrier_traces` metric is expected to stay at zero on many
 synthetic runs. It becomes non-zero only when mutator stores overlap with an
 active major mark phase.
 
-The `major_work_requests` metric counts transitions where the runtime explicitly
-requests more major-GC work. `major_work_requested` is the current snapshot of
-that control flag and is expected to be `true` when promotion pressure or an
-active cycle still wants another safepoint-driven slice.
+The `major_work_requests` metric counts all explicit signals that request more
+major-GC work. `major_work_threshold_requests` isolates the signals caused by
+crossing the old-generation threshold, while
+`major_work_continuation_requests` isolates the signals caused by an already
+active major cycle asking for another slice. `major_work_requested` is the
+current snapshot of that control flag and is expected to be `true` when
+promotion pressure or an active cycle still wants another safepoint-driven
+slice.
 
 The `major_mutator_assists` metric counts slow-path allocations that helped run
 one pending major-GC slice immediately instead of waiting for a later poll.

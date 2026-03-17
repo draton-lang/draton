@@ -26,6 +26,8 @@ pub struct GcStats {
     pub bytes_reclaimed_large: u64,
     pub write_barrier_slow_calls: u64,
     pub major_work_requests: u64,
+    pub major_work_threshold_requests: u64,
+    pub major_work_continuation_requests: u64,
     pub major_mutator_assists: u64,
     pub major_work_requested: bool,
     pub safepoint_rearms: u64,
@@ -68,6 +70,8 @@ pub struct GcTelemetry {
     bytes_reclaimed_large: AtomicU64,
     write_barrier_slow_calls: AtomicU64,
     major_work_requests: AtomicU64,
+    major_work_threshold_requests: AtomicU64,
+    major_work_continuation_requests: AtomicU64,
     major_mutator_assists: AtomicU64,
     safepoint_rearms: AtomicU64,
     major_mark_barrier_traces: AtomicU64,
@@ -102,6 +106,8 @@ impl GcTelemetry {
             bytes_reclaimed_large: AtomicU64::new(0),
             write_barrier_slow_calls: AtomicU64::new(0),
             major_work_requests: AtomicU64::new(0),
+            major_work_threshold_requests: AtomicU64::new(0),
+            major_work_continuation_requests: AtomicU64::new(0),
             major_mutator_assists: AtomicU64::new(0),
             safepoint_rearms: AtomicU64::new(0),
             major_mark_barrier_traces: AtomicU64::new(0),
@@ -136,6 +142,8 @@ impl GcTelemetry {
             &self.bytes_reclaimed_large,
             &self.write_barrier_slow_calls,
             &self.major_work_requests,
+            &self.major_work_threshold_requests,
+            &self.major_work_continuation_requests,
             &self.major_mutator_assists,
             &self.safepoint_rearms,
             &self.major_mark_barrier_traces,
@@ -241,6 +249,18 @@ impl GcTelemetry {
     }
 
     #[inline]
+    pub fn record_major_work_threshold_request(&self) {
+        self.major_work_threshold_requests
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn record_major_work_continuation_request(&self) {
+        self.major_work_continuation_requests
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
     pub fn record_major_mutator_assist(&self) {
         self.major_mutator_assists.fetch_add(1, Ordering::Relaxed);
     }
@@ -281,6 +301,12 @@ impl GcTelemetry {
             bytes_reclaimed_large: self.bytes_reclaimed_large.load(Ordering::Relaxed),
             write_barrier_slow_calls: self.write_barrier_slow_calls.load(Ordering::Relaxed),
             major_work_requests: self.major_work_requests.load(Ordering::Relaxed),
+            major_work_threshold_requests: self
+                .major_work_threshold_requests
+                .load(Ordering::Relaxed),
+            major_work_continuation_requests: self
+                .major_work_continuation_requests
+                .load(Ordering::Relaxed),
             major_mutator_assists: self.major_mutator_assists.load(Ordering::Relaxed),
             major_work_requested: runtime.major_work_requested.load(Ordering::Acquire),
             safepoint_rearms: self.safepoint_rearms.load(Ordering::Relaxed),

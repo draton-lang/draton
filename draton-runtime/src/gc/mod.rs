@@ -18,6 +18,12 @@ pub use stats::{GcPauseStats, GcStats};
 /// Matches `GcConfig::default().large_threshold`.
 pub const LARGE_OBJECT_THRESHOLD: usize = 32 * 1024;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MajorWorkReason {
+    Threshold,
+    Continuation,
+}
+
 // ── Shadow-stack root scanning ─────────────────────────────────────────────────
 
 /// Walk LLVM's shadow-stack frame list and return the payload address of every
@@ -98,10 +104,13 @@ pub fn configure(config: GcConfig) {
         Err(p) => p.into_inner(),
     };
     heap.config = norm;
+    let request_reason = major_work_reason(&heap);
     let should_request_major = sync_major_work_request(&rt, &heap);
     drop(heap);
     if should_request_major {
-        request_major_work(&rt);
+        if let Some(reason) = request_reason {
+            request_major_work_for_reason(&rt, reason);
+        }
     }
 }
 
@@ -224,17 +233,46 @@ pub(super) fn major_work_needed(heap: &HeapState) -> bool {
 
 #[inline]
 pub(super) fn sync_major_work_request(rt: &GcRuntime, heap: &HeapState) -> bool {
-    let requested = major_work_needed(heap);
+    let requested = major_work_reason(heap).is_some();
     rt.major_work_requested.store(requested, Ordering::Release);
     requested
 }
 
 #[inline]
-pub(super) fn request_major_work(rt: &GcRuntime) {
-    if !rt.major_work_requested.swap(true, Ordering::AcqRel) {
-        rt.telemetry.record_major_work_request();
+fn major_work_reason(heap: &HeapState) -> Option<MajorWorkReason> {
+    if heap.major_phase != MajorPhase::Idle {
+        Some(MajorWorkReason::Continuation)
+    } else if heap.old_usage() >= (heap.config.old_size as f64 * heap.config.gc_threshold) as usize
+    {
+        Some(MajorWorkReason::Threshold)
+    } else {
+        None
     }
+}
+
+#[inline]
+fn request_major_work_for_reason(rt: &GcRuntime, reason: MajorWorkReason) {
+    rt.telemetry.record_major_work_request();
+    match reason {
+        MajorWorkReason::Threshold => rt.telemetry.record_major_work_threshold_request(),
+        MajorWorkReason::Continuation => rt.telemetry.record_major_work_continuation_request(),
+    }
+    rt.major_work_requested.store(true, Ordering::Release);
     signal_gc_flag();
+}
+
+#[inline]
+pub(super) fn request_major_work(rt: &GcRuntime) {
+    let reason = {
+        let heap = match rt.heap.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        major_work_reason(&heap)
+    };
+    if let Some(reason) = reason {
+        request_major_work_for_reason(rt, reason);
+    }
 }
 
 #[inline]

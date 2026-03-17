@@ -484,6 +484,10 @@ fn active_major_cycle_rearms_safepoint_flag() {
         stats.safepoint_rearms >= 1,
         "rearm activity should be visible in telemetry: {stats:?}"
     );
+    assert!(
+        stats.major_work_continuation_requests >= 1,
+        "active major cycles should register continuation-driven requests once slices keep the cycle alive: {stats:?}"
+    );
 
     gc::collect();
     gc::release(parent);
@@ -522,6 +526,10 @@ fn promotion_pressure_requests_major_work() {
     assert!(
         stats.major_work_requests >= 1,
         "major work requests should be visible in telemetry once promotion crosses the threshold: {stats:?}"
+    );
+    assert!(
+        stats.major_work_threshold_requests >= 1,
+        "promotion pressure should register at least one threshold-driven major-work request: {stats:?}"
     );
 
     gc::safepoint();
