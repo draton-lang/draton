@@ -81,18 +81,18 @@ impl GcRuntime {
         let Ok(mut heap) = self.heap.lock() else { return };
         heap.minor_cycles = heap.minor_cycles.saturating_add(1);
 
-        // Phase 1: seed from explicit roots in young gen.
-        let young_roots: Vec<usize> = heap
-            .roots
-            .keys()
-            .copied()
-            .filter(|&addr| heap.young_index.contains_key(&addr))
-            .collect();
+        // Phase 1: seed from shadow-stack roots + explicit protect()-ed roots in young gen.
+        // Shadow stack roots are walked while the heap lock is released momentarily;
+        // we collect them before locking to avoid deadlock.
+        let shadow_roots = unsafe { super::shadow_stack_roots() };
+        let explicit_roots: Vec<usize> = heap.roots.keys().copied().collect();
 
         let mut mark_stack: Vec<usize> = Vec::new();
-        for addr in young_roots {
-            set_marked(&mut heap, addr);
-            enqueue_children(&heap, addr, &mut mark_stack);
+        for &addr in shadow_roots.iter().chain(explicit_roots.iter()) {
+            if heap.young_index.contains_key(&addr) {
+                set_marked(&mut heap, addr);
+                enqueue_children(&heap, addr, &mut mark_stack);
+            }
         }
 
         // Phase 2: trace pointer fields of remembered-set members.
@@ -166,7 +166,7 @@ impl GcRuntime {
                 heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
                 heap.young.live_count = heap.young.live_count.saturating_sub(1);
             }
-            heap.roots.remove(&addr);
+            // Do not auto-remove from roots — roots only contains explicit protect() entries.
         }
 
         // Promote long-lived young objects to old gen in-place.
@@ -194,6 +194,9 @@ impl GcRuntime {
             }
             heap.old_objects.insert(new_payload, bytes);
             heap.old_bytes += total;
+            // Record forwarding so callers holding the old pointer can still
+            // resolve the object via header_of / space_of / release.
+            heap.young_forwarding.insert(addr, new_payload);
 
             // Remove from young index and decrement young live count.
             if let Some((_, aligned)) = heap.young_index.remove(&addr) {
@@ -224,9 +227,10 @@ impl GcRuntime {
             heap.is_marking = true;
             heap.mark_stack.clear();
 
-            // Seed mark stack from all explicit roots.
-            let roots: Vec<usize> = heap.roots.keys().copied().collect();
-            for addr in roots {
+            // Seed mark stack from shadow-stack roots + explicit protect()-ed roots.
+            let shadow_roots = unsafe { super::shadow_stack_roots() };
+            let explicit_roots: Vec<usize> = heap.roots.keys().copied().collect();
+            for addr in shadow_roots.into_iter().chain(explicit_roots.into_iter()) {
                 if heap.header_of(addr as *mut u8).is_some() {
                     set_marked(&mut heap, addr);
                     heap.mark_stack.push(addr);
@@ -285,9 +289,12 @@ impl GcRuntime {
                 heap.live_bytes = heap.live_bytes.saturating_sub(bytes.len());
                 heap.old_bytes  = heap.old_bytes.saturating_sub(bytes.len());
                 heap.remembered_set.remove(&addr);
-                heap.roots.remove(&addr);
+                // roots contains only explicit protect()-ed entries; don't auto-remove.
             }
         }
+
+        // Remove forwarding entries whose destination was just collected.
+        heap.young_forwarding.retain(|_old, new| heap.old_objects.contains_key(new));
 
         // Clear mark bits on survivors.
         for (_, bytes) in heap.old_objects.iter_mut() {
@@ -315,7 +322,7 @@ impl GcRuntime {
             if let Some(bytes) = heap.large_objects.remove(&addr) {
                 heap.live_bytes = heap.live_bytes.saturating_sub(bytes.len());
                 heap.old_bytes  = heap.old_bytes.saturating_sub(bytes.len());
-                heap.roots.remove(&addr);
+                // roots contains only explicit protect()-ed entries; don't auto-remove.
             }
         }
 

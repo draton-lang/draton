@@ -5,6 +5,27 @@ use std::sync::Mutex;
 
 use super::config::GcConfig;
 
+// ── LLVM shadow-stack types ────────────────────────────────────────────────────
+/// Per-function frame map: lives in read-only data, one per function.
+/// Layout: { num_roots: i32, num_meta: i32, meta[num_meta]: *const () }
+#[repr(C)]
+pub struct FrameMap {
+    pub num_roots: i32,
+    pub num_meta:  i32,
+    // metadata pointers follow in memory (we ignore them in a non-moving GC)
+}
+
+/// Per-call-frame shadow stack entry: allocated on the machine stack.
+/// Layout: { next: *mut StackEntry, map: *const FrameMap, roots[num_roots]: *mut *mut u8 }
+/// Each `roots[i]` is the address of the stack alloca slot (i.e. a `*mut *mut u8`).
+/// The actual GC pointer is `*roots[i]`.
+#[repr(C)]
+pub struct StackEntry {
+    pub next: *mut StackEntry,
+    pub map:  *const FrameMap,
+    // root slots follow in memory
+}
+
 // ── Flags ─────────────────────────────────────────────────────────────────────
 pub const GC_MARKED:  u8 = 1 << 0; // reachable in the current GC cycle
 pub const GC_OLD:     u8 = 1 << 1; // lives in old gen or large-object space
@@ -203,6 +224,13 @@ pub struct HeapState {
     /// unless still reachable through another root.
     pub roots: HashMap<usize, usize>,
 
+    // ── Promotion forwarding table ─────────────────────────────────────────────
+    /// Maps the old young-arena payload address to the new old-gen payload address
+    /// after the object was promoted.  Allows callers holding pre-promotion raw
+    /// pointers to still resolve the object via `header_of` / `space_of`.
+    /// Entries are removed when the promoted object is later collected from old gen.
+    pub young_forwarding: HashMap<usize, usize>,
+
     // ── Write-barrier bookkeeping ─────────────────────────────────────────────
     /// Old-gen objects that may contain pointers into the young gen.
     /// Populated by the write barrier; consulted during minor GC.
@@ -234,8 +262,9 @@ impl HeapState {
             old_objects:     HashMap::new(),
             large_objects:   HashMap::new(),
             type_descriptors: HashMap::new(),
-            roots:           HashMap::new(),
-            remembered_set:  HashSet::new(),
+            roots:            HashMap::new(),
+            young_forwarding: HashMap::new(),
+            remembered_set:   HashSet::new(),
             card_table,
             mark_stack:      Vec::new(),
             is_marking:      false,
@@ -273,7 +302,6 @@ impl HeapState {
             let aligned = (HEADER + size + 7) & !7;
             let arena_offset = self.young.bump - aligned;
             self.young_index.insert(payload as usize, (arena_offset, aligned));
-            self.roots.insert(payload as usize, 1);
             self.bytes_allocated += aligned as u64;
             self.live_bytes += aligned;
             return payload;
@@ -286,7 +314,6 @@ impl HeapState {
             let aligned = (HEADER + size + 7) & !7;
             let arena_offset = self.young.bump - aligned;
             self.young_index.insert(payload as usize, (arena_offset, aligned));
-            self.roots.insert(payload as usize, 1);
             self.bytes_allocated += aligned as u64;
             self.live_bytes += aligned;
             return payload;
@@ -311,10 +338,9 @@ impl HeapState {
         let payload = unsafe { bytes.as_mut_ptr().add(HEADER) };
         let payload_addr = payload as usize;
         self.old_objects.insert(payload_addr, bytes);
-        self.roots.insert(payload_addr, 1);
         self.bytes_allocated += total as u64;
         self.live_bytes += total;
-        self.old_bytes   += total;
+        self.old_bytes  += total;
         payload
     }
 
@@ -326,10 +352,9 @@ impl HeapState {
         let payload = unsafe { bytes.as_mut_ptr().add(HEADER) };
         let payload_addr = payload as usize;
         self.large_objects.insert(payload_addr, bytes);
-        self.roots.insert(payload_addr, 1);
         self.bytes_allocated += total as u64;
         self.live_bytes += total;
-        self.old_bytes   += total;
+        self.old_bytes  += total;
         payload
     }
 
@@ -340,6 +365,12 @@ impl HeapState {
         // Young gen: header is HEADER bytes before the payload in the arena.
         if self.young_index.contains_key(&addr) {
             return Some(unsafe { self.young.read_header(payload) });
+        }
+        // Follow forwarding for promoted young objects.
+        if let Some(&new_addr) = self.young_forwarding.get(&addr) {
+            if let Some(bytes) = self.old_objects.get(&new_addr) {
+                return Some(unsafe { ptr::read(bytes.as_ptr().cast::<ObjHeader>()) });
+            }
         }
         // Old gen / large: header is HEADER bytes before payload in the Box.
         if let Some(bytes) = self.old_objects.get(&addr).or_else(|| self.large_objects.get(&addr)) {
@@ -362,6 +393,7 @@ impl HeapState {
     pub fn space_of(&self, payload: *mut u8) -> Option<HeapSpace> {
         let addr = payload as usize;
         if self.young_index.contains_key(&addr) { return Some(HeapSpace::Young); }
+        if self.young_forwarding.contains_key(&addr) { return Some(HeapSpace::Old); }
         if self.old_objects.contains_key(&addr)  { return Some(HeapSpace::Old);   }
         if self.large_objects.contains_key(&addr) { return Some(HeapSpace::Large); }
         None
@@ -402,17 +434,20 @@ impl HeapState {
     // ── Explicit root management ──────────────────────────────────────────────
 
     pub fn protect(&mut self, payload: *mut u8) {
-        let counter = self.roots.entry(payload as usize).or_insert(0);
+        let addr = payload as usize;
+        let canonical = self.young_forwarding.get(&addr).copied().unwrap_or(addr);
+        let counter = self.roots.entry(canonical).or_insert(0);
         *counter += 1;
     }
 
     pub fn release(&mut self, payload: *mut u8) {
         let addr = payload as usize;
-        if let Some(counter) = self.roots.get_mut(&addr) {
+        let canonical = self.young_forwarding.get(&addr).copied().unwrap_or(addr);
+        if let Some(counter) = self.roots.get_mut(&canonical) {
             if *counter > 1 {
                 *counter -= 1;
             } else {
-                self.roots.remove(&addr);
+                self.roots.remove(&canonical);
             }
         }
     }

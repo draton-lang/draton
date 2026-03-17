@@ -4,6 +4,14 @@ pub mod gc;
 pub mod panic;
 pub mod scheduler;
 
+// ── LLVM shadow-stack chain ────────────────────────────────────────────────────
+// When Draton-generated code is linked against this runtime, LLVM's shadow-stack
+// GC plugin provides its own definition of `llvm_gc_root_chain` and overrides
+// this weak default. In pure-Rust test builds there is no LLVM-generated code,
+// so the chain is always null and shadow_stack_roots() returns an empty Vec.
+#[no_mangle]
+pub static mut llvm_gc_root_chain: *mut gc::heap::StackEntry = std::ptr::null_mut();
+
 use std::env;
 use std::fs;
 use std::path::Path;

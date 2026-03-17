@@ -10,6 +10,47 @@ use std::sync::{Arc, Mutex, OnceLock};
 use config::GcConfig;
 pub use heap::{GcRuntime, HeapSpace, ObjHeader, CARD_BYTES};
 
+/// Objects larger than this are allocated directly in the large-object space.
+/// Matches `GcConfig::default().large_threshold`.
+pub const LARGE_OBJECT_THRESHOLD: usize = 32 * 1024;
+
+// ── Shadow-stack root scanning ─────────────────────────────────────────────────
+
+/// Walk LLVM's shadow-stack frame list and return the payload address of every
+/// non-null GC root reachable from it.
+///
+/// Each `StackEntry.roots[i]` is an **alloca address** (`*mut *mut u8`): the
+/// address of the stack slot that holds the GC pointer.  We dereference once to
+/// get the actual managed-object payload pointer.
+///
+/// # Safety
+/// Must only be called while the mutator is stopped (i.e. from within a GC
+/// cycle).  In Draton's current stop-the-world model this is always satisfied.
+pub unsafe fn shadow_stack_roots() -> Vec<usize> {
+    use std::mem::size_of;
+    use heap::StackEntry;
+    use crate::llvm_gc_root_chain;
+
+    let mut roots = Vec::new();
+    let mut entry = llvm_gc_root_chain;
+    while !entry.is_null() {
+        let num_roots = (*(*entry).map).num_roots as usize;
+        // Root slots start immediately after the StackEntry header.
+        let base = (entry as *const u8).add(size_of::<StackEntry>())
+                   as *const *mut *mut u8; // &[alloca_ptr; num_roots]
+        for i in 0..num_roots {
+            let alloca = *base.add(i); // pointer to the stack slot
+            if alloca.is_null() { continue; }
+            let val = *alloca;         // current value of the GC root
+            if !val.is_null() {
+                roots.push(val as usize);
+            }
+        }
+        entry = (*entry).next;
+    }
+    roots
+}
+
 static GC_RUNTIME: OnceLock<Mutex<Option<Arc<GcRuntime>>>> = OnceLock::new();
 
 fn global_slot() -> &'static Mutex<Option<Arc<GcRuntime>>> {
