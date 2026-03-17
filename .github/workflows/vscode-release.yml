@@ -65,7 +65,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "Draton VS Code Extension ${{ github.ref_name }}"
-          prerelease: true
+          draft: true
           body: |
             ## Draton VS Code Extension
 
