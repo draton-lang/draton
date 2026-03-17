@@ -761,7 +761,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_float_to_str = self
                     .module
                     .get_function("__draton_std_float_to_string")
-                    .unwrap();
+                    .ok_or_else(|| CodeGenError::MissingSymbol("__draton_std_float_to_string".to_string()))?;
                 let val = self
                     .emit_expr(arg)?
                     .ok_or_else(|| {
@@ -794,7 +794,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_float_to_str = self
                     .module
                     .get_function("__draton_std_float_to_string")
-                    .unwrap();
+                    .ok_or_else(|| CodeGenError::MissingSymbol("__draton_std_float_to_string".to_string()))?;
                 let val = self
                     .emit_expr(arg)?
                     .ok_or_else(|| {

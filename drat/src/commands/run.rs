@@ -25,9 +25,9 @@ fn run_binary(binary_path: &Path, args: &[String]) -> Result<()> {
     let status = Command::new(binary_path)
         .args(args)
         .status()
-        .with_context(|| format!("khong the chay {}", binary_path.display()))?;
+        .with_context(|| format!("failed to run {}", binary_path.display()))?;
     if let Some(code) = status.code() {
         process::exit(code);
     }
-    bail!("chuong trinh ket thuc bat thuong")
+    bail!("program terminated abnormally")
 }

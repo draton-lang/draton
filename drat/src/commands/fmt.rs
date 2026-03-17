@@ -34,7 +34,7 @@ pub(crate) fn run(cwd: &Path, paths: &[PathBuf], check: bool) -> Result<()> {
     } else {
         for (file, formatted) in needs_write {
             fs::write(&file, formatted)
-                .with_context(|| format!("khong the ghi {}", file.display()))?;
+                .with_context(|| format!("failed to write {}", file.display()))?;
             changed += 1;
         }
         println!("formatted {changed} file(s)");
@@ -47,7 +47,7 @@ pub(crate) fn run(cwd: &Path, paths: &[PathBuf], check: bool) -> Result<()> {
 
 pub(crate) fn format_file(path: &Path) -> Result<Option<String>> {
     let source =
-        fs::read_to_string(path).with_context(|| format!("khong the doc {}", path.display()))?;
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     if source.contains("//") || source.contains("/*") {
         bail!("comment-preserving formatting is not yet available for this file");
     }

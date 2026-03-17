@@ -20,7 +20,7 @@ pub(crate) fn run(cwd: &Path, paths: &[PathBuf]) -> Result<()> {
 
     for file in files {
         let source = fs::read_to_string(&file)
-            .with_context(|| format!("khong the doc {}", file.display()))?;
+            .with_context(|| format!("failed to read {}", file.display()))?;
         let findings = lint_source(&source);
         for finding in findings {
             match finding.severity {

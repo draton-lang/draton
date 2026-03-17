@@ -40,14 +40,14 @@ impl DratonConfig {
     pub(crate) fn load(project_root: &Path) -> Result<Self> {
         let path = project_root.join("draton.toml");
         let source = fs::read_to_string(&path)
-            .with_context(|| format!("khong the doc {}", path.display()))?;
-        toml::from_str(&source).with_context(|| format!("khong the parse {}", path.display()))
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        toml::from_str(&source).with_context(|| format!("failed to parse {}", path.display()))
     }
 
     pub(crate) fn save(&self, project_root: &Path) -> Result<()> {
         let path = project_root.join("draton.toml");
-        let source = toml::to_string_pretty(self).context("khong the serialize draton.toml")?;
-        fs::write(&path, source).with_context(|| format!("khong the ghi {}", path.display()))
+        let source = toml::to_string_pretty(self).context("failed to serialize draton.toml")?;
+        fs::write(&path, source).with_context(|| format!("failed to write {}", path.display()))
     }
 
     pub(crate) fn entry_path(&self, project_root: &Path) -> PathBuf {

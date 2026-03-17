@@ -159,7 +159,7 @@ fn draton_string_to_owned(value: DratonString) -> String {
 
 pub fn host_ast_dump_path(path: &Path) -> Result<String, String> {
     let source = fs::read_to_string(path)
-        .map_err(|error| format!("khong the doc {}: {error}", path.display()))?;
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     let lexed = Lexer::new(&source).tokenize();
     if !lexed.errors.is_empty() {
         return Err(lexed
@@ -183,7 +183,7 @@ pub fn host_ast_dump_path(path: &Path) -> Result<String, String> {
 
 pub fn host_type_dump_path(path: &Path) -> Result<String, String> {
     let source = fs::read_to_string(path)
-        .map_err(|error| format!("khong the doc {}: {error}", path.display()))?;
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     let lexed = Lexer::new(&source).tokenize();
     if !lexed.errors.is_empty() {
         return Err(lexed
@@ -246,15 +246,15 @@ fn runtime_ensure_host_drat() -> Result<PathBuf, String> {
     }
     let output = command
         .output()
-        .map_err(|error| format!("khong the build drat: {error}"))?;
+        .map_err(|error| format!("failed to build drat: {error}"))?;
     if !output.status.success() {
         return Err(format!(
-            "build drat that bai:\n{}",
+            "drat build failed:\n{}",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
     if !path.exists() {
-        return Err(format!("khong tim thay host drat tai {}", path.display()));
+        return Err(format!("host drat binary not found at {}", path.display()));
     }
     Ok(path)
 }
@@ -279,11 +279,11 @@ fn runtime_find_project_root(source_path: &Path) -> Option<PathBuf> {
 
 fn runtime_copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
     fs::create_dir_all(dest)
-        .map_err(|error| format!("khong the tao {}: {error}", dest.display()))?;
+        .map_err(|error| format!("failed to create {}: {error}", dest.display()))?;
     for entry in fs::read_dir(source)
-        .map_err(|error| format!("khong the doc {}: {error}", source.display()))?
+        .map_err(|error| format!("failed to read directory {}: {error}", source.display()))?
     {
-        let entry = entry.map_err(|error| format!("khong the doc entry: {error}"))?;
+        let entry = entry.map_err(|error| format!("failed to read directory entry: {error}"))?;
         let source_path = entry.path();
         let dest_path = dest.join(entry.file_name());
         if source_path.is_dir() {
@@ -291,7 +291,7 @@ fn runtime_copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> 
         } else {
             fs::copy(&source_path, &dest_path).map_err(|error| {
                 format!(
-                    "khong the copy {} -> {}: {error}",
+                    "failed to copy {} -> {}: {error}",
                     source_path.display(),
                     dest_path.display()
                 )
@@ -323,24 +323,24 @@ fn runtime_build_mode_flag(mode: &str) -> Option<&'static str> {
 
 fn runtime_prepare_temp_project(source_path: &Path, temp_root: &Path) -> Result<String, String> {
     fs::create_dir_all(temp_root)
-        .map_err(|error| format!("khong the tao {}: {error}", temp_root.display()))?;
+        .map_err(|error| format!("failed to create {}: {error}", temp_root.display()))?;
     if let Some(project_root) = runtime_find_project_root(source_path) {
         let src_root = project_root.join("src");
         if source_path.starts_with(&src_root) {
             runtime_copy_dir_recursive(&src_root, &temp_root.join("src"))?;
             let rel = source_path
                 .strip_prefix(&project_root)
-                .map_err(|error| format!("khong the tinh relative entry: {error}"))?;
+                .map_err(|error| format!("failed to compute relative path: {error}"))?;
             return Ok(rel.to_string_lossy().replace('\\', "/"));
         }
     }
     let temp_src = temp_root.join("src");
     fs::create_dir_all(&temp_src)
-        .map_err(|error| format!("khong the tao {}: {error}", temp_src.display()))?;
+        .map_err(|error| format!("failed to create {}: {error}", temp_src.display()))?;
     let dest = temp_src.join("main.dt");
     fs::copy(source_path, &dest).map_err(|error| {
         format!(
-            "khong the copy {} -> {}: {error}",
+            "failed to copy {} -> {}: {error}",
             source_path.display(),
             dest.display()
         )
@@ -351,11 +351,11 @@ fn runtime_prepare_temp_project(source_path: &Path, temp_root: &Path) -> Result<
 fn runtime_copy_output(source: &Path, dest: &Path) -> Result<(), String> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)
-            .map_err(|error| format!("khong the tao {}: {error}", parent.display()))?;
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
     fs::copy(source, dest).map_err(|error| {
         format!(
-            "khong the copy {} -> {}: {error}",
+            "failed to copy {} -> {}: {error}",
             source.display(),
             dest.display()
         )
@@ -379,7 +379,7 @@ fn host_build_source_impl(
     let config =
         format!("[project]\nname = \"{project_name}\"\nversion = \"0.1.0\"\nentry = \"{entry}\"\n");
     fs::write(&config_path, config)
-        .map_err(|error| format!("khong the ghi {}: {error}", config_path.display()))?;
+        .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
 
     let mut command = Command::new(host_drat);
     command.current_dir(&temp_root).arg("build");
@@ -390,7 +390,7 @@ fn host_build_source_impl(
     }
     let output = command
         .output()
-        .map_err(|error| format!("khong the chay host drat build: {error}"))?;
+        .map_err(|error| format!("failed to run host drat build: {error}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -405,7 +405,7 @@ fn host_build_source_impl(
             message.push_str(&stdout);
         }
         if message.trim().is_empty() {
-            message = "host drat build that bai".to_string();
+            message = "host drat build failed".to_string();
         }
         return Err(message);
     }

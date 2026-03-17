@@ -8,28 +8,28 @@ use draton_lexer::Lexer;
 pub(crate) fn run(project_root: &Path) -> Result<()> {
     let tests_dir = project_root.join("tests");
     if !tests_dir.exists() {
-        println!("{}", "khong co thu muc tests/".yellow());
+        println!("{}", "no tests/ directory found".yellow());
         return Ok(());
     }
 
     let files = collect_dt_files(&tests_dir)?;
     if files.is_empty() {
-        println!("{}", "khong tim thay file .dt nao trong tests/".yellow());
+        println!("{}", "no .dt files found in tests/".yellow());
         return Ok(());
     }
 
     let mut total_cases = 0usize;
     for file in files {
         let source = fs::read_to_string(&file)
-            .with_context(|| format!("khong the doc {}", file.display()))?;
+            .with_context(|| format!("failed to read {}", file.display()))?;
         let lexed = Lexer::new(&source).tokenize();
         if !lexed.errors.is_empty() {
-            bail!("loi lexer trong {}: {:?}", file.display(), lexed.errors);
+            bail!("lexer error in {}: {:?}", file.display(), lexed.errors);
         }
         let names = discover_cases(&source);
         if names.is_empty() {
             println!("{} {}", "warn".yellow().bold(), file.display());
-            println!("  = khong tim thay test.case(...) nao");
+            println!("  = no test.case() found");
             continue;
         }
         for name in names {
@@ -64,7 +64,7 @@ fn collect_dt_files(dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn collect_dir(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
-    for entry in fs::read_dir(dir).with_context(|| format!("khong the doc {}", dir.display()))? {
+    for entry in fs::read_dir(dir).with_context(|| format!("failed to read {}", dir.display()))? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {

@@ -111,10 +111,13 @@ impl<'ctx> CodeGen<'ctx> {
                     .field_indices
                     .get(&field.name)
                     .copied()
-                    .unwrap_or(0)
-                    .saturating_mul(8)
+                    .ok_or_else(|| CodeGenError::MissingSymbol(format!(
+                        "field '{}' not found in layout of '{}'",
+                        field.name, class_def.name
+                    )))
+                    .map(|idx| idx.saturating_mul(8))
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
         let i32_type = self.context.i32_type();
         let offsets_ty = i32_type.array_type(pointer_offsets.len() as u32);
         let offsets = i32_type.const_array(

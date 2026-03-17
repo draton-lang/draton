@@ -22,10 +22,10 @@ fn update_self() -> Result<()> {
         .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")))
         .arg("--force")
         .output()
-        .with_context(|| format!("khong the chay cargo install cho {}", manifest.display()))?;
+        .with_context(|| format!("failed to run cargo install for {}", manifest.display()))?;
     if !output.status.success() {
         bail!(
-            "update drat that bai:\n{}",
+            "drat update failed:\n{}",
             String::from_utf8_lossy(&output.stderr)
         );
     }

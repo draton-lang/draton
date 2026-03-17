@@ -49,7 +49,7 @@ fn read_message<R: BufRead + Read>(reader: &mut R) -> Result<Option<Value>> {
                 value
                     .trim()
                     .parse::<usize>()
-                    .context("header Content-Length khong hop le")?,
+                    .context("invalid Content-Length header")?,
             );
         }
     }
@@ -60,7 +60,7 @@ fn read_message<R: BufRead + Read>(reader: &mut R) -> Result<Option<Value>> {
 
     let mut body = vec![0u8; content_length];
     reader.read_exact(&mut body)?;
-    let message = serde_json::from_slice(&body).context("payload LSP khong hop le")?;
+    let message = serde_json::from_slice(&body).context("invalid LSP payload")?;
     Ok(Some(message))
 }
 

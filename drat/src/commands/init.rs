@@ -27,12 +27,12 @@ fn scaffold(project_root: &Path, project_name: &str) -> Result<()> {
         let config_path = project_root.join("draton.toml");
         let main_path = project_root.join("src/main.dt");
         if config_path.exists() || main_path.exists() {
-            bail!("du an da ton tai o {}", project_root.display());
+            bail!("project already exists at {}", project_root.display());
         }
     }
 
     fs::create_dir_all(project_root.join("src"))
-        .with_context(|| format!("khong the tao {}", project_root.join("src").display()))?;
+        .with_context(|| format!("failed to create {}", project_root.join("src").display()))?;
 
     let config = DratonConfig {
         project: ProjectConfig::new(project_name),
@@ -46,14 +46,14 @@ fn scaffold(project_root: &Path, project_name: &str) -> Result<()> {
     )
     .with_context(|| {
         format!(
-            "khong the ghi {}",
+            "failed to write {}",
             project_root.join("src/main.dt").display()
         )
     })?;
 
     fs::write(project_root.join(".gitignore"), "build/\n.drat/\n").with_context(|| {
         format!(
-            "khong the ghi {}",
+            "failed to write {}",
             project_root.join(".gitignore").display()
         )
     })?;

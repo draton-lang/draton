@@ -6,7 +6,7 @@ use draton_lexer::Lexer;
 
 pub(crate) fn run(path: &Path) -> Result<()> {
     let source =
-        fs::read_to_string(path).with_context(|| format!("khong the doc {}", path.display()))?;
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let result = Lexer::new(&source).tokenize();
 
     for token in result.tokens {

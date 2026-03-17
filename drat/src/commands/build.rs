@@ -73,7 +73,7 @@ pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOu
     let built = (|| {
         let compiled = compile_project(&entry_path, request.strict_syntax)?;
         let Some(main_return_type) = compiled.main_return_type.clone() else {
-            bail!("khong tim thay fn main trong {}", entry_path.display());
+            bail!("no fn main found in {}", entry_path.display());
         };
         let context = LlvmContext::create();
         let module = CodeGen::new(&context, request.profile.to_codegen_mode())
@@ -85,7 +85,7 @@ pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOu
             .join("build")
             .join(request.profile.as_dir_name());
         fs::create_dir_all(&build_dir)
-            .with_context(|| format!("khong the tao {}", build_dir.display()))?;
+            .with_context(|| format!("failed to create {}", build_dir.display()))?;
         let exe_name = if cfg!(windows) {
             format!("{}.exe", config.project.name)
         } else {
@@ -128,7 +128,7 @@ pub(crate) fn run_file(
         cwd.join(input_path)
     };
     if !source_path.exists() {
-        bail!("khong tim thay source file {}", source_path.display());
+        bail!("source file not found {}", source_path.display());
     }
 
     let temp_root = prepare_temp_project(&source_path)?;
@@ -220,7 +220,7 @@ fn load_project_program(entry_path: &Path) -> Result<Program> {
     let files = collect_project_sources(entry_path)?;
     for path in files {
         let source = fs::read_to_string(&path)
-            .with_context(|| format!("khong the doc {}", path.display()))?;
+            .with_context(|| format!("failed to read {}", path.display()))?;
         let lexed = Lexer::new(&source).tokenize();
         if !lexed.errors.is_empty() {
             bail!("{}", render_lex_errors(&path, &source, &lexed.errors));
@@ -262,7 +262,7 @@ fn prepare_temp_project(source_path: &Path) -> Result<PathBuf> {
                 .unwrap_or(0)
         ));
     fs::create_dir_all(&temp_root)
-        .with_context(|| format!("khong the tao {}", temp_root.display()))?;
+        .with_context(|| format!("failed to create {}", temp_root.display()))?;
 
     let entry = if let Some(project_root) = find_project_root(source_path) {
         let src_root = project_root.join("src");
@@ -273,18 +273,18 @@ fn prepare_temp_project(source_path: &Path) -> Result<PathBuf> {
                 .map(|value| value.to_string_lossy().replace('\\', "/"))
                 .with_context(|| {
                     format!(
-                        "khong the tinh relative entry cho {}",
+                        "failed to compute relative path for {}",
                         source_path.display()
                     )
                 })?
         } else {
             let temp_src = temp_root.join("src");
             fs::create_dir_all(&temp_src)
-                .with_context(|| format!("khong the tao {}", temp_src.display()))?;
+                .with_context(|| format!("failed to create {}", temp_src.display()))?;
             let dest = temp_src.join("main.dt");
             fs::copy(source_path, &dest).with_context(|| {
                 format!(
-                    "khong the copy {} -> {}",
+                    "failed to copy {} -> {}",
                     source_path.display(),
                     dest.display()
                 )
@@ -294,11 +294,11 @@ fn prepare_temp_project(source_path: &Path) -> Result<PathBuf> {
     } else {
         let temp_src = temp_root.join("src");
         fs::create_dir_all(&temp_src)
-            .with_context(|| format!("khong the tao {}", temp_src.display()))?;
+            .with_context(|| format!("failed to create {}", temp_src.display()))?;
         let dest = temp_src.join("main.dt");
         fs::copy(source_path, &dest).with_context(|| {
             format!(
-                "khong the copy {} -> {}",
+                "failed to copy {} -> {}",
                 source_path.display(),
                 dest.display()
             )
@@ -312,7 +312,7 @@ fn prepare_temp_project(source_path: &Path) -> Result<PathBuf> {
     );
     let config_path = temp_root.join("draton.toml");
     fs::write(&config_path, config)
-        .with_context(|| format!("khong the ghi {}", config_path.display()))?;
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
     Ok(temp_root)
 }
 
@@ -324,9 +324,9 @@ fn find_project_root(source_path: &Path) -> Option<PathBuf> {
 }
 
 fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<()> {
-    fs::create_dir_all(dest).with_context(|| format!("khong the tao {}", dest.display()))?;
+    fs::create_dir_all(dest).with_context(|| format!("failed to create {}", dest.display()))?;
     for entry in
-        fs::read_dir(source).with_context(|| format!("khong the doc {}", source.display()))?
+        fs::read_dir(source).with_context(|| format!("failed to read {}", source.display()))?
     {
         let entry = entry?;
         let source_path = entry.path();
@@ -336,7 +336,7 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<()> {
         } else {
             fs::copy(&source_path, &dest_path).with_context(|| {
                 format!(
-                    "khong the copy {} -> {}",
+                    "failed to copy {} -> {}",
                     source_path.display(),
                     dest_path.display()
                 )
@@ -349,15 +349,15 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<()> {
 fn copy_build_output(source: &Path, dest: &Path) -> Result<()> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)
-            .with_context(|| format!("khong the tao {}", parent.display()))?;
+            .with_context(|| format!("failed to create {}", parent.display()))?;
     }
     fs::copy(source, dest)
-        .with_context(|| format!("khong the copy {} -> {}", source.display(), dest.display()))?;
+        .with_context(|| format!("failed to copy {} -> {}", source.display(), dest.display()))?;
     Ok(())
 }
 
 fn collect_dt_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
-    for entry in fs::read_dir(dir).with_context(|| format!("khong the doc {}", dir.display()))? {
+    for entry in fs::read_dir(dir).with_context(|| format!("failed to read {}", dir.display()))? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
@@ -469,7 +469,7 @@ fn ensure_supported_target(target: &str) -> Result<()> {
         return Ok(());
     }
     bail!(
-        "cross-compile hien chua duoc backend hien tai ho tro: target {}, host {}",
+        "cross-compile is not yet supported by the current backend: target {}, host {}",
         target,
         HOST_TARGET
     )
@@ -586,10 +586,10 @@ fn link_binary(
     }
     let output = command
         .output()
-        .with_context(|| "khong the chay linker cc".to_string())?;
+        .with_context(|| "failed to run linker cc".to_string())?;
     if !output.status.success() {
         bail!(
-            "link that bai:\n{}",
+            "link failed:\n{}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
@@ -604,7 +604,7 @@ fn ensure_runtime_staticlib(profile: Profile) -> Result<PathBuf> {
             return Ok(path);
         }
         bail!(
-            "DRATON_RUNTIME_LIB duoc dat nhung khong ton tai: {}",
+            "DRATON_RUNTIME_LIB is set but does not exist: {}",
             path.display()
         );
     }
@@ -630,10 +630,10 @@ fn ensure_runtime_staticlib(profile: Profile) -> Result<PathBuf> {
     }
     let output = command
         .output()
-        .with_context(|| "khong the build draton-runtime".to_string())?;
+        .with_context(|| "failed to build draton-runtime".to_string())?;
     if !output.status.success() {
         bail!(
-            "build draton-runtime that bai:\n{}",
+            "draton-runtime build failed:\n{}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
@@ -651,7 +651,7 @@ fn ensure_runtime_staticlib(profile: Profile) -> Result<PathBuf> {
     };
     let path = path.join(filename);
     if !path.exists() {
-        bail!("khong tim thay runtime staticlib tai {}", path.display());
+        bail!("runtime staticlib not found at {}", path.display());
     }
     Ok(path)
 }
@@ -727,7 +727,7 @@ fn copy_windows_runtime_dlls(binary_path: &Path) -> Result<()> {
         let dest = dest_dir.join(name);
         fs::copy(&source, &dest).with_context(|| {
             format!(
-                "khong the copy windows runtime dll {} -> {}",
+                "failed to copy windows runtime dll {} -> {}",
                 source.display(),
                 dest.display()
             )
@@ -756,7 +756,7 @@ impl Profile {
             .filter(|flag| *flag)
             .count();
         if selected > 1 {
-            bail!("chi duoc chon mot trong --release, --size, --fast");
+            bail!("only one of --release, --size, --fast may be specified");
         }
         Ok(if release {
             Self::Release
@@ -800,7 +800,7 @@ fn render_lex_errors(path: &Path, source: &str, errors: &[LexError]) -> String {
                 *line,
                 *col,
                 vec![format!("found:    {found}")],
-                Some("xoa ky tu nay hoac thay bang token hop le".to_string()),
+                Some("remove this character or replace it with a valid token".to_string()),
             ),
             LexError::UnterminatedString { line, col } => render_diagnostic(
                 "E101",
@@ -810,7 +810,7 @@ fn render_lex_errors(path: &Path, source: &str, errors: &[LexError]) -> String {
                 *line,
                 *col,
                 Vec::new(),
-                Some("dong dau nhay kep truoc khi xuong dong".to_string()),
+                Some("close the double quote before the end of line".to_string()),
             ),
             LexError::UnterminatedBlockComment { line, col } => render_diagnostic(
                 "E102",
@@ -820,7 +820,7 @@ fn render_lex_errors(path: &Path, source: &str, errors: &[LexError]) -> String {
                 *line,
                 *col,
                 Vec::new(),
-                Some("them */ de ket thuc block comment".to_string()),
+                Some("add */ to close the block comment".to_string()),
             ),
             LexError::InvalidNumericLiteral { lexeme, line, col } => render_diagnostic(
                 "E103",
@@ -830,7 +830,7 @@ fn render_lex_errors(path: &Path, source: &str, errors: &[LexError]) -> String {
                 *line,
                 *col,
                 vec![format!("found:    {lexeme}")],
-                Some("kiem tra prefix va ky tu cua literal so".to_string()),
+                Some("check the prefix and characters of the numeric literal".to_string()),
             ),
         })
         .collect::<Vec<_>>()
@@ -871,7 +871,7 @@ fn render_parse_errors(path: &Path, source: &str, errors: &[ParseError]) -> Stri
                 *line,
                 *col,
                 vec![format!("expected: {expected}")],
-                Some("bo sung phan con thieu o cuoi file".to_string()),
+                Some("add the missing part at the end of the file".to_string()),
             ),
             ParseError::InvalidExpr { line, col } => render_diagnostic(
                 "E202",
@@ -881,7 +881,7 @@ fn render_parse_errors(path: &Path, source: &str, errors: &[ParseError]) -> Stri
                 *line,
                 *col,
                 Vec::new(),
-                Some("kiem tra lai cu phap bieu thuc".to_string()),
+                Some("check the expression syntax".to_string()),
             ),
             ParseError::NestedLayerNotAllowed { line, col } => render_diagnostic(
                 "E010",
@@ -891,7 +891,7 @@ fn render_parse_errors(path: &Path, source: &str, errors: &[ParseError]) -> Stri
                 *line,
                 *col,
                 Vec::new(),
-                Some("layers khong duoc long ben trong layer khac".to_string()),
+                Some("layers cannot be nested inside another layer".to_string()),
             ),
             ParseError::LayerOutsideClass { line, col } => render_diagnostic(
                 "E011",
@@ -901,7 +901,7 @@ fn render_parse_errors(path: &Path, source: &str, errors: &[ParseError]) -> Stri
                 *line,
                 *col,
                 Vec::new(),
-                Some("layer chi duoc khai bao ben trong than class".to_string()),
+                Some("layer can only be declared inside a class body".to_string()),
             ),
         })
         .collect::<Vec<_>>()
@@ -939,7 +939,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 Vec::new(),
-                Some(format!("hint:     khai bao bien bang 'let {name} = ...'")),
+                Some(format!("hint:     declare the variable with 'let {name} = ...'")),
             ),
             TypeError::UndefinedFn { name, line, col } => render_diagnostic(
                 "E003",
@@ -949,7 +949,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 Vec::new(),
-                Some("hint:     kiem tra import hoac ten ham".to_string()),
+                Some("hint:     check imports or function name".to_string()),
             ),
             TypeError::NoField {
                 field,
@@ -964,7 +964,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 vec![format!("found:    {ty}")],
-                Some("hint:     kiem tra field hoac type cua doi tuong".to_string()),
+                Some("hint:     check field or type of the object".to_string()),
             ),
             TypeError::BadBinOp {
                 op,
@@ -979,8 +979,8 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 source,
                 *line,
                 *col,
-                vec![format!("found:    {lhs} va {rhs}")],
-                Some("hint:     dong nhat kieu hai ve toan hang".to_string()),
+                vec![format!("found:    {lhs} and {rhs}")],
+                Some("hint:     unify the types of both operands".to_string()),
             ),
             TypeError::ArgCount {
                 expected,
@@ -1013,7 +1013,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                     format!("pattern:  {pattern_len} binding(s)"),
                     format!("tuple:    {tuple_len} slot(s)"),
                 ],
-                Some("hint:     sua so luong binding cho khop tuple".to_string()),
+                Some("hint:     fix the number of bindings to match the tuple".to_string()),
             ),
             TypeError::CannotInfer { name, line, col } => render_diagnostic(
                 "E007",
@@ -1023,7 +1023,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 Vec::new(),
-                Some("hint:     them ngữ cảnh sử dụng ro hon".to_string()),
+                Some("hint:     add more usage context".to_string()),
             ),
             TypeError::InfiniteType { var, line, col } => render_diagnostic(
                 "E008",
@@ -1033,7 +1033,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 vec![format!("found:    {var}")],
-                Some("hint:     loai bo tu tham chieu de quy vao chinh no".to_string()),
+                Some("hint:     remove self-recursive type reference".to_string()),
             ),
             TypeError::BadCast {
                 from,
@@ -1048,7 +1048,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 vec![format!("expected: {to}"), format!("found:    {from}")],
-                Some("hint:     chi cast giua cac kieu backend ho tro".to_string()),
+                Some("hint:     only cast between types supported by the backend".to_string()),
             ),
             TypeError::IncompatibleErrors {
                 lhs,
@@ -1063,7 +1063,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 vec![format!("left:     {lhs}"), format!("right:    {rhs}")],
-                Some("hint:     wrap ca hai vao mot error type chung".to_string()),
+                Some("hint:     wrap both into a common error type".to_string()),
             ),
             TypeError::MissingInterfaceMethod {
                 class,
@@ -1080,7 +1080,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *col,
                 vec![format!("missing:  {method}")],
                 Some(
-                    "hint:     them method con thieu hoac sua lai danh sach implements".to_string(),
+                    "hint:     add the missing method or fix the implements list".to_string(),
                 ),
             ),
             TypeError::CircularInheritance { class, line, col } => render_diagnostic(
@@ -1091,7 +1091,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 Vec::new(),
-                Some("hint:     pha vo vong extends giua cac class".to_string()),
+                Some("hint:     break the extends cycle between classes".to_string()),
             ),
             TypeError::UndefinedParent {
                 class,
@@ -1106,7 +1106,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 Vec::new(),
-                Some("hint:     khai bao class parent truoc khi extends".to_string()),
+                Some("hint:     declare the parent class before extending it".to_string()),
             ),
             TypeError::NonExhaustiveMatch { missing, line, col } => render_diagnostic(
                 "E012",
@@ -1117,7 +1117,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *col,
                 vec![format!("missing:  {missing}")],
                 Some(
-                    "hint:     them arm `_ => ...` hoac cover day du cac pattern con thieu"
+                    "hint:     add a `_ => ...` arm or cover all missing patterns"
                         .to_string(),
                 ),
             ),
@@ -1129,7 +1129,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 Vec::new(),
-                Some("hint:     pattern nay khong bao gio duoc match".to_string()),
+                Some("hint:     this pattern can never be matched".to_string()),
             ),
             TypeError::DeprecatedSyntax {
                 syntax,
@@ -1161,7 +1161,7 @@ fn render_type_warnings(path: &Path, source: &str, warnings: &[TypeError]) -> St
             *line,
             *col,
             Vec::new(),
-            Some("hint:     pattern nay khong bao gio duoc match".to_string()),
+            Some("hint:     this pattern can never be matched".to_string()),
         )),
         TypeError::DeprecatedSyntax {
             syntax,

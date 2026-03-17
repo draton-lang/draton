@@ -24,9 +24,9 @@ fn ensure_git(project_root: &Path) -> Result<()> {
         .arg("--is-inside-work-tree")
         .current_dir(project_root)
         .output()
-        .context("khong the kiem tra git repo")?;
+        .context("failed to check git repo")?;
     if !output.status.success() {
-        bail!("thu muc hien tai khong nam trong git repository");
+        bail!("current directory is not inside a git repository");
     }
     Ok(())
 }
@@ -37,7 +37,7 @@ fn maybe_commit(project_root: &Path, name: &str, version: &str) -> Result<()> {
         .arg("--porcelain")
         .current_dir(project_root)
         .output()
-        .context("khong the doc git status")?;
+        .context("failed to read git status")?;
     if status.stdout.is_empty() {
         return Ok(());
     }
@@ -57,10 +57,10 @@ fn run_git(project_root: &Path, args: &[&str]) -> Result<()> {
         .args(args)
         .current_dir(project_root)
         .output()
-        .with_context(|| format!("khong the chay git {}", args.join(" ")))?;
+        .with_context(|| format!("failed to run git {}", args.join(" ")))?;
     if !output.status.success() {
         bail!(
-            "git {} that bai:\n{}",
+            "git {} failed:\n{}",
             args.join(" "),
             String::from_utf8_lossy(&output.stderr)
         );
