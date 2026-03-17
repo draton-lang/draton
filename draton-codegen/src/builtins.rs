@@ -78,6 +78,23 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn declare_gc_runtime(&mut self) -> Result<(), CodeGenError> {
         let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        // draton_gc_register_type(type_id: i16, size: i32, offsets: *i32, num: i32) -> void
+        if self.module.get_function("draton_gc_register_type").is_none() {
+            let i32_ptr = self.context.i32_type().ptr_type(AddressSpace::default());
+            self.module.add_function(
+                "draton_gc_register_type",
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.i16_type().into(),
+                        self.context.i32_type().into(),
+                        i32_ptr.into(),
+                        self.context.i32_type().into(),
+                    ],
+                    false,
+                ),
+                None,
+            );
+        }
         if self.module.get_function("draton_gc_alloc").is_none() {
             let function = self.module.add_function(
                 "draton_gc_alloc",

@@ -147,7 +147,142 @@ impl<'ctx> CodeGen<'ctx> {
         self.next_type_descriptor_id = self.next_type_descriptor_id.saturating_add(1);
         self.type_descriptor_table
             .insert(class_def.name.clone(), type_id);
+
+        // Emit a __gc_register_{name}() function that calls draton_gc_register_type
+        // at runtime so the GC knows the precise pointer layout of this type.
+        // The function is added to @llvm.global_ctors and called before main().
+        self.emit_type_registration_ctor(&class_def.name, type_id, size, &pointer_offsets)?;
+
         Ok(type_id)
+    }
+
+    /// Emit a module constructor that registers the type descriptor with the
+    /// runtime GC at program startup.
+    fn emit_type_registration_ctor(
+        &mut self,
+        class_name: &str,
+        type_id: u16,
+        size: u64,
+        pointer_offsets: &[u32],
+    ) -> Result<(), CodeGenError> {
+        let fn_name = format!("__gc_register_{class_name}");
+        if self.module.get_function(&fn_name).is_some() {
+            return Ok(());
+        }
+        let register_fn = self
+            .module
+            .get_function("draton_gc_register_type")
+            .ok_or_else(|| {
+                CodeGenError::MissingSymbol("draton_gc_register_type".to_string())
+            })?;
+
+        let void_ty = self.context.void_type();
+        let ctor = self
+            .module
+            .add_function(&fn_name, void_ty.fn_type(&[], false), None);
+        let builder = self.context.create_builder();
+        let entry = self.context.append_basic_block(ctor, "entry");
+        builder.position_at_end(entry);
+
+        let i16_type = self.context.i16_type();
+        let i32_type = self.context.i32_type();
+        let i32_ptr = i32_type.ptr_type(inkwell::AddressSpace::default());
+
+        let type_id_val = i16_type.const_int(type_id as u64, false);
+        let size_val = i32_type.const_int(size, false);
+
+        // Build a constant array of pointer offsets.
+        let (offsets_ptr, num_offsets) = if pointer_offsets.is_empty() {
+            (i32_ptr.const_null(), i32_type.const_zero())
+        } else {
+            let offset_vals: Vec<_> = pointer_offsets
+                .iter()
+                .map(|&o| i32_type.const_int(u64::from(o), false))
+                .collect();
+            let arr = i32_type.const_array(&offset_vals);
+            let arr_ty = i32_type.array_type(pointer_offsets.len() as u32);
+            let global_name = format!("GcOffsets_{class_name}");
+            let global = if let Some(g) = self.module.get_global(&global_name) {
+                g
+            } else {
+                let g = self.module.add_global(arr_ty, None, &global_name);
+                g.set_constant(true);
+                g.set_initializer(&arr);
+                g
+            };
+            // GEP to get a *i32 pointing at element 0.
+            let ptr = builder
+                .build_bitcast(
+                    global.as_pointer_value(),
+                    i32_ptr,
+                    "offsets.ptr",
+                )
+                .map_err(|e| CodeGenError::Llvm(e.to_string()))?
+                .into_pointer_value();
+            (ptr, i32_type.const_int(pointer_offsets.len() as u64, false))
+        };
+
+        let _ = builder
+            .build_call(
+                register_fn,
+                &[
+                    type_id_val.into(),
+                    size_val.into(),
+                    offsets_ptr.into(),
+                    num_offsets.into(),
+                ],
+                "",
+            )
+            .map_err(|e| CodeGenError::Llvm(e.to_string()))?;
+        builder
+            .build_return(None)
+            .map_err(|e| CodeGenError::Llvm(e.to_string()))?;
+
+        // Add to @llvm.global_ctors so it runs before main().
+        self.add_global_ctor(ctor)?;
+
+        Ok(())
+    }
+
+    /// Append `function` to the module's `@llvm.global_ctors` array.
+    fn add_global_ctor(
+        &mut self,
+        function: inkwell::values::FunctionValue<'ctx>,
+    ) -> Result<(), CodeGenError> {
+        let i32_type = self.context.i32_type();
+        let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+        let fn_ptr_ty = function
+            .get_type()
+            .ptr_type(inkwell::AddressSpace::default());
+        let entry_ty = self.context.struct_type(
+            &[i32_type.into(), fn_ptr_ty.into(), i8_ptr.into()],
+            false,
+        );
+        let priority = i32_type.const_int(65535, false);
+        let fn_ptr = function.as_global_value().as_pointer_value();
+        let data = i8_ptr.const_null();
+        let entry = entry_ty.const_named_struct(&[priority.into(), fn_ptr.into(), data.into()]);
+
+        // Read-modify-write the global_ctors array.
+        const CTORS: &str = "llvm.global_ctors";
+        let ctors_ty = entry_ty.array_type(1);
+        let arr = entry_ty.const_array(&[entry]);
+        if let Some(existing) = self.module.get_global(CTORS) {
+            // Append to the existing array by building a new one.
+            // Inkwell doesn't expose array append directly; we rebuild the global.
+            // For simplicity, emit a new uniquely-named ctor list entry instead.
+            let unique = format!("llvm.global_ctors.{}", self.string_counter);
+            self.string_counter += 1;
+            let g = self.module.add_global(ctors_ty, None, &unique);
+            g.set_initializer(&arr);
+            g.set_linkage(inkwell::module::Linkage::Appending);
+            let _ = existing; // keep original
+        } else {
+            let g = self.module.add_global(ctors_ty, None, CTORS);
+            g.set_initializer(&arr);
+            g.set_linkage(inkwell::module::Linkage::Appending);
+        }
+        Ok(())
     }
 
     fn type_size_value(&self, ty: &Type) -> Result<inkwell::values::IntValue<'ctx>, CodeGenError> {

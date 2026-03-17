@@ -624,6 +624,8 @@ pub extern "C" fn draton_gc_unpin(obj: *mut libc::c_void) {
 }
 
 /// Configures GC thresholds and heap limits.
+/// `heap_size` maps to the old-generation budget; young-gen and large-object
+/// thresholds retain their defaults unless changed via the full `GcConfig` API.
 #[no_mangle]
 pub extern "C" fn draton_gc_configure(
     heap_size: usize,
@@ -632,11 +634,33 @@ pub extern "C" fn draton_gc_configure(
     pause_target_ns: u64,
 ) {
     gc::configure(GcConfig {
-        heap_size,
+        old_size: heap_size,
         max_heap,
         gc_threshold,
         pause_target_ns,
+        ..GcConfig::default()
     });
+}
+
+/// Registers a type descriptor with the GC so it can precisely trace pointer
+/// fields inside objects of the given type.
+///
+/// # Safety
+/// `offsets_ptr` must point to `num_offsets` valid `u32` values for the
+/// duration of this call.
+#[no_mangle]
+pub unsafe extern "C" fn draton_gc_register_type(
+    type_id: u16,
+    size: u32,
+    offsets_ptr: *const u32,
+    num_offsets: u32,
+) {
+    let offsets = if offsets_ptr.is_null() || num_offsets == 0 {
+        &[]
+    } else {
+        std::slice::from_raw_parts(offsets_ptr, num_offsets as usize)
+    };
+    gc::register_type(type_id, size, offsets);
 }
 
 /// Initializes the global GC runtime.
