@@ -25,6 +25,8 @@ pub struct GcStats {
     pub bytes_reclaimed_major: u64,
     pub bytes_reclaimed_large: u64,
     pub write_barrier_slow_calls: u64,
+    pub major_work_requests: u64,
+    pub major_work_requested: bool,
     pub safepoint_rearms: u64,
     pub major_mark_barrier_traces: u64,
     pub remembered_set_entries_added: u64,
@@ -64,6 +66,7 @@ pub struct GcTelemetry {
     bytes_reclaimed_major: AtomicU64,
     bytes_reclaimed_large: AtomicU64,
     write_barrier_slow_calls: AtomicU64,
+    major_work_requests: AtomicU64,
     safepoint_rearms: AtomicU64,
     major_mark_barrier_traces: AtomicU64,
     remembered_set_entries_added: AtomicU64,
@@ -96,6 +99,7 @@ impl GcTelemetry {
             bytes_reclaimed_major: AtomicU64::new(0),
             bytes_reclaimed_large: AtomicU64::new(0),
             write_barrier_slow_calls: AtomicU64::new(0),
+            major_work_requests: AtomicU64::new(0),
             safepoint_rearms: AtomicU64::new(0),
             major_mark_barrier_traces: AtomicU64::new(0),
             remembered_set_entries_added: AtomicU64::new(0),
@@ -128,6 +132,7 @@ impl GcTelemetry {
             &self.bytes_reclaimed_major,
             &self.bytes_reclaimed_large,
             &self.write_barrier_slow_calls,
+            &self.major_work_requests,
             &self.safepoint_rearms,
             &self.major_mark_barrier_traces,
             &self.remembered_set_entries_added,
@@ -149,19 +154,22 @@ impl GcTelemetry {
     #[inline]
     pub fn record_young_alloc(&self, aligned_bytes: usize) {
         self.young_allocations.fetch_add(1, Ordering::Relaxed);
-        self.bytes_allocated.fetch_add(aligned_bytes as u64, Ordering::Relaxed);
+        self.bytes_allocated
+            .fetch_add(aligned_bytes as u64, Ordering::Relaxed);
     }
 
     #[inline]
     pub fn record_old_alloc(&self, aligned_bytes: usize) {
         self.old_allocations.fetch_add(1, Ordering::Relaxed);
-        self.bytes_allocated.fetch_add(aligned_bytes as u64, Ordering::Relaxed);
+        self.bytes_allocated
+            .fetch_add(aligned_bytes as u64, Ordering::Relaxed);
     }
 
     #[inline]
     pub fn record_large_alloc(&self, total_bytes: usize) {
         self.large_allocations.fetch_add(1, Ordering::Relaxed);
-        self.bytes_allocated.fetch_add(total_bytes as u64, Ordering::Relaxed);
+        self.bytes_allocated
+            .fetch_add(total_bytes as u64, Ordering::Relaxed);
     }
 
     #[inline]
@@ -172,8 +180,10 @@ impl GcTelemetry {
     #[inline]
     pub fn record_minor_cycle(&self, pause_ns: u64, promoted_bytes: usize, reclaimed_bytes: usize) {
         self.minor_cycles.fetch_add(1, Ordering::Relaxed);
-        self.bytes_promoted.fetch_add(promoted_bytes as u64, Ordering::Relaxed);
-        self.bytes_reclaimed_minor.fetch_add(reclaimed_bytes as u64, Ordering::Relaxed);
+        self.bytes_promoted
+            .fetch_add(promoted_bytes as u64, Ordering::Relaxed);
+        self.bytes_reclaimed_minor
+            .fetch_add(reclaimed_bytes as u64, Ordering::Relaxed);
         self.record_pause(
             &self.minor_pause_total_ns,
             &self.minor_pause_last_ns,
@@ -190,8 +200,10 @@ impl GcTelemetry {
     #[inline]
     pub fn record_major_slice(&self, pause_ns: u64, reclaimed_old: usize, reclaimed_large: usize) {
         self.major_slices.fetch_add(1, Ordering::Relaxed);
-        self.bytes_reclaimed_major.fetch_add(reclaimed_old as u64, Ordering::Relaxed);
-        self.bytes_reclaimed_large.fetch_add(reclaimed_large as u64, Ordering::Relaxed);
+        self.bytes_reclaimed_major
+            .fetch_add(reclaimed_old as u64, Ordering::Relaxed);
+        self.bytes_reclaimed_large
+            .fetch_add(reclaimed_large as u64, Ordering::Relaxed);
         self.record_pause(
             &self.major_pause_total_ns,
             &self.major_pause_last_ns,
@@ -213,8 +225,15 @@ impl GcTelemetry {
 
     #[inline]
     pub fn record_write_barrier_slow(&self) {
-        self.write_barrier_slow_calls.fetch_add(1, Ordering::Relaxed);
-        self.remembered_set_entries_added.fetch_add(1, Ordering::Relaxed);
+        self.write_barrier_slow_calls
+            .fetch_add(1, Ordering::Relaxed);
+        self.remembered_set_entries_added
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn record_major_work_request(&self) {
+        self.major_work_requests.fetch_add(1, Ordering::Relaxed);
     }
 
     #[inline]
@@ -224,7 +243,8 @@ impl GcTelemetry {
 
     #[inline]
     pub fn record_major_mark_barrier_trace(&self) {
-        self.major_mark_barrier_traces.fetch_add(1, Ordering::Relaxed);
+        self.major_mark_barrier_traces
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     #[inline]
@@ -251,10 +271,14 @@ impl GcTelemetry {
             bytes_reclaimed_major: self.bytes_reclaimed_major.load(Ordering::Relaxed),
             bytes_reclaimed_large: self.bytes_reclaimed_large.load(Ordering::Relaxed),
             write_barrier_slow_calls: self.write_barrier_slow_calls.load(Ordering::Relaxed),
+            major_work_requests: self.major_work_requests.load(Ordering::Relaxed),
+            major_work_requested: runtime.major_work_requested.load(Ordering::Acquire),
             safepoint_rearms: self.safepoint_rearms.load(Ordering::Relaxed),
             major_mark_barrier_traces: self.major_mark_barrier_traces.load(Ordering::Relaxed),
             remembered_set_entries_added: self.remembered_set_entries_added.load(Ordering::Relaxed),
-            remembered_set_entries_deduped: self.remembered_set_entries_deduped.load(Ordering::Relaxed),
+            remembered_set_entries_deduped: self
+                .remembered_set_entries_deduped
+                .load(Ordering::Relaxed),
             young_usage_bytes: young_usage,
             old_usage_bytes: old_usage,
             heap_usage_bytes: young_usage.saturating_add(old_usage),
@@ -292,13 +316,7 @@ impl GcTelemetry {
         }
     }
 
-    fn record_pause(
-        &self,
-        total: &AtomicU64,
-        last: &AtomicU64,
-        max: &AtomicU64,
-        pause_ns: u64,
-    ) {
+    fn record_pause(&self, total: &AtomicU64, last: &AtomicU64, max: &AtomicU64, pause_ns: u64) {
         total.fetch_add(pause_ns, Ordering::Relaxed);
         last.store(pause_ns, Ordering::Relaxed);
         let _ = max.fetch_max(pause_ns, Ordering::Relaxed);

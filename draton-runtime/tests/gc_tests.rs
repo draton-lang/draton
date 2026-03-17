@@ -1,5 +1,5 @@
-use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::sync::atomic::Ordering;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use draton_runtime::gc;
 use draton_runtime::gc::heap::{GC_OLD, GC_PINNED};
@@ -44,7 +44,10 @@ fn unprotected_object_is_collected() {
     // No protect() — object has no root in a pure-Rust test environment
     // (shadow stack is null, no LLVM-generated frames).
     gc::collect();
-    assert!(gc::header_of(ptr).is_none(), "unprotected object must be collected");
+    assert!(
+        gc::header_of(ptr).is_none(),
+        "unprotected object must be collected"
+    );
 }
 
 // ── Write barrier ─────────────────────────────────────────────────────────────
@@ -74,7 +77,10 @@ fn write_barrier_tracks_old_to_young_reference() {
     // but collecting and then confirming the parent is still alive is a
     // reasonable proxy.
     gc::collect();
-    assert!(gc::header_of(parent).is_some(), "parent must still be live after write_barrier");
+    assert!(
+        gc::header_of(parent).is_some(),
+        "parent must still be live after write_barrier"
+    );
     gc::release(parent);
 }
 
@@ -91,7 +97,11 @@ fn promotion_moves_survivor_to_old_generation() {
     gc::collect();
     gc::collect();
     let header = gc::header_of(ptr).expect("header after promotion");
-    assert_ne!(header.gc_flags & GC_OLD, 0, "object must be in old gen after promotion");
+    assert_ne!(
+        header.gc_flags & GC_OLD,
+        0,
+        "object must be in old gen after promotion"
+    );
     gc::release(ptr);
 }
 
@@ -116,9 +126,9 @@ fn gc_config_applies_custom_values() {
     gc::shutdown();
     gc::init();
     gc::configure(gc::config::GcConfig {
-        old_size:        128 * 1024 * 1024,
-        max_heap:        256 * 1024 * 1024,
-        gc_threshold:    0.6,
+        old_size: 128 * 1024 * 1024,
+        max_heap: 256 * 1024 * 1024,
+        gc_threshold: 0.6,
         pause_target_ns: 50_000,
         ..gc::config::GcConfig::default()
     });
@@ -146,16 +156,43 @@ fn gc_stats_capture_alloc_collect_and_barrier_activity() {
     gc::collect();
 
     let stats = gc::stats();
-    assert!(stats.young_allocations >= 1, "young allocations should be tracked: {stats:?}");
-    assert!(stats.large_allocations >= 1, "large allocations should be tracked: {stats:?}");
-    assert!(stats.array_allocations >= 1, "array allocations should be tracked");
-    assert!(stats.minor_cycles >= 1, "minor collections should be tracked");
+    assert!(
+        stats.young_allocations >= 1,
+        "young allocations should be tracked: {stats:?}"
+    );
+    assert!(
+        stats.large_allocations >= 1,
+        "large allocations should be tracked: {stats:?}"
+    );
+    assert!(
+        stats.array_allocations >= 1,
+        "array allocations should be tracked"
+    );
+    assert!(
+        stats.minor_cycles >= 1,
+        "minor collections should be tracked"
+    );
     assert!(stats.full_cycles >= 1, "full collections should be tracked");
-    assert!(stats.bytes_allocated > 0, "allocated bytes should accumulate");
-    assert!(stats.bytes_promoted > 0, "promotion bytes should accumulate");
-    assert!(stats.write_barrier_slow_calls >= 1, "barrier slow path should be counted");
-    assert!(stats.minor_pause.total_ns > 0, "minor pause telemetry should be recorded");
-    assert!(stats.full_pause.total_ns > 0, "full pause telemetry should be recorded");
+    assert!(
+        stats.bytes_allocated > 0,
+        "allocated bytes should accumulate"
+    );
+    assert!(
+        stats.bytes_promoted > 0,
+        "promotion bytes should accumulate"
+    );
+    assert!(
+        stats.write_barrier_slow_calls >= 1,
+        "barrier slow path should be counted"
+    );
+    assert!(
+        stats.minor_pause.total_ns > 0,
+        "minor pause telemetry should be recorded"
+    );
+    assert!(
+        stats.full_pause.total_ns > 0,
+        "full pause telemetry should be recorded"
+    );
     assert!(stats.heap_usage_bytes >= stats.old_usage_bytes);
 
     gc::release(parent);
@@ -180,7 +217,10 @@ fn gc_reset_stats_clears_counters_without_disrupting_heap() {
     assert_eq!(stats.bytes_allocated, 0);
     assert_eq!(stats.minor_cycles, 0);
     assert_eq!(stats.major_slices, 0);
-    assert!(gc::header_of(ptr).is_some(), "resetting stats must not free live objects");
+    assert!(
+        gc::header_of(ptr).is_some(),
+        "resetting stats must not free live objects"
+    );
 
     gc::release(ptr);
 }
@@ -201,13 +241,19 @@ fn gc_heap_verifier_accepts_live_and_reclaimed_objects() {
     }
     gc::collect();
     gc::collect();
-    assert!(gc::verify().is_ok(), "heap verifier should accept promoted live state");
+    assert!(
+        gc::verify().is_ok(),
+        "heap verifier should accept promoted live state"
+    );
 
     for ptr in roots {
         gc::release(ptr);
     }
     gc::collect();
-    assert!(gc::verify().is_ok(), "heap verifier should accept reclaimed old-gen state");
+    assert!(
+        gc::verify().is_ok(),
+        "heap verifier should accept reclaimed old-gen state"
+    );
 }
 
 #[test]
@@ -231,8 +277,14 @@ fn old_generation_reuses_swept_slots() {
     gc::collect();
 
     let after_free = gc::stats();
-    assert!(after_free.old_free_slot_count > 0, "sweeping old gen should create reusable slots");
-    assert!(after_free.old_free_bytes > 0, "old gen should report reusable bytes");
+    assert!(
+        after_free.old_free_slot_count > 0,
+        "sweeping old gen should create reusable slots"
+    );
+    assert!(
+        after_free.old_free_bytes > 0,
+        "old gen should report reusable bytes"
+    );
 
     let mut second_batch = Vec::new();
     for _ in 0..1024 {
@@ -312,16 +364,23 @@ fn major_mark_barrier_traces_new_old_edge_from_marked_parent() {
         chain.push(ptr);
     }
     for index in 0..chain.len() - 1 {
-        unsafe { write_ptr_field(chain[index], chain[index + 1]); }
+        unsafe {
+            write_ptr_field(chain[index], chain[index + 1]);
+        }
     }
 
-    unsafe { write_ptr_field(parent, chain[0]); }
+    unsafe {
+        write_ptr_field(parent, chain[0]);
+    }
     gc::write_barrier(parent, std::ptr::null_mut(), chain[0]);
 
     let victim = gc::alloc(gc::LARGE_OBJECT_THRESHOLD + 128, 12);
     gc::protect(victim);
 
-    while gc::header_of(chain[0]).map(|hdr| hdr.gc_flags & GC_OLD == 0).unwrap_or(true) {
+    while gc::header_of(chain[0])
+        .map(|hdr| hdr.gc_flags & GC_OLD == 0)
+        .unwrap_or(true)
+    {
         let _ = gc::alloc(8, 11);
     }
 
@@ -337,7 +396,9 @@ fn major_mark_barrier_traces_new_old_edge_from_marked_parent() {
         "the first safepoint should leave a long old-gen graph in mark phase: {after_first_slice:?}"
     );
 
-    unsafe { write_ptr_field(parent, victim); }
+    unsafe {
+        write_ptr_field(parent, victim);
+    }
     gc::write_barrier(parent, std::ptr::null_mut(), victim);
     let after_barrier = gc::stats();
     assert_eq!(
@@ -383,12 +444,19 @@ fn active_major_cycle_rearms_safepoint_flag() {
         chain.push(ptr);
     }
     for index in 0..chain.len() - 1 {
-        unsafe { write_ptr_field(chain[index], chain[index + 1]); }
+        unsafe {
+            write_ptr_field(chain[index], chain[index + 1]);
+        }
     }
-    unsafe { write_ptr_field(parent, chain[0]); }
+    unsafe {
+        write_ptr_field(parent, chain[0]);
+    }
     gc::write_barrier(parent, std::ptr::null_mut(), chain[0]);
 
-    while gc::header_of(chain[0]).map(|hdr| hdr.gc_flags & GC_OLD == 0).unwrap_or(true) {
+    while gc::header_of(chain[0])
+        .map(|hdr| hdr.gc_flags & GC_OLD == 0)
+        .unwrap_or(true)
+    {
         let _ = gc::alloc(8, 13);
     }
     for ptr in &chain {
@@ -415,6 +483,90 @@ fn active_major_cycle_rearms_safepoint_flag() {
 
     gc::collect();
     gc::release(parent);
+}
+
+#[test]
+fn promotion_pressure_requests_major_work() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 256 * 1024,
+        old_size: 1024 * 1024,
+        gc_threshold: 0.10,
+        pause_target_ns: 1_000,
+        ..gc::config::GcConfig::default()
+    });
+    gc::reset_stats();
+
+    let mut roots = Vec::new();
+    for _ in 0..5000 {
+        let ptr = gc::alloc(64, 15);
+        gc::protect(ptr);
+        roots.push(ptr);
+    }
+
+    let stats = gc::stats();
+    assert!(
+        stats.minor_cycles >= 1,
+        "allocation burst should have triggered young-gen collection pressure: {stats:?}"
+    );
+    assert!(
+        stats.major_work_requested,
+        "promotion pressure should leave major work requested for the next safepoint: {stats:?}"
+    );
+    assert!(
+        stats.major_work_requests >= 1,
+        "major work requests should be visible in telemetry once promotion crosses the threshold: {stats:?}"
+    );
+
+    gc::safepoint();
+    let after_safepoint = gc::stats();
+    assert!(
+        after_safepoint.major_slices >= 1,
+        "requested major work should start draining on the next safepoint: {after_safepoint:?}"
+    );
+
+    for ptr in roots {
+        gc::release(ptr);
+    }
+    gc::collect();
+}
+
+#[test]
+fn full_collection_clears_major_work_request_flag() {
+    let _guard = gc_test_guard();
+    gc::shutdown();
+    gc::init();
+    gc::configure(gc::config::GcConfig {
+        young_size: 256 * 1024,
+        old_size: 1024 * 1024,
+        gc_threshold: 0.10,
+        pause_target_ns: 1_000,
+        ..gc::config::GcConfig::default()
+    });
+    gc::reset_stats();
+
+    let mut roots = Vec::new();
+    for _ in 0..5000 {
+        let ptr = gc::alloc(64, 16);
+        gc::protect(ptr);
+        roots.push(ptr);
+    }
+    assert!(
+        gc::stats().major_work_requested,
+        "setup should leave major work pending"
+    );
+
+    for ptr in &roots {
+        gc::release(*ptr);
+    }
+    gc::collect();
+    let stats = gc::stats();
+    assert!(
+        !stats.major_work_requested,
+        "full collection should return the major-work request flag to idle: {stats:?}"
+    );
 }
 
 // ── Pin / unpin ───────────────────────────────────────────────────────────────

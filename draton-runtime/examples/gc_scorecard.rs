@@ -52,6 +52,8 @@ fn main() {
             "\"bytes_reclaimed_major\":{},",
             "\"bytes_reclaimed_large\":{},",
             "\"write_barrier_slow_calls\":{},",
+            "\"major_work_requests\":{},",
+            "\"major_work_requested\":{},",
             "\"safepoint_rearms\":{},",
             "\"major_mark_barrier_traces\":{},",
             "\"remembered_set_entries_added\":{},",
@@ -97,6 +99,12 @@ fn main() {
         stats.bytes_reclaimed_major,
         stats.bytes_reclaimed_large,
         stats.write_barrier_slow_calls,
+        stats.major_work_requests,
+        if stats.major_work_requested {
+            "true"
+        } else {
+            "false"
+        },
         stats.safepoint_rearms,
         stats.major_mark_barrier_traces,
         stats.remembered_set_entries_added,

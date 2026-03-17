@@ -98,6 +98,8 @@ pub struct DratonGcStats {
     pub bytes_reclaimed_major: u64,
     pub bytes_reclaimed_large: u64,
     pub write_barrier_slow_calls: u64,
+    pub major_work_requests: u64,
+    pub major_work_requested: bool,
     pub safepoint_rearms: u64,
     pub major_mark_barrier_traces: u64,
     pub remembered_set_entries_added: u64,
@@ -145,6 +147,8 @@ fn export_gc_stats(stats: gc::GcStats) -> DratonGcStats {
         bytes_reclaimed_major: stats.bytes_reclaimed_major,
         bytes_reclaimed_large: stats.bytes_reclaimed_large,
         write_barrier_slow_calls: stats.write_barrier_slow_calls,
+        major_work_requests: stats.major_work_requests,
+        major_work_requested: stats.major_work_requested,
         safepoint_rearms: stats.safepoint_rearms,
         major_mark_barrier_traces: stats.major_mark_barrier_traces,
         remembered_set_entries_added: stats.remembered_set_entries_added,
@@ -744,7 +748,11 @@ pub extern "C" fn draton_gc_reset_stats() {
 /// Verifies internal GC heap invariants and returns 1 on success, 0 on failure.
 #[no_mangle]
 pub extern "C" fn draton_gc_verify() -> i64 {
-    if gc::verify().is_ok() { 1 } else { 0 }
+    if gc::verify().is_ok() {
+        1
+    } else {
+        0
+    }
 }
 
 /// Pins an object so it is not moved by collection.
