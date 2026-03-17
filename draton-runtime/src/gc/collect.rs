@@ -6,7 +6,7 @@ use super::heap::{
     FreeSlot, GcRuntime, HeapState, MajorPhase, ObjHeader, YoungPool, GC_FREE, GC_MARKED, GC_OLD,
     GC_PINNED, HEADER, MAX_THREADS,
 };
-use super::{major_work_needed, request_major_work, sync_major_work_request};
+use super::{clear_major_work_state, major_work_needed, request_major_work, sync_major_work_request};
 
 // ── Tracing helpers ───────────────────────────────────────────────────────────
 
@@ -233,7 +233,7 @@ impl GcRuntime {
         if should_request_major {
             request_major_work(self);
         } else {
-            self.major_work_requested.store(false, Ordering::Release);
+            clear_major_work_state(self);
         }
     }
 

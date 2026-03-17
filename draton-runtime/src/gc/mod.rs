@@ -77,6 +77,12 @@ fn runtime() -> Arc<GcRuntime> {
     rt
 }
 
+#[inline]
+pub(super) fn clear_major_work_state(rt: &GcRuntime) {
+    rt.major_work_requested.store(false, Ordering::Release);
+    rt.major_work_budget.store(0, Ordering::Release);
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 pub fn init() {
@@ -235,6 +241,9 @@ pub(super) fn major_work_needed(heap: &HeapState) -> bool {
 pub(super) fn sync_major_work_request(rt: &GcRuntime, heap: &HeapState) -> bool {
     let requested = major_work_reason(heap).is_some();
     rt.major_work_requested.store(requested, Ordering::Release);
+    if !requested {
+        rt.major_work_budget.store(0, Ordering::Release);
+    }
     requested
 }
 
@@ -257,6 +266,17 @@ fn request_major_work_for_reason(rt: &GcRuntime, reason: MajorWorkReason) {
         MajorWorkReason::Threshold => rt.telemetry.record_major_work_threshold_request(),
         MajorWorkReason::Continuation => rt.telemetry.record_major_work_continuation_request(),
     }
+    let mut current = rt.major_work_budget.load(Ordering::Acquire);
+    loop {
+        let next = current.saturating_add(1).min(16);
+        match rt
+            .major_work_budget
+            .compare_exchange(current, next, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => break,
+            Err(observed) => current = observed,
+        }
+    }
     rt.major_work_requested.store(true, Ordering::Release);
     signal_gc_flag();
 }
@@ -277,10 +297,27 @@ pub(super) fn request_major_work(rt: &GcRuntime) {
 
 #[inline]
 fn assist_major_work_if_requested(rt: &GcRuntime) {
-    if rt.major_work_requested.load(Ordering::Acquire) {
+    if try_take_major_work_budget(rt) {
         rt.telemetry.record_major_mutator_assist();
         rt.collect_major_slice();
     }
+}
+
+#[inline]
+fn try_take_major_work_budget(rt: &GcRuntime) -> bool {
+    let mut current = rt.major_work_budget.load(Ordering::Acquire);
+    while current != 0 {
+        match rt.major_work_budget.compare_exchange(
+            current,
+            current - 1,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => return true,
+            Err(observed) => current = observed,
+        }
+    }
+    false
 }
 
 // ── Safepoint slow path ────────────────────────────────────────────────────────
@@ -289,7 +326,7 @@ fn assist_major_work_if_requested(rt: &GcRuntime) {
 pub fn safepoint() {
     let rt = runtime();
     let needs_minor = rt.pool.current_slot_nearly_full();
-    let needs_major = rt.major_work_requested.load(Ordering::Acquire);
+    let needs_major = try_take_major_work_budget(&rt);
     if needs_minor {
         rt.collect_minor();
     }
@@ -307,6 +344,8 @@ pub fn safepoint() {
     let should_rearm = rt.pool.current_slot_nearly_full() || major_still_pending;
     if should_rearm {
         rearm_safepoint_flag(&rt);
+    } else {
+        clear_major_work_state(&rt);
     }
 }
 

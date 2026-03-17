@@ -838,6 +838,7 @@ pub struct GcRuntime {
     /// Cached from config for the lock-free alloc hot path.
     pub large_threshold: AtomicUsize,
     pub young_size: AtomicUsize,
+    pub major_work_budget: AtomicUsize,
     pub major_work_requested: AtomicBool,
     pub major_mark_active: AtomicBool,
     pub telemetry: GcTelemetry,
@@ -849,6 +850,7 @@ impl GcRuntime {
         Self {
             large_threshold: AtomicUsize::new(config.large_threshold),
             young_size: AtomicUsize::new(config.young_size),
+            major_work_budget: AtomicUsize::new(0),
             major_work_requested: AtomicBool::new(false),
             major_mark_active: AtomicBool::new(false),
             pool: YoungPool::new(config.young_size),

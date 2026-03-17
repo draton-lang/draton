@@ -29,6 +29,7 @@ pub struct GcStats {
     pub major_work_threshold_requests: u64,
     pub major_work_continuation_requests: u64,
     pub major_mutator_assists: u64,
+    pub major_work_budget: usize,
     pub major_work_requested: bool,
     pub safepoint_rearms: u64,
     pub major_mark_barrier_traces: u64,
@@ -308,6 +309,7 @@ impl GcTelemetry {
                 .major_work_continuation_requests
                 .load(Ordering::Relaxed),
             major_mutator_assists: self.major_mutator_assists.load(Ordering::Relaxed),
+            major_work_budget: runtime.major_work_budget.load(Ordering::Acquire),
             major_work_requested: runtime.major_work_requested.load(Ordering::Acquire),
             safepoint_rearms: self.safepoint_rearms.load(Ordering::Relaxed),
             major_mark_barrier_traces: self.major_mark_barrier_traces.load(Ordering::Relaxed),

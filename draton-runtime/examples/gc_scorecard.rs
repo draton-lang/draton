@@ -56,6 +56,7 @@ fn main() {
             "\"major_work_threshold_requests\":{},",
             "\"major_work_continuation_requests\":{},",
             "\"major_mutator_assists\":{},",
+            "\"major_work_budget\":{},",
             "\"major_work_requested\":{},",
             "\"safepoint_rearms\":{},",
             "\"major_mark_barrier_traces\":{},",
@@ -106,6 +107,7 @@ fn main() {
         stats.major_work_threshold_requests,
         stats.major_work_continuation_requests,
         stats.major_mutator_assists,
+        stats.major_work_budget,
         if stats.major_work_requested {
             "true"
         } else {

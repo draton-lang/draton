@@ -488,6 +488,10 @@ fn active_major_cycle_rearms_safepoint_flag() {
         stats.major_work_continuation_requests >= 1,
         "active major cycles should register continuation-driven requests once slices keep the cycle alive: {stats:?}"
     );
+    assert!(
+        stats.major_work_budget >= 1,
+        "active major cycles should keep at least one pending major-slice budget after rearming: {stats:?}"
+    );
 
     gc::collect();
     gc::release(parent);
@@ -522,6 +526,10 @@ fn promotion_pressure_requests_major_work() {
     assert!(
         stats.major_work_requested,
         "promotion pressure should leave major work requested for the next safepoint: {stats:?}"
+    );
+    assert!(
+        stats.major_work_budget >= 1,
+        "promotion pressure should enqueue at least one pending major slice: {stats:?}"
     );
     assert!(
         stats.major_work_requests >= 1,
@@ -582,6 +590,10 @@ fn full_collection_clears_major_work_request_flag() {
     assert!(
         !stats.major_work_requested,
         "full collection should return the major-work request flag to idle: {stats:?}"
+    );
+    assert_eq!(
+        stats.major_work_budget, 0,
+        "full collection should clear pending major-slice budget: {stats:?}"
     );
 }
 

@@ -28,6 +28,7 @@ The baseline report tracks these metrics:
 - active-cycle continuation request signals
 - major-mutator assists when an allocation slow path, including young refills,
   helps drain pending major work
+- current pending major-slice budget in the runtime control plane
 - whether major work is currently requested at the time the snapshot is taken
 - safepoint rearms when the runtime keeps an active GC cycle progressing across
   multiple polls
@@ -61,6 +62,9 @@ Current baseline assumptions:
   including the young-refill path after a minor collection, reducing the
   runtime's dependence on a separate safepoint poll before the next chunk of
   major work can run
+- the runtime now tracks an explicit major-slice budget, so safepoints and
+  mutator assists consume the same queue of pending major work instead of
+  relying only on a boolean request flag
 - a major cycle that has already started must continue progressing at
   safepoints until it returns to `Idle`
 - stores from already-marked old/large objects must trace newly linked
@@ -81,6 +85,10 @@ slice.
 
 The `major_mutator_assists` metric counts slow-path allocations that helped run
 one pending major-GC slice immediately instead of waiting for a later poll.
+
+The `major_work_budget` metric is the current number of queued major slices in
+that control plane. It should drop back to zero when the runtime returns to an
+idle major-GC state.
 
 The `safepoint_rearms` metric is also workload-dependent. It increases only
 when a single slow-path poll is not enough to finish the current GC work and the
