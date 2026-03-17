@@ -43,12 +43,10 @@ impl GcRuntime {
         if child.is_null() {
             return;
         }
-        let child_addr = child as usize;
-
         // Track old→young cross-generation pointers via remembered set + card table.
         let parent_is_old = heap.old_objects.contains_key(&parent_addr)
             || heap.large_objects.contains_key(&parent_addr);
-        let child_is_young = heap.young_index.contains_key(&child_addr);
+        let child_is_young = heap.young.contains_ptr(child as *const u8);
 
         if parent_is_old && child_is_young {
             heap.remembered_set.insert(parent_addr);

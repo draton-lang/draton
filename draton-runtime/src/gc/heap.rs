@@ -123,11 +123,14 @@ impl YoungArena {
         self.live_count = 0;
     }
 
-    /// Returns true when `ptr` points into this arena's buffer.
+    /// Returns true when `ptr` is a valid payload within the live (allocated) region
+    /// of this arena.  Payloads start at `base + HEADER` and end before `base + bump`.
     pub fn contains_ptr(&self, ptr: *const u8) -> bool {
         let base = self.buffer.as_ptr() as usize;
         let addr = ptr as usize;
-        addr >= base && addr < base + self.buffer.len()
+        // A valid payload P satisfies: base + HEADER <= P < base + bump.
+        // When bump == 0 (arena reset), no payload is valid.
+        addr >= base + HEADER && addr < base + self.bump
     }
 
     /// Read the header of a young object given its *payload* address.
@@ -202,9 +205,8 @@ pub struct HeapState {
 
     // ── Young generation ──────────────────────────────────────────────────────
     pub young: YoungArena,
-    /// Payload address → (arena_byte_offset_of_header, aligned_total_bytes).
-    /// Entries are removed when an object is collected or promoted out.
-    pub young_index: HashMap<usize, (usize, usize)>,
+    // young_index removed: membership is tested via young.contains_ptr() (pointer
+    // arithmetic), aligned size is derived from the in-arena ObjHeader.
 
     // ── Old generation ────────────────────────────────────────────────────────
     /// Payload address → Box<[u8]> (ObjHeader + payload).
@@ -257,9 +259,8 @@ impl HeapState {
         let config = config.normalized();
         let card_table = CardTable::new(config.max_heap);
         Self {
-            young:           YoungArena::new(config.young_size),
-            young_index:     HashMap::new(),
-            old_objects:     HashMap::new(),
+            young:        YoungArena::new(config.young_size),
+            old_objects:  HashMap::new(),
             large_objects:   HashMap::new(),
             type_descriptors: HashMap::new(),
             roots:            HashMap::new(),
@@ -300,20 +301,15 @@ impl HeapState {
         // Fast path: bump-pointer in young arena.
         if let Some(payload) = self.young.try_alloc(size, type_id) {
             let aligned = (HEADER + size + 7) & !7;
-            let arena_offset = self.young.bump - aligned;
-            self.young_index.insert(payload as usize, (arena_offset, aligned));
             self.bytes_allocated += aligned as u64;
             self.live_bytes += aligned;
             return payload;
         }
 
-        // Young arena full: promote all promotable young objects, then retry or
-        // fall through to old-gen allocation.
+        // Young arena full: reset if empty, then retry or fall through to old gen.
         self.try_reset_young();
         if let Some(payload) = self.young.try_alloc(size, type_id) {
             let aligned = (HEADER + size + 7) & !7;
-            let arena_offset = self.young.bump - aligned;
-            self.young_index.insert(payload as usize, (arena_offset, aligned));
             self.bytes_allocated += aligned as u64;
             self.live_bytes += aligned;
             return payload;
@@ -362,15 +358,17 @@ impl HeapState {
 
     pub fn header_of(&self, payload: *mut u8) -> Option<ObjHeader> {
         let addr = payload as usize;
-        // Young gen: header is HEADER bytes before the payload in the arena.
-        if self.young_index.contains_key(&addr) {
-            return Some(unsafe { self.young.read_header(payload) });
-        }
-        // Follow forwarding for promoted young objects.
+        // Forwarding must be checked FIRST: a promoted object still occupies
+        // bytes in the young arena (bump is not compacted), so contains_ptr would
+        // return true for it.  Forwarding takes precedence over the young arena.
         if let Some(&new_addr) = self.young_forwarding.get(&addr) {
             if let Some(bytes) = self.old_objects.get(&new_addr) {
                 return Some(unsafe { ptr::read(bytes.as_ptr().cast::<ObjHeader>()) });
             }
+        }
+        // Young gen: header is HEADER bytes before the payload in the arena.
+        if self.young.contains_ptr(payload as *const u8) {
+            return Some(unsafe { self.young.read_header(payload) });
         }
         // Old gen / large: header is HEADER bytes before payload in the Box.
         if let Some(bytes) = self.old_objects.get(&addr).or_else(|| self.large_objects.get(&addr)) {
@@ -392,8 +390,9 @@ impl HeapState {
 
     pub fn space_of(&self, payload: *mut u8) -> Option<HeapSpace> {
         let addr = payload as usize;
-        if self.young_index.contains_key(&addr) { return Some(HeapSpace::Young); }
+        // Forwarding first (same reason as header_of).
         if self.young_forwarding.contains_key(&addr) { return Some(HeapSpace::Old); }
+        if self.young.contains_ptr(payload as *const u8) { return Some(HeapSpace::Young); }
         if self.old_objects.contains_key(&addr)  { return Some(HeapSpace::Old);   }
         if self.large_objects.contains_key(&addr) { return Some(HeapSpace::Large); }
         None
@@ -402,8 +401,7 @@ impl HeapState {
     // ── Pin / unpin ───────────────────────────────────────────────────────────
 
     pub fn pin(&mut self, payload: *mut u8) {
-        let addr = payload as usize;
-        if self.young_index.contains_key(&addr) {
+        if self.young.contains_ptr(payload as *const u8) {
             let mut hdr = unsafe { self.young.read_header(payload) };
             hdr.gc_flags |= GC_PINNED;
             unsafe { self.young.write_header(payload, hdr); }
@@ -417,8 +415,7 @@ impl HeapState {
     }
 
     pub fn unpin(&mut self, payload: *mut u8) {
-        let addr = payload as usize;
-        if self.young_index.contains_key(&addr) {
+        if self.young.contains_ptr(payload as *const u8) {
             let mut hdr = unsafe { self.young.read_header(payload) };
             hdr.gc_flags &= !GC_PINNED;
             unsafe { self.young.write_header(payload, hdr); }

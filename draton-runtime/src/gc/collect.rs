@@ -28,7 +28,7 @@ fn enqueue_children(heap: &HeapState, payload: usize, mark_stack: &mut Vec<usize
 /// Set GC_MARKED on an object regardless of which space it lives in.
 fn set_marked(heap: &mut HeapState, payload: usize) {
     let ptr = payload as *mut u8;
-    if heap.young_index.contains_key(&payload) {
+    if heap.young.contains_ptr(ptr as *const u8) {
         let mut hdr = unsafe { heap.young.read_header(ptr) };
         hdr.gc_flags |= GC_MARKED;
         unsafe { heap.young.write_header(ptr, hdr); }
@@ -48,7 +48,7 @@ fn set_marked(heap: &mut HeapState, payload: usize) {
 #[allow(dead_code)]
 fn clear_marked(heap: &mut HeapState, payload: usize) {
     let ptr = payload as *mut u8;
-    if heap.young_index.contains_key(&payload) {
+    if heap.young.contains_ptr(ptr as *const u8) {
         let mut hdr = unsafe { heap.young.read_header(ptr) };
         hdr.gc_flags &= !GC_MARKED;
         unsafe { heap.young.write_header(ptr, hdr); }
@@ -89,7 +89,7 @@ impl GcRuntime {
 
         let mut mark_stack: Vec<usize> = Vec::new();
         for &addr in shadow_roots.iter().chain(explicit_roots.iter()) {
-            if heap.young_index.contains_key(&addr) {
+            if heap.young.contains_ptr(addr as *const u8) {
                 set_marked(&mut heap, addr);
                 enqueue_children(&heap, addr, &mut mark_stack);
             }
@@ -106,11 +106,10 @@ impl GcRuntime {
             for &offset in desc.pointer_offsets.iter() {
                 let child = unsafe { HeapState::read_ptr_field(ptr as *const u8, offset) };
                 if child.is_null() { continue; }
-                let child_addr = child as usize;
-                if heap.young_index.contains_key(&child_addr) {
+                if heap.young.contains_ptr(child as *const u8) {
                     if heap.header_of(child).map_or(false, |h| h.gc_flags & GC_MARKED == 0) {
-                        set_marked(&mut heap, child_addr);
-                        mark_stack.push(child_addr);
+                        set_marked(&mut heap, child as usize);
+                        mark_stack.push(child as usize);
                     }
                 }
             }
@@ -127,56 +126,69 @@ impl GcRuntime {
             for &offset in desc.pointer_offsets.iter() {
                 let child = unsafe { HeapState::read_ptr_field(ptr as *const u8, offset) };
                 if child.is_null() { continue; }
-                let child_addr = child as usize;
-                if heap.young_index.contains_key(&child_addr) {
+                if heap.young.contains_ptr(child as *const u8) {
                     if heap.header_of(child).map_or(false, |h| h.gc_flags & GC_MARKED == 0) {
-                        set_marked(&mut heap, child_addr);
-                        mark_stack.push(child_addr);
+                        set_marked(&mut heap, child as usize);
+                        mark_stack.push(child as usize);
                     }
                 }
             }
         }
 
-        // Phase 4: age live young objects; sweep dead ones.
-        let live_young: Vec<usize> = heap.young_index.keys().copied().collect();
+        // Phase 4: age live young objects; sweep dead ones via linear arena scan.
+        // This replaces the old young_index.keys() iteration with a cache-friendly
+        // walk of the bump-pointer buffer — O(bump) instead of O(HashMap entries).
         let promotion_age = heap.config.promotion_age;
-        let mut dead: Vec<usize> = Vec::new();
-        let mut promoted: Vec<usize> = Vec::new();
+        let mut dead_bytes = 0usize;
+        let mut dead_count = 0usize;
+        let mut promoted: Vec<(usize, usize)> = Vec::new(); // (payload_addr, size)
+        let mut offset = 0usize;
 
-        for addr in live_young {
-            let ptr = addr as *mut u8;
-            let mut hdr = unsafe { heap.young.read_header(ptr) };
+        while offset < heap.young.bump {
+            let hdr_ptr = unsafe {
+                heap.young.buffer.as_ptr().add(offset) as *const ObjHeader
+            };
+            let hdr = unsafe { std::ptr::read(hdr_ptr) };
+            let size = hdr.size as usize;
+            let aligned = (HEADER + size + 7) & !7;
+            let payload_addr = unsafe { heap.young.buffer.as_ptr().add(offset + HEADER) } as usize;
+
             if hdr.gc_flags & GC_MARKED != 0 || hdr.gc_flags & GC_PINNED != 0 {
                 // Alive: clear mark bit, increment age.
-                hdr.gc_flags &= !GC_MARKED;
-                hdr.age = hdr.age.saturating_add(1);
-                if hdr.age >= promotion_age {
-                    promoted.push(addr);
+                let mut new_hdr = hdr;
+                new_hdr.gc_flags &= !GC_MARKED;
+                new_hdr.age = new_hdr.age.saturating_add(1);
+                if new_hdr.age >= promotion_age {
+                    promoted.push((payload_addr, size));
+                    // Header will be rewritten at actual promotion time below.
                 } else {
-                    unsafe { heap.young.write_header(ptr, hdr); }
+                    unsafe {
+                        std::ptr::write(
+                            heap.young.buffer.as_mut_ptr().add(offset) as *mut ObjHeader,
+                            new_hdr,
+                        );
+                    }
                 }
             } else {
-                dead.push(addr);
+                // Dead: account for reclaimed bytes.
+                dead_bytes += aligned;
+                dead_count += 1;
             }
+            offset += aligned;
         }
 
-        // Remove dead young objects.
-        for addr in dead {
-            if let Some((_, aligned)) = heap.young_index.remove(&addr) {
-                heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
-                heap.young.live_count = heap.young.live_count.saturating_sub(1);
-            }
-            // Do not auto-remove from roots — roots only contains explicit protect() entries.
-        }
+        heap.live_bytes = heap.live_bytes.saturating_sub(dead_bytes);
+        heap.young.live_count = heap.young.live_count.saturating_sub(dead_count);
 
-        // Promote long-lived young objects to old gen in-place.
-        // We allocate a fresh Box, copy the payload, then update the root entry.
-        // Young objects with no registered type descriptor are promoted opaquely.
-        for addr in promoted {
+        // Dead objects are accounted for already (dead_bytes/dead_count above).
+        // No per-object cleanup needed since young arena is bump-pointer (no free list).
+
+        // Promote long-lived young objects to old gen by copying to a Box<[u8]>.
+        for (addr, size) in promoted {
             let ptr = addr as *mut u8;
             let hdr = unsafe { heap.young.read_header(ptr) };
-            let size = hdr.size as usize;
             let total = HEADER + size;
+            let aligned = (HEADER + size + 7) & !7;
             let mut bytes = vec![0u8; total].into_boxed_slice();
             let new_hdr = ObjHeader { gc_flags: GC_OLD, age: hdr.age, ..hdr };
             unsafe {
@@ -198,14 +210,10 @@ impl GcRuntime {
             // resolve the object via header_of / space_of / release.
             heap.young_forwarding.insert(addr, new_payload);
 
-            // Remove from young index and decrement young live count.
-            if let Some((_, aligned)) = heap.young_index.remove(&addr) {
-                // live_bytes stays the same (same data, now in old gen; account for
-                // the slight size difference due to alignment rounding — use total).
-                heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
-                heap.live_bytes += total;
-                heap.young.live_count = heap.young.live_count.saturating_sub(1);
-            }
+            // Account for the object moving out of young gen.
+            heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
+            heap.live_bytes += total;
+            heap.young.live_count = heap.young.live_count.saturating_sub(1);
         }
 
         // Phase 5: reset young arena if completely empty.
