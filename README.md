@@ -11,6 +11,8 @@
 </div>
 
 ---
+> [!CAUTION]
+> **[v0.1.37](https://github.com/draton-lang/draton/releases/tag/v0.1.37) IS AN EARLY (BETA) VERSION, SOME FUNCTIONS ARE NOT YET WORKING CORRECTLY!**
 
 ## Overview
 
