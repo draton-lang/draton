@@ -652,13 +652,18 @@ impl<'ctx> CodeGen<'ctx> {
                 CodeGenError::UnsupportedExpr(format!("{symbol} requires one argument"))
             })?;
             let value = self.emit_coerce_to_string(arg)?;
+            let runtime_symbol = if symbol == "println" {
+                "draton_println"
+            } else {
+                "draton_print"
+            };
             let function = self
                 .module
-                .get_function("draton_print")
-                .ok_or_else(|| CodeGenError::MissingSymbol("draton_print".to_string()))?;
+                .get_function(runtime_symbol)
+                .ok_or_else(|| CodeGenError::MissingSymbol(runtime_symbol.to_string()))?;
             let _ = self
                 .builder
-                .build_call(function, &[value.into()], "print")
+                .build_call(function, &[value.into()], runtime_symbol)
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
             self.emit_safepoint_poll()?;
             return Ok(None);

@@ -1,6 +1,7 @@
 use std::env;
 
 use inkwell::AddressSpace;
+use inkwell::values::FunctionValue;
 
 use crate::codegen::CodeGen;
 use crate::error::CodeGenError;
@@ -20,7 +21,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.declare_panic_runtime()?;
         if let Some(print_fn) = self.module.get_function("draton_print") {
             self.functions.insert("print".to_string(), print_fn);
-            self.functions.insert("println".to_string(), print_fn);
+        }
+        if let Some(println_fn) = self.module.get_function("draton_println") {
+            self.functions.insert("println".to_string(), println_fn);
         }
         Ok(())
     }
@@ -43,6 +46,20 @@ impl<'ctx> CodeGen<'ctx> {
             self.module.add_function(
                 "puts",
                 self.context.i32_type().fn_type(&[i8_ptr.into()], false),
+                None,
+            );
+        }
+        if self.module.get_function(Self::output_write_symbol()).is_none() {
+            self.module.add_function(
+                Self::output_write_symbol(),
+                Self::output_write_return_type(self.context).fn_type(
+                    &[
+                        self.context.i32_type().into(),
+                        i8_ptr.into(),
+                        Self::output_write_len_type(self.context).into(),
+                    ],
+                    false,
+                ),
                 None,
             );
         }
@@ -215,35 +232,120 @@ impl<'ctx> CodeGen<'ctx> {
         if self.module.get_function("draton_print").is_some() {
             return Ok(());
         }
-        let function = self.module.add_function(
+        let print_fn = self.module.add_function(
             "draton_print",
             self.context
                 .void_type()
                 .fn_type(&[self.string_type.into()], false),
             None,
         );
+        let println_fn = self.module.add_function(
+            "draton_println",
+            self.context
+                .void_type()
+                .fn_type(&[self.string_type.into()], false),
+            None,
+        );
+        let write_fn = self
+            .module
+            .get_function(Self::output_write_symbol())
+            .ok_or_else(|| CodeGenError::MissingSymbol(Self::output_write_symbol().to_string()))?;
+        self.build_print_fallback(print_fn, write_fn, false)?;
+        self.build_print_fallback(println_fn, write_fn, true)?;
+        Ok(())
+    }
+
+    fn build_print_fallback(
+        &self,
+        function: FunctionValue<'ctx>,
+        write_fn: FunctionValue<'ctx>,
+        append_newline: bool,
+    ) -> Result<(), CodeGenError> {
         let builder = self.context.create_builder();
         let entry = self.context.append_basic_block(function, "entry");
         builder.position_at_end(entry);
-        let puts = self
-            .module
-            .get_function("puts")
-            .ok_or_else(|| CodeGenError::MissingSymbol("puts".to_string()))?;
         let value = function
             .get_first_param()
             .ok_or_else(|| CodeGenError::Llvm("missing draton_print string param".to_string()))?
             .into_struct_value();
+        let len = builder
+            .build_extract_value(value, 0, "str.len")
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+            .into_int_value();
         let ptr = builder
             .build_extract_value(value, 1, "str.ptr")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .into_pointer_value();
+        let len = if len.get_type() == Self::output_write_len_type(self.context) {
+            len
+        } else {
+            builder
+                .build_int_cast(len, Self::output_write_len_type(self.context), "str.len.cast")
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+        };
         let _ = builder
-            .build_call(puts, &[ptr.into()], "")
+            .build_call(
+                write_fn,
+                &[self.context.i32_type().const_int(1, false).into(), ptr.into(), len.into()],
+                "",
+            )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        if append_newline {
+            let newline = builder
+                .build_global_string_ptr("\n", "draton.println.nl")
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            let _ = builder
+                .build_call(
+                    write_fn,
+                    &[
+                        self.context.i32_type().const_int(1, false).into(),
+                        newline.as_pointer_value().into(),
+                        Self::output_write_len_type(self.context)
+                            .const_int(1, false)
+                            .into(),
+                    ],
+                    "",
+                )
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        }
         builder
             .build_return(None)
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         Ok(())
+    }
+
+    #[cfg(windows)]
+    fn output_write_symbol() -> &'static str {
+        "_write"
+    }
+
+    #[cfg(not(windows))]
+    fn output_write_symbol() -> &'static str {
+        "write"
+    }
+
+    #[cfg(windows)]
+    fn output_write_len_type(context: &'ctx inkwell::context::Context) -> inkwell::types::IntType<'ctx> {
+        context.i32_type()
+    }
+
+    #[cfg(not(windows))]
+    fn output_write_len_type(context: &'ctx inkwell::context::Context) -> inkwell::types::IntType<'ctx> {
+        context.i64_type()
+    }
+
+    #[cfg(windows)]
+    fn output_write_return_type(
+        context: &'ctx inkwell::context::Context,
+    ) -> inkwell::types::IntType<'ctx> {
+        context.i32_type()
+    }
+
+    #[cfg(not(windows))]
+    fn output_write_return_type(
+        context: &'ctx inkwell::context::Context,
+    ) -> inkwell::types::IntType<'ctx> {
+        context.i64_type()
     }
 
     fn declare_string_runtime(&mut self) -> Result<(), CodeGenError> {

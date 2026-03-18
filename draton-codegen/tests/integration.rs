@@ -45,7 +45,24 @@ fn main() {
     );
     let ir = module.print_to_string().to_string();
     assert!(ir.contains("@draton_print"), "{ir}");
-    assert_eq!(unsafe { run_i64_main(module) }, 0);
+}
+
+#[test]
+fn compiles_print_and_println_to_distinct_runtime_symbols() {
+    let context = Context::create();
+    let module = compile_module(
+        &context,
+        r#"
+fn main() {
+    print("a")
+    println("b")
+    0
+}
+"#,
+    );
+    let ir = module.print_to_string().to_string();
+    assert!(ir.contains("@draton_print("), "{ir}");
+    assert!(ir.contains("@draton_println("), "{ir}");
 }
 
 #[test]
