@@ -404,10 +404,15 @@ impl OldArena {
     /// Allocate `size` payload bytes with the given header flags.
     /// Returns null on OOM (arena full and no suitable free slot).
     pub fn alloc(&mut self, size: usize, flags: u8, type_id: u16) -> *mut u8 {
+        self.alloc_with_header(ObjHeader::new(size as u32, type_id, flags))
+    }
+
+    /// Allocate a payload using a fully formed header.
+    pub fn alloc_with_header(&mut self, hdr: ObjHeader) -> *mut u8 {
+        let size = hdr.size as usize;
         let aligned = (HEADER + size + 7) & !7;
 
         if let Some(off) = self.alloc_from_free_lists(aligned) {
-            let hdr = ObjHeader::new(size as u32, type_id, flags);
             unsafe {
                 ptr::write(self.buffer.as_mut_ptr().add(off).cast::<ObjHeader>(), hdr);
             }
@@ -420,7 +425,6 @@ impl OldArena {
         }
         let off = self.bump;
         self.bump += aligned;
-        let hdr = ObjHeader::new(size as u32, type_id, flags);
         unsafe {
             ptr::write(self.buffer.as_mut_ptr().add(off).cast::<ObjHeader>(), hdr);
         }
@@ -722,7 +726,7 @@ impl HeapState {
 
     pub(crate) fn alloc_old(&mut self, size: usize, type_id: u16) -> *mut u8 {
         let aligned = (HEADER + size + 7) & !7;
-        let flags = if self.major_phase == MajorPhase::Mark {
+        let flags = if self.major_phase != MajorPhase::Idle {
             GC_OLD | GC_MARKED
         } else {
             GC_OLD
@@ -740,7 +744,7 @@ impl HeapState {
         let mut bytes = self
             .take_large_free_block(total)
             .unwrap_or_else(|| vec![0u8; total].into_boxed_slice());
-        let flags = if self.major_phase == MajorPhase::Mark {
+        let flags = if self.major_phase != MajorPhase::Idle {
             GC_OLD | GC_LARGE | GC_MARKED
         } else {
             GC_OLD | GC_LARGE
@@ -855,7 +859,7 @@ impl HeapState {
     }
 
     pub fn trace_protected_during_major_mark(&mut self, pool: &YoungPool, payload: *mut u8) -> bool {
-        if self.major_phase != MajorPhase::Mark {
+        if self.major_phase == MajorPhase::Idle {
             return false;
         }
 
@@ -876,7 +880,9 @@ impl HeapState {
                 hdr.gc_flags |= GC_MARKED;
                 ptr::write(hdr_ptr, hdr);
             }
-            self.mark_stack.push(canonical);
+            if self.major_phase == MajorPhase::Mark {
+                self.mark_stack.push(canonical);
+            }
             return true;
         }
 
@@ -890,7 +896,9 @@ impl HeapState {
                 hdr.gc_flags |= GC_MARKED;
                 ptr::write(hdr_ptr, hdr);
             }
-            self.mark_stack.push(canonical);
+            if self.major_phase == MajorPhase::Mark {
+                self.mark_stack.push(canonical);
+            }
             return true;
         }
 

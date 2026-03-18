@@ -158,9 +158,9 @@ impl GcRuntime {
             }
         }
 
-        // Phase 4: linear scan over all pool slots — collect survivors.
+        // Phase 4: linear scan over all pool slots and promote survivors in-place.
         let mut dead_bytes = 0usize;
-        let mut promoted: Vec<(usize, usize)> = Vec::new(); // (payload_addr, payload_size)
+        let mut promoted_bytes = 0usize;
 
         for slot_idx in 0..MAX_THREADS {
             let slot_bump = self.pool.slots[slot_idx]
@@ -182,7 +182,39 @@ impl GcRuntime {
                 let aligned = (HEADER + size + 7) & !7;
                 let payload_addr = slot_base.wrapping_add(offset + HEADER) as usize;
                 if hdr.gc_flags & GC_MARKED != 0 || hdr.gc_flags & GC_PINNED != 0 {
-                    promoted.push((payload_addr, size));
+                    let ptr = payload_addr as *mut u8;
+                    let new_hdr = ObjHeader {
+                        gc_flags: GC_OLD
+                            | (hdr.gc_flags & GC_PINNED)
+                            | if heap.major_phase != MajorPhase::Idle {
+                                GC_MARKED
+                            } else {
+                                0
+                            },
+                        age: hdr.age.saturating_add(1),
+                        ..hdr
+                    };
+                    let new_payload = heap.old.alloc_with_header(new_hdr);
+                    if new_payload.is_null() {
+                        // OldArena full — leave in young gen; will be retried next cycle.
+                        offset += aligned;
+                        continue;
+                    }
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(ptr, new_payload, size);
+                    }
+                    let new_payload_addr = new_payload as usize;
+                    if let Some(rc) = heap.roots.remove(&payload_addr) {
+                        heap.roots.insert(new_payload_addr, rc);
+                    }
+                    heap.old_bytes += aligned;
+                    heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
+                    heap.live_bytes += aligned;
+                    heap.young_forwarding.insert(payload_addr, new_payload_addr);
+                    if heap.major_phase == MajorPhase::Mark {
+                        heap.mark_stack.push(new_payload_addr);
+                    }
+                    promoted_bytes += aligned;
                 } else {
                     dead_bytes += aligned;
                 }
@@ -191,48 +223,7 @@ impl GcRuntime {
         }
         heap.live_bytes = heap.live_bytes.saturating_sub(dead_bytes);
 
-        // Phase 5: copy survivors to old gen and record forwarding.
-        let mut promoted_bytes = 0usize;
-        for (addr, size) in promoted {
-            let ptr = addr as *mut u8;
-            let hdr = unsafe { self.pool.read_header(ptr) };
-            let aligned = (HEADER + size + 7) & !7;
-            let new_hdr = ObjHeader {
-                gc_flags: GC_OLD
-                    | (hdr.gc_flags & GC_PINNED)
-                    | if heap.major_phase == MajorPhase::Mark {
-                        GC_MARKED
-                    } else {
-                        0
-                    },
-                age: hdr.age.saturating_add(1),
-                ..hdr
-            };
-            let new_payload = heap.old.alloc(size, new_hdr.gc_flags, new_hdr.type_id);
-            if new_payload.is_null() {
-                // OldArena full — leave in young gen; will be retried next cycle.
-                continue;
-            }
-            // Fix up the age field (alloc wrote the initial header with age=0).
-            unsafe {
-                std::ptr::write(new_payload.sub(HEADER).cast::<ObjHeader>(), new_hdr);
-                std::ptr::copy_nonoverlapping(ptr, new_payload, size);
-            }
-            let new_payload_addr = new_payload as usize;
-            if let Some(rc) = heap.roots.remove(&addr) {
-                heap.roots.insert(new_payload_addr, rc);
-            }
-            heap.old_bytes += (HEADER + size + 7) & !7;
-            heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
-            heap.live_bytes += aligned;
-            heap.young_forwarding.insert(addr, new_payload_addr);
-            if heap.major_phase == MajorPhase::Mark {
-                heap.mark_stack.push(new_payload_addr);
-            }
-            promoted_bytes += aligned;
-        }
-
-        // Phase 6: fix up stale pointers in shadow stack and remembered-set parents.
+        // Phase 5: fix up stale pointers in shadow stack and remembered-set parents.
         if !heap.young_forwarding.is_empty() {
             unsafe {
                 fix_shadow_stack_slots(&heap);
