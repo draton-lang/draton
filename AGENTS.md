@@ -8,6 +8,8 @@ This repository defines and protects the Draton language, its tooling, and its s
 - The self-host mirror under `src/` must preserve parity with that canonical behavior.
 - Read these docs before making syntax-facing changes:
   - [docs/language-manifesto.md](docs/language-manifesto.md)
+  - [docs/language-architecture.md](docs/language-architecture.md)
+  - [docs/compiler-architecture.md](docs/compiler-architecture.md)
   - [docs/canonical-syntax-rules.md](docs/canonical-syntax-rules.md)
   - [docs/contributor-language-rules.md](docs/contributor-language-rules.md)
   - [docs/syntax-migration.md](docs/syntax-migration.md)
@@ -73,4 +75,3 @@ This repository defines and protects the Draton language, its tooling, and its s
 - no competing syntax style is introduced
 - readability-first design is preserved
 - any exclusion list stays explicit, minimal, and documented
-
