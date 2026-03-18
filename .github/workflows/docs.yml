@@ -30,9 +30,6 @@ jobs:
   build:
     name: build-docs
     runs-on: ubuntu-22.04
-    env:
-      DOCS_CUSTOM_DOMAIN: ${{ vars.DOCS_CUSTOM_DOMAIN }}
-      DOCS_SITE_URL: ${{ vars.DOCS_CUSTOM_DOMAIN != '' && format('https://{0}', vars.DOCS_CUSTOM_DOMAIN) || 'http://localhost' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -47,14 +44,6 @@ jobs:
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
-
-      - name: Prepare custom domain
-        shell: bash
-        run: |
-          if [ -n "$DOCS_CUSTOM_DOMAIN" ]; then
-            mkdir -p static
-            printf '%s\n' "$DOCS_CUSTOM_DOMAIN" > static/CNAME
-          fi
 
       - name: Build Docusaurus site
         run: npm run build

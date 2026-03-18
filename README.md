@@ -21,7 +21,11 @@ Draton is a compiled language that targets LLVM for native performance. It combi
 
 The compiler is written entirely in Rust and designed as a Cargo workspace of focused, independently usable crates.
 
-For the full documentation set, use the Docusaurus docs site in this repository. It is built from the `docs/` tree and deployed by GitHub Actions to the configured custom domain. The repo-local source material starts here:
+For the full documentation set, use the Docusaurus docs site:
+
+- <https://docs.draton.lhqm.io.vn>
+
+It is built from the `docs/` tree and deployed by GitHub Actions. The repo-local source material starts here:
 
 - [docs/intro.md](docs/intro.md)
 - [docs/language-manifesto.md](docs/language-manifesto.md)
@@ -64,7 +68,7 @@ Static build:
 npm run build
 ```
 
-The docs deployment workflow publishes the built site to GitHub Pages and is designed to run behind the custom domain configured through the `DOCS_CUSTOM_DOMAIN` repository variable. See [docs/contributor/docs-site-deployment.md](docs/contributor/docs-site-deployment.md).
+The docs deployment workflow publishes the built site to GitHub Pages for `docs.draton.lhqm.io.vn`. See [docs/contributor/docs-site-deployment.md](docs/contributor/docs-site-deployment.md).
 
 ## Features
 

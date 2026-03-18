@@ -20,19 +20,22 @@ This is the public docs site path for the repository. It is separate from the re
 
 ## Custom domain
 
-The site is meant to run behind a custom domain.
+The docs site is deployed to:
 
-Repository variable required:
+- `https://docs.draton.lhqm.io.vn`
 
-- `DOCS_CUSTOM_DOMAIN`
+That domain is fixed directly in:
+
+- `docusaurus.config.ts`
+- `static/CNAME`
 
 Workflow behavior:
 
-- when the variable is set, the workflow builds with `DOCS_SITE_URL=https://<domain>`
-- it writes a `CNAME` file into the site output
+- GitHub Actions builds the Docusaurus site
+- the generated Pages artifact includes `CNAME`
 - Docusaurus uses `baseUrl: /`
 
-This avoids hardcoding a potentially wrong domain in source while still keeping deploy behavior explicit.
+Repo-side deployment still requires GitHub Pages to be configured to use GitHub Actions as the source, and DNS for `docs.draton.lhqm.io.vn` must point to GitHub Pages.
 
 ## Local development
 
@@ -54,7 +57,7 @@ Build the static site:
 npm run build
 ```
 
-Local builds do not require the custom-domain variable. They fall back to a localhost-safe site URL.
+Local builds still work with the production URL in config because Pages deployment uses a root `baseUrl`.
 
 ## Contributor rules for docs changes
 
