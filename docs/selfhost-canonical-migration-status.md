@@ -167,6 +167,7 @@ A focused strict-canonical self-host CI subset is now practical and enabled:
 - parser/typecheck regression tests cover the Rust frontend/tooling path
 - `tools/check_selfhost_strict_subset.py` guards the migrated `src/` subset against compatibility-form regressions
 - CI also runs one representative strict canonical fixture build
+- CI also runs one tracked self-host bootstrap probe, but that probe warns instead of failing the subset job when it hits the known `LLVM ERROR: unknown special variable` blocker
 
 What would still be required for full-tree strict self-host CI:
 
