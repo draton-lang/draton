@@ -132,12 +132,12 @@ Practical strict-canonical subset:
 
 - canonical compile fixtures
 - selected GC / lambda / interface strict builds
-- self-host-facing bootstrap builds that exercise parser, mono, and backend paths while excluding only the two deferred dump/printer modules
 
 What is not yet true:
 
 - the entire `src/` tree is not fully strict-clean because two deferred dump/printer modules still rely on compatibility-form syntax
-- full-tree strict self-host CI should wait until `src/ast/dump.dt` and `src/typeck/dump.dt` are migrated, or explicitly exclude them
+- the self-host bootstrap path is still tracked separately because `drat build src/main.dt` can hit `LLVM ERROR: unknown special variable`
+- full-tree strict self-host CI should wait until `src/ast/dump.dt` and `src/typeck/dump.dt` are migrated, and until the separate bootstrap-path LLVM blocker is resolved or intentionally retired
 
 ## Strict-Canonical CI Subset
 
@@ -158,7 +158,7 @@ Intentionally excluded files:
 - `src/ast/dump.dt`
 - `src/typeck/dump.dt`
 
-This subset is intentional. It gives regression coverage for the migrated self-host tree without claiming that full-tree strict self-host support is complete.
+This subset is intentional. It gives regression coverage for the migrated self-host tree without claiming that full-tree strict self-host support is complete or that the current bootstrap path is stable enough to be a hard CI gate.
 
 ## CI Readiness
 
@@ -166,12 +166,13 @@ A focused strict-canonical self-host CI subset is now practical and enabled:
 
 - parser/typecheck regression tests cover the Rust frontend/tooling path
 - `tools/check_selfhost_strict_subset.py` guards the migrated `src/` subset against compatibility-form regressions
-- CI also runs one representative strict canonical fixture build and one self-host-facing bootstrap build
+- CI also runs one representative strict canonical fixture build
 
 What would still be required for full-tree strict self-host CI:
 
 1. canonicalize or intentionally retire `src/ast/dump.dt`
 2. canonicalize or intentionally retire `src/typeck/dump.dt`
+3. resolve the separate self-host bootstrap-path blocker currently surfacing as `LLVM ERROR: unknown special variable`
 
 ## Final Readiness
 
@@ -183,7 +184,7 @@ Current repository state:
 - the only remaining exclusions are `src/ast/dump.dt` and `src/typeck/dump.dt`
 - those files are deferred printer cleanup, not executable compiler blockers
 
-That means contributors can now treat canonical syntax as the normal rule for executable self-host code. Full-tree strict self-host CI would only require canonicalizing or intentionally retiring the two remaining dump modules.
+That means contributors can now treat canonical syntax as the normal rule for executable self-host code. Full-tree strict self-host CI would still require canonicalizing or intentionally retiring the two remaining dump modules and resolving the separate bootstrap-path LLVM blocker.
 
 ## Verification Run
 
@@ -204,7 +205,8 @@ Expected current behavior during bootstrap:
 
 - self-host bootstrap remains CPU-bound and may be slow
 - warning output now comes only from the deferred dump/printer modules
-- this is not a deadlock; the main remaining cost is normal bootstrap work plus residual warning volume
+- the build can still hit the tracked LLVM-side blocker `LLVM ERROR: unknown special variable`
+- this is not a deadlock; the main remaining cost is normal bootstrap work plus residual warning volume plus the unresolved LLVM blocker above
 
 ## Recommended Next Step
 

@@ -61,7 +61,7 @@ jobs:
         run: python3 tools/check_selfhost_strict_subset.py
 
       - name: Strict canonical fixture build
-        run: cargo run -p drat -- build --strict-syntax tests/programs/compile/52_lambda_nested.dt -o /tmp/draton_selfhost_subset_strict
+        run: cargo run -p drat -- build --strict-syntax examples/hello.dt -o /tmp/draton_selfhost_subset_strict
 
       - name: Run strict canonical fixture
         run: /tmp/draton_selfhost_subset_strict

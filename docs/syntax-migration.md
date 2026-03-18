@@ -123,4 +123,4 @@ CI status for the migrated self-host subset:
 
 - the repository enforces a strict-canonical subset with `python3 tools/check_selfhost_strict_subset.py`
 - that subset intentionally excludes only `src/ast/dump.dt` and `src/typeck/dump.dt`
-- full-tree self-host strict mode is not enabled yet because those two deferred dump/printer files remain tracked blockers
+- full-tree self-host strict mode is not enabled yet because those two deferred dump/printer files remain tracked blockers, and the separate self-host bootstrap path is still blocked by `LLVM ERROR: unknown special variable`
