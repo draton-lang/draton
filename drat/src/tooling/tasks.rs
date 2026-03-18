@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -139,9 +140,36 @@ fn run_shell_command(project_root: &Path, task: &TaskDef, command: &str) -> Resu
         cmd
     };
 
+    let mut task_env = task.env.clone();
+    if let Some(current_exe) = env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+    {
+        let mut path =
+            env::split_paths(&env::var_os("PATH").unwrap_or_default()).collect::<Vec<_>>();
+        if !path.iter().any(|entry| entry == &current_exe) {
+            path.insert(0, current_exe.clone());
+        }
+        task_env.insert(
+            "PATH".to_string(),
+            env::join_paths(path)
+                .ok()
+                .map(|value| value.to_string_lossy().into_owned())
+                .unwrap_or_else(|| env::var("PATH").unwrap_or_default()),
+        );
+        task_env
+            .entry("DRAT_EXECUTABLE".to_string())
+            .or_insert_with(|| {
+                current_exe
+                    .join(if cfg!(windows) { "drat.exe" } else { "drat" })
+                    .display()
+                    .to_string()
+            });
+    }
+
     let status = child
         .current_dir(&task_cwd)
-        .envs(&task.env)
+        .envs(&task_env)
         .status()
         .with_context(|| format!("failed to run task command in {}", task_cwd.display()))?;
     if status.success() {
