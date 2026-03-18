@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
+use std::hash::{BuildHasherDefault, Hasher};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex};
@@ -58,6 +59,58 @@ pub struct TypeDescriptor {
     pub size: u32,
     pub pointer_offsets: Box<[u32]>,
 }
+
+#[derive(Default)]
+pub struct FastHasher(u64);
+
+impl FastHasher {
+    #[inline]
+    fn mix(&mut self, value: u64) {
+        let mut x = value.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        self.0 = x ^ (x >> 31);
+    }
+}
+
+impl Hasher for FastHasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        for &byte in bytes {
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(0x100_0000_01b3);
+        }
+        self.mix(hash);
+    }
+
+    #[inline]
+    fn write_u16(&mut self, i: u16) {
+        self.mix(i as u64);
+    }
+
+    #[inline]
+    fn write_u32(&mut self, i: u32) {
+        self.mix(i as u64);
+    }
+
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.mix(i);
+    }
+
+    #[inline]
+    fn write_usize(&mut self, i: usize) {
+        self.mix(i as u64);
+    }
+}
+
+pub type FastHashMap<K, V> = HashMap<K, V, BuildHasherDefault<FastHasher>>;
 
 // ── Logical heap space ────────────────────────────────────────────────────────
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -559,22 +612,22 @@ pub struct HeapState {
     /// Contiguous old-gen arena (regular objects).
     pub old: OldArena,
     /// Large objects (≥ large_threshold) live here; infrequent.
-    pub large_objects: HashMap<usize, Box<[u8]>>,
+    pub large_objects: FastHashMap<usize, Box<[u8]>>,
     /// Reusable large-object blocks keyed by total allocation bytes.
     pub large_free_pool: BTreeMap<usize, Vec<Box<[u8]>>>,
     pub large_free_bytes: usize,
 
     // ── Type descriptor table ─────────────────────────────────────────────────
-    pub type_descriptors: HashMap<u16, TypeDescriptor>,
+    pub type_descriptors: FastHashMap<u16, TypeDescriptor>,
 
     // ── Root set (explicit protect() calls only) ──────────────────────────────
-    pub roots: HashMap<usize, usize>,
+    pub roots: FastHashMap<usize, usize>,
 
     // ── Promotion forwarding table ─────────────────────────────────────────────
     /// Maps old young-arena payload address → current old-gen payload address.
     /// Allows callers holding pre-promotion raw pointers to resolve the object.
     /// Entries are pruned when the promoted object is later collected.
-    pub young_forwarding: HashMap<usize, usize>,
+    pub young_forwarding: FastHashMap<usize, usize>,
 
     // ── Write-barrier bookkeeping ─────────────────────────────────────────────
     pub remembered_set: Vec<usize>,
@@ -605,12 +658,12 @@ impl HeapState {
         let card_table = CardTable::new(config.max_heap);
         Self {
             old: OldArena::new(config.old_size),
-            large_objects: HashMap::new(),
+            large_objects: FastHashMap::default(),
             large_free_pool: BTreeMap::new(),
             large_free_bytes: 0,
-            type_descriptors: HashMap::new(),
-            roots: HashMap::new(),
-            young_forwarding: HashMap::new(),
+            type_descriptors: FastHashMap::default(),
+            roots: FastHashMap::default(),
+            young_forwarding: FastHashMap::default(),
             remembered_set: Vec::new(),
             card_table,
             mark_stack: Vec::new(),

@@ -8,6 +8,12 @@ use super::heap::{
 };
 use super::{clear_major_work_state, major_work_needed, request_major_work, sync_major_work_request};
 
+#[inline]
+fn type_offsets_ptr(heap: &HeapState, type_id: u16) -> Option<(*const u32, usize)> {
+    let desc = heap.type_descriptors.get(&type_id)?;
+    Some((desc.pointer_offsets.as_ptr(), desc.pointer_offsets.len()))
+}
+
 // ── Tracing helpers ───────────────────────────────────────────────────────────
 
 fn enqueue_children(
@@ -104,10 +110,11 @@ impl GcRuntime {
             let Some(hdr) = heap.header_of(&self.pool, ptr) else {
                 continue;
             };
-            let Some(desc) = heap.type_descriptors.get(&hdr.type_id).cloned() else {
+            let Some((offsets_ptr, offsets_len)) = type_offsets_ptr(&heap, hdr.type_id) else {
                 continue;
             };
-            for &offset in desc.pointer_offsets.iter() {
+            for index in 0..offsets_len {
+                let offset = unsafe { *offsets_ptr.add(index) };
                 let child = unsafe { HeapState::read_ptr_field(ptr as *const u8, offset) };
                 if child.is_null() {
                     continue;
@@ -130,10 +137,11 @@ impl GcRuntime {
             let Some(hdr) = heap.header_of(&self.pool, ptr) else {
                 continue;
             };
-            let Some(desc) = heap.type_descriptors.get(&hdr.type_id).cloned() else {
+            let Some((offsets_ptr, offsets_len)) = type_offsets_ptr(&heap, hdr.type_id) else {
                 continue;
             };
-            for &offset in desc.pointer_offsets.iter() {
+            for index in 0..offsets_len {
+                let offset = unsafe { *offsets_ptr.add(index) };
                 let child = unsafe { HeapState::read_ptr_field(ptr as *const u8, offset) };
                 if child.is_null() {
                     continue;
@@ -612,10 +620,11 @@ fn fix_old_gen_fields(heap: &mut HeapState, rs_snapshot: &[usize]) {
             continue;
         }
 
-        let Some(desc) = heap.type_descriptors.get(&type_id).cloned() else {
+        let Some((offsets_ptr, offsets_len)) = type_offsets_ptr(heap, type_id) else {
             continue;
         };
-        for &offset in desc.pointer_offsets.iter() {
+        for index in 0..offsets_len {
+            let offset = unsafe { *offsets_ptr.add(index) };
             let field = (parent_addr + offset as usize) as *mut *mut u8;
             let child = unsafe { std::ptr::read(field) };
             if child.is_null() {
