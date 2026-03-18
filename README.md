@@ -5,6 +5,7 @@
 <p>A compiled, statically-typed programming language with an ergonomic syntax and first-class tooling.</p>
 
 [![Build](https://img.shields.io/github/actions/workflow/status/draton-lang/draton/ci.yml?branch=main&style=flat-square)](https://github.com/draton-lang/draton/actions)
+[![Docs](https://img.shields.io/github/actions/workflow/status/draton-lang/draton/docs.yml?branch=main&label=docs&style=flat-square)](https://github.com/draton-lang/draton/actions/workflows/docs.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/drat?style=flat-square)](https://crates.io/crates/drat)
 
@@ -20,7 +21,18 @@ Draton is a compiled language that targets LLVM for native performance. It combi
 
 The compiler is written entirely in Rust and designed as a Cargo workspace of focused, independently usable crates.
 
-For the language design rationale behind the canonical syntax, see [docs/language-manifesto.md](docs/language-manifesto.md). For a full description of what Draton is as a language, see [docs/language-architecture.md](docs/language-architecture.md). For visual class diagrams, see [docs/language-class-diagram.md](docs/language-class-diagram.md). For a compact analyst-facing architecture summary, see [docs/language-analyst-artifact.md](docs/language-analyst-artifact.md). For a concrete map of the compiler and toolchain layers, see [docs/compiler-architecture.md](docs/compiler-architecture.md). For exact repository syntax expectations, see [docs/canonical-syntax-rules.md](docs/canonical-syntax-rules.md). For contributor anti-drift guardrails, see [docs/contributor-language-rules.md](docs/contributor-language-rules.md). For migration details and compatibility rules, see [docs/syntax-migration.md](docs/syntax-migration.md). For the next 12 months of project priorities, see [docs/roadmap-1year.md](docs/roadmap-1year.md).
+For the full documentation set, use the Docusaurus docs site in this repository. It is built from the `docs/` tree and deployed by GitHub Actions to the configured custom domain. The repo-local source material starts here:
+
+- [docs/intro.md](docs/intro.md)
+- [docs/language-manifesto.md](docs/language-manifesto.md)
+- [docs/language-architecture.md](docs/language-architecture.md)
+- [docs/language-class-diagram.md](docs/language-class-diagram.md)
+- [docs/language-analyst-artifact.md](docs/language-analyst-artifact.md)
+- [docs/compiler-architecture.md](docs/compiler-architecture.md)
+- [docs/canonical-syntax-rules.md](docs/canonical-syntax-rules.md)
+- [docs/contributor-language-rules.md](docs/contributor-language-rules.md)
+- [docs/syntax-migration.md](docs/syntax-migration.md)
+- [docs/roadmap-1year.md](docs/roadmap-1year.md)
 
 Runtime and performance references:
 
@@ -34,6 +46,25 @@ Tooling references:
 - [docs/tools/linter.md](docs/tools/linter.md)
 - [docs/tools/task.md](docs/tools/task.md)
 - [docs/tools/lsp.md](docs/tools/lsp.md)
+
+## Documentation Site
+
+The repository now includes a Docusaurus docs site for Draton’s public manual and contributor-facing architecture docs.
+
+Local docs workflow:
+
+```sh
+npm install
+npm run start
+```
+
+Static build:
+
+```sh
+npm run build
+```
+
+The docs deployment workflow publishes the built site to GitHub Pages and is designed to run behind the custom domain configured through the `DOCS_CUSTOM_DOMAIN` repository variable. See [docs/contributor/docs-site-deployment.md](docs/contributor/docs-site-deployment.md).
 
 ## Features
 

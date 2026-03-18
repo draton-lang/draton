@@ -242,7 +242,7 @@ Key documents:
 - [contributor-language-rules.md](contributor-language-rules.md)
 - [syntax-migration.md](syntax-migration.md)
 - [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md)
-- [AGENTS.md](/media/lehungquangminh/QM_SSD/draton/AGENTS.md)
+- [AGENTS.md](https://github.com/draton-lang/draton/blob/main/AGENTS.md)
 
 These documents are part of the architecture because they lock:
 
@@ -268,13 +268,13 @@ The reverse order is risky and usually causes drift.
 
 To understand the implementation, read in this order:
 
-1. [README.md](/media/lehungquangminh/QM_SSD/draton/README.md)
+1. [README.md](https://github.com/draton-lang/draton/blob/main/README.md)
 2. [language-manifesto.md](language-manifesto.md)
 3. [language-architecture.md](language-architecture.md)
 4. [canonical-syntax-rules.md](canonical-syntax-rules.md)
-5. [drat/src/main.rs](/media/lehungquangminh/QM_SSD/draton/drat/src/main.rs)
+5. [drat/src/main.rs](https://github.com/draton-lang/draton/blob/main/drat/src/main.rs)
 6. `draton-lexer` -> `draton-parser` -> `draton-typeck` -> `draton-codegen`
-7. [draton-runtime/src/lib.rs](/media/lehungquangminh/QM_SSD/draton/draton-runtime/src/lib.rs)
+7. [draton-runtime/src/lib.rs](https://github.com/draton-lang/draton/blob/main/draton-runtime/src/lib.rs)
 8. [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md)
 
 ## Architectural invariants

@@ -1,0 +1,139 @@
+.page {
+  background:
+    radial-gradient(circle at top left, rgba(243, 179, 62, 0.18), transparent 32%),
+    linear-gradient(180deg, #f7f4ed 0%, #fffdf8 48%, #eef3f5 100%);
+  min-height: 100vh;
+}
+
+.hero {
+  padding: 5rem 1.5rem 2rem;
+}
+
+.heroPanel {
+  max-width: 74rem;
+  margin: 0 auto;
+  padding: 3rem;
+  border-radius: 2rem;
+  background: linear-gradient(135deg, #172b3a 0%, #203c4e 60%, #2a5066 100%);
+  color: #f8fafc;
+  box-shadow: 0 28px 80px rgba(23, 43, 58, 0.22);
+}
+
+.kicker {
+  margin: 0 0 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.82rem;
+  color: #f3b33e;
+}
+
+.title {
+  margin-bottom: 1rem;
+  max-width: 14ch;
+  font-size: clamp(2.8rem, 7vw, 5.2rem);
+  line-height: 0.95;
+}
+
+.subtitle {
+  max-width: 52rem;
+  font-size: 1.15rem;
+  line-height: 1.7;
+  color: rgba(248, 250, 252, 0.86);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.gridSection,
+.detailSection {
+  padding: 1rem 1.5rem 4rem;
+}
+
+.grid,
+.detailSection {
+  max-width: 74rem;
+  margin: 0 auto;
+}
+
+.grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.card {
+  display: block;
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.primaryCard {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(23, 43, 58, 0.08);
+  box-shadow: 0 16px 40px rgba(23, 43, 58, 0.08);
+}
+
+.primaryCard h2,
+.detailPanel h2,
+.linkPanel h2 {
+  margin-bottom: 0.85rem;
+  font-size: 1.35rem;
+}
+
+.primaryCard p,
+.detailPanel p,
+.bullets,
+.quickLink {
+  line-height: 1.7;
+}
+
+.detailSection {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 1fr);
+}
+
+.detailPanel,
+.linkPanel {
+  padding: 1.75rem;
+  border-radius: 1.5rem;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(23, 43, 58, 0.08);
+  box-shadow: 0 14px 36px rgba(23, 43, 58, 0.08);
+}
+
+.bullets {
+  margin: 1rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.linkList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quickLink {
+  display: block;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background: #f8f1df;
+  color: #172b3a;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+@media (max-width: 996px) {
+  .detailSection {
+    grid-template-columns: 1fr;
+  }
+
+  .heroPanel {
+    padding: 2rem;
+  }
+}

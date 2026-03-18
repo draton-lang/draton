@@ -147,7 +147,7 @@ The runtime probe currently runs five scenarios:
 - `large-object-burst`: repeated large-object allocation and reclamation
 
 These scenarios are implemented in
-[draton-runtime/examples/gc_scorecard.rs](/media/lehungquangminh/QM_SSD/draton/draton-runtime/examples/gc_scorecard.rs).
+[draton-runtime/examples/gc_scorecard.rs](https://github.com/draton-lang/draton/blob/main/draton-runtime/examples/gc_scorecard.rs).
 
 ## Toolchain workloads
 

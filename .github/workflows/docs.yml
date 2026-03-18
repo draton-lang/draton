@@ -1,0 +1,77 @@
+name: docs-site
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/docs.yml"
+      - "docusaurus.config.ts"
+      - "sidebars.ts"
+      - "package.json"
+      - "tsconfig.json"
+      - "src/pages/**"
+      - "src/css/**"
+      - "docs/**"
+      - "README.md"
+      - ".gitignore"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  pages: write
+
+concurrency:
+  group: docs-site
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build-docs
+    runs-on: ubuntu-22.04
+    env:
+      DOCS_CUSTOM_DOMAIN: ${{ vars.DOCS_CUSTOM_DOMAIN }}
+      DOCS_SITE_URL: ${{ vars.DOCS_CUSTOM_DOMAIN != '' && format('https://{0}', vars.DOCS_CUSTOM_DOMAIN) || 'http://localhost' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare custom domain
+        shell: bash
+        run: |
+          if [ -n "$DOCS_CUSTOM_DOMAIN" ]; then
+            mkdir -p static
+            printf '%s\n' "$DOCS_CUSTOM_DOMAIN" > static/CNAME
+          fi
+
+      - name: Build Docusaurus site
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build
+
+  deploy:
+    name: deploy-docs
+    needs: build
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

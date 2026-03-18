@@ -1,4 +1,6 @@
 /target
+/node_modules
+/.docusaurus
 /editors/vscode/node_modules
 /editors/vscode/*.vsix
 /build
