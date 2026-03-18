@@ -9,6 +9,8 @@ This page explains the canonical surface of Draton as it exists in the repositor
 
 For design intent, see [language-manifesto](../language-manifesto.md). For hard style rules, see [canonical syntax rules](../canonical-syntax-rules.md).
 
+If you need the full parser-facing syntax broken down by category, use the [syntax reference](./reference/index.md).
+
 ## The organizing rule
 
 Draton is easiest to read when each surface layer stays in its own place:
@@ -172,3 +174,19 @@ drat run --strict-syntax
 ```
 
 When writing new examples, docs, tests, or migrated self-host code, stay on the canonical surface.
+
+## Full syntax reference
+
+For complete syntax coverage, continue with:
+
+- [Syntax reference index](./reference/index.md)
+- [Literals and values](./reference/literals-and-values.md)
+- [Bindings and assignment](./reference/bindings-and-assignment.md)
+- [Functions, calls, and lambdas](./reference/functions-calls-and-lambdas.md)
+- [Expressions and operators](./reference/expressions-and-operators.md)
+- [Control flow and pattern matching](./reference/control-flow-and-patterns.md)
+- [Top-level items and modules](./reference/top-level-items-and-modules.md)
+- [Types and contracts](./reference/types-and-contracts.md)
+- [Classes, interfaces, enums, and errors](./reference/classes-interfaces-enums-and-errors.md)
+- [Concurrency and channels](./reference/concurrency-and-channels.md)
+- [Low-level and compile-time syntax](./reference/low-level-and-compile-time.md)
