@@ -84,7 +84,10 @@ fn add_top_level_items(program: &Program, items: &mut BTreeMap<String, Completio
                             for method in &layer.methods {
                                 items.insert(
                                     method.name.clone(),
-                                    method_item(&method.name, &format!("{}.{}", def.name, layer.name)),
+                                    method_item(
+                                        &method.name,
+                                        &format!("{}.{}", def.name, layer.name),
+                                    ),
                                 );
                             }
                         }
@@ -211,7 +214,11 @@ fn collect_fn_locals(def: &FnDef, offset: usize, items: &mut BTreeMap<String, Co
     collect_block_locals(body, offset, items);
 }
 
-fn collect_block_locals(block: &Block, offset: usize, items: &mut BTreeMap<String, CompletionItem>) {
+fn collect_block_locals(
+    block: &Block,
+    offset: usize,
+    items: &mut BTreeMap<String, CompletionItem>,
+) {
     if offset < block.span.start || offset > block.span.end {
         return;
     }

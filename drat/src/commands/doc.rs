@@ -8,7 +8,8 @@ pub(crate) fn run(project_root: &Path) -> Result<()> {
     let src_dir = project_root.join("src");
     let files = collect_dt_files(&src_dir)?;
     let out_dir = project_root.join("build/doc");
-    fs::create_dir_all(&out_dir).with_context(|| format!("failed to create {}", out_dir.display()))?;
+    fs::create_dir_all(&out_dir)
+        .with_context(|| format!("failed to create {}", out_dir.display()))?;
 
     let mut index_entries = Vec::new();
     for file in files {

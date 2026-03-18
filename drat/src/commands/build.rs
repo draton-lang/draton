@@ -588,10 +588,7 @@ fn link_binary(
         .output()
         .with_context(|| "failed to run linker cc".to_string())?;
     if !output.status.success() {
-        bail!(
-            "link failed:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        bail!("link failed:\n{}", String::from_utf8_lossy(&output.stderr));
     }
     copy_windows_runtime_dlls(binary_path)?;
     Ok(())
@@ -719,7 +716,11 @@ fn copy_windows_runtime_dlls(binary_path: &Path) -> Result<()> {
         return Ok(());
     };
     let bin_dir = root.join("bin");
-    for name in ["libgcc_s_seh-1.dll", "libstdc++-6.dll", "libwinpthread-1.dll"] {
+    for name in [
+        "libgcc_s_seh-1.dll",
+        "libstdc++-6.dll",
+        "libwinpthread-1.dll",
+    ] {
         let source = bin_dir.join(name);
         if !source.exists() {
             continue;
@@ -939,7 +940,9 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 Vec::new(),
-                Some(format!("hint:     declare the variable with 'let {name} = ...'")),
+                Some(format!(
+                    "hint:     declare the variable with 'let {name} = ...'"
+                )),
             ),
             TypeError::UndefinedFn { name, line, col } => render_diagnostic(
                 "E003",
@@ -1079,9 +1082,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 vec![format!("missing:  {method}")],
-                Some(
-                    "hint:     add the missing method or fix the implements list".to_string(),
-                ),
+                Some("hint:     add the missing method or fix the implements list".to_string()),
             ),
             TypeError::CircularInheritance { class, line, col } => render_diagnostic(
                 "E013",
@@ -1116,10 +1117,7 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 *line,
                 *col,
                 vec![format!("missing:  {missing}")],
-                Some(
-                    "hint:     add a `_ => ...` arm or cover all missing patterns"
-                        .to_string(),
-                ),
+                Some("hint:     add a `_ => ...` arm or cover all missing patterns".to_string()),
             ),
             TypeError::RedundantPattern { pattern, line, col } => render_diagnostic(
                 "W001",

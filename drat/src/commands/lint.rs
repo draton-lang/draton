@@ -149,10 +149,11 @@ fn lint_program(program: &Program, findings: &mut Vec<LintFinding>) {
         collect_item_uses(item, &mut used_names);
     }
 
-    let file_contracts = collect_type_contracts(program.items.iter().filter_map(|item| match item {
-        Item::TypeBlock(block) => Some(block),
-        _ => None,
-    }));
+    let file_contracts =
+        collect_type_contracts(program.items.iter().filter_map(|item| match item {
+            Item::TypeBlock(block) => Some(block),
+            _ => None,
+        }));
 
     for item in &program.items {
         match item {
@@ -218,7 +219,11 @@ fn lint_interface(interface_def: &InterfaceDef, findings: &mut Vec<LintFinding>)
     }
 }
 
-fn lint_import(import_def: &ImportDef, used_names: &BTreeSet<String>, findings: &mut Vec<LintFinding>) {
+fn lint_import(
+    import_def: &ImportDef,
+    used_names: &BTreeSet<String>,
+    findings: &mut Vec<LintFinding>,
+) {
     for item in &import_def.items {
         let visible_name = item.alias.as_deref().unwrap_or(&item.name);
         if !used_names.contains(visible_name) {
@@ -607,7 +612,9 @@ fn collect_item_uses(item: &Item, used_names: &mut BTreeSet<String>) {
 fn collect_class_uses(class_def: &ClassDef, used_names: &mut BTreeSet<String>) {
     for member in &class_def.members {
         match member {
-            ClassMember::Field(field) => collect_type_expr_uses(field.type_hint.as_ref(), used_names),
+            ClassMember::Field(field) => {
+                collect_type_expr_uses(field.type_hint.as_ref(), used_names)
+            }
             ClassMember::Method(function) => collect_fn_uses(function, used_names),
             ClassMember::Layer(layer) => {
                 for function in &layer.methods {

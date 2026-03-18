@@ -727,9 +727,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .try_as_basic_value()
                     .left()
                     .ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr(
-                            "int_to_string returned void".to_string(),
-                        )
+                        CodeGenError::UnsupportedExpr("int_to_string returned void".to_string())
                     })
             }
             Type::Bool => {
@@ -761,21 +759,19 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_float_to_str = self
                     .module
                     .get_function("__draton_std_float_to_string")
-                    .ok_or_else(|| CodeGenError::MissingSymbol("__draton_std_float_to_string".to_string()))?;
-                let val = self
-                    .emit_expr(arg)?
                     .ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr("print float arg missing value".to_string())
+                        CodeGenError::MissingSymbol("__draton_std_float_to_string".to_string())
                     })?;
+                let val = self.emit_expr(arg)?.ok_or_else(|| {
+                    CodeGenError::UnsupportedExpr("print float arg missing value".to_string())
+                })?;
                 self.builder
                     .build_call(fn_float_to_str, &[val.into()], "float.to_string")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?
                     .try_as_basic_value()
                     .left()
                     .ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr(
-                            "float_to_string returned void".to_string(),
-                        )
+                        CodeGenError::UnsupportedExpr("float_to_string returned void".to_string())
                     })
             }
             Type::Float32 => {
@@ -794,13 +790,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_float_to_str = self
                     .module
                     .get_function("__draton_std_float_to_string")
-                    .ok_or_else(|| CodeGenError::MissingSymbol("__draton_std_float_to_string".to_string()))?;
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("__draton_std_float_to_string".to_string())
+                    })?;
                 let val = self
                     .emit_expr(arg)?
                     .ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr(
-                            "print float32 arg missing value".to_string(),
-                        )
+                        CodeGenError::UnsupportedExpr("print float32 arg missing value".to_string())
                     })?
                     .into_float_value();
                 let f64_val = self
@@ -813,9 +809,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .try_as_basic_value()
                     .left()
                     .ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr(
-                            "float32_to_string returned void".to_string(),
-                        )
+                        CodeGenError::UnsupportedExpr("float32_to_string returned void".to_string())
                     })
             }
             _ => self.emit_expr(arg)?.ok_or_else(|| {

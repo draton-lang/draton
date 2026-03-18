@@ -50,8 +50,8 @@ impl TaskFile {
             .ok_or_else(|| anyhow!("could not find drat.tasks from {}", cwd.display()))?;
         let text =
             fs::read_to_string(&path).with_context(|| format!("cannot read {}", path.display()))?;
-        let tasks = toml::from_str(&text)
-            .with_context(|| format!("cannot parse {}", path.display()))?;
+        let tasks =
+            toml::from_str(&text).with_context(|| format!("cannot parse {}", path.display()))?;
         Ok((path, tasks))
     }
 }

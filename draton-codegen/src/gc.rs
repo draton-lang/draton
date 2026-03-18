@@ -111,10 +111,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .field_indices
                     .get(&field.name)
                     .copied()
-                    .ok_or_else(|| CodeGenError::MissingSymbol(format!(
-                        "field '{}' not found in layout of '{}'",
-                        field.name, class_def.name
-                    )))
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol(format!(
+                            "field '{}' not found in layout of '{}'",
+                            field.name, class_def.name
+                        ))
+                    })
                     .map(|idx| idx.saturating_mul(8))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -172,9 +174,7 @@ impl<'ctx> CodeGen<'ctx> {
         let register_fn = self
             .module
             .get_function("draton_gc_register_type")
-            .ok_or_else(|| {
-                CodeGenError::MissingSymbol("draton_gc_register_type".to_string())
-            })?;
+            .ok_or_else(|| CodeGenError::MissingSymbol("draton_gc_register_type".to_string()))?;
 
         let void_ty = self.context.void_type();
         let ctor = self
@@ -212,11 +212,7 @@ impl<'ctx> CodeGen<'ctx> {
             };
             // GEP to get a *i32 pointing at element 0.
             let ptr = builder
-                .build_bitcast(
-                    global.as_pointer_value(),
-                    i32_ptr,
-                    "offsets.ptr",
-                )
+                .build_bitcast(global.as_pointer_value(), i32_ptr, "offsets.ptr")
                 .map_err(|e| CodeGenError::Llvm(e.to_string()))?
                 .into_pointer_value();
             (ptr, i32_type.const_int(pointer_offsets.len() as u64, false))
@@ -250,14 +246,16 @@ impl<'ctx> CodeGen<'ctx> {
         function: inkwell::values::FunctionValue<'ctx>,
     ) -> Result<(), CodeGenError> {
         let i32_type = self.context.i32_type();
-        let i8_ptr = self.context.i8_type().ptr_type(inkwell::AddressSpace::default());
+        let i8_ptr = self
+            .context
+            .i8_type()
+            .ptr_type(inkwell::AddressSpace::default());
         let fn_ptr_ty = function
             .get_type()
             .ptr_type(inkwell::AddressSpace::default());
-        let entry_ty = self.context.struct_type(
-            &[i32_type.into(), fn_ptr_ty.into(), i8_ptr.into()],
-            false,
-        );
+        let entry_ty = self
+            .context
+            .struct_type(&[i32_type.into(), fn_ptr_ty.into(), i8_ptr.into()], false);
         let priority = i32_type.const_int(65535, false);
         let fn_ptr = function.as_global_value().as_pointer_value();
         let data = i8_ptr.const_null();

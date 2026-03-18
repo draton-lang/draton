@@ -213,10 +213,7 @@ impl LspServer {
                     .and_then(|params| params.get("query"))
                     .and_then(Value::as_str)
                     .unwrap_or("");
-                vec![self.respond(
-                    id,
-                    crate::symbols::workspace_symbols(&self.docs, query),
-                )]
+                vec![self.respond(id, crate::symbols::workspace_symbols(&self.docs, query))]
             }
             "textDocument/completion" => {
                 let Some(uri) = msg
