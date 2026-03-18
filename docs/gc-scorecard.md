@@ -182,6 +182,9 @@ The report is JSON so it can feed CI, dashboards, or manual comparison runs.
 
 Published benchmark artifacts for the current repository state live in:
 
+- [docs/benchmarks/gc-results-2026-03-18-f90dcdc.md](benchmarks/gc-results-2026-03-18-f90dcdc.md)
+- [docs/benchmarks/gc-scorecard-gha-2026-03-18-run-23230366650.json](benchmarks/gc-scorecard-gha-2026-03-18-run-23230366650.json)
+- [docs/benchmarks/gc-ocaml-compare-gha-2026-03-18-run-23230366650.json](benchmarks/gc-ocaml-compare-gha-2026-03-18-run-23230366650.json)
 - [docs/benchmarks/gc-results-2026-03-18-e8f4d9e.md](benchmarks/gc-results-2026-03-18-e8f4d9e.md)
 - [docs/benchmarks/gc-scorecard-gha-2026-03-18-run-23228923625.json](benchmarks/gc-scorecard-gha-2026-03-18-run-23228923625.json)
 - [docs/benchmarks/gc-ocaml-compare-gha-2026-03-18-run-23228923625.json](benchmarks/gc-ocaml-compare-gha-2026-03-18-run-23228923625.json)
