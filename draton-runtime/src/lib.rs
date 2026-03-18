@@ -17,6 +17,7 @@ pub static mut llvm_gc_root_chain: *mut gc::heap::StackEntry = std::ptr::null_mu
 // after calls).  When non-zero, it jumps to draton_safepoint_slow().
 // This is the authoritative definition; the codegen emits an External reference.
 #[no_mangle]
+#[used]
 pub static draton_safepoint_flag: std::sync::atomic::AtomicI32 =
     std::sync::atomic::AtomicI32::new(0);
 
@@ -27,6 +28,9 @@ pub extern "C" fn draton_safepoint_slow() {
     draton_safepoint_flag.store(0, std::sync::atomic::Ordering::Release);
     gc::safepoint();
 }
+
+#[used]
+static DRATON_SAFETYPOINT_SLOW_KEEP: extern "C" fn() = draton_safepoint_slow;
 
 use std::env;
 use std::fs;
