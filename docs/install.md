@@ -48,13 +48,13 @@ If you are building Draton from source instead of using a release archive, LLVM 
 Use the release-hosted installer:
 
 ```sh
-curl -fsSL https://github.com/draton-lang/draton/releases/download/v0.1.40/install.sh | sh
+curl -fsSL https://github.com/draton-lang/draton/releases/download/v0.1.41/install.sh | sh
 ```
 
 Pin a specific tag:
 
 ```sh
-curl -fsSL https://github.com/draton-lang/draton/releases/download/v0.1.40/install.sh | sh -s -- --version v0.1.40
+curl -fsSL https://github.com/draton-lang/draton/releases/download/v0.1.41/install.sh | sh -s -- --version v0.1.41
 ```
 
 Default install location:
@@ -77,9 +77,9 @@ Use PowerShell:
 
 ```powershell
 Invoke-WebRequest `
-  -Uri https://github.com/draton-lang/draton/releases/download/v0.1.40/install.ps1 `
+  -Uri https://github.com/draton-lang/draton/releases/download/v0.1.41/install.ps1 `
   -OutFile install.ps1
-.\install.ps1 -Version v0.1.40
+.\install.ps1 -Version v0.1.41
 ```
 
 Default install location:
