@@ -874,6 +874,15 @@ pub extern "C" fn draton_str_concat(lhs: DratonString, rhs: DratonString) -> Dra
     owned_string(out)
 }
 
+/// Prints a prompt and reads a single line from stdin.
+#[no_mangle]
+pub extern "C" fn draton_input(prompt: DratonString) -> DratonString {
+    owned_string(stdlib::io::input(draton_string_to_owned(prompt)).into_bytes())
+}
+
+#[used]
+static DRATON_INPUT_KEEP: extern "C" fn(DratonString) -> DratonString = draton_input;
+
 /// Returns true when `needle` occurs anywhere in `value`.
 #[no_mangle]
 pub extern "C" fn draton_str_contains(value: DratonString, needle: DratonString) -> bool {

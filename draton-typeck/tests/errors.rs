@@ -62,6 +62,30 @@ fn bad() {
 }
 
 #[test]
+fn reports_input_builtin_arity_and_prompt_type_errors() {
+    let result = parse_and_check(
+        r#"
+fn main() {
+    input()
+    input(42)
+}
+"#,
+    );
+    assert!(result.errors.iter().any(|error| matches!(
+        error,
+        TypeError::ArgCount {
+            expected: 1,
+            got: 0,
+            ..
+        }
+    )));
+    assert!(result
+        .errors
+        .iter()
+        .any(|error| matches!(error, TypeError::Mismatch { .. })));
+}
+
+#[test]
 fn reports_incompatible_error_propagation_for_mixed_nullish_errors() {
     let result = parse_and_check(
         r#"

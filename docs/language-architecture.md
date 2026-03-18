@@ -45,6 +45,7 @@ Important consequences:
 - `let` is the canonical binding form
 - function bodies are where behavior lives
 - `return` stays explicit so control flow is visible
+- core interactive I/O builtins such as `print(...)`, `println(...)`, and `input("Prompt: ")` stay explicit and minimal
 
 ### Type contracts
 

@@ -3215,6 +3215,13 @@ impl TypeChecker {
             },
         );
         self.env.define(
+            "input",
+            Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::String], Box::new(Type::String)),
+            },
+        );
+        self.env.define(
             "range",
             Scheme {
                 quantified: Vec::new(),

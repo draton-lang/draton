@@ -44,6 +44,12 @@ pub fn readline() -> String {
     }
 }
 
+/// Prints a prompt and reads a single line from stdin.
+pub fn input(prompt: impl AsRef<str>) -> String {
+    print(prompt);
+    readline()
+}
+
 /// Reads every line from stdin until EOF.
 pub fn readlines() -> Vec<String> {
     let stdin = io::stdin();

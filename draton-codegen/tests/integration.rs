@@ -66,6 +66,23 @@ fn main() {
 }
 
 #[test]
+fn compiles_input_to_runtime_symbol() {
+    let context = Context::create();
+    let module = compile_module(
+        &context,
+        r#"
+fn main() {
+    let name = input("Name: ")
+    println(name)
+    0
+}
+"#,
+    );
+    let ir = module.print_to_string().to_string();
+    assert!(ir.contains("@draton_input("), "{ir}");
+}
+
+#[test]
 fn compiles_fibonacci_program() {
     let context = Context::create();
     let module = compile_module(

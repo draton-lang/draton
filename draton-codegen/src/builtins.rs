@@ -1,7 +1,7 @@
 use std::env;
 
-use inkwell::AddressSpace;
 use inkwell::values::FunctionValue;
+use inkwell::AddressSpace;
 
 use crate::codegen::CodeGen;
 use crate::error::CodeGenError;
@@ -16,6 +16,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.declare_safepoint_runtime()?;
         self.declare_gc_runtime()?;
         self.declare_print_runtime()?;
+        self.declare_input_runtime()?;
         self.declare_string_runtime()?;
         self.declare_cli_runtime()?;
         self.declare_panic_runtime()?;
@@ -24,6 +25,9 @@ impl<'ctx> CodeGen<'ctx> {
         }
         if let Some(println_fn) = self.module.get_function("draton_println") {
             self.functions.insert("println".to_string(), println_fn);
+        }
+        if let Some(input_fn) = self.module.get_function("draton_input") {
+            self.functions.insert("input".to_string(), input_fn);
         }
         Ok(())
     }
@@ -49,7 +53,11 @@ impl<'ctx> CodeGen<'ctx> {
                 None,
             );
         }
-        if self.module.get_function(Self::output_write_symbol()).is_none() {
+        if self
+            .module
+            .get_function(Self::output_write_symbol())
+            .is_none()
+        {
             self.module.add_function(
                 Self::output_write_symbol(),
                 Self::output_write_return_type(self.context).fn_type(
@@ -255,6 +263,18 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    fn declare_input_runtime(&mut self) -> Result<(), CodeGenError> {
+        if self.module.get_function("draton_input").is_some() {
+            return Ok(());
+        }
+        self.module.add_function(
+            "draton_input",
+            self.string_type.fn_type(&[self.string_type.into()], false),
+            None,
+        );
+        Ok(())
+    }
+
     fn build_print_fallback(
         &self,
         function: FunctionValue<'ctx>,
@@ -280,13 +300,21 @@ impl<'ctx> CodeGen<'ctx> {
             len
         } else {
             builder
-                .build_int_cast(len, Self::output_write_len_type(self.context), "str.len.cast")
+                .build_int_cast(
+                    len,
+                    Self::output_write_len_type(self.context),
+                    "str.len.cast",
+                )
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?
         };
         let _ = builder
             .build_call(
                 write_fn,
-                &[self.context.i32_type().const_int(1, false).into(), ptr.into(), len.into()],
+                &[
+                    self.context.i32_type().const_int(1, false).into(),
+                    ptr.into(),
+                    len.into(),
+                ],
                 "",
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
@@ -325,12 +353,16 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     #[cfg(windows)]
-    fn output_write_len_type(context: &'ctx inkwell::context::Context) -> inkwell::types::IntType<'ctx> {
+    fn output_write_len_type(
+        context: &'ctx inkwell::context::Context,
+    ) -> inkwell::types::IntType<'ctx> {
         context.i32_type()
     }
 
     #[cfg(not(windows))]
-    fn output_write_len_type(context: &'ctx inkwell::context::Context) -> inkwell::types::IntType<'ctx> {
+    fn output_write_len_type(
+        context: &'ctx inkwell::context::Context,
+    ) -> inkwell::types::IntType<'ctx> {
         context.i64_type()
     }
 
