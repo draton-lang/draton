@@ -25,6 +25,7 @@ For the language design rationale behind the canonical syntax, see [docs/languag
 Runtime and performance references:
 
 - [docs/gc-scorecard.md](docs/gc-scorecard.md)
+- [docs/benchmarks/gc-results-2026-03-18-e8f4d9e.md](docs/benchmarks/gc-results-2026-03-18-e8f4d9e.md)
 - [docs/benchmarks/gc-results-2026-03-17.md](docs/benchmarks/gc-results-2026-03-17.md)
 
 Tooling references:
