@@ -93,6 +93,20 @@ class Node {
 }
 
 #[test]
+fn lowers_fstring_interpolation_to_runtime_concat() {
+    let ir = compile_ir(
+        r#"
+@type { fn main(name: String) -> String }
+fn main(name) {
+    f"toi {name}"
+}
+"#,
+    );
+    assert!(ir.contains("call { i64, i8* } @draton_str_concat"), "{ir}");
+    assert!(!ir.contains("<String>"), "{ir}");
+}
+
+#[test]
 fn emits_gc_roots_for_pointer_backed_locals() {
     let ir = compile_ir(
         r#"

@@ -167,14 +167,30 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         parts: &[TypedFStrPart],
     ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
-        let mut rendered = String::new();
+        let concat = self
+            .module
+            .get_function("draton_str_concat")
+            .ok_or_else(|| CodeGenError::MissingSymbol("draton_str_concat".to_string()))?;
+        let mut rendered = self.emit_string_literal("")?;
         for part in parts {
-            match part {
-                TypedFStrPart::Literal(text) => rendered.push_str(text),
-                TypedFStrPart::Interp(expr) => rendered.push_str(&format!("<{}>", expr.ty)),
-            }
+            let piece = match part {
+                TypedFStrPart::Literal(text) => self.emit_string_literal(text)?,
+                TypedFStrPart::Interp(expr) => self.emit_coerce_to_string(expr)?,
+            };
+            let call = self
+                .builder
+                .build_call(
+                    concat,
+                    &[rendered.into(), piece.into()],
+                    "fstr.concat",
+                )
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            self.emit_safepoint_poll()?;
+            rendered = call.try_as_basic_value().left().ok_or_else(|| {
+                CodeGenError::UnsupportedExpr("str_concat returned no value".to_string())
+            })?;
         }
-        self.emit_string_literal(&rendered)
+        Ok(rendered)
     }
 
     fn emit_tuple(
