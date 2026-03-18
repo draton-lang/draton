@@ -653,6 +653,15 @@ pub struct HeapState {
 }
 
 impl HeapState {
+    #[inline]
+    fn canonicalize_forwarded_addr(&self, addr: usize) -> usize {
+        if self.young_forwarding.is_empty() {
+            addr
+        } else {
+            self.young_forwarding.get(&addr).copied().unwrap_or(addr)
+        }
+    }
+
     pub fn new(config: GcConfig) -> Self {
         let config = config.normalized();
         let card_table = CardTable::new(config.max_heap);
@@ -755,12 +764,15 @@ impl HeapState {
         let addr = payload as usize;
         // Check forwarding first: a promoted object's young-arena addr maps to
         // the current old-gen addr.
-        if let Some(&new_addr) = self.young_forwarding.get(&addr) {
+        if !self.young_forwarding.is_empty() {
+            let new_addr = self.canonicalize_forwarded_addr(addr);
+            if new_addr != addr {
             return self.old.header_of(new_addr as *const u8).or_else(|| {
                 self.large_objects
                     .get(&new_addr)
                     .map(|b| unsafe { ptr::read(b.as_ptr().cast::<ObjHeader>()) })
             });
+            }
         }
         if pool.contains_ptr(payload as *const u8) {
             return Some(unsafe { pool.read_header(payload) });
@@ -838,7 +850,7 @@ impl HeapState {
 
     pub fn protect(&mut self, payload: *mut u8) {
         let addr = payload as usize;
-        let canonical = self.young_forwarding.get(&addr).copied().unwrap_or(addr);
+        let canonical = self.canonicalize_forwarded_addr(addr);
         *self.roots.entry(canonical).or_insert(0) += 1;
     }
 
@@ -848,7 +860,7 @@ impl HeapState {
         }
 
         let addr = payload as usize;
-        let canonical = self.young_forwarding.get(&addr).copied().unwrap_or(addr);
+        let canonical = self.canonicalize_forwarded_addr(addr);
         let ptr = canonical as *mut u8;
         if ptr.is_null() || pool.contains_ptr(ptr as *const u8) {
             return false;
@@ -887,7 +899,7 @@ impl HeapState {
 
     pub fn release(&mut self, payload: *mut u8) {
         let addr = payload as usize;
-        let canonical = self.young_forwarding.get(&addr).copied().unwrap_or(addr);
+        let canonical = self.canonicalize_forwarded_addr(addr);
         if let Some(counter) = self.roots.get_mut(&canonical) {
             if *counter > 1 {
                 *counter -= 1;
