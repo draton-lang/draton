@@ -708,6 +708,13 @@ impl HeapState {
         );
     }
 
+    #[inline]
+    pub fn type_has_pointers(&self, type_id: u16) -> bool {
+        self.type_descriptors
+            .get(&type_id)
+            .is_some_and(|desc| !desc.pointer_offsets.is_empty())
+    }
+
     // ── Allocation ────────────────────────────────────────────────────────────
 
     pub fn alloc_slow(&mut self, size: usize, type_id: u16) -> *mut u8 {
@@ -872,15 +879,17 @@ impl HeapState {
 
         if self.old.contains_ptr(ptr as *const u8) {
             let hdr_ptr = (canonical - HEADER) as *mut ObjHeader;
+            let type_id;
             unsafe {
                 let mut hdr = ptr::read(hdr_ptr);
                 if hdr.gc_flags & (GC_FREE | GC_MARKED) != 0 {
                     return false;
                 }
+                type_id = hdr.type_id;
                 hdr.gc_flags |= GC_MARKED;
                 ptr::write(hdr_ptr, hdr);
             }
-            if self.major_phase == MajorPhase::Mark {
+            if self.major_phase == MajorPhase::Mark && self.type_has_pointers(type_id) {
                 self.mark_stack.push(canonical);
             }
             return true;
@@ -888,15 +897,17 @@ impl HeapState {
 
         if let Some(bytes) = self.large_objects.get_mut(&canonical) {
             let hdr_ptr = bytes.as_mut_ptr().cast::<ObjHeader>();
+            let type_id;
             unsafe {
                 let mut hdr = ptr::read(hdr_ptr);
                 if hdr.gc_flags & GC_MARKED != 0 {
                     return false;
                 }
+                type_id = hdr.type_id;
                 hdr.gc_flags |= GC_MARKED;
                 ptr::write(hdr_ptr, hdr);
             }
-            if self.major_phase == MajorPhase::Mark {
+            if self.major_phase == MajorPhase::Mark && self.type_has_pointers(type_id) {
                 self.mark_stack.push(canonical);
             }
             return true;

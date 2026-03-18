@@ -82,29 +82,37 @@ fn trace_major_mark_barrier_child(
 
     if heap.old.contains_ptr(child as *const u8) {
         let hdr_ptr = (child_addr - HEADER) as *mut ObjHeader;
+        let type_id;
         unsafe {
             let mut hdr = std::ptr::read(hdr_ptr);
             if hdr.gc_flags & (GC_FREE | GC_MARKED) != 0 {
                 return false;
             }
+            type_id = hdr.type_id;
             hdr.gc_flags |= GC_MARKED;
             std::ptr::write(hdr_ptr, hdr);
         }
-        heap.mark_stack.push(child_addr);
+        if heap.type_has_pointers(type_id) {
+            heap.mark_stack.push(child_addr);
+        }
         return true;
     }
 
     if let Some(bytes) = heap.large_objects.get_mut(&child_addr) {
         let hdr_ptr = bytes.as_mut_ptr().cast::<ObjHeader>();
+        let type_id;
         unsafe {
             let mut hdr = std::ptr::read(hdr_ptr);
             if hdr.gc_flags & GC_MARKED != 0 {
                 return false;
             }
+            type_id = hdr.type_id;
             hdr.gc_flags |= GC_MARKED;
             std::ptr::write(hdr_ptr, hdr);
         }
-        heap.mark_stack.push(child_addr);
+        if heap.type_has_pointers(type_id) {
+            heap.mark_stack.push(child_addr);
+        }
         return true;
     }
 

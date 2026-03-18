@@ -211,7 +211,9 @@ impl GcRuntime {
                     heap.live_bytes = heap.live_bytes.saturating_sub(aligned);
                     heap.live_bytes += aligned;
                     heap.young_forwarding.insert(payload_addr, new_payload_addr);
-                    if heap.major_phase == MajorPhase::Mark {
+                    if heap.major_phase == MajorPhase::Mark
+                        && heap.type_has_pointers(new_hdr.type_id)
+                    {
                         heap.mark_stack.push(new_payload_addr);
                     }
                     promoted_bytes += aligned;
@@ -324,9 +326,11 @@ impl GcRuntime {
         let shadow_roots = unsafe { super::shadow_stack_roots() };
         let explicit_roots: Vec<usize> = heap.roots.keys().copied().collect();
         for addr in shadow_roots.into_iter().chain(explicit_roots.into_iter()) {
-            if heap.header_of(pool, addr as *mut u8).is_some() {
+            if let Some(hdr) = heap.header_of(pool, addr as *mut u8) {
                 set_marked(pool, heap, addr);
-                heap.mark_stack.push(addr);
+                if heap.type_has_pointers(hdr.type_id) {
+                    heap.mark_stack.push(addr);
+                }
             }
         }
     }
@@ -340,12 +344,13 @@ impl GcRuntime {
             let mut children: Vec<usize> = Vec::new();
             enqueue_children(pool, heap, addr, &mut children);
             for child_addr in children {
-                if heap
-                    .header_of(pool, child_addr as *mut u8)
-                    .map_or(false, |h| h.gc_flags & GC_MARKED == 0)
-                {
-                    set_marked(pool, heap, child_addr);
-                    heap.mark_stack.push(child_addr);
+                if let Some(hdr) = heap.header_of(pool, child_addr as *mut u8) {
+                    if hdr.gc_flags & GC_MARKED == 0 {
+                        set_marked(pool, heap, child_addr);
+                        if heap.type_has_pointers(hdr.type_id) {
+                            heap.mark_stack.push(child_addr);
+                        }
+                    }
                 }
             }
         }
