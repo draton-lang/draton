@@ -2,7 +2,7 @@
 
 This document explains what Draton is as a language, how its core pieces fit together, and what architectural boundaries contributors should preserve.
 
-For design rationale, see [language-manifesto.md](language-manifesto.md). For exact syntax shape, see [canonical-syntax-rules.md](canonical-syntax-rules.md). For migration and compatibility rules, see [syntax-migration.md](syntax-migration.md).
+For design rationale, see [language-manifesto.md](language-manifesto.md). For exact syntax shape, see [canonical-syntax-rules.md](canonical-syntax-rules.md). For migration and compatibility rules, see [syntax-migration.md](syntax-migration.md). For a compact architecture summary and diagrams, see [language-class-diagram.md](language-class-diagram.md) and [language-analyst-artifact.md](language-analyst-artifact.md).
 
 ## Purpose
 

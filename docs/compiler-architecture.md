@@ -2,7 +2,7 @@
 
 This document explains how the Draton implementation is organized in the repository and how source code moves through the toolchain.
 
-For the language-side architectural model, see [language-architecture.md](language-architecture.md). For self-host migration state, see [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
+For the language-side architectural model, see [language-architecture.md](language-architecture.md). For visual summaries, see [language-class-diagram.md](language-class-diagram.md). For the compact architecture checklist, see [language-analyst-artifact.md](language-analyst-artifact.md). For self-host migration state, see [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
 
 ## Source of truth
 

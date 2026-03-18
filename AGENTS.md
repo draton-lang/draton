@@ -9,6 +9,8 @@ This repository defines and protects the Draton language, its tooling, and its s
 - Read these docs before making syntax-facing changes:
   - [docs/language-manifesto.md](docs/language-manifesto.md)
   - [docs/language-architecture.md](docs/language-architecture.md)
+  - [docs/language-class-diagram.md](docs/language-class-diagram.md)
+  - [docs/language-analyst-artifact.md](docs/language-analyst-artifact.md)
   - [docs/compiler-architecture.md](docs/compiler-architecture.md)
   - [docs/canonical-syntax-rules.md](docs/canonical-syntax-rules.md)
   - [docs/contributor-language-rules.md](docs/contributor-language-rules.md)
