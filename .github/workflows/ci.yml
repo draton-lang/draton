@@ -66,18 +66,7 @@ jobs:
       - name: Run strict canonical fixture
         run: /tmp/draton_selfhost_subset_strict
 
-      - name: Tracked self-host bootstrap probe
-        shell: bash
+      - name: Self-host bootstrap
         run: |
-          set +e
-          cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_subset_bootstrap > /tmp/draton_selfhost_subset_bootstrap.log 2>&1
-          status=$?
-          cat /tmp/draton_selfhost_subset_bootstrap.log
-          if [ "$status" -eq 0 ]; then
-            exit 0
-          fi
-          if grep -q "LLVM ERROR: unknown special variable" /tmp/draton_selfhost_subset_bootstrap.log; then
-            echo "::warning::tracked self-host bootstrap blocker: LLVM ERROR: unknown special variable"
-            exit 0
-          fi
-          exit "$status"
+          cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_bootstrap
+          /tmp/draton_selfhost_bootstrap --help

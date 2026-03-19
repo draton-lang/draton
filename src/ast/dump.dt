@@ -5,56 +5,82 @@ import { Program, Item, FnDef, Param, ClassDef, ClassMember, LayerDef, FieldDef,
          FStrPart, MatchArm, MatchArmBody, MapEntry, TypeExpr, Span }
 
 @type {
-    fn ast_dump_program(program: Program) -> String
-    fn dump_item(item: Item, level: Int) -> String
-    fn dump_stmt(stmt: Stmt, level: Int) -> String
-    fn dump_expr(expr: Expr, level: Int) -> String
-    fn dump_type_expr(ty: TypeExpr, level: Int) -> String
-    fn dump_span(span: Span, level: Int) -> String
-    fn dump_indent(level: Int) -> String
-    fn dump_line(level: Int, text: String) -> String
-    fn dump_append(out: String, block: String) -> String
-    fn dump_first_newline(text: String) -> Int
-    fn dump_last_newline(text: String) -> Int
-    fn dump_prefix_first(prefix: String, text: String) -> String
-    fn dump_suffix_last(text: String, suffix: String) -> String
-    fn dump_field(name: String, value: String, level: Int) -> String
-    fn dump_bool(value: Bool) -> String
-    fn dump_string(value: String) -> String
-    fn dump_escape_pair(letter: String) -> String
-    fn dump_string_list(values: Array[String], level: Int) -> String
-    fn dump_item_list(items: Array[Item], level: Int) -> String
-    fn dump_param_list(items: Array[Param], level: Int) -> String
-    fn dump_class_member_list(items: Array[ClassMember], level: Int) -> String
-    fn dump_fndef_list(items: Array[FnDef], level: Int) -> String
-    fn dump_stmt_list(items: Array[Stmt], level: Int) -> String
-    fn dump_expr_list(items: Array[Expr], level: Int) -> String
-    fn dump_map_entry_list(items: Array[MapEntry], level: Int) -> String
-    fn dump_fstr_part_list(items: Array[FStrPart], level: Int) -> String
-    fn dump_match_arm_list(items: Array[MatchArm], level: Int) -> String
-    fn dump_import_item_list(items: Array[ImportItem], level: Int) -> String
-    fn dump_type_member_list(items: Array[TypeMember], level: Int) -> String
-    fn dump_type_block_list(items: Array[TypeBlockDef], level: Int) -> String
-    fn dump_gc_entry_list(items: Array[GcConfigEntry], level: Int) -> String
-    fn dump_type_expr_list(items: Array[TypeExpr], level: Int) -> String
-    fn dump_option_string(has_value: Bool, value: String, level: Int) -> String
-    fn dump_option_type_expr(has_value: Bool, value: TypeExpr, level: Int) -> String
-    fn dump_option_expr(has_value: Bool, value: Expr, level: Int) -> String
-    fn dump_option_block(has_value: Bool, value: Block, level: Int) -> String
-    fn dump_option_else_branch(has_value: Bool, value: ElseBranch, level: Int) -> String
-    fn dump_else_branch(branch: ElseBranch, level: Int) -> String
-    fn dump_spawn_body(body: SpawnBody, level: Int) -> String
-    fn dump_match_arm_body(body: MatchArmBody, level: Int) -> String
-    fn dump_fstr_part(part: FStrPart, level: Int) -> String
-    fn dump_type_member(member: TypeMember, level: Int) -> String
-    fn dump_class_member(member: ClassMember, level: Int) -> String
-    fn dump_bin_op(name: String, level: Int) -> String
-    fn dump_un_op(name: String, level: Int) -> String
-    fn dump_assign_op(name: String, level: Int) -> String
-    fn str_eq_dump(a: String, b: String) -> Bool
+    ast_dump_program: (Program) -> String
+    dump_item: (Item, Int) -> String
+    dump_fn_def: (FnDef, Int) -> String
+    dump_param: (Param, Int) -> String
+    dump_class_def: (ClassDef, Int) -> String
+    dump_layer_def: (LayerDef, Int) -> String
+    dump_field_def: (FieldDef, Int) -> String
+    dump_interface_def: (InterfaceDef, Int) -> String
+    dump_enum_def: (EnumDef, Int) -> String
+    dump_error_def: (ErrorDef, Int) -> String
+    dump_const_def: (ConstDef, Int) -> String
+    dump_import_def: (ImportDef, Int) -> String
+    dump_import_item: (ImportItem, Int) -> String
+    dump_extern_block: (ExternBlock, Int) -> String
+    dump_type_block: (TypeBlockDef, Int) -> String
+    dump_stmt: (Stmt, Int) -> String
+    dump_block: (Block, Int) -> String
+    dump_let_stmt: (LetStmt, Int) -> String
+    dump_assign_stmt: (AssignStmt, Int) -> String
+    dump_return_stmt: (ReturnStmt, Int) -> String
+    dump_if_stmt: (IfStmt, Int) -> String
+    dump_for_stmt: (ForStmt, Int) -> String
+    dump_while_stmt: (WhileStmt, Int) -> String
+    dump_spawn_stmt: (SpawnStmt, Int) -> String
+    dump_if_compile_stmt: (IfCompileStmt, Int) -> String
+    dump_gc_config_stmt: (GcConfigStmt, Int) -> String
+    dump_gc_entry: (GcConfigEntry, Int) -> String
+    dump_expr: (Expr, Int) -> String
+    dump_map_entry: (MapEntry, Int) -> String
+    dump_match_arm: (MatchArm, Int) -> String
+    dump_type_expr: (TypeExpr, Int) -> String
+    dump_span: (Span, Int) -> String
+    dump_indent: (Int) -> String
+    dump_line: (Int, String) -> String
+    dump_append: (String, String) -> String
+    dump_first_newline: (String) -> Int
+    dump_last_newline: (String) -> Int
+    dump_prefix_first: (String, String) -> String
+    dump_suffix_last: (String, String) -> String
+    dump_field: (String, String, Int) -> String
+    dump_bool: (Bool) -> String
+    dump_string: (String) -> String
+    dump_escape_pair: (String) -> String
+    dump_string_list: (Array[String], Int) -> String
+    dump_item_list: (Array[Item], Int) -> String
+    dump_param_list: (Array[Param], Int) -> String
+    dump_class_member_list: (Array[ClassMember], Int) -> String
+    dump_fndef_list: (Array[FnDef], Int) -> String
+    dump_stmt_list: (Array[Stmt], Int) -> String
+    dump_expr_list: (Array[Expr], Int) -> String
+    dump_map_entry_list: (Array[MapEntry], Int) -> String
+    dump_fstr_part_list: (Array[FStrPart], Int) -> String
+    dump_match_arm_list: (Array[MatchArm], Int) -> String
+    dump_import_item_list: (Array[ImportItem], Int) -> String
+    dump_type_member_list: (Array[TypeMember], Int) -> String
+    dump_type_block_list: (Array[TypeBlockDef], Int) -> String
+    dump_gc_entry_list: (Array[GcConfigEntry], Int) -> String
+    dump_type_expr_list: (Array[TypeExpr], Int) -> String
+    dump_option_string: (Bool, String, Int) -> String
+    dump_option_type_expr: (Bool, TypeExpr, Int) -> String
+    dump_option_expr: (Bool, Expr, Int) -> String
+    dump_option_block: (Bool, Block, Int) -> String
+    dump_option_else_branch: (Bool, ElseBranch, Int) -> String
+    dump_else_branch: (ElseBranch, Int) -> String
+    dump_spawn_body: (SpawnBody, Int) -> String
+    dump_match_arm_body: (MatchArmBody, Int) -> String
+    dump_fstr_part: (FStrPart, Int) -> String
+    dump_type_member: (TypeMember, Int) -> String
+    dump_class_member: (ClassMember, Int) -> String
+    dump_bin_op: (String, Int) -> String
+    dump_un_op: (String, Int) -> String
+    dump_assign_op: (String, Int) -> String
+    str_eq_dump: (String, String) -> Bool
 }
 
-fn ast_dump_program(program: Program) -> String {
+fn ast_dump_program(program) {
     let mut out = ""
     out = dump_append(out, dump_line(0, "Program {"))
     out = dump_append(out, dump_field("items", dump_item_list(program.items, 1), 1))
@@ -62,7 +88,7 @@ fn ast_dump_program(program: Program) -> String {
     out
 }
 
-fn dump_item(item: Item, level: Int) -> String {
+fn dump_item(item, level) {
     let mut out = ""
     if str_eq_dump(item.kind, "Fn") {
         out = dump_append(out, dump_line(level, "Fn("))
@@ -112,7 +138,7 @@ fn dump_item(item: Item, level: Int) -> String {
     out
 }
 
-fn dump_fn_def(def: FnDef, level: Int) -> String {
+fn dump_fn_def(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "FnDef {"))
     out = dump_append(out, dump_field("is_pub", dump_bool(def.is_pub), level + 1))
@@ -126,7 +152,7 @@ fn dump_fn_def(def: FnDef, level: Int) -> String {
     out
 }
 
-fn dump_param(param: Param, level: Int) -> String {
+fn dump_param(param, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "Param {"))
     out = dump_append(out, dump_field("name", dump_string(param.name), level + 1))
@@ -136,7 +162,7 @@ fn dump_param(param: Param, level: Int) -> String {
     out
 }
 
-fn dump_class_def(def: ClassDef, level: Int) -> String {
+fn dump_class_def(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "ClassDef {"))
     out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
@@ -150,7 +176,7 @@ fn dump_class_def(def: ClassDef, level: Int) -> String {
     out
 }
 
-fn dump_class_member(member: ClassMember, level: Int) -> String {
+fn dump_class_member(member, level) {
     let mut out = ""
     if str_eq_dump(member.kind, "Field") {
         out = dump_append(out, dump_line(level, "Field("))
@@ -168,7 +194,7 @@ fn dump_class_member(member: ClassMember, level: Int) -> String {
     out
 }
 
-fn dump_layer_def(def: LayerDef, level: Int) -> String {
+fn dump_layer_def(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "LayerDef {"))
     out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
@@ -179,7 +205,7 @@ fn dump_layer_def(def: LayerDef, level: Int) -> String {
     out
 }
 
-fn dump_field_def(def: FieldDef, level: Int) -> String {
+fn dump_field_def(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "FieldDef {"))
     out = dump_append(out, dump_field("is_mut", dump_bool(def.is_mut), level + 1))
@@ -190,7 +216,7 @@ fn dump_field_def(def: FieldDef, level: Int) -> String {
     out
 }
 
-fn dump_interface_def(def: InterfaceDef, level: Int) -> String {
+fn dump_interface_def(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "InterfaceDef {"))
     out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
@@ -200,7 +226,7 @@ fn dump_interface_def(def: InterfaceDef, level: Int) -> String {
     out
 }
 
-fn dump_enum_def(def: EnumDef, level: Int) -> String {
+fn dump_enum_def(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "EnumDef {"))
     out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
@@ -210,7 +236,7 @@ fn dump_enum_def(def: EnumDef, level: Int) -> String {
     out
 }
 
-fn dump_error_def(def: ErrorDef, level: Int) -> String {
+fn dump_error_def(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "ErrorDef {"))
     out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
@@ -220,7 +246,7 @@ fn dump_error_def(def: ErrorDef, level: Int) -> String {
     out
 }
 
-fn dump_const_def(def: ConstDef, level: Int) -> String {
+fn dump_const_def(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "ConstDef {"))
     out = dump_append(out, dump_field("name", dump_string(def.name), level + 1))
@@ -230,7 +256,7 @@ fn dump_const_def(def: ConstDef, level: Int) -> String {
     out
 }
 
-fn dump_import_def(def: ImportDef, level: Int) -> String {
+fn dump_import_def(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "ImportDef {"))
     out = dump_append(out, dump_field("module", dump_string_list(def.module, level + 1), level + 1))
@@ -240,7 +266,7 @@ fn dump_import_def(def: ImportDef, level: Int) -> String {
     out
 }
 
-fn dump_import_item(item: ImportItem, level: Int) -> String {
+fn dump_import_item(item, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "ImportItem {"))
     out = dump_append(out, dump_field("name", dump_string(item.name), level + 1))
@@ -250,7 +276,7 @@ fn dump_import_item(item: ImportItem, level: Int) -> String {
     out
 }
 
-fn dump_extern_block(def: ExternBlock, level: Int) -> String {
+fn dump_extern_block(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "ExternBlock {"))
     out = dump_append(out, dump_field("abi", dump_string(def.abi), level + 1))
@@ -260,7 +286,7 @@ fn dump_extern_block(def: ExternBlock, level: Int) -> String {
     out
 }
 
-fn dump_type_block(def: TypeBlockDef, level: Int) -> String {
+fn dump_type_block(def, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "TypeBlock {"))
     out = dump_append(out, dump_field("members", dump_type_member_list(def.members, level + 1), level + 1))
@@ -269,7 +295,7 @@ fn dump_type_block(def: TypeBlockDef, level: Int) -> String {
     out
 }
 
-fn dump_type_member(member: TypeMember, level: Int) -> String {
+fn dump_type_member(member, level) {
     let mut out = ""
     if str_eq_dump(member.kind, "Binding") {
         out = dump_append(out, dump_line(level, "Binding {"))
@@ -285,7 +311,7 @@ fn dump_type_member(member: TypeMember, level: Int) -> String {
     out
 }
 
-fn dump_stmt(stmt: Stmt, level: Int) -> String {
+fn dump_stmt(stmt, level) {
     let mut out = ""
     if str_eq_dump(stmt.kind, "Let") {
         out = dump_append(out, dump_line(level, "Let("))
@@ -340,7 +366,7 @@ fn dump_stmt(stmt: Stmt, level: Int) -> String {
     out
 }
 
-fn dump_block(block: Block, level: Int) -> String {
+fn dump_block(block, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "Block {"))
     out = dump_append(out, dump_field("stmts", dump_stmt_list(block.stmts, level + 1), level + 1))
@@ -349,7 +375,7 @@ fn dump_block(block: Block, level: Int) -> String {
     out
 }
 
-fn dump_let_stmt(stmt: LetStmt, level: Int) -> String {
+fn dump_let_stmt(stmt, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "LetStmt {"))
     out = dump_append(out, dump_field("is_mut", dump_bool(stmt.is_mut), level + 1))
@@ -361,7 +387,7 @@ fn dump_let_stmt(stmt: LetStmt, level: Int) -> String {
     out
 }
 
-fn dump_assign_stmt(stmt: AssignStmt, level: Int) -> String {
+fn dump_assign_stmt(stmt, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "AssignStmt {"))
     out = dump_append(out, dump_field("target", dump_expr(stmt.target, level + 1), level + 1))
@@ -372,7 +398,7 @@ fn dump_assign_stmt(stmt: AssignStmt, level: Int) -> String {
     out
 }
 
-fn dump_return_stmt(stmt: ReturnStmt, level: Int) -> String {
+fn dump_return_stmt(stmt, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "ReturnStmt {"))
     out = dump_append(out, dump_field("value", dump_option_expr(stmt.has_value, stmt.value, level + 1), level + 1))
@@ -381,7 +407,7 @@ fn dump_return_stmt(stmt: ReturnStmt, level: Int) -> String {
     out
 }
 
-fn dump_if_stmt(stmt: IfStmt, level: Int) -> String {
+fn dump_if_stmt(stmt, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "IfStmt {"))
     out = dump_append(out, dump_field("condition", dump_expr(stmt.condition, level + 1), level + 1))
@@ -392,7 +418,7 @@ fn dump_if_stmt(stmt: IfStmt, level: Int) -> String {
     out
 }
 
-fn dump_for_stmt(stmt: ForStmt, level: Int) -> String {
+fn dump_for_stmt(stmt, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "ForStmt {"))
     out = dump_append(out, dump_field("name", dump_string(stmt.binding), level + 1))
@@ -403,7 +429,7 @@ fn dump_for_stmt(stmt: ForStmt, level: Int) -> String {
     out
 }
 
-fn dump_while_stmt(stmt: WhileStmt, level: Int) -> String {
+fn dump_while_stmt(stmt, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "WhileStmt {"))
     out = dump_append(out, dump_field("condition", dump_expr(stmt.condition, level + 1), level + 1))
@@ -413,7 +439,7 @@ fn dump_while_stmt(stmt: WhileStmt, level: Int) -> String {
     out
 }
 
-fn dump_spawn_stmt(stmt: SpawnStmt, level: Int) -> String {
+fn dump_spawn_stmt(stmt, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "SpawnStmt {"))
     out = dump_append(out, dump_field("body", dump_spawn_body(stmt.body, level + 1), level + 1))
@@ -422,7 +448,7 @@ fn dump_spawn_stmt(stmt: SpawnStmt, level: Int) -> String {
     out
 }
 
-fn dump_if_compile_stmt(stmt: IfCompileStmt, level: Int) -> String {
+fn dump_if_compile_stmt(stmt, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "IfCompileStmt {"))
     out = dump_append(out, dump_field("condition", dump_expr(stmt.condition, level + 1), level + 1))
@@ -432,7 +458,7 @@ fn dump_if_compile_stmt(stmt: IfCompileStmt, level: Int) -> String {
     out
 }
 
-fn dump_gc_config_stmt(stmt: GcConfigStmt, level: Int) -> String {
+fn dump_gc_config_stmt(stmt, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "GcConfigStmt {"))
     out = dump_append(out, dump_field("entries", dump_gc_entry_list(stmt.entries, level + 1), level + 1))
@@ -441,7 +467,7 @@ fn dump_gc_config_stmt(stmt: GcConfigStmt, level: Int) -> String {
     out
 }
 
-fn dump_gc_entry(entry: GcConfigEntry, level: Int) -> String {
+fn dump_gc_entry(entry, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "GcConfigEntry {"))
     out = dump_append(out, dump_field("key", dump_string(entry.key), level + 1))
@@ -451,7 +477,7 @@ fn dump_gc_entry(entry: GcConfigEntry, level: Int) -> String {
     out
 }
 
-fn dump_expr(expr: Expr, level: Int) -> String {
+fn dump_expr(expr, level) {
     let mut out = ""
     if str_eq_dump(expr.kind, "IntLit") {
         out = dump_append(out, dump_line(level, "IntLit("))
@@ -588,7 +614,7 @@ fn dump_expr(expr: Expr, level: Int) -> String {
     out
 }
 
-fn dump_type_expr(ty: TypeExpr, level: Int) -> String {
+fn dump_type_expr(ty, level) {
     let mut out = ""
     if str_eq_dump(ty.kind, "Named") {
         out = dump_append(out, dump_line(level, "Named("))
@@ -613,7 +639,7 @@ fn dump_type_expr(ty: TypeExpr, level: Int) -> String {
     out
 }
 
-fn dump_span(span: Span, level: Int) -> String {
+fn dump_span(span, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "Span {"))
     out = dump_append(out, dump_field("start", int_to_string(span.start), level + 1))
@@ -624,7 +650,7 @@ fn dump_span(span: Span, level: Int) -> String {
     out
 }
 
-fn dump_indent(level: Int) -> String {
+fn dump_indent(level) {
     let mut out = ""
     let mut i = 0
     while i < level {
@@ -634,11 +660,11 @@ fn dump_indent(level: Int) -> String {
     out
 }
 
-fn dump_line(level: Int, text: String) -> String {
+fn dump_line(level, text) {
     str_concat(dump_indent(level), text)
 }
 
-fn dump_append(out: String, block: String) -> String {
+fn dump_append(out, block) {
     let mut next = out
     if str_len(out) == 0 {
         next = block
@@ -648,7 +674,7 @@ fn dump_append(out: String, block: String) -> String {
     next
 }
 
-fn dump_first_newline(text: String) -> Int {
+fn dump_first_newline(text) {
     let mut i = 0
     let mut idx = -1
     while idx < 0 && i < str_len(text) {
@@ -660,7 +686,7 @@ fn dump_first_newline(text: String) -> Int {
     idx
 }
 
-fn dump_last_newline(text: String) -> Int {
+fn dump_last_newline(text) {
     let mut i = 0
     let mut idx = -1
     while i < str_len(text) {
@@ -672,7 +698,7 @@ fn dump_last_newline(text: String) -> Int {
     idx
 }
 
-fn dump_prefix_first(prefix: String, text: String) -> String {
+fn dump_prefix_first(prefix, text) {
     let idx = dump_first_newline(text)
     let mut out = ""
     if idx < 0 {
@@ -685,7 +711,7 @@ fn dump_prefix_first(prefix: String, text: String) -> String {
     out
 }
 
-fn dump_suffix_last(text: String, suffix: String) -> String {
+fn dump_suffix_last(text, suffix) {
     let idx = dump_last_newline(text)
     let mut out = ""
     if idx < 0 {
@@ -698,7 +724,7 @@ fn dump_suffix_last(text: String, suffix: String) -> String {
     out
 }
 
-fn dump_field(name: String, value: String, level: Int) -> String {
+fn dump_field(name, value, level) {
     let idx = dump_first_newline(value)
     let prefix = dump_line(level, str_concat(name, ": "))
     let mut out = ""
@@ -717,7 +743,7 @@ fn dump_field(name: String, value: String, level: Int) -> String {
     dump_suffix_last(out, ",")
 }
 
-fn dump_bool(value: Bool) -> String {
+fn dump_bool(value) {
     let mut out = "false"
     if value {
         out = "true"
@@ -725,7 +751,7 @@ fn dump_bool(value: Bool) -> String {
     out
 }
 
-fn dump_string(value: String) -> String {
+fn dump_string(value) {
     let mut out = ascii_char(34)
     let mut i = 0
     while i < str_len(value) {
@@ -748,11 +774,11 @@ fn dump_string(value: String) -> String {
     str_concat(out, ascii_char(34))
 }
 
-fn dump_escape_pair(letter: String) -> String {
+fn dump_escape_pair(letter) {
     str_concat(ascii_char(92), letter)
 }
 
-fn dump_string_list(values: Array[String], level: Int) -> String {
+fn dump_string_list(values, level) {
     if values.len() == 0 {
         return "[]"
     }
@@ -766,7 +792,7 @@ fn dump_string_list(values: Array[String], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_item_list(items: Array[Item], level: Int) -> String {
+fn dump_item_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -777,7 +803,7 @@ fn dump_item_list(items: Array[Item], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_param_list(items: Array[Param], level: Int) -> String {
+fn dump_param_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -788,7 +814,7 @@ fn dump_param_list(items: Array[Param], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_class_member_list(items: Array[ClassMember], level: Int) -> String {
+fn dump_class_member_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -799,7 +825,7 @@ fn dump_class_member_list(items: Array[ClassMember], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_fndef_list(items: Array[FnDef], level: Int) -> String {
+fn dump_fndef_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -810,7 +836,7 @@ fn dump_fndef_list(items: Array[FnDef], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_stmt_list(items: Array[Stmt], level: Int) -> String {
+fn dump_stmt_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -821,7 +847,7 @@ fn dump_stmt_list(items: Array[Stmt], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_expr_list(items: Array[Expr], level: Int) -> String {
+fn dump_expr_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -832,7 +858,7 @@ fn dump_expr_list(items: Array[Expr], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_map_entry(entry: MapEntry, level: Int) -> String {
+fn dump_map_entry(entry, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "("))
     out = dump_append(out, dump_suffix_last(dump_expr(entry.key, level + 1), ","))
@@ -841,7 +867,7 @@ fn dump_map_entry(entry: MapEntry, level: Int) -> String {
     out
 }
 
-fn dump_map_entry_list(items: Array[MapEntry], level: Int) -> String {
+fn dump_map_entry_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -852,7 +878,7 @@ fn dump_map_entry_list(items: Array[MapEntry], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_fstr_part(part: FStrPart, level: Int) -> String {
+fn dump_fstr_part(part, level) {
     let mut out = ""
     if str_eq_dump(part.kind, "Literal") {
         out = dump_append(out, dump_line(level, "Literal("))
@@ -866,7 +892,7 @@ fn dump_fstr_part(part: FStrPart, level: Int) -> String {
     out
 }
 
-fn dump_fstr_part_list(items: Array[FStrPart], level: Int) -> String {
+fn dump_fstr_part_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -877,7 +903,7 @@ fn dump_fstr_part_list(items: Array[FStrPart], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_match_arm(arm: MatchArm, level: Int) -> String {
+fn dump_match_arm(arm, level) {
     let mut out = ""
     out = dump_append(out, dump_line(level, "MatchArm {"))
     out = dump_append(out, dump_field("pattern", dump_expr(arm.pattern, level + 1), level + 1))
@@ -887,7 +913,7 @@ fn dump_match_arm(arm: MatchArm, level: Int) -> String {
     out
 }
 
-fn dump_match_arm_list(items: Array[MatchArm], level: Int) -> String {
+fn dump_match_arm_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -898,7 +924,7 @@ fn dump_match_arm_list(items: Array[MatchArm], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_import_item_list(items: Array[ImportItem], level: Int) -> String {
+fn dump_import_item_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -909,7 +935,7 @@ fn dump_import_item_list(items: Array[ImportItem], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_type_member_list(items: Array[TypeMember], level: Int) -> String {
+fn dump_type_member_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -920,7 +946,7 @@ fn dump_type_member_list(items: Array[TypeMember], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_type_block_list(items: Array[TypeBlockDef], level: Int) -> String {
+fn dump_type_block_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -931,7 +957,7 @@ fn dump_type_block_list(items: Array[TypeBlockDef], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_gc_entry_list(items: Array[GcConfigEntry], level: Int) -> String {
+fn dump_gc_entry_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -942,7 +968,7 @@ fn dump_gc_entry_list(items: Array[GcConfigEntry], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_type_expr_list(items: Array[TypeExpr], level: Int) -> String {
+fn dump_type_expr_list(items, level) {
     if items.len() == 0 { return "[]" }
     let mut out = dump_line(level, "[")
     let mut i = 0
@@ -953,7 +979,7 @@ fn dump_type_expr_list(items: Array[TypeExpr], level: Int) -> String {
     dump_append(out, dump_line(level, "]"))
 }
 
-fn dump_option_string(has_value: Bool, value: String, level: Int) -> String {
+fn dump_option_string(has_value, value, level) {
     if !has_value {
         return "None"
     }
@@ -963,7 +989,7 @@ fn dump_option_string(has_value: Bool, value: String, level: Int) -> String {
     dump_append(out, dump_line(level, ")"))
 }
 
-fn dump_option_type_expr(has_value: Bool, value: TypeExpr, level: Int) -> String {
+fn dump_option_type_expr(has_value, value, level) {
     if !has_value {
         return "None"
     }
@@ -972,7 +998,7 @@ fn dump_option_type_expr(has_value: Bool, value: TypeExpr, level: Int) -> String
     dump_append(out, dump_line(level, ")"))
 }
 
-fn dump_option_expr(has_value: Bool, value: Expr, level: Int) -> String {
+fn dump_option_expr(has_value, value, level) {
     if !has_value {
         return "None"
     }
@@ -981,7 +1007,7 @@ fn dump_option_expr(has_value: Bool, value: Expr, level: Int) -> String {
     dump_append(out, dump_line(level, ")"))
 }
 
-fn dump_option_block(has_value: Bool, value: Block, level: Int) -> String {
+fn dump_option_block(has_value, value, level) {
     if !has_value {
         return "None"
     }
@@ -990,7 +1016,7 @@ fn dump_option_block(has_value: Bool, value: Block, level: Int) -> String {
     dump_append(out, dump_line(level, ")"))
 }
 
-fn dump_option_else_branch(has_value: Bool, value: ElseBranch, level: Int) -> String {
+fn dump_option_else_branch(has_value, value, level) {
     if !has_value {
         return "None"
     }
@@ -999,7 +1025,7 @@ fn dump_option_else_branch(has_value: Bool, value: ElseBranch, level: Int) -> St
     dump_append(out, dump_line(level, ")"))
 }
 
-fn dump_else_branch(branch: ElseBranch, level: Int) -> String {
+fn dump_else_branch(branch, level) {
     let mut out = ""
     if str_eq_dump(branch.kind, "If") {
         out = dump_append(out, dump_line(level, "If("))
@@ -1013,7 +1039,7 @@ fn dump_else_branch(branch: ElseBranch, level: Int) -> String {
     out
 }
 
-fn dump_spawn_body(body: SpawnBody, level: Int) -> String {
+fn dump_spawn_body(body, level) {
     let mut out = ""
     if str_eq_dump(body.kind, "Expr") {
         out = dump_append(out, dump_line(level, "Expr("))
@@ -1027,7 +1053,7 @@ fn dump_spawn_body(body: SpawnBody, level: Int) -> String {
     out
 }
 
-fn dump_match_arm_body(body: MatchArmBody, level: Int) -> String {
+fn dump_match_arm_body(body, level) {
     let mut out = ""
     if str_eq_dump(body.kind, "Expr") {
         out = dump_append(out, dump_line(level, "Expr("))
@@ -1041,19 +1067,19 @@ fn dump_match_arm_body(body: MatchArmBody, level: Int) -> String {
     out
 }
 
-fn dump_bin_op(name: String, level: Int) -> String {
+fn dump_bin_op(name, level) {
     dump_line(level, name)
 }
 
-fn dump_un_op(name: String, level: Int) -> String {
+fn dump_un_op(name, level) {
     dump_line(level, name)
 }
 
-fn dump_assign_op(name: String, level: Int) -> String {
+fn dump_assign_op(name, level) {
     dump_line(level, name)
 }
 
-fn str_eq_dump(a: String, b: String) -> Bool {
+fn str_eq_dump(a, b) {
     let mut same = str_len(a) == str_len(b)
     let mut i = 0
     while same && i < str_len(a) {

@@ -63,12 +63,7 @@ That earlier work also resolved the semantic parity gap for canonical contracts:
 
 ## Remaining Blocked Files
 
-The remaining unmigrated self-host files are now explicit and non-executable.
-
-| File | Blocker | Classification |
-| --- | --- | --- |
-| `src/ast/dump.dt` | Very large printer module with broad low-value mechanical churn; migrating it now would add review noise without affecting parser/typechecker/codegen behavior. | Deferred cleanup |
-| `src/typeck/dump.dt` | Similar large pretty-printer module; canonicalization is straightforward but noisy and low priority compared with executable self-host paths. | Deferred cleanup |
+No remaining blocked files.
 
 No remaining `src/` blocker in this audit is a frontend/backend semantic-parity gap or an executable bootstrap issue.
 
@@ -135,9 +130,7 @@ Practical strict-canonical subset:
 
 What is not yet true:
 
-- the entire `src/` tree is not fully strict-clean because two deferred dump/printer modules still rely on compatibility-form syntax
-- the self-host bootstrap path is still tracked separately because `drat build src/main.dt` can hit `LLVM ERROR: unknown special variable`
-- full-tree strict self-host CI should wait until `src/ast/dump.dt` and `src/typeck/dump.dt` are migrated, and until the separate bootstrap-path LLVM blocker is resolved or intentionally retired
+- Stage 2 self-host functional verification is still blocked by a self-host inference crash in `collect_function_binding_hints_from_stmt()`
 
 ## Strict-Canonical CI Subset
 
@@ -155,10 +148,9 @@ What it does:
 
 Intentionally excluded files:
 
-- `src/ast/dump.dt`
-- `src/typeck/dump.dt`
+none
 
-This subset is intentional. It gives regression coverage for the migrated self-host tree without claiming that full-tree strict self-host support is complete or that the current bootstrap path is stable enough to be a hard CI gate.
+This subset now covers the full self-host tree and the bootstrap path is a hard CI gate.
 
 ## CI Readiness
 
@@ -167,13 +159,11 @@ A focused strict-canonical self-host CI subset is now practical and enabled:
 - parser/typecheck regression tests cover the Rust frontend/tooling path
 - `tools/check_selfhost_strict_subset.py` guards the migrated `src/` subset against compatibility-form regressions
 - CI also runs one representative strict canonical fixture build
-- CI also runs one tracked self-host bootstrap probe, but that probe warns instead of failing the subset job when it hits the known `LLVM ERROR: unknown special variable` blocker
+- CI now runs self-host bootstrap as a hard failure gate
 
 What would still be required for full-tree strict self-host CI:
 
-1. canonicalize or intentionally retire `src/ast/dump.dt`
-2. canonicalize or intentionally retire `src/typeck/dump.dt`
-3. resolve the separate self-host bootstrap-path blocker currently surfacing as `LLVM ERROR: unknown special variable`
+Nothing remains from the former strict-syntax exclusion set. Functional self-host stage verification still needs the remaining inference crash resolved.
 
 ## Final Readiness
 
@@ -182,10 +172,11 @@ executable/compiler-path self-host canonical migration is complete.
 Current repository state:
 
 - the migrated self-host compiler path is covered by strict-canonical subset CI
-- the only remaining exclusions are `src/ast/dump.dt` and `src/typeck/dump.dt`
-- those files are deferred printer cleanup, not executable compiler blockers
+- there are zero explicit strict-subset exclusions
+- bootstrap is covered by the same CI job as a hard gate
+- Stage 2 self-host verification is still blocked by a crash in `collect_function_binding_hints_from_stmt()`
 
-That means contributors can now treat canonical syntax as the normal rule for executable self-host code. Full-tree strict self-host CI would still require canonicalizing or intentionally retiring the two remaining dump modules and resolving the separate bootstrap-path LLVM blocker.
+That means contributors can now treat canonical syntax as the normal rule across the self-host tree and can rely on bootstrap verification as part of normal CI. Stage 2 parity still requires resolving the remaining self-host crash above.
 
 ## Verification Run
 
@@ -202,12 +193,20 @@ Focused verification for this final mechanical pass:
 - `/tmp/draton_mech_final_strict`
 - `cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_mech_final`
 
-Expected current behavior during bootstrap:
+## Phase 1 Progress
 
-- self-host bootstrap remains CPU-bound and may be slow
-- warning output now comes only from the deferred dump/printer modules
-- the build can still hit the tracked LLVM-side blocker `LLVM ERROR: unknown special variable`
-- this is not a deadlock; the main remaining cost is normal bootstrap work plus residual warning volume plus the unresolved LLVM blocker above
+The following Phase 1 bootstrap stabilization work is now complete:
+
+- `LLVM ERROR: unknown special variable` resolved via Rust codegen module-constructor normalization
+- `src/ast/dump.dt` migrated to canonical `@type` binding syntax and canonical function signatures
+- `src/typeck/dump.dt` migrated to canonical `@type` binding syntax and canonical function signatures
+- Full-tree strict self-host syntax coverage enabled — zero excluded files
+- Bootstrap CI gate promoted from warning to hard failure
+- Stage 2 verification script added at `tools/verify_stage2.py`
+
+Remaining blocker before Phase 1 can be called fully complete:
+
+- the generated self-host binary still crashes during Stage 2 functional verification in `collect_function_binding_hints_from_stmt()`
 
 ## Recommended Next Step
 

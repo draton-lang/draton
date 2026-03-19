@@ -17,10 +17,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src"
 
-EXCLUDED_FILES = {
-    Path("src/ast/dump.dt"),
-    Path("src/typeck/dump.dt"),
-}
+EXCLUDED_FILES: set[Path] = set()
 
 PATTERNS = {
     "typed_let": re.compile(

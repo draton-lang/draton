@@ -6,12 +6,14 @@ use draton_typeck::{Type, TypedProgram};
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::module::Module;
+use inkwell::module::{Linkage, Module};
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
 use inkwell::types::StructType;
-use inkwell::values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue};
+use inkwell::values::{
+    BasicValueEnum, FunctionValue, GlobalValue, InstructionOpcode, PointerValue,
+};
 use inkwell::{AddressSpace, OptimizationLevel};
 
 use crate::error::CodeGenError;
@@ -124,7 +126,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.emit_item(item)?;
         }
         self.emit_mono_items()?;
-        self.flush_global_ctors()?;
+        self.normalize_global_ctors()?;
         self.apply_optimizations();
         self.module
             .verify()
@@ -310,13 +312,32 @@ impl<'ctx> CodeGen<'ctx> {
         if !Self::is_gc_rootable_type(ty) {
             return Ok(());
         }
-        if let Ok(function) = self.current_function() {
-            function.set_gc("shadow-stack");
-        }
+        let function = match self.current_function() {
+            Ok(function) => function,
+            Err(_) => return Ok(()),
+        };
+        function.set_gc("shadow-stack");
         let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
         let gcroot = self.get_or_declare_gcroot_intrinsic();
-        let root_location = self
-            .builder
+        let entry_builder = self.context.create_builder();
+        let entry = function
+            .get_first_basic_block()
+            .ok_or_else(|| CodeGenError::Llvm("register_gc_root: no entry block".to_string()))?;
+        let mut cursor = entry.get_first_instruction();
+        let mut first_non_alloca = None;
+        while let Some(instr) = cursor {
+            if instr.get_opcode() != InstructionOpcode::Alloca {
+                first_non_alloca = Some(instr);
+                break;
+            }
+            cursor = instr.get_next_instruction();
+        }
+        match first_non_alloca {
+            Some(instr) => entry_builder.position_before(&instr),
+            None => entry_builder.position_at_end(entry),
+        }
+
+        let root_location = entry_builder
             .build_bitcast(
                 storage,
                 i8_ptr.ptr_type(AddressSpace::default()),
@@ -328,8 +349,7 @@ impl<'ctx> CodeGen<'ctx> {
             .i64_type()
             .const_int(1, false)
             .const_to_pointer(i8_ptr);
-        let _ = self
-            .builder
+        let _ = entry_builder
             .build_call(gcroot, &[root_location.into(), metadata.into()], "")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         Ok(())
@@ -412,6 +432,68 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(ptr, value)
             .map(|_| ())
             .map_err(|err| CodeGenError::Llvm(err.to_string()))
+    }
+
+    fn normalize_global_ctors(&self) -> Result<(), CodeGenError> {
+        const CTORS: &str = "llvm.global_ctors";
+        const CTORS_PREFIX: &str = "llvm.global_ctors.";
+
+        let mut ctors = self
+            .module
+            .get_functions()
+            .filter(|function| {
+                function
+                    .get_name()
+                    .to_str()
+                    .map(|name| name.starts_with("__gc_register_"))
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+        if ctors.is_empty() {
+            return Ok(());
+        }
+        ctors.sort_by(|lhs, rhs| lhs.get_name().to_bytes().cmp(rhs.get_name().to_bytes()));
+
+        let i32_type = self.context.i32_type();
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let fn_ptr_ty = ctors[0].get_type().ptr_type(AddressSpace::default());
+        let entry_ty = self
+            .context
+            .struct_type(&[i32_type.into(), fn_ptr_ty.into(), i8_ptr.into()], false);
+        let priority = i32_type.const_int(65535, false);
+        let data = i8_ptr.const_null();
+        let entries = ctors
+            .iter()
+            .map(|function| {
+                entry_ty.const_named_struct(&[
+                    priority.into(),
+                    function.as_global_value().as_pointer_value().into(),
+                    data.into(),
+                ])
+            })
+            .collect::<Vec<_>>();
+        let array_ty = entry_ty.array_type(entries.len() as u32);
+        let array = entry_ty.const_array(&entries);
+
+        let stale_globals = self
+            .module
+            .get_globals()
+            .filter(|global| {
+                global
+                    .get_name()
+                    .to_str()
+                    .map(|name| name == CTORS || name.starts_with(CTORS_PREFIX))
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+        for global in stale_globals {
+            unsafe { global.delete() };
+        }
+
+        let global = self.module.add_global(array_ty, None, CTORS);
+        global.set_initializer(&array);
+        global.set_linkage(Linkage::Appending);
+        Ok(())
     }
 
     fn apply_optimizations(&self) {

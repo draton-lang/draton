@@ -7,73 +7,73 @@ import { TypedProgram, TypedItem, TypedFnDef, TypedParam, TypedClassDef, TypedFi
          TypedMatchArm, TypedMatchArmBody, Span, Type }
 
 @type {
-    fn type_dump_program(program: TypedProgram) -> String
-    fn type_dump_item(item: TypedItem, level: Int) -> String
-    fn type_dump_fn_def(def: TypedFnDef, level: Int) -> String
-    fn type_dump_param(param: TypedParam, level: Int) -> String
-    fn type_dump_class_def(def: TypedClassDef, level: Int) -> String
-    fn type_dump_interface_def(def: TypedInterfaceDef, level: Int) -> String
-    fn type_dump_enum_def(def: TypedEnumDef, level: Int) -> String
-    fn type_dump_error_def(def: TypedErrorDef, level: Int) -> String
-    fn type_dump_const_def(def: TypedConstDef, level: Int) -> String
-    fn type_dump_import_def(def: TypedImportDef, level: Int) -> String
-    fn type_dump_extern_block(def: TypedExternBlock, level: Int) -> String
-    fn type_dump_type_block(def: TypedTypeBlockDef, level: Int) -> String
-    fn type_dump_stmt(stmt: TypedStmt, level: Int) -> String
-    fn type_dump_block(block: TypedBlock, level: Int) -> String
-    fn type_dump_let_stmt(stmt: TypedLetStmt, level: Int) -> String
-    fn type_dump_assign_stmt(stmt: TypedAssignStmt, level: Int) -> String
-    fn type_dump_return_stmt(stmt: TypedReturnStmt, level: Int) -> String
-    fn type_dump_if_stmt(stmt: TypedIfStmt, level: Int) -> String
-    fn type_dump_for_stmt(stmt: TypedForStmt, level: Int) -> String
-    fn type_dump_while_stmt(stmt: TypedWhileStmt, level: Int) -> String
-    fn type_dump_spawn_stmt(stmt: TypedSpawnStmt, level: Int) -> String
-    fn type_dump_if_compile(stmt: TypedIfCompileStmt, level: Int) -> String
-    fn type_dump_gc_config(stmt: TypedGcConfigStmt, level: Int) -> String
-    fn type_dump_gc_entry(item: TypedGcConfigEntry, level: Int) -> String
-    fn type_dump_expr(expr: TypedExpr, level: Int) -> String
-    fn type_dump_expr_kind(expr: TypedExpr, level: Int) -> String
-    fn type_dump_type(ty: Type, level: Int) -> String
-    fn type_dump_span(span: Span, level: Int) -> String
-    fn type_dump_indent(level: Int) -> String
-    fn type_dump_line(level: Int, text: String) -> String
-    fn type_dump_append(out: String, block: String) -> String
-    fn type_dump_first_newline(text: String) -> Int
-    fn type_dump_last_newline(text: String) -> Int
-    fn type_dump_suffix_last(text: String, suffix: String) -> String
-    fn type_dump_field(name: String, value: String, level: Int) -> String
-    fn type_dump_bool(value: Bool) -> String
-    fn type_dump_string(value: String) -> String
-    fn type_dump_item_list(items: Array[TypedItem], level: Int) -> String
-    fn type_dump_param_list(items: Array[TypedParam], level: Int) -> String
-    fn type_dump_fndef_list(items: Array[TypedFnDef], level: Int) -> String
-    fn type_dump_stmt_list(items: Array[TypedStmt], level: Int) -> String
-    fn type_dump_expr_list(items: Array[TypedExpr], level: Int) -> String
-    fn type_dump_type_list(items: Array[Type], level: Int) -> String
-    fn type_dump_string_list(items: Array[String], level: Int) -> String
-    fn type_dump_field_def_list(items: Array[TypedFieldDef], level: Int) -> String
-    fn type_dump_field_def(item: TypedFieldDef, level: Int) -> String
-    fn type_dump_import_item_list(items: Array[TypedImportItem], level: Int) -> String
-    fn type_dump_import_item(item: TypedImportItem, level: Int) -> String
-    fn type_dump_type_member_list(items: Array[TypedTypeMember], level: Int) -> String
-    fn type_dump_type_block_list(items: Array[TypedTypeBlockDef], level: Int) -> String
-    fn type_dump_type_member(item: TypedTypeMember, level: Int) -> String
-    fn type_dump_gc_entry_list(items: Array[TypedGcConfigEntry], level: Int) -> String
-    fn type_dump_map_entry_list(items: Array[TypedMapEntry], level: Int) -> String
-    fn type_dump_match_arm_list(items: Array[TypedMatchArm], level: Int) -> String
-    fn type_dump_match_arm(item: TypedMatchArm, level: Int) -> String
-    fn type_dump_match_arm_body(body: TypedMatchArmBody, level: Int) -> String
-    fn type_dump_lambda_params(expr: TypedExpr, level: Int) -> String
-    fn type_dump_option_string(has_value: Bool, value: String, level: Int) -> String
-    fn type_dump_option_block(has_value: Bool, value: TypedBlock, level: Int) -> String
-    fn type_dump_option_expr(has_value: Bool, value: TypedExpr, level: Int) -> String
-    fn type_dump_option_else(has_value: Bool, value: TypedElseBranch, level: Int) -> String
-    fn type_dump_spawn_body(value: TypedSpawnBody, level: Int) -> String
-    fn type_dump_float(expr: TypedExpr) -> String
-    fn type_dump_variant(name: String, value: String, level: Int) -> String
+    type_dump_program: (TypedProgram) -> String
+    type_dump_item: (TypedItem, Int) -> String
+    type_dump_fn_def: (TypedFnDef, Int) -> String
+    type_dump_param: (TypedParam, Int) -> String
+    type_dump_class_def: (TypedClassDef, Int) -> String
+    type_dump_interface_def: (TypedInterfaceDef, Int) -> String
+    type_dump_enum_def: (TypedEnumDef, Int) -> String
+    type_dump_error_def: (TypedErrorDef, Int) -> String
+    type_dump_const_def: (TypedConstDef, Int) -> String
+    type_dump_import_def: (TypedImportDef, Int) -> String
+    type_dump_extern_block: (TypedExternBlock, Int) -> String
+    type_dump_type_block: (TypedTypeBlockDef, Int) -> String
+    type_dump_stmt: (TypedStmt, Int) -> String
+    type_dump_block: (TypedBlock, Int) -> String
+    type_dump_let_stmt: (TypedLetStmt, Int) -> String
+    type_dump_assign_stmt: (TypedAssignStmt, Int) -> String
+    type_dump_return_stmt: (TypedReturnStmt, Int) -> String
+    type_dump_if_stmt: (TypedIfStmt, Int) -> String
+    type_dump_for_stmt: (TypedForStmt, Int) -> String
+    type_dump_while_stmt: (TypedWhileStmt, Int) -> String
+    type_dump_spawn_stmt: (TypedSpawnStmt, Int) -> String
+    type_dump_if_compile: (TypedIfCompileStmt, Int) -> String
+    type_dump_gc_config: (TypedGcConfigStmt, Int) -> String
+    type_dump_gc_entry: (TypedGcConfigEntry, Int) -> String
+    type_dump_expr: (TypedExpr, Int) -> String
+    type_dump_expr_kind: (TypedExpr, Int) -> String
+    type_dump_type: (Type, Int) -> String
+    type_dump_span: (Span, Int) -> String
+    type_dump_indent: (Int) -> String
+    type_dump_line: (Int, String) -> String
+    type_dump_append: (String, String) -> String
+    type_dump_first_newline: (String) -> Int
+    type_dump_last_newline: (String) -> Int
+    type_dump_suffix_last: (String, String) -> String
+    type_dump_field: (String, String, Int) -> String
+    type_dump_bool: (Bool) -> String
+    type_dump_string: (String) -> String
+    type_dump_item_list: (Array[TypedItem], Int) -> String
+    type_dump_param_list: (Array[TypedParam], Int) -> String
+    type_dump_fndef_list: (Array[TypedFnDef], Int) -> String
+    type_dump_stmt_list: (Array[TypedStmt], Int) -> String
+    type_dump_expr_list: (Array[TypedExpr], Int) -> String
+    type_dump_type_list: (Array[Type], Int) -> String
+    type_dump_string_list: (Array[String], Int) -> String
+    type_dump_field_def_list: (Array[TypedFieldDef], Int) -> String
+    type_dump_field_def: (TypedFieldDef, Int) -> String
+    type_dump_import_item_list: (Array[TypedImportItem], Int) -> String
+    type_dump_import_item: (TypedImportItem, Int) -> String
+    type_dump_type_member_list: (Array[TypedTypeMember], Int) -> String
+    type_dump_type_block_list: (Array[TypedTypeBlockDef], Int) -> String
+    type_dump_type_member: (TypedTypeMember, Int) -> String
+    type_dump_gc_entry_list: (Array[TypedGcConfigEntry], Int) -> String
+    type_dump_map_entry_list: (Array[TypedMapEntry], Int) -> String
+    type_dump_match_arm_list: (Array[TypedMatchArm], Int) -> String
+    type_dump_match_arm: (TypedMatchArm, Int) -> String
+    type_dump_match_arm_body: (TypedMatchArmBody, Int) -> String
+    type_dump_lambda_params: (TypedExpr, Int) -> String
+    type_dump_option_string: (Bool, String, Int) -> String
+    type_dump_option_block: (Bool, TypedBlock, Int) -> String
+    type_dump_option_expr: (Bool, TypedExpr, Int) -> String
+    type_dump_option_else: (Bool, TypedElseBranch, Int) -> String
+    type_dump_spawn_body: (TypedSpawnBody, Int) -> String
+    type_dump_float: (TypedExpr) -> String
+    type_dump_variant: (String, String, Int) -> String
 }
 
-fn type_dump_program(program: TypedProgram) {
+fn type_dump_program(program) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(0, "TypedProgram {"))
     out = type_dump_append(out, type_dump_field("items", type_dump_item_list(program.program_items, 1), 1))
@@ -81,7 +81,7 @@ fn type_dump_program(program: TypedProgram) {
     out
 }
 
-fn type_dump_item(item: TypedItem, level: Int) {
+fn type_dump_item(item, level) {
     let mut out = ""
     if str_eq_type(item.tag, "Fn") {
         out = type_dump_append(out, type_dump_line(level, "Fn("))
@@ -131,7 +131,7 @@ fn type_dump_item(item: TypedItem, level: Int) {
     out
 }
 
-fn type_dump_fn_def(def: TypedFnDef, level: Int) {
+fn type_dump_fn_def(def, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedFnDef {"))
     out = type_dump_append(out, type_dump_field("is_pub", type_dump_bool(def.fn_is_pub), level + 1))
@@ -145,7 +145,7 @@ fn type_dump_fn_def(def: TypedFnDef, level: Int) {
     out
 }
 
-fn type_dump_param(param: TypedParam, level: Int) {
+fn type_dump_param(param, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedParam {"))
     out = type_dump_append(out, type_dump_field("name", type_dump_string(param.param_name), level + 1))
@@ -155,7 +155,7 @@ fn type_dump_param(param: TypedParam, level: Int) {
     out
 }
 
-fn type_dump_class_def(def: TypedClassDef, level: Int) {
+fn type_dump_class_def(def, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedClassDef {"))
     out = type_dump_append(out, type_dump_field("name", type_dump_string(def.class_name), level + 1))
@@ -169,7 +169,7 @@ fn type_dump_class_def(def: TypedClassDef, level: Int) {
     out
 }
 
-fn type_dump_interface_def(def: TypedInterfaceDef, level: Int) {
+fn type_dump_interface_def(def, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedInterfaceDef {"))
     out = type_dump_append(out, type_dump_field("name", type_dump_string(def.interface_name), level + 1))
@@ -179,7 +179,7 @@ fn type_dump_interface_def(def: TypedInterfaceDef, level: Int) {
     out
 }
 
-fn type_dump_enum_def(def: TypedEnumDef, level: Int) {
+fn type_dump_enum_def(def, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedEnumDef {"))
     out = type_dump_append(out, type_dump_field("name", type_dump_string(def.enum_name), level + 1))
@@ -189,7 +189,7 @@ fn type_dump_enum_def(def: TypedEnumDef, level: Int) {
     out
 }
 
-fn type_dump_error_def(def: TypedErrorDef, level: Int) {
+fn type_dump_error_def(def, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedErrorDef {"))
     out = type_dump_append(out, type_dump_field("name", type_dump_string(def.error_name), level + 1))
@@ -199,7 +199,7 @@ fn type_dump_error_def(def: TypedErrorDef, level: Int) {
     out
 }
 
-fn type_dump_const_def(def: TypedConstDef, level: Int) {
+fn type_dump_const_def(def, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedConstDef {"))
     out = type_dump_append(out, type_dump_field("name", type_dump_string(def.const_name), level + 1))
@@ -210,7 +210,7 @@ fn type_dump_const_def(def: TypedConstDef, level: Int) {
     out
 }
 
-fn type_dump_import_def(def: TypedImportDef, level: Int) {
+fn type_dump_import_def(def, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedImportDef {"))
     out = type_dump_append(out, type_dump_field("module", type_dump_string_list(def.import_module, level + 1), level + 1))
@@ -220,7 +220,7 @@ fn type_dump_import_def(def: TypedImportDef, level: Int) {
     out
 }
 
-fn type_dump_extern_block(def: TypedExternBlock, level: Int) {
+fn type_dump_extern_block(def, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedExternBlock {"))
     out = type_dump_append(out, type_dump_field("abi", type_dump_string(def.extern_abi), level + 1))
@@ -230,7 +230,7 @@ fn type_dump_extern_block(def: TypedExternBlock, level: Int) {
     out
 }
 
-fn type_dump_type_block(def: TypedTypeBlockDef, level: Int) {
+fn type_dump_type_block(def, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedTypeBlock {"))
     out = type_dump_append(out, type_dump_field("members", type_dump_type_member_list(def.type_members, level + 1), level + 1))
@@ -239,7 +239,7 @@ fn type_dump_type_block(def: TypedTypeBlockDef, level: Int) {
     out
 }
 
-fn type_dump_stmt(stmt: TypedStmt, level: Int) {
+fn type_dump_stmt(stmt, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedStmt {"))
     if str_eq_type(stmt.tag, "Let") {
@@ -272,7 +272,7 @@ fn type_dump_stmt(stmt: TypedStmt, level: Int) {
     out
 }
 
-fn type_dump_expr(expr: TypedExpr, level: Int) {
+fn type_dump_expr(expr, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedExpr {"))
     out = type_dump_append(out, type_dump_field("kind", type_dump_expr_kind(expr, level + 1), level + 1))
@@ -282,7 +282,7 @@ fn type_dump_expr(expr: TypedExpr, level: Int) {
     out
 }
 
-fn type_dump_expr_kind(expr: TypedExpr, level: Int) {
+fn type_dump_expr_kind(expr, level) {
     let mut out = ""
     if str_eq_type(expr.tag, "IntLit") {
         out = type_dump_append(out, type_dump_line(level, "IntLit("))
@@ -354,7 +354,7 @@ fn type_dump_expr_kind(expr: TypedExpr, level: Int) {
     out
 }
 
-fn type_dump_type(ty: Type, level: Int) {
+fn type_dump_type(ty, level) {
     let mut out = ""
     if str_eq_type(ty.type_kind, "Int") || str_eq_type(ty.type_kind, "Float") || str_eq_type(ty.type_kind, "Bool") || str_eq_type(ty.type_kind, "String") || str_eq_type(ty.type_kind, "Unit") {
         return type_dump_line(level, ty.type_kind)
@@ -401,7 +401,7 @@ fn type_dump_type(ty: Type, level: Int) {
     type_dump_line(level, ty.type_kind)
 }
 
-fn type_dump_span(span: Span, level: Int) {
+fn type_dump_span(span, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "Span {"))
     out = type_dump_append(out, type_dump_field("start", int_to_string(span.start), level + 1))
@@ -412,7 +412,7 @@ fn type_dump_span(span: Span, level: Int) {
     out
 }
 
-fn type_dump_block(block: TypedBlock, level: Int) {
+fn type_dump_block(block, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedBlock {"))
     out = type_dump_append(out, type_dump_field("stmts", type_dump_stmt_list(block.block_stmts, level + 1), level + 1))
@@ -421,7 +421,7 @@ fn type_dump_block(block: TypedBlock, level: Int) {
     out
 }
 
-fn type_dump_let_stmt(stmt: TypedLetStmt, level: Int) {
+fn type_dump_let_stmt(stmt, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedLetStmt {"))
     out = type_dump_append(out, type_dump_field("is_mut", type_dump_bool(stmt.let_is_mut), level + 1))
@@ -433,7 +433,7 @@ fn type_dump_let_stmt(stmt: TypedLetStmt, level: Int) {
     out
 }
 
-fn type_dump_assign_stmt(stmt: TypedAssignStmt, level: Int) {
+fn type_dump_assign_stmt(stmt, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedAssignStmt {"))
     out = type_dump_append(out, type_dump_field("target", type_dump_expr(stmt.assign_target, level + 1), level + 1))
@@ -444,7 +444,7 @@ fn type_dump_assign_stmt(stmt: TypedAssignStmt, level: Int) {
     out
 }
 
-fn type_dump_return_stmt(stmt: TypedReturnStmt, level: Int) {
+fn type_dump_return_stmt(stmt, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedReturnStmt {"))
     out = type_dump_append(out, type_dump_field("value", type_dump_option_expr(stmt.return_has_value, stmt.return_value, level + 1), level + 1))
@@ -454,7 +454,7 @@ fn type_dump_return_stmt(stmt: TypedReturnStmt, level: Int) {
     out
 }
 
-fn type_dump_if_stmt(stmt: TypedIfStmt, level: Int) {
+fn type_dump_if_stmt(stmt, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedIfStmt {"))
     out = type_dump_append(out, type_dump_field("condition", type_dump_expr(stmt.if_condition, level + 1), level + 1))
@@ -465,7 +465,7 @@ fn type_dump_if_stmt(stmt: TypedIfStmt, level: Int) {
     out
 }
 
-fn type_dump_for_stmt(stmt: TypedForStmt, level: Int) {
+fn type_dump_for_stmt(stmt, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedForStmt {"))
     out = type_dump_append(out, type_dump_field("name", type_dump_string(stmt.for_binding), level + 1))
@@ -477,7 +477,7 @@ fn type_dump_for_stmt(stmt: TypedForStmt, level: Int) {
     out
 }
 
-fn type_dump_while_stmt(stmt: TypedWhileStmt, level: Int) {
+fn type_dump_while_stmt(stmt, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedWhileStmt {"))
     out = type_dump_append(out, type_dump_field("condition", type_dump_expr(stmt.while_condition, level + 1), level + 1))
@@ -487,7 +487,7 @@ fn type_dump_while_stmt(stmt: TypedWhileStmt, level: Int) {
     out
 }
 
-fn type_dump_spawn_stmt(stmt: TypedSpawnStmt, level: Int) {
+fn type_dump_spawn_stmt(stmt, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedSpawnStmt {"))
     out = type_dump_append(out, type_dump_field("body", type_dump_spawn_body(stmt.spawn_body, level + 1), level + 1))
@@ -496,7 +496,7 @@ fn type_dump_spawn_stmt(stmt: TypedSpawnStmt, level: Int) {
     out
 }
 
-fn type_dump_if_compile(stmt: TypedIfCompileStmt, level: Int) {
+fn type_dump_if_compile(stmt, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedIfCompileStmt {"))
     out = type_dump_append(out, type_dump_field("condition", type_dump_expr(stmt.ifc_condition, level + 1), level + 1))
@@ -506,7 +506,7 @@ fn type_dump_if_compile(stmt: TypedIfCompileStmt, level: Int) {
     out
 }
 
-fn type_dump_gc_config(stmt: TypedGcConfigStmt, level: Int) {
+fn type_dump_gc_config(stmt, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedGcConfigStmt {"))
     out = type_dump_append(out, type_dump_field("entries", type_dump_gc_entry_list(stmt.gc_entries, level + 1), level + 1))
@@ -515,7 +515,7 @@ fn type_dump_gc_config(stmt: TypedGcConfigStmt, level: Int) {
     out
 }
 
-fn type_dump_indent(level: Int) {
+fn type_dump_indent(level) {
     let mut out = ""
     let mut i = 0
     while i < level {
@@ -525,18 +525,18 @@ fn type_dump_indent(level: Int) {
     out
 }
 
-fn type_dump_line(level: Int, text: String) {
+fn type_dump_line(level, text) {
     str_concat(type_dump_indent(level), text)
 }
 
-fn type_dump_append(out: String, block: String) {
+fn type_dump_append(out, block) {
     if str_len(out) == 0 {
         return block
     }
     str_concat(str_concat(out, ascii_char(10)), block)
 }
 
-fn type_dump_first_newline(text: String) {
+fn type_dump_first_newline(text) {
     let mut idx = -1
     let mut i = 0
     while idx < 0 && i < str_len(text) {
@@ -548,7 +548,7 @@ fn type_dump_first_newline(text: String) {
     idx
 }
 
-fn type_dump_last_newline(text: String) {
+fn type_dump_last_newline(text) {
     let mut idx = -1
     let mut i = 0
     while i < str_len(text) {
@@ -560,7 +560,7 @@ fn type_dump_last_newline(text: String) {
     idx
 }
 
-fn type_dump_suffix_last(text: String, suffix: String) {
+fn type_dump_suffix_last(text, suffix) {
     let idx = type_dump_last_newline(text)
     if idx < 0 {
         return str_concat(text, suffix)
@@ -570,7 +570,7 @@ fn type_dump_suffix_last(text: String, suffix: String) {
     str_concat(head, str_concat(tail, suffix))
 }
 
-fn type_dump_field(name: String, value: String, level: Int) {
+fn type_dump_field(name, value, level) {
     let prefix = type_dump_line(level, str_concat(name, ": "))
     let idx = type_dump_first_newline(value)
     let indent = type_dump_indent(level)
@@ -608,7 +608,7 @@ fn type_dump_field(name: String, value: String, level: Int) {
     str_concat(out, ",")
 }
 
-fn type_dump_variant(name: String, value: String, level: Int) {
+fn type_dump_variant(name, value, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, str_concat(name, "(")))
     out = type_dump_append(out, type_dump_suffix_last(value, ","))
@@ -616,17 +616,17 @@ fn type_dump_variant(name: String, value: String, level: Int) {
     out
 }
 
-fn type_dump_bool(value: Bool) {
+fn type_dump_bool(value) {
     if value { return "true" }
     "false"
 }
 
-fn type_dump_float(expr: TypedExpr) {
+fn type_dump_float(expr) {
     let _unused = expr.float_value
     "0.0"
 }
 
-fn type_dump_string(value: String) {
+fn type_dump_string(value) {
     let mut out = ascii_char(34)
     let mut i = 0
     while i < str_len(value) {
@@ -649,7 +649,7 @@ fn type_dump_string(value: String) {
     str_concat(out, ascii_char(34))
 }
 
-fn type_dump_item_list(items: Array[TypedItem], level: Int) {
+fn type_dump_item_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -664,7 +664,7 @@ fn type_dump_item_list(items: Array[TypedItem], level: Int) {
     out
 }
 
-fn type_dump_param_list(items: Array[TypedParam], level: Int) {
+fn type_dump_param_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -679,7 +679,7 @@ fn type_dump_param_list(items: Array[TypedParam], level: Int) {
     out
 }
 
-fn type_dump_fndef_list(items: Array[TypedFnDef], level: Int) {
+fn type_dump_fndef_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -694,7 +694,7 @@ fn type_dump_fndef_list(items: Array[TypedFnDef], level: Int) {
     out
 }
 
-fn type_dump_stmt_list(items: Array[TypedStmt], level: Int) {
+fn type_dump_stmt_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -709,7 +709,7 @@ fn type_dump_stmt_list(items: Array[TypedStmt], level: Int) {
     out
 }
 
-fn type_dump_expr_list(items: Array[TypedExpr], level: Int) {
+fn type_dump_expr_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -724,7 +724,7 @@ fn type_dump_expr_list(items: Array[TypedExpr], level: Int) {
     out
 }
 
-fn type_dump_type_list(items: Array[Type], level: Int) {
+fn type_dump_type_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -739,7 +739,7 @@ fn type_dump_type_list(items: Array[Type], level: Int) {
     out
 }
 
-fn type_dump_string_list(items: Array[String], level: Int) {
+fn type_dump_string_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -754,7 +754,7 @@ fn type_dump_string_list(items: Array[String], level: Int) {
     out
 }
 
-fn type_dump_field_def_list(items: Array[TypedFieldDef], level: Int) {
+fn type_dump_field_def_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -769,7 +769,7 @@ fn type_dump_field_def_list(items: Array[TypedFieldDef], level: Int) {
     out
 }
 
-fn type_dump_field_def(item: TypedFieldDef, level: Int) {
+fn type_dump_field_def(item, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedFieldDef {"))
     out = type_dump_append(out, type_dump_field("is_mut", type_dump_bool(item.field_is_mut), level + 1))
@@ -780,7 +780,7 @@ fn type_dump_field_def(item: TypedFieldDef, level: Int) {
     out
 }
 
-fn type_dump_import_item_list(items: Array[TypedImportItem], level: Int) {
+fn type_dump_import_item_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -795,7 +795,7 @@ fn type_dump_import_item_list(items: Array[TypedImportItem], level: Int) {
     out
 }
 
-fn type_dump_import_item(item: TypedImportItem, level: Int) {
+fn type_dump_import_item(item, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedImportItem {"))
     out = type_dump_append(out, type_dump_field("name", type_dump_string(item.import_name), level + 1))
@@ -805,7 +805,7 @@ fn type_dump_import_item(item: TypedImportItem, level: Int) {
     out
 }
 
-fn type_dump_type_member_list(items: Array[TypedTypeMember], level: Int) {
+fn type_dump_type_member_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -820,7 +820,7 @@ fn type_dump_type_member_list(items: Array[TypedTypeMember], level: Int) {
     out
 }
 
-fn type_dump_type_block_list(items: Array[TypedTypeBlockDef], level: Int) {
+fn type_dump_type_block_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -835,7 +835,7 @@ fn type_dump_type_block_list(items: Array[TypedTypeBlockDef], level: Int) {
     out
 }
 
-fn type_dump_type_member(item: TypedTypeMember, level: Int) {
+fn type_dump_type_member(item, level) {
     let mut out = ""
     if str_eq_type(item.tag, "Binding") {
         out = type_dump_append(out, type_dump_line(level, "Binding {"))
@@ -851,7 +851,7 @@ fn type_dump_type_member(item: TypedTypeMember, level: Int) {
     out
 }
 
-fn type_dump_gc_entry_list(items: Array[TypedGcConfigEntry], level: Int) {
+fn type_dump_gc_entry_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -866,7 +866,7 @@ fn type_dump_gc_entry_list(items: Array[TypedGcConfigEntry], level: Int) {
     out
 }
 
-fn type_dump_gc_entry(item: TypedGcConfigEntry, level: Int) {
+fn type_dump_gc_entry(item, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedGcConfigEntry {"))
     out = type_dump_append(out, type_dump_field("key", type_dump_string(item.gc_key), level + 1))
@@ -876,7 +876,7 @@ fn type_dump_gc_entry(item: TypedGcConfigEntry, level: Int) {
     out
 }
 
-fn type_dump_map_entry_list(items: Array[TypedMapEntry], level: Int) {
+fn type_dump_map_entry_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -897,7 +897,7 @@ fn type_dump_map_entry_list(items: Array[TypedMapEntry], level: Int) {
     out
 }
 
-fn type_dump_match_arm_list(items: Array[TypedMatchArm], level: Int) {
+fn type_dump_match_arm_list(items, level) {
     if items.len() == 0 {
         return type_dump_line(level, "[]")
     }
@@ -912,7 +912,7 @@ fn type_dump_match_arm_list(items: Array[TypedMatchArm], level: Int) {
     out
 }
 
-fn type_dump_match_arm(item: TypedMatchArm, level: Int) {
+fn type_dump_match_arm(item, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "TypedMatchArm {"))
     out = type_dump_append(out, type_dump_field("pattern", type_dump_expr(item.arm_pattern, level + 1), level + 1))
@@ -922,7 +922,7 @@ fn type_dump_match_arm(item: TypedMatchArm, level: Int) {
     out
 }
 
-fn type_dump_match_arm_body(body: TypedMatchArmBody, level: Int) {
+fn type_dump_match_arm_body(body, level) {
     let mut out = ""
     if str_eq_type(body.tag, "Expr") {
         out = type_dump_append(out, type_dump_line(level, "Expr("))
@@ -936,7 +936,7 @@ fn type_dump_match_arm_body(body: TypedMatchArmBody, level: Int) {
     out
 }
 
-fn type_dump_lambda_params(expr: TypedExpr, level: Int) {
+fn type_dump_lambda_params(expr, level) {
     let mut out = ""
     out = type_dump_append(out, type_dump_line(level, "["))
     let mut i = 0
@@ -956,7 +956,7 @@ fn type_dump_lambda_params(expr: TypedExpr, level: Int) {
     out
 }
 
-fn type_dump_option_string(has_value: Bool, value: String, level: Int) {
+fn type_dump_option_string(has_value, value, level) {
     if !has_value {
         return type_dump_line(level, "None")
     }
@@ -967,7 +967,7 @@ fn type_dump_option_string(has_value: Bool, value: String, level: Int) {
     out
 }
 
-fn type_dump_option_block(has_value: Bool, value: TypedBlock, level: Int) {
+fn type_dump_option_block(has_value, value, level) {
     if !has_value {
         return type_dump_line(level, "None")
     }
@@ -978,7 +978,7 @@ fn type_dump_option_block(has_value: Bool, value: TypedBlock, level: Int) {
     out
 }
 
-fn type_dump_option_expr(has_value: Bool, value: TypedExpr, level: Int) {
+fn type_dump_option_expr(has_value, value, level) {
     if !has_value {
         return type_dump_line(level, "None")
     }
@@ -989,7 +989,7 @@ fn type_dump_option_expr(has_value: Bool, value: TypedExpr, level: Int) {
     out
 }
 
-fn type_dump_option_else(has_value: Bool, value: TypedElseBranch, level: Int) {
+fn type_dump_option_else(has_value, value, level) {
     if !has_value {
         return type_dump_line(level, "None")
     }
@@ -1008,7 +1008,7 @@ fn type_dump_option_else(has_value: Bool, value: TypedElseBranch, level: Int) {
     out
 }
 
-fn type_dump_spawn_body(value: TypedSpawnBody, level: Int) {
+fn type_dump_spawn_body(value, level) {
     let mut out = ""
     if str_eq_type(value.tag, "Expr") {
         out = type_dump_append(out, type_dump_line(level, "Expr("))
