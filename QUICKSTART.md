@@ -33,3 +33,5 @@ drat lsp
 The archive also includes the Draton runtime static library required for `drat build` and `drat run`.
 
 Prebuilt preview archives do not require a separate LLVM install. On unusually minimal Linux systems, if `drat` fails to start because a common system runtime library is missing, see `INSTALL.md` in the archive or `docs/install.md` in the repository for the exact packages to add.
+
+On Windows x86_64, use `v0.1.42` or later. That preview fixes the packaged build/runtime path for integer `println(...)`, `for ... in range(...)`, and default-output single-file `drat build` / `drat run`.

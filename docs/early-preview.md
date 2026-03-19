@@ -38,6 +38,8 @@ Supported in this preview:
 - macOS aarch64
 - Windows x86_64
 
+Windows x86_64 users should use `v0.1.42` or later. That preview fixes the packaged runtime/codegen mismatch that could crash integer `println(...)` and `for ... in range(...)`, and it restores the expected default `.exe` path for single-file `drat build` / `drat run`.
+
 Windows aarch64 is not part of this preview target set.
 
 ## Install paths

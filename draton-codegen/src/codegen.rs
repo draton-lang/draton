@@ -8,7 +8,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::targets::{
-    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
+    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
 use inkwell::types::StructType;
 use inkwell::values::{BasicValueEnum, FunctionValue, GlobalValue, PointerValue};
@@ -140,7 +140,7 @@ impl<'ctx> CodeGen<'ctx> {
     pub fn write_object(module: &Module<'_>, path: &Path) -> Result<(), CodeGenError> {
         Target::initialize_native(&InitializationConfig::default())
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        let triple = TargetMachine::get_default_triple();
+        let triple = preferred_target_triple();
         let target =
             Target::from_triple(&triple).map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         let machine = target
@@ -153,6 +153,9 @@ impl<'ctx> CodeGen<'ctx> {
                 CodeModel::Default,
             )
             .ok_or_else(|| CodeGenError::Llvm("unable to create target machine".to_string()))?;
+        module.set_triple(&triple);
+        let data_layout = machine.get_target_data().get_data_layout();
+        module.set_data_layout(&data_layout);
         machine
             .write_to_file(module, FileType::Object, path)
             .map_err(|err| CodeGenError::Llvm(err.to_string()))
@@ -362,4 +365,26 @@ impl<'ctx> CodeGen<'ctx> {
     fn apply_optimizations(&self) {
         let _ = self.mode;
     }
+}
+
+fn preferred_target_triple() -> TargetTriple {
+    if let Ok(triple) = env::var("DRATON_LLVM_TARGET_TRIPLE") {
+        let triple = triple.trim();
+        if !triple.is_empty() {
+            return TargetTriple::create(triple);
+        }
+    }
+    if cfg!(all(target_os = "windows", target_arch = "x86_64")) && packaged_windows_gnu_root() {
+        // The packaged Windows release links generated objects with MinGW-w64.
+        // Emitting an MSVC-flavored object on that path breaks aggregate FFI ABI.
+        return TargetTriple::create("x86_64-pc-windows-gnu");
+    }
+    TargetMachine::get_default_triple()
+}
+
+fn packaged_windows_gnu_root() -> bool {
+    env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("windows-gnu")))
+        .is_some_and(|path| path.exists())
 }

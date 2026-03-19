@@ -2,6 +2,11 @@
 
 This is the first public Draton Early Tooling Preview release.
 
+The current tagged preview also includes a Windows x86_64 packaging fix:
+
+- align generated object files with the packaged MinGW target triple so `println(Int)` and `for ... in range(...)` no longer crash in shipped builds
+- restore the default `.exe` output path for single-file `drat build` / `drat run`
+
 ## Included
 
 - `drat` compiler CLI

@@ -48,13 +48,13 @@ If you are building Draton from source instead of using a release archive, LLVM 
 Use the release-hosted installer:
 
 ```sh
-curl -fsSL https://github.com/draton-lang/draton/releases/download/v0.1.41/install.sh | sh
+curl -fsSL https://github.com/draton-lang/draton/releases/download/v0.1.42/install.sh | sh
 ```
 
 Pin a specific tag:
 
 ```sh
-curl -fsSL https://github.com/draton-lang/draton/releases/download/v0.1.41/install.sh | sh -s -- --version v0.1.41
+curl -fsSL https://github.com/draton-lang/draton/releases/download/v0.1.42/install.sh | sh -s -- --version v0.1.42
 ```
 
 Default install location:
@@ -77,9 +77,9 @@ Use PowerShell:
 
 ```powershell
 Invoke-WebRequest `
-  -Uri https://github.com/draton-lang/draton/releases/download/v0.1.41/install.ps1 `
+  -Uri https://github.com/draton-lang/draton/releases/download/v0.1.42/install.ps1 `
   -OutFile install.ps1
-.\install.ps1 -Version v0.1.41
+.\install.ps1 -Version v0.1.42
 ```
 
 Default install location:
@@ -95,6 +95,8 @@ drat --version
 ```
 
 The script also verifies the downloaded archive against the published `.sha256` checksum before extracting it.
+
+Windows x86_64 users should prefer `v0.1.42` or later. That preview fixes a packaged-runtime ABI mismatch that could crash `println(Int)` and `for ... in range(...)`, and it restores the expected default `.exe` output path for single-file `drat build` / `drat run`.
 
 ### Windows aarch64
 
@@ -233,6 +235,11 @@ Check that:
 - the runtime static library still sits beside `drat`
 - you did not move only the executable out of the extracted directory
 - `drat --version` works first
+
+On Windows x86_64, also verify the installed preview version:
+
+- `v0.1.42` or later includes the packaged codegen/linker fix for integer `println(...)` and range-loop demos
+- if you still have `v0.1.41` or older, upgrade before debugging project code
 
 ### macOS unsigned binary warning
 

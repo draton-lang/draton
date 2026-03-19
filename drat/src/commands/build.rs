@@ -155,7 +155,11 @@ pub(crate) fn run_file(
                 .file_stem()
                 .and_then(|value| value.to_str())
                 .unwrap_or("output");
-            cwd.join(stem)
+            if cfg!(windows) {
+                cwd.join(format!("{stem}.exe"))
+            } else {
+                cwd.join(stem)
+            }
         }
     };
     let final_object = final_binary.with_extension("o");
@@ -486,11 +490,14 @@ fn wrap_main_for_binary<'ctx>(
     user_main.as_global_value().set_name("draton_user_main");
     let i8_ptr = context.i8_type().ptr_type(AddressSpace::default());
     let argv_ty = i8_ptr.ptr_type(AddressSpace::default());
+    let exit_ty = if cfg!(windows) {
+        context.i32_type()
+    } else {
+        context.i64_type()
+    };
     let wrapper = module.add_function(
         "main",
-        context
-            .i64_type()
-            .fn_type(&[context.i32_type().into(), argv_ty.into()], false),
+        exit_ty.fn_type(&[context.i32_type().into(), argv_ty.into()], false),
         None,
     );
     let entry = context.append_basic_block(wrapper, "entry");
@@ -529,12 +536,20 @@ fn wrap_main_for_binary<'ctx>(
                 .try_as_basic_value()
                 .left()
                 .map(|value| value.into_int_value())
-                .unwrap_or_else(|| context.i64_type().const_zero());
-            builder
-                .build_int_z_extend_or_bit_cast(value, context.i64_type(), "drat.exit")
-                .map_err(|error| anyhow!(error.to_string()))?
+                .unwrap_or_else(|| exit_ty.const_zero());
+            if value.get_type().get_bit_width() < exit_ty.get_bit_width() {
+                builder
+                    .build_int_z_extend_or_bit_cast(value, exit_ty, "drat.exit")
+                    .map_err(|error| anyhow!(error.to_string()))?
+            } else if value.get_type().get_bit_width() > exit_ty.get_bit_width() {
+                builder
+                    .build_int_truncate_or_bit_cast(value, exit_ty, "drat.exit")
+                    .map_err(|error| anyhow!(error.to_string()))?
+            } else {
+                value
+            }
         }
-        _ => context.i64_type().const_zero(),
+        _ => exit_ty.const_zero(),
     };
     builder
         .build_return(Some(&exit_code))

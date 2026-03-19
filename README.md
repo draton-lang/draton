@@ -13,7 +13,7 @@
 
 ---
 > [!CAUTION]
-> **[v0.1.41](https://github.com/draton-lang/draton/releases/tag/v0.1.41) IS AN EARLY (BETA) VERSION, SOME FUNCTIONS ARE NOT YET WORKING CORRECTLY!**
+> **[v0.1.42](https://github.com/draton-lang/draton/releases/tag/v0.1.42) is still an early preview, but it fixes the Windows x86_64 crash in `println(Int)` / range-loop demos and the default `.exe` handling for single-file `drat build` and `drat run`.**
 
 ## Overview
 
@@ -105,6 +105,10 @@ drat run examples/hello.dt
 ```
 
 The release installers in [docs/install.md](docs/install.md) update `PATH` automatically when practical. If `drat` is not visible immediately after installation, start a new shell session.
+
+Windows note:
+
+- use `v0.1.42` or later if you rely on `println` with integer values, `for ... in range(...)`, or default-output single-file `drat build` / `drat run`
 
 Release artifacts:
 
