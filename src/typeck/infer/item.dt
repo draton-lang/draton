@@ -203,11 +203,25 @@ fn collect_function_binding_hints_from_stmt(c, stmt, names, types) {
         collect_function_binding_hints_from_block(c, stmt.while_stmt.body, names, types)
         return
     }
-    if stmt_kind_is(stmt, "Spawn") && spawn_body_kind_is(stmt.spawn_stmt.body, "Block") {
-        collect_function_binding_hints_from_block(c, stmt.spawn_stmt.body.block, names, types)
+    if stmt_kind_is(stmt, "Spawn") {
+        if spawn_body_kind_is(stmt.spawn_stmt.body, "Block") {
+            collect_function_binding_hints_from_block(c, stmt.spawn_stmt.body.block, names, types)
+        }
         return
     }
-    if stmt_kind_is(stmt, "Block") || stmt_kind_is(stmt, "UnsafeBlock") || stmt_kind_is(stmt, "PointerBlock") || stmt_kind_is(stmt, "ComptimeBlock") {
+    if stmt_kind_is(stmt, "Block") {
+        collect_function_binding_hints_from_block(c, stmt.block, names, types)
+        return
+    }
+    if stmt_kind_is(stmt, "UnsafeBlock") {
+        collect_function_binding_hints_from_block(c, stmt.block, names, types)
+        return
+    }
+    if stmt_kind_is(stmt, "PointerBlock") {
+        collect_function_binding_hints_from_block(c, stmt.block, names, types)
+        return
+    }
+    if stmt_kind_is(stmt, "ComptimeBlock") {
         collect_function_binding_hints_from_block(c, stmt.block, names, types)
         return
     }
@@ -629,10 +643,10 @@ fn infer_fn_def(c, fn_def, current_class) {
     env_push_scope(c.env)
     let local_hint_names = []
     let local_hint_types = []
+    push_local_binding_hints(c, local_hint_names, local_hint_types)
     if fn_def.has_body {
         collect_function_binding_hints_from_block(c, fn_def.body, local_hint_names, local_hint_types)
     }
-    push_local_binding_hints(c, local_hint_names, local_hint_types)
     let typed = TypedFnDef()
     let params = []
     let raw_param_types = []

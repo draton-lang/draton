@@ -81,7 +81,13 @@ fn infer_stmt(c, stmt) {
     let out = TypedStmt()
     out.tag = stmt.kind
     out.stmt_span = stmt.span
-    if str_eq_type(stmt.kind, "Block") || str_eq_type(stmt.kind, "UnsafeBlock") || str_eq_type(stmt.kind, "PointerBlock") || str_eq_type(stmt.kind, "ComptimeBlock") {
+    if str_eq_type(stmt.kind, "Block") {
+        out.stmt_block = infer_block(c, stmt.block)
+    } else if str_eq_type(stmt.kind, "UnsafeBlock") {
+        out.stmt_block = infer_block(c, stmt.block)
+    } else if str_eq_type(stmt.kind, "PointerBlock") {
+        out.stmt_block = infer_block(c, stmt.block)
+    } else if str_eq_type(stmt.kind, "ComptimeBlock") {
         out.stmt_block = infer_block(c, stmt.block)
     } else if str_eq_type(stmt.kind, "AsmBlock") {
         out.asm_code = stmt.code
@@ -140,10 +146,12 @@ fn infer_let(c, s) {
     }
     if has_annotated {
         typed_let.let_ty = checker_unify(c, typed_let.let_ty, annotated, s.span)
-        if typed_let.let_has_value && str_eq_type(typed_let.let_value.tag, "NoneLit") {
-            typed_let.let_value.expr_ty = checker_apply_subst(c, type_option(annotated.ty_inner))
-            if !str_eq_type(annotated.type_kind, "Option") {
-                typed_let.let_value.expr_ty = checker_apply_subst(c, annotated)
+        if typed_let.let_has_value {
+            if str_eq_type(typed_let.let_value.tag, "NoneLit") {
+                typed_let.let_value.expr_ty = checker_apply_subst(c, type_option(annotated.ty_inner))
+                if !str_eq_type(annotated.type_kind, "Option") {
+                    typed_let.let_value.expr_ty = checker_apply_subst(c, annotated)
+                }
             }
         }
     } else {
