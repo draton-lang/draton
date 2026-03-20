@@ -70,6 +70,10 @@ These are the committed tranches already landed during the current self-host pus
   - rooted `expr`, `tokens`, and lookahead token kinds in the self-host postfix/type-arg/class-literal path
   - baseline strict subset and focused Rust parser/typecheck tests still pass
   - parser crash signature remained unchanged on all current self-host probes
+- `[x]` `79c4c60` `tools: probe self-host parser header payloads`
+  - automated header payload probe added at `tools/probe_selfhost_header_payloads.py`
+  - shrinking either the `class ParsedArgs` payload or the `@type` payload removes the crash
+  - this further supports a context/state accumulation bug over a local grammar bug
 
 ## Current Snapshot
 
