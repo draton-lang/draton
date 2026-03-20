@@ -78,6 +78,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated threshold probe added at `tools/probe_selfhost_header_thresholds.py`
   - the crash starts at 2 class fields and at 16 top-level `@type` entries
   - the bug now has measurable payload thresholds, not just binary full/mini conditions
+- `[x]` `b2b6e1c` `tools: probe self-host parser stmt1 variants`
+  - automated first-statement variant probe added at `tools/probe_selfhost_stmt1_variants.py`
+  - simple statement-1 variants pass, while binary-expression statement-1 variants preserve the crash
+  - this points to expression-shape interaction in statement 1 rather than mere statement count
 
 ## Current Snapshot
 
