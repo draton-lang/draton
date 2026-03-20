@@ -91,6 +91,7 @@ Last refreshed: `2026-03-20`
 - `[x]` Return-call variant probing inside `prefix-4` shows only `return 0` passes; all probed call-bearing return variants crash
 - `[x]` Minimal standalone return/call shapes all pass, so the crash is not a generic call-expression parse failure
 - `[x]` Header dependency probing shows only the full `imports + class + @type + main` fixture crashes; all proper header subsets pass
+- `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump` on `tests/programs/selfhost/parser_main_prefix4.dt` still crashes with `SIGSEGV`
@@ -183,6 +184,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm that inside `prefix-4`, replacing the crashing `return` with another call-bearing form still crashes
 - `[x]` Confirm that minimal standalone `return foo(2)`-style files parse successfully
 - `[x]` Confirm that all proper header subsets pass and only the full `imports + class + @type + main` fixture fails
+- `[-]` Try targeted postfix/lookahead rooting hardening and record whether the crash signature changes
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
 - `[ ]` Identify whether the root cause is:
   - parser synchronization bug
@@ -484,6 +486,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why `stmt1_if_argc+stmt2_let_cmd+stmt3_if_build+stmt4_if_run` crashes while all probed strict subsets pass
 - `[ ]` Explain why call-bearing `return` variants fail only inside `prefix-4` while minimal standalone call-return files pass
 - `[ ]` Explain why only the full `imports + class + @type + main` combination crashes while every proper header subset passes
+- `[ ]` Decide whether the unsuccessful postfix/lookahead rooting hardening should be kept as harmless hardening or backed out to reduce diff noise
 - `[ ]` Confirm whether the crash happens while consuming the `{` that starts the `then` block in `parse_if_stmt_tail`
 - `[ ]` Decide whether the crash is caused by token rooting/copying or by parser position drift
 - `[ ]` Rerun `tools/verify_stage2.py` after parser/frontend crash is fixed
