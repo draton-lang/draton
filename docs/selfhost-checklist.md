@@ -66,6 +66,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated header dependency probe added at `tools/probe_selfhost_header_dependencies.py`
   - all proper header subsets pass for `parser_main_prefix4`
   - only the full `imports + class + @type + main` combination crashes
+- `[x]` `a5df47c` `fix: harden self-host postfix lookahead rooting`
+  - rooted `expr`, `tokens`, and lookahead token kinds in the self-host postfix/type-arg/class-literal path
+  - baseline strict subset and focused Rust parser/typecheck tests still pass
+  - parser crash signature remained unchanged on all current self-host probes
 
 ## Current Snapshot
 
