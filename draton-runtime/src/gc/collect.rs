@@ -6,7 +6,9 @@ use super::heap::{
     FreeSlot, GcRuntime, HeapState, MajorPhase, ObjHeader, YoungPool, GC_FREE, GC_MARKED, GC_OLD,
     GC_PINNED, HEADER, MAX_THREADS,
 };
-use super::{clear_major_work_state, major_work_needed, request_major_work, sync_major_work_request};
+use super::{
+    clear_major_work_state, major_work_needed, request_major_work, sync_major_work_request,
+};
 
 #[inline]
 fn type_offsets_ptr(heap: &HeapState, type_id: u16) -> Option<(*const u32, usize)> {

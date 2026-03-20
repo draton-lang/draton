@@ -22,10 +22,10 @@ pub struct GcConfig {
 impl Default for GcConfig {
     fn default() -> Self {
         Self {
-            young_size:      4  * 1024 * 1024,
-            old_size:        64 * 1024 * 1024,
-            max_heap:       512 * 1024 * 1024,
-            gc_threshold:   0.75,
+            young_size: 4 * 1024 * 1024,
+            old_size: 64 * 1024 * 1024,
+            max_heap: 512 * 1024 * 1024,
+            gc_threshold: 0.75,
             pause_target_ns: 1_000_000,
             large_threshold: 32 * 1024,
             autotune: true,
@@ -36,10 +36,10 @@ impl Default for GcConfig {
 impl GcConfig {
     /// Returns a sanitized config with all values within sensible bounds.
     pub fn normalized(self) -> Self {
-        let young_size      = self.young_size.max(256 * 1024);
-        let old_size        = self.old_size.max(young_size * 4);
-        let max_heap        = self.max_heap.max(old_size + young_size);
-        let gc_threshold    = self.gc_threshold.clamp(0.1, 0.95);
+        let young_size = self.young_size.max(256 * 1024);
+        let old_size = self.old_size.max(young_size * 4);
+        let max_heap = self.max_heap.max(old_size + young_size);
+        let gc_threshold = self.gc_threshold.clamp(0.1, 0.95);
         let pause_target_ns = self.pause_target_ns.max(1_000);
         let large_threshold = self.large_threshold.max(4 * 1024);
         Self {

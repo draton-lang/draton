@@ -343,9 +343,7 @@ impl GcTelemetry {
                 .load(Ordering::Relaxed),
             major_mutator_assists: self.major_mutator_assists.load(Ordering::Relaxed),
             major_background_slices: self.major_background_slices.load(Ordering::Relaxed),
-            major_autotune_adjustments: self
-                .major_autotune_adjustments
-                .load(Ordering::Relaxed),
+            major_autotune_adjustments: self.major_autotune_adjustments.load(Ordering::Relaxed),
             major_work_budget: runtime.major_work_budget.load(Ordering::Acquire),
             major_work_budget_peak: self.major_work_budget_peak.load(Ordering::Relaxed) as usize,
             major_work_requested: runtime.major_work_requested.load(Ordering::Acquire),

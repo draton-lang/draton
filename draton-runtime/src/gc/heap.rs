@@ -240,9 +240,14 @@ impl YoungPool {
             );
         }
         arena.live_count.fetch_add(1, Ordering::Relaxed);
-        let nearly_full_before = old >= self.per_thread_size.saturating_sub(self.per_thread_size / 10);
-        let nearly_full_after =
-            old + aligned >= self.per_thread_size.saturating_sub(self.per_thread_size / 10);
+        let nearly_full_before = old
+            >= self
+                .per_thread_size
+                .saturating_sub(self.per_thread_size / 10);
+        let nearly_full_after = old + aligned
+            >= self
+                .per_thread_size
+                .saturating_sub(self.per_thread_size / 10);
         Some((
             base.wrapping_add(old + HEADER) as *mut u8,
             !nearly_full_before && nearly_full_after,
@@ -778,11 +783,11 @@ impl HeapState {
         if !self.young_forwarding.is_empty() {
             let new_addr = self.canonicalize_forwarded_addr(addr);
             if new_addr != addr {
-            return self.old.header_of(new_addr as *const u8).or_else(|| {
-                self.large_objects
-                    .get(&new_addr)
-                    .map(|b| unsafe { ptr::read(b.as_ptr().cast::<ObjHeader>()) })
-            });
+                return self.old.header_of(new_addr as *const u8).or_else(|| {
+                    self.large_objects
+                        .get(&new_addr)
+                        .map(|b| unsafe { ptr::read(b.as_ptr().cast::<ObjHeader>()) })
+                });
             }
         }
         if pool.contains_ptr(payload as *const u8) {
@@ -865,7 +870,11 @@ impl HeapState {
         *self.roots.entry(canonical).or_insert(0) += 1;
     }
 
-    pub fn trace_protected_during_major_mark(&mut self, pool: &YoungPool, payload: *mut u8) -> bool {
+    pub fn trace_protected_during_major_mark(
+        &mut self,
+        pool: &YoungPool,
+        payload: *mut u8,
+    ) -> bool {
         if self.major_phase == MajorPhase::Idle {
             return false;
         }
@@ -964,7 +973,10 @@ impl HeapState {
 
     pub fn push_large_free_block(&mut self, block: Box<[u8]>) {
         self.large_free_bytes = self.large_free_bytes.saturating_add(block.len());
-        self.large_free_pool.entry(block.len()).or_default().push(block);
+        self.large_free_pool
+            .entry(block.len())
+            .or_default()
+            .push(block);
     }
 
     pub fn trim_large_free_pool(&mut self, target_bytes: usize) -> usize {

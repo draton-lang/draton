@@ -179,11 +179,7 @@ impl<'ctx> CodeGen<'ctx> {
             };
             let call = self
                 .builder
-                .build_call(
-                    concat,
-                    &[rendered.into(), piece.into()],
-                    "fstr.concat",
-                )
+                .build_call(concat, &[rendered.into(), piece.into()], "fstr.concat")
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
             self.emit_safepoint_poll()?;
             rendered = call.try_as_basic_value().left().ok_or_else(|| {

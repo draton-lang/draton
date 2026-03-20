@@ -1,6 +1,8 @@
 use std::sync::atomic::Ordering;
 
-use super::heap::{GcRuntime, HeapState, MajorPhase, ObjHeader, GC_FREE, GC_MARKED, GC_OLD, HEADER};
+use super::heap::{
+    GcRuntime, HeapState, MajorPhase, ObjHeader, GC_FREE, GC_MARKED, GC_OLD, HEADER,
+};
 
 impl GcRuntime {
     /// Write barrier invoked by generated code on every GC-pointer store.
@@ -15,15 +17,19 @@ impl GcRuntime {
     /// Slow path (heap lock acquired; only old parent + young child):
     ///   Append parent to the remembered-set Vec and dirty its card-table entry.
     pub fn write_barrier(&self, parent: *mut u8, _field: *mut u8, child: *mut u8) {
-        if parent.is_null() { return; }
+        if parent.is_null() {
+            return;
+        }
 
         // Fast path ①: is parent in old gen?
-        let gc_flags = unsafe {
-            (*parent.sub(HEADER).cast::<ObjHeader>()).gc_flags
-        };
-        if gc_flags & GC_OLD == 0 { return; }
+        let gc_flags = unsafe { (*parent.sub(HEADER).cast::<ObjHeader>()).gc_flags };
+        if gc_flags & GC_OLD == 0 {
+            return;
+        }
 
-        if child.is_null() { return; }
+        if child.is_null() {
+            return;
+        }
 
         let child_is_young = self.pool.contains_ptr(child as *const u8);
 
@@ -33,7 +39,9 @@ impl GcRuntime {
             return;
         }
 
-        let Ok(mut heap) = self.heap.lock() else { return };
+        let Ok(mut heap) = self.heap.lock() else {
+            return;
+        };
         let parent_addr = parent as usize;
         let parent_marked = is_marked_object(&heap, parent_addr);
 
