@@ -58,6 +58,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated subset probe added at `tools/probe_selfhost_main_subsets.py`
   - all probed strict subsets of the first 4 statements pass
   - only the full 4-statement interaction crashes in the subset probe
+- `[x]` `a124b01` `tools: contrast self-host parser call-return contexts`
+  - return-call variants now have a dedicated probe inside `parser_main_prefix4`
+  - minimal standalone call-return shapes now have a contrast probe
+  - current evidence points to a context-sensitive parser interaction, not a generic call-expression crash
 
 ## Current Snapshot
 
