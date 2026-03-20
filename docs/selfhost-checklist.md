@@ -98,6 +98,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated statement-3/4 return-shape probe added at `tools/probe_selfhost_stmt34_return_shapes.py`
   - under the original command-branch condition, only ident returns and ungrouped zero-arg calls pass
   - adding grouping or moving to one-arg, wrapper, or nested calls is enough to bring the crash back in both branches
+- `[x]` `8856244` `tools: probe self-host parser stmt3/stmt4 grouped returns`
+  - automated grouped-return probe added at `tools/probe_selfhost_stmt34_grouped_returns.py`
+  - under the original command-branch condition, `return (cmd)` and `return (0)` already crash
+  - this narrows the parser suspicion from “grouped calls” down to grouped return expressions more generally
 
 ## Current Snapshot
 
@@ -130,6 +134,7 @@ Last refreshed: `2026-03-21`
 - `[x]` Statement-1 body probing shows that once the bad condition shape is present, any probed non-empty body preserves the crash
 - `[x]` Statement-3/4 probing shows both branches only preserve the crash under high-pressure condition+call-return pairs; simpler conditions or non-call returns clear it
 - `[x]` Statement-3/4 return-shape probing shows the original command-branch condition only tolerates ident returns and ungrouped zero-arg calls; grouping or any more complex call shape restores the crash
+- `[x]` Statement-3/4 grouped-return probing shows grouping alone is already sufficient to restore the crash for ident, literal, and zero-arg-call returns
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[x]` Temporarily disabling `parser_looks_like_type_args_before_class_literal` did not change any current parser probe result
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
@@ -155,6 +160,7 @@ Last refreshed: `2026-03-21`
 | Statement-1 body variants | `python3 tools/probe_selfhost_stmt1_body_variants.py --stage1 /tmp/draton_s1` | `once stmt1 has the bad binary-condition shape, any probed non-empty body preserves the crash` | Body emptiness is the key variable after the condition shape is fixed |
 | Statement-3/4 variants | `python3 tools/probe_selfhost_stmt34_variants.py --stage1 /tmp/draton_s1` | `stmt3/stmt4 only preserve the crash under high-pressure condition+call-return pairs; the original two-argument condition keeps failing with call returns, and binary conditions can still fail with grouped or nested call returns` | Simpler conditions or non-call returns clear the crash in both branches |
 | Statement-3/4 return shapes | `python3 tools/probe_selfhost_stmt34_return_shapes.py --stage1 /tmp/draton_s1` | `under the original stmt3/stmt4 conditions, only ident returns and ungrouped zero-arg calls pass; grouped zero-arg calls, one-arg calls, wrapper calls, and nested calls all preserve the crash` | This is the cleanest current evidence that return-expression shape, not only `if` presence, is part of the failing parser state |
+| Statement-3/4 grouped returns | `python3 tools/probe_selfhost_stmt34_grouped_returns.py --stage1 /tmp/draton_s1` | `under the original stmt3/stmt4 conditions, grouping alone is sufficient to restore the crash; parenthesized ident, literal, and zero-arg call returns all fail even though their ungrouped forms pass` | This points directly at grouped-expression parsing in return position, not just call complexity |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
@@ -177,6 +183,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_stmt1_body_variants.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_variants.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_return_shapes.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_stmt34_grouped_returns.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -245,6 +252,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm that, once statement 1 has the bad condition shape, any probed non-empty body preserves the crash
 - `[x]` Confirm that statement-3/4 only preserve the crash under high-pressure condition+call-return pairs, not under simpler conditions or non-call returns
 - `[x]` Confirm that under the original statement-3/4 conditions, only ident returns and ungrouped zero-arg calls pass while grouped or more complex call returns still crash
+- `[x]` Confirm that under the original statement-3/4 conditions, grouping alone is already sufficient to crash ident, literal, and zero-arg-call returns
 - `[-]` Try targeted postfix/lookahead rooting hardening and record whether the crash signature changes
 - `[x]` Confirm that fully bypassing `parser_looks_like_type_args_before_class_literal` does not change the current crash pattern
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
@@ -278,6 +286,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` `python3 tools/probe_selfhost_header_dependencies.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_variants.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_return_shapes.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_stmt34_grouped_returns.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `/tmp/draton_s1 ast-dump tests/programs/selfhost/parser_main_prefix4.dt`
 - `[ ]` `/tmp/draton_s1 ast-dump src/main.dt`
@@ -297,6 +306,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` automated statement-1 variant probe
 - `[x]` automated statement-3/4 variant probe
 - `[x]` automated statement-3/4 return-shape probe
+- `[x]` automated statement-3/4 grouped-return probe
 - `[x]` automated statement-1 operator-family probe
 - `[x]` automated statement-1 body probe
 - `[ ]` regression test path for that fixture
@@ -561,6 +571,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why the crash threshold starts at 2 class fields and 16 top-level `@type` entries
 - `[ ]` Explain why only statement-1 `if` conditions with binary expressions and non-empty bodies preserve the crash while simple statement-1 variants do not
 - `[ ]` Explain why statement-3/4 keep the crash only under high-pressure condition+call-return pairs while simpler conditions or non-call returns clear it
+- `[ ]` Explain why statement-3/4 crash on `return (cmd)` and `return (0)` even though `return cmd` and `return 0` pass under the same original condition
 - `[ ]` Explain why statement-3/4 accept `return cli_argc()` but crash on `return (cli_argc())` under the same original condition
 - `[ ]` Explain why statement-3/4 reject one-arg, wrapper, and nested call returns under the original condition while ident returns still pass
 - `[ ]` Explain why operator family does not matter once statement 1 is a binary-expression `if` with a non-empty body
