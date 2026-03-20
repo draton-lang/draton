@@ -110,6 +110,7 @@ Last refreshed: `2026-03-20`
 - `[x]` Header payload probing shows shrinking either the `class ParsedArgs` payload or the `@type` payload removes the crash
 - `[x]` Header threshold probing shows the crash starts at 2 class fields and at 16 top-level `@type` entries
 - `[x]` Statement-1 probing shows only `if` conditions with binary expressions and non-empty bodies preserve the crash
+- `[x]` Statement-1 operator-family probing shows all probed binary-operator families preserve the crash
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[x]` Temporarily disabling `parser_looks_like_type_args_before_class_literal` did not change any current parser probe result
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
@@ -131,6 +132,7 @@ Last refreshed: `2026-03-20`
 | Header payloads | `python3 tools/probe_selfhost_header_payloads.py --stage1 /tmp/draton_s1` | `shrinking either the class payload or the @type payload removes the crash` | The bug depends on accumulated header payload, not only section presence |
 | Header thresholds | `python3 tools/probe_selfhost_header_thresholds.py --stage1 /tmp/draton_s1` | `first failing class field count: 2; first failing type entry count: 16` | The crash has measurable payload thresholds rather than only binary full/mini behavior |
 | Statement-1 variants | `python3 tools/probe_selfhost_stmt1_variants.py --stage1 /tmp/draton_s1` | `stmt1 only preserves the crash when a binary-expression condition appears inside an if with a non-empty body` | Bare/let binary expressions and empty-body `if` variants pass |
+| Statement-1 operator families | `python3 tools/probe_selfhost_stmt1_operator_families.py --stage1 /tmp/draton_s1` | `all probed binary-operator families preserve the crash in stmt1` | Operator family is not the distinguishing variable inside statement 1 |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
@@ -149,6 +151,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_header_payloads.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_header_thresholds.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt1_variants.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_stmt1_operator_families.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -213,6 +216,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm that shrinking either the `class ParsedArgs` payload or the `@type` payload removes the crash
 - `[x]` Measure the first failing class-field and top-level `@type` thresholds
 - `[x]` Confirm that statement-1 only preserves the crash when a binary-expression condition appears inside an `if` with a non-empty body
+- `[x]` Confirm that all probed binary-operator families in statement 1 preserve the crash
 - `[-]` Try targeted postfix/lookahead rooting hardening and record whether the crash signature changes
 - `[x]` Confirm that fully bypassing `parser_looks_like_type_args_before_class_literal` does not change the current crash pattern
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
@@ -261,6 +265,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` automated header payload probe
 - `[x]` automated header threshold probe
 - `[x]` automated statement-1 variant probe
+- `[x]` automated statement-1 operator-family probe
 - `[ ]` regression test path for that fixture
 - `[ ]` notes in this file naming the exact root cause once confirmed
 
@@ -522,6 +527,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why the full `class ParsedArgs` payload and full `@type` payload are both needed for the crash
 - `[ ]` Explain why the crash threshold starts at 2 class fields and 16 top-level `@type` entries
 - `[ ]` Explain why only statement-1 `if` conditions with binary expressions and non-empty bodies preserve the crash while simple statement-1 variants do not
+- `[ ]` Explain why operator family does not matter once statement 1 is a binary-expression `if` with a non-empty body
 - `[ ]` Decide whether the unsuccessful postfix/lookahead rooting hardening should be kept as harmless hardening or backed out to reduce diff noise
 - `[ ]` Explain why the crash backtrace still lands in `parser_looks_like_type_args_before_class_literal` even though disabling that predicate does not change the probe outcomes
 - `[ ]` Confirm whether the crash happens while consuming the `{` that starts the `then` block in `parse_if_stmt_tail`
