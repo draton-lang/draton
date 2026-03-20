@@ -74,6 +74,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated header payload probe added at `tools/probe_selfhost_header_payloads.py`
   - shrinking either the `class ParsedArgs` payload or the `@type` payload removes the crash
   - this further supports a context/state accumulation bug over a local grammar bug
+- `[x]` `9616f54` `tools: probe self-host parser header thresholds`
+  - automated threshold probe added at `tools/probe_selfhost_header_thresholds.py`
+  - the crash starts at 2 class fields and at 16 top-level `@type` entries
+  - the bug now has measurable payload thresholds, not just binary full/mini conditions
 
 ## Current Snapshot
 
