@@ -82,6 +82,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated first-statement variant probe added at `tools/probe_selfhost_stmt1_variants.py`
   - simple statement-1 variants pass, while binary-expression statement-1 variants preserve the crash
   - this points to expression-shape interaction in statement 1 rather than mere statement count
+- `[x]` `113b6ef` `tools: probe self-host parser stmt1 operator families`
+  - automated operator-family probe added at `tools/probe_selfhost_stmt1_operator_families.py`
+  - all probed binary-operator families preserve the crash in statement 1
+  - this suggests operator family is not the distinguishing variable once statement 1 has the bad shape
 
 ## Current Snapshot
 
