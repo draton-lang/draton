@@ -54,6 +54,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated prefix probe added at `tools/probe_selfhost_main_prefixes.py`
   - first crashing `main()` prefix identified as `prefix-4`
   - blocker harness now points at `tests/programs/selfhost/parser_main_prefix4.dt`
+- `[x]` `843c27e` `tools: probe self-host parser statement interactions`
+  - automated subset probe added at `tools/probe_selfhost_main_subsets.py`
+  - all probed strict subsets of the first 4 statements pass
+  - only the full 4-statement interaction crashes in the subset probe
 
 ## Current Snapshot
 
