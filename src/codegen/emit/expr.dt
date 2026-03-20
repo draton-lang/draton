@@ -536,21 +536,22 @@ fn emit_fstr(cg, parts) {
 
 fn emit_str_escape(s) {
     let mut out = ""
+    let backslash = ascii_char(92)
     let mut i = 0
     while i < str_len(s) {
         let byte = str_byte_at(s, i)
         if byte == 34 {
-            out = str_concat(out, "\\22")
+            out = str_concat(out, str_concat(backslash, "22"))
         } else if byte == 92 {
-            out = str_concat(out, "\\5C")
+            out = str_concat(out, str_concat(backslash, "5C"))
         } else if byte == 10 {
-            out = str_concat(out, "\\0A")
+            out = str_concat(out, str_concat(backslash, "0A"))
         } else if byte == 13 {
-            out = str_concat(out, "\\0D")
+            out = str_concat(out, str_concat(backslash, "0D"))
         } else if byte == 9 {
-            out = str_concat(out, "\\09")
+            out = str_concat(out, str_concat(backslash, "09"))
         } else if byte == 0 {
-            out = str_concat(out, "\\00")
+            out = str_concat(out, str_concat(backslash, "00"))
         } else {
             out = str_concat(out, ascii_char(byte))
         }
@@ -567,8 +568,9 @@ fn emit_string_literal(cg, value) {
     let arr_len = str_len_val + 1
     let arr_len_s = int_to_string(arr_len)
     let str_len_s = int_to_string(str_len_val)
+    let backslash = ascii_char(92)
     let quote = ascii_char(34)
-    let literal_body = str_concat("c", str_concat(quote, str_concat(escaped, str_concat("\\00", quote))))
+    let literal_body = str_concat("c", str_concat(quote, str_concat(escaped, str_concat(str_concat(backslash, "00"), quote))))
     let global_line = str_concat(global_name, str_concat(" = private unnamed_addr constant [", str_concat(arr_len_s, str_concat(" x i8] ", literal_body))))
     cg_append_global(cg, global_line)
     let ptr_name = cg_fresh_name(cg, "strptr")

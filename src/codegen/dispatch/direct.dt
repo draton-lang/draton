@@ -14,6 +14,12 @@ fn is_inline_builtin(name) {
 }
 
 fn builtin_runtime_name(name) {
+    if str_eq_type(name, "print") {
+        return "draton_print"
+    }
+    if str_eq_type(name, "println") {
+        return "draton_println"
+    }
     if str_eq_type(name, "str_concat") {
         return "draton_str_concat"
     }

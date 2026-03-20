@@ -55,10 +55,11 @@ Last refreshed: `2026-03-20`
 - `[x]` Self-host Linux link path no longer hardcodes Windows-only libraries
 - `[x]` Self-host backend now emits a `main(argc, argv)` wrapper around `draton_user_main`
 - `[x]` Self-host textual LLVM backend now emits real newlines and uses `double` / `float` instead of `f64` / `f32`
+- `[x]` Self-host stage1 now builds `examples/hello.dt` successfully on Linux
+- `[x]` Self-host-built `hello` binary now runs and prints `hello, draton!`
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump` on extracted `header + main()` still crashes with `SIGSEGV`
-- `[!]` Self-host `build examples/hello.dt` still fails in string-literal LLVM IR escaping / length accounting
 
 ### Current blocker matrix
 
@@ -67,7 +68,7 @@ Last refreshed: `2026-03-20`
 | Parser self-check | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `check-src-main -> -11` | Current crash class is `SIGSEGV` |
 | Parser AST dump | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-src-main -> -11` | Same failure class as self-check |
 | Reduced parser repro | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-header-plus-main -> -11` | Narrowed below full compiler source |
-| String literal IR | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 1` | LLVM reports `[17 x i8]` vs `[15 x i8]` mismatch |
+| Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
 ### Current baseline commands
 
@@ -164,10 +165,12 @@ Objective: make stage1-generated textual LLVM valid enough to compile and run ba
 - `[x]` Emit real line breaks in generated `.ll` files
 - `[x]` Emit a native `main(argc, argv)` wrapper for top-level Draton `main`
 - `[x]` Remove the Linux build path dependence on Windows-only libraries
-- `[ ]` Fix string literal global escaping so LLVM accepts emitted constants
-- `[ ]` Fix string literal length accounting so constant sizes match actual bytes
-- `[ ]` Verify `examples/hello.dt` builds via stage1
-- `[ ]` Verify `examples/hello.dt` runs via stage1
+- `[x]` Fix string literal global escaping so LLVM accepts emitted constants
+- `[x]` Fix string literal length accounting so constant sizes match actual bytes
+- `[x]` Lower `print` / `println` to runtime symbols in self-host direct-call dispatch
+- `[x]` Emit self-host LLVM fallback definitions for `draton_print` / `draton_println`
+- `[x]` Verify `examples/hello.dt` builds via stage1
+- `[x]` Verify `examples/hello.dt` runs via stage1
 - `[ ]` Verify at least one arithmetic fixture builds and runs via stage1
 - `[ ]` Verify at least one branch/control-flow fixture builds and runs via stage1
 - `[ ]` Verify at least one class/layer fixture builds via stage1
@@ -175,13 +178,13 @@ Objective: make stage1-generated textual LLVM valid enough to compile and run ba
 #### S1.B Verification commands
 
 - `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
-- `[ ]` `DRATON_RUNTIME_LIB=... /tmp/draton_s1 build examples/hello.dt -o /tmp/selfhost_hello`
-- `[ ]` `/tmp/selfhost_hello`
+- `[x]` `DRATON_RUNTIME_LIB=... /tmp/draton_s1 build examples/hello.dt -o /tmp/selfhost_hello`
+- `[x]` `/tmp/selfhost_hello`
 - `[ ]` stage1 build and run commands for arithmetic and control-flow fixtures
 
 #### S1.B Artifact targets
 
-- `[ ]` checked-in notes of the string-literal IR root cause
+- `[x]` checked-in notes of the string-literal IR root cause
 - `[ ]` at least three passing Linux stage1 executable fixtures
 
 ### S1.C Bootstrap ladder
@@ -403,14 +406,14 @@ These are the tasks that should move next unless a newly discovered blocker supe
 
 - `[ ]` Fix self-host parser `SIGSEGV` on `src/main.dt`
 - `[ ]` Check in a minimal parser regression fixture for the current crash
-- `[ ]` Fix self-host string-literal LLVM IR escaping so `examples/hello.dt` builds via stage1
-- `[ ]` Rerun `tools/verify_stage2.py` after both blockers are fixed
+- `[ ]` Rerun `tools/verify_stage2.py` after parser/frontend crash is fixed
 - `[ ]` Update this checklist immediately after the next tranche lands
 
 ### Ready after current blockers
 
 - `[ ]` Add stage3 verification path
 - `[ ]` Add a one-shot self-host readiness command
+- `[ ]` Add arithmetic and control-flow Linux stage1 fixtures now that `hello.dt` passes
 - `[ ]` Start a small parity corpus for Rust stage0 vs Draton stage1
 
 ## Definition Of "Good Update"
