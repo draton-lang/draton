@@ -100,6 +100,7 @@ Last refreshed: `2026-03-20`
 - `[x]` Minimal standalone return/call shapes all pass, so the crash is not a generic call-expression parse failure
 - `[x]` Header dependency probing shows only the full `imports + class + @type + main` fixture crashes; all proper header subsets pass
 - `[x]` Header payload probing shows shrinking either the `class ParsedArgs` payload or the `@type` payload removes the crash
+- `[x]` Header threshold probing shows the crash starts at 2 class fields and at 16 top-level `@type` entries
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump src/main.dt` still crashes with `SIGSEGV`
@@ -118,6 +119,7 @@ Last refreshed: `2026-03-20`
 | Minimal return shapes | `python3 tools/probe_selfhost_minimal_return_shapes.py --stage1 /tmp/draton_s1` | `all minimal standalone return/call shapes pass` | The bug needs accumulated parser context, not just `return foo(2)` alone |
 | Header dependencies | `python3 tools/probe_selfhost_header_dependencies.py --stage1 /tmp/draton_s1` | `only the full imports+class+type+main fixture fails` | This points toward a context/state pressure bug, not a single syntax form in isolation |
 | Header payloads | `python3 tools/probe_selfhost_header_payloads.py --stage1 /tmp/draton_s1` | `shrinking either the class payload or the @type payload removes the crash` | The bug depends on accumulated header payload, not only section presence |
+| Header thresholds | `python3 tools/probe_selfhost_header_thresholds.py --stage1 /tmp/draton_s1` | `first failing class field count: 2; first failing type entry count: 16` | The crash has measurable payload thresholds rather than only binary full/mini behavior |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
@@ -134,6 +136,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_minimal_return_shapes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_header_dependencies.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_header_payloads.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_header_thresholds.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -196,6 +199,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm that minimal standalone `return foo(2)`-style files parse successfully
 - `[x]` Confirm that all proper header subsets pass and only the full `imports + class + @type + main` fixture fails
 - `[x]` Confirm that shrinking either the `class ParsedArgs` payload or the `@type` payload removes the crash
+- `[x]` Measure the first failing class-field and top-level `@type` thresholds
 - `[-]` Try targeted postfix/lookahead rooting hardening and record whether the crash signature changes
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
 - `[ ]` Identify whether the root cause is:
@@ -241,6 +245,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` automated minimal-shape contrast probe
 - `[x]` automated header dependency probe
 - `[x]` automated header payload probe
+- `[x]` automated header threshold probe
 - `[ ]` regression test path for that fixture
 - `[ ]` notes in this file naming the exact root cause once confirmed
 
@@ -500,6 +505,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why call-bearing `return` variants fail only inside `prefix-4` while minimal standalone call-return files pass
 - `[ ]` Explain why only the full `imports + class + @type + main` combination crashes while every proper header subset passes
 - `[ ]` Explain why the full `class ParsedArgs` payload and full `@type` payload are both needed for the crash
+- `[ ]` Explain why the crash threshold starts at 2 class fields and 16 top-level `@type` entries
 - `[ ]` Decide whether the unsuccessful postfix/lookahead rooting hardening should be kept as harmless hardening or backed out to reduce diff noise
 - `[ ]` Confirm whether the crash happens while consuming the `{` that starts the `then` block in `parse_if_stmt_tail`
 - `[ ]` Decide whether the crash is caused by token rooting/copying or by parser position drift
