@@ -1,0 +1,60 @@
+import { tokenize, new_parser, parser_parse, ast_dump_program, lex_error_message, parse_error_message,
+         new_checker, checker_run, type_dump_program, type_error_message, CompileSession,
+         build_mode_debug, build_mode_release, build_mode_size, build_mode_fast,
+         new_compile_session, run_pipeline, run_check_only, pipeline_exec_binary, PipelineError,
+         str_eq_type }
+
+class ParsedArgs {
+    let mut source_path
+    let mut positional
+    let mut flags
+    let mut named_keys
+    let mut named_values
+
+    @type {
+        source_path: String
+        positional: Array[String]
+        flags: Array[String]
+        named_keys: Array[String]
+        named_values: Array[String]
+    }
+}
+
+@type {
+    main: () -> Int
+    cmd_build: (Array[String]) -> Int
+    cmd_run: (Array[String]) -> Int
+    cmd_check: (Array[String]) -> Int
+    cmd_ast_dump: (String) -> Int
+    cmd_type_dump: (String) -> Int
+    parse_args: (Array[String]) -> ParsedArgs
+    parsed_args_has_flag: (ParsedArgs, String) -> Bool
+    parsed_args_flag_value: (ParsedArgs, String) -> String
+    parsed_args_trailing_args: (ParsedArgs) -> Array[String]
+    collect_cli_args: (Int) -> Array[String]
+    print_pipeline_error: (PipelineError) -> Unit
+    print_usage: () -> Unit
+    join_lex_errors: (Array[LexError]) -> String
+    join_parse_errors: (Array[ParseError]) -> String
+    join_type_errors: (Array[TypeError]) -> String
+    str_eq_main: (String, String) -> Bool
+    str_starts_with_main: (String, String) -> Bool
+    arg_takes_value: (String) -> Bool
+    cli_argc: () -> Int
+    cli_arg: (Int) -> String
+    read_file: (String) -> String
+}
+
+fn main() {
+    if cli_argc() < 2 {
+        print_usage()
+        return 1
+    }
+    let cmd = cli_arg(1)
+    if str_eq_main(cmd, "build") {
+        return cmd_build(collect_cli_args(2))
+    }
+    if str_eq_main(cmd, "run") {
+        return cmd_run(collect_cli_args(2))
+    }
+}

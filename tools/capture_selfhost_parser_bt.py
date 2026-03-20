@@ -28,7 +28,7 @@ def main() -> int:
     parser.add_argument("--stage1", default=None, help="path to a stage1 self-host binary")
     parser.add_argument(
         "--input",
-        default=str(REPO / "tests" / "programs" / "selfhost" / "parser_header_plus_main.dt"),
+        default=str(REPO / "tests" / "programs" / "selfhost" / "parser_main_prefix4.dt"),
         help="input Draton source used for the parser crash repro",
     )
     parser.add_argument(

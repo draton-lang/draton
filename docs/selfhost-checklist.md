@@ -65,10 +65,12 @@ Last refreshed: `2026-03-20`
 - `[x]` Self-host stage1 now builds `examples/hello.dt` successfully on Linux
 - `[x]` Self-host-built `hello` binary now runs and prints `hello, draton!`
 - `[x]` A checked-in parser repro fixture exists at `tests/programs/selfhost/parser_header_plus_main.dt`
+- `[x]` A smaller checked-in parser repro fixture exists at `tests/programs/selfhost/parser_main_prefix4.dt`
 - `[x]` A dedicated parser backtrace helper exists at `tools/capture_selfhost_parser_bt.py`
+- `[x]` Prefix probing shows the first crashing `main()` prefix is `prefix-4`
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump src/main.dt` still crashes with `SIGSEGV`
-- `[!]` Stage1 `ast-dump` on `tests/programs/selfhost/parser_header_plus_main.dt` still crashes with `SIGSEGV`
+- `[!]` Stage1 `ast-dump` on `tests/programs/selfhost/parser_main_prefix4.dt` still crashes with `SIGSEGV`
 
 ### Current blocker matrix
 
@@ -76,8 +78,9 @@ Last refreshed: `2026-03-20`
 | --- | --- | --- | --- |
 | Parser self-check | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `check-src-main -> -11` | Current crash class is `SIGSEGV` |
 | Parser AST dump | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-src-main -> -11` | Same failure class as self-check |
-| Reduced parser repro | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-header-plus-main -> -11` | Checked-in fixture: `tests/programs/selfhost/parser_header_plus_main.dt` |
-| Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_skip_doc_comments -> parser_expect -> parse_block -> parse_if_stmt_tail` | Current stable crash stack on the checked-in fixture |
+| Reduced parser repro | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-main-prefix4 -> -11` | Harness now points at `tests/programs/selfhost/parser_main_prefix4.dt` |
+| Prefix probe | `python3 tools/probe_selfhost_main_prefixes.py --stage1 /tmp/draton_s1` | `first failing prefix: 4` | Prefixes 1-3 pass; prefix 4 is the first crash |
+| Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
 ### Current baseline commands
@@ -87,6 +90,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/check_selfhost_strict_subset.py`
 - `[x]` `cargo run -p drat -- build src/main.dt -o /tmp/draton_s1`
 - `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_main_prefixes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -142,6 +146,8 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm `header only` from `src/main.dt` parses successfully
 - `[x]` Confirm `header + main()` from `src/main.dt` is sufficient to crash
 - `[x]` Check in a parser regression fixture derived from the current repro
+- `[x]` Check in a smaller parser repro fixture derived from the first crashing `main()` prefix
+- `[x]` Identify the first crashing `main()` prefix with an automated probe
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
 - `[ ]` Identify whether the root cause is:
   - parser synchronization bug
@@ -152,10 +158,11 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[!]` Current stable backtrace is:
   - `parser_current`
   - `parser_current_kind`
-  - `parser_skip_doc_comments`
-  - `parser_expect`
-  - `parse_block`
-  - `parse_if_stmt_tail`
+  - `parser_check`
+  - `parser_looks_like_type_args_before_class_literal`
+  - `parse_postfix`
+  - `parse_arg_list`
+  - `parse_return_stmt`
 - `[ ]` Fix the crash in the smallest affected parser or frontend surface
 - `[ ]` Rerun the reduced fixture until it exits `0`
 - `[ ]` Rerun `ast-dump src/main.dt` until it exits `0`
@@ -165,8 +172,9 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 #### S1.A Verification commands
 
 - `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_main_prefixes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
-- `[x]` `/tmp/draton_s1 ast-dump tests/programs/selfhost/parser_header_plus_main.dt`
+- `[x]` `/tmp/draton_s1 ast-dump tests/programs/selfhost/parser_main_prefix4.dt`
 - `[ ]` `/tmp/draton_s1 ast-dump src/main.dt`
 - `[ ]` `/tmp/draton_s1 check src/main.dt`
 - `[ ]` `/tmp/draton_s1 type-dump src/main.dt`
@@ -174,6 +182,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 #### S1.A Artifact targets
 
 - `[x]` checked-in parser repro fixture
+- `[x]` checked-in smaller parser repro fixture
 - `[ ]` regression test path for that fixture
 - `[ ]` notes in this file naming the exact root cause once confirmed
 
@@ -426,7 +435,9 @@ These are the tasks that should move next unless a newly discovered blocker supe
 
 - `[ ]` Fix self-host parser `SIGSEGV` on `src/main.dt`
 - `[ ]` Check in a minimal parser regression fixture for the current crash
+- `[x]` Switch the main parser blocker harness label to the smaller `prefix-4` naming
 - `[ ]` Audit `parser_current`, `parser_current_kind`, `parser_skip_doc_comments`, and `parser_expect` on the checked-in fixture
+- `[ ]` Audit `parser_looks_like_type_args_before_class_literal`, `parse_postfix`, and `parse_arg_list` on the checked-in `prefix-4` fixture
 - `[ ]` Confirm whether the crash happens while consuming the `{` that starts the `then` block in `parse_if_stmt_tail`
 - `[ ]` Decide whether the crash is caused by token rooting/copying or by parser position drift
 - `[ ]` Rerun `tools/verify_stage2.py` after parser/frontend crash is fixed

@@ -53,7 +53,7 @@ def print_case(label: str, argv: list[str], env: dict[str, str] | None = None) -
 
 
 def checked_in_parser_repro() -> Path:
-    return REPO / "tests" / "programs" / "selfhost" / "parser_header_plus_main.dt"
+    return REPO / "tests" / "programs" / "selfhost" / "parser_main_prefix4.dt"
 
 
 def main() -> int:
@@ -74,7 +74,7 @@ def main() -> int:
         failures += 1
 
     repro = checked_in_parser_repro()
-    if print_case("ast-dump-header-plus-main", [str(stage1), "ast-dump", str(repro)]) != 0:
+    if print_case("ast-dump-main-prefix4", [str(stage1), "ast-dump", str(repro)]) != 0:
         failures += 1
 
     runtime_lib = REPO / "target" / "debug" / "libdraton_runtime.a"
