@@ -106,6 +106,7 @@ Last refreshed: `2026-03-20`
 - `[x]` Header payload probing shows shrinking either the `class ParsedArgs` payload or the `@type` payload removes the crash
 - `[x]` Header threshold probing shows the crash starts at 2 class fields and at 16 top-level `@type` entries
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
+- `[x]` Temporarily disabling `parser_looks_like_type_args_before_class_literal` did not change any current parser probe result
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump` on `tests/programs/selfhost/parser_main_prefix4.dt` still crashes with `SIGSEGV`
@@ -205,6 +206,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm that shrinking either the `class ParsedArgs` payload or the `@type` payload removes the crash
 - `[x]` Measure the first failing class-field and top-level `@type` thresholds
 - `[-]` Try targeted postfix/lookahead rooting hardening and record whether the crash signature changes
+- `[x]` Confirm that fully bypassing `parser_looks_like_type_args_before_class_literal` does not change the current crash pattern
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
 - `[ ]` Identify whether the root cause is:
   - parser synchronization bug
@@ -511,6 +513,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why the full `class ParsedArgs` payload and full `@type` payload are both needed for the crash
 - `[ ]` Explain why the crash threshold starts at 2 class fields and 16 top-level `@type` entries
 - `[ ]` Decide whether the unsuccessful postfix/lookahead rooting hardening should be kept as harmless hardening or backed out to reduce diff noise
+- `[ ]` Explain why the crash backtrace still lands in `parser_looks_like_type_args_before_class_literal` even though disabling that predicate does not change the probe outcomes
 - `[ ]` Confirm whether the crash happens while consuming the `{` that starts the `then` block in `parse_if_stmt_tail`
 - `[ ]` Decide whether the crash is caused by token rooting/copying or by parser position drift
 - `[ ]` Rerun `tools/verify_stage2.py` after parser/frontend crash is fixed
