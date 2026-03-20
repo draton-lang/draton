@@ -21,6 +21,7 @@ The checklist is intentionally operational:
 - `[x]` Strict canonical self-host syntax check exists
 - `[x]` Rust stage0 can build `src/main.dt` into a stage1 self-host binary
 - `[x]` Stage2 verification now reports crash signals explicitly instead of failing silently
+- `[x]` A focused blocker harness exists at `tools/repro_selfhost_blockers.py`
 - `[x]` Self-host Linux link path no longer hardcodes Windows-only libraries
 - `[x]` Self-host backend now emits a `main(argc, argv)` wrapper around `draton_user_main`
 - `[x]` Self-host textual LLVM backend now emits real newlines and uses `double`/`float` instead of `f64`/`f32`
@@ -53,7 +54,8 @@ The checklist is intentionally operational:
 ### Parser and frontend crash elimination
 
 - `[!]` Fix the stage1 parser crash on `src/main.dt`
-- `[ ]` Reduce the current `SIGSEGV` to a checked-in minimal parser fixture
+- `[-]` Reduce the current `SIGSEGV` to a checked-in minimal parser fixture
+- `[x]` Narrow the crash from the full compiler source down to `header + main()` extracted from `src/main.dt`
 - `[ ]` Add a self-host parser regression test for the reduced fixture
 - `[ ]` Confirm `ast-dump src/main.dt` no longer crashes
 - `[ ]` Confirm `check src/main.dt` no longer crashes
@@ -233,5 +235,6 @@ The checklist is intentionally operational:
 - `[ ]` Fix self-host parser `SIGSEGV` on `src/main.dt`
 - `[ ]` Add a minimal checked-in repro for that parser crash
 - `[ ]` Fix self-host string-literal LLVM IR escaping so `examples/hello.dt` builds via stage1
+- `[x]` Add a focused blocker reproduction harness for `check src/main.dt`, `ast-dump src/main.dt`, extracted `header + main()`, and `build examples/hello.dt`
 - `[ ]` Rerun `tools/verify_stage2.py`
 - `[ ]` Update this checklist after the next tranche lands
