@@ -80,6 +80,8 @@ Last refreshed: `2026-03-20`
 - `[x]` A dedicated parser backtrace helper exists at `tools/capture_selfhost_parser_bt.py`
 - `[x]` Prefix probing shows the first crashing `main()` prefix is `prefix-4`
 - `[x]` Subset probing shows the crash needs all first 4 statements together; all probed strict subsets pass
+- `[x]` Return-call variant probing inside `prefix-4` shows only `return 0` passes; all probed call-bearing return variants crash
+- `[x]` Minimal standalone return/call shapes all pass, so the crash is not a generic call-expression parse failure
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump` on `tests/programs/selfhost/parser_main_prefix4.dt` still crashes with `SIGSEGV`
@@ -93,6 +95,8 @@ Last refreshed: `2026-03-20`
 | Reduced parser repro | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-main-prefix4 -> -11` | Harness now points at `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Prefix probe | `python3 tools/probe_selfhost_main_prefixes.py --stage1 /tmp/draton_s1` | `first failing prefix: 4` | Prefixes 1-3 pass; prefix 4 is the first crash |
 | Subset probe | `python3 tools/probe_selfhost_main_subsets.py --stage1 /tmp/draton_s1` | `first failing subset: stmt1_if_argc+stmt2_let_cmd+stmt3_if_build+stmt4_if_run` | All probed strict subsets of the first 4 statements pass |
+| Return-call variants | `python3 tools/probe_selfhost_return_call_variants.py --stage1 /tmp/draton_s1` | `only the non-call return variant passes inside parser_main_prefix4` | Replacing the crashing return with other call-bearing forms still crashes |
+| Minimal return shapes | `python3 tools/probe_selfhost_minimal_return_shapes.py --stage1 /tmp/draton_s1` | `all minimal standalone return/call shapes pass` | The bug needs accumulated parser context, not just `return foo(2)` alone |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
@@ -105,6 +109,8 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_main_prefixes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_main_subsets.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_return_call_variants.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_minimal_return_shapes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -163,6 +169,8 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Check in a smaller parser repro fixture derived from the first crashing `main()` prefix
 - `[x]` Identify the first crashing `main()` prefix with an automated probe
 - `[x]` Confirm the crash is an interaction between all first 4 statements, not any probed strict subset alone
+- `[x]` Confirm that inside `prefix-4`, replacing the crashing `return` with another call-bearing form still crashes
+- `[x]` Confirm that minimal standalone `return foo(2)`-style files parse successfully
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
 - `[ ]` Identify whether the root cause is:
   - parser synchronization bug
@@ -189,6 +197,8 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_main_prefixes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_main_subsets.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_return_call_variants.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_minimal_return_shapes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `/tmp/draton_s1 ast-dump tests/programs/selfhost/parser_main_prefix4.dt`
 - `[ ]` `/tmp/draton_s1 ast-dump src/main.dt`
@@ -200,6 +210,8 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` checked-in parser repro fixture
 - `[x]` checked-in smaller parser repro fixture
 - `[x]` automated subset interaction probe
+- `[x]` automated return-call variant probe
+- `[x]` automated minimal-shape contrast probe
 - `[ ]` regression test path for that fixture
 - `[ ]` notes in this file naming the exact root cause once confirmed
 
@@ -456,6 +468,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Audit `parser_current`, `parser_current_kind`, `parser_skip_doc_comments`, and `parser_expect` on the checked-in fixture
 - `[ ]` Audit `parser_looks_like_type_args_before_class_literal`, `parse_postfix`, and `parse_arg_list` on the checked-in `prefix-4` fixture
 - `[ ]` Explain why `stmt1_if_argc+stmt2_let_cmd+stmt3_if_build+stmt4_if_run` crashes while all probed strict subsets pass
+- `[ ]` Explain why call-bearing `return` variants fail only inside `prefix-4` while minimal standalone call-return files pass
 - `[ ]` Confirm whether the crash happens while consuming the `{` that starts the `then` block in `parse_if_stmt_tail`
 - `[ ]` Decide whether the crash is caused by token rooting/copying or by parser position drift
 - `[ ]` Rerun `tools/verify_stage2.py` after parser/frontend crash is fixed
