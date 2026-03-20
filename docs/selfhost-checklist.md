@@ -65,6 +65,7 @@ Last refreshed: `2026-03-20`
 - `[x]` Self-host stage1 now builds `examples/hello.dt` successfully on Linux
 - `[x]` Self-host-built `hello` binary now runs and prints `hello, draton!`
 - `[x]` A checked-in parser repro fixture exists at `tests/programs/selfhost/parser_header_plus_main.dt`
+- `[x]` A dedicated parser backtrace helper exists at `tools/capture_selfhost_parser_bt.py`
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump` on `tests/programs/selfhost/parser_header_plus_main.dt` still crashes with `SIGSEGV`
@@ -76,6 +77,7 @@ Last refreshed: `2026-03-20`
 | Parser self-check | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `check-src-main -> -11` | Current crash class is `SIGSEGV` |
 | Parser AST dump | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-src-main -> -11` | Same failure class as self-check |
 | Reduced parser repro | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-header-plus-main -> -11` | Checked-in fixture: `tests/programs/selfhost/parser_header_plus_main.dt` |
+| Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_skip_doc_comments -> parser_expect -> parse_block -> parse_if_stmt_tail` | Current stable crash stack on the checked-in fixture |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
 ### Current baseline commands
@@ -85,6 +87,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/check_selfhost_strict_subset.py`
 - `[x]` `cargo run -p drat -- build src/main.dt -o /tmp/draton_s1`
 - `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
 ## Phase S0: Bootstrap Truth And Gates
@@ -145,6 +148,14 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
   - token lifetime / rooting bug
   - AST node lifetime / rooting bug
   - another frontend memory-safety issue
+- `[x]` Capture a stable backtrace on the checked-in fixture
+- `[!]` Current stable backtrace is:
+  - `parser_current`
+  - `parser_current_kind`
+  - `parser_skip_doc_comments`
+  - `parser_expect`
+  - `parse_block`
+  - `parse_if_stmt_tail`
 - `[ ]` Fix the crash in the smallest affected parser or frontend surface
 - `[ ]` Rerun the reduced fixture until it exits `0`
 - `[ ]` Rerun `ast-dump src/main.dt` until it exits `0`
@@ -154,6 +165,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 #### S1.A Verification commands
 
 - `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `/tmp/draton_s1 ast-dump tests/programs/selfhost/parser_header_plus_main.dt`
 - `[ ]` `/tmp/draton_s1 ast-dump src/main.dt`
 - `[ ]` `/tmp/draton_s1 check src/main.dt`
@@ -414,6 +426,9 @@ These are the tasks that should move next unless a newly discovered blocker supe
 
 - `[ ]` Fix self-host parser `SIGSEGV` on `src/main.dt`
 - `[ ]` Check in a minimal parser regression fixture for the current crash
+- `[ ]` Audit `parser_current`, `parser_current_kind`, `parser_skip_doc_comments`, and `parser_expect` on the checked-in fixture
+- `[ ]` Confirm whether the crash happens while consuming the `{` that starts the `then` block in `parse_if_stmt_tail`
+- `[ ]` Decide whether the crash is caused by token rooting/copying or by parser position drift
 - `[ ]` Rerun `tools/verify_stage2.py` after parser/frontend crash is fixed
 - `[ ]` Update this checklist immediately after the next tranche lands
 
