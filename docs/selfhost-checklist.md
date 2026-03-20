@@ -40,6 +40,13 @@ These are the committed tranches already landed during the current self-host pus
 - `[x]` `e1cb534` `docs: track current self-host blockers`
   - focused blocker harness added at `tools/repro_selfhost_blockers.py`
   - parser crash narrowed to `header + main()` extracted from `src/main.dt`
+- `[x]` `e36ee91` `fix: unblock self-host hello world codegen`
+  - self-host string literal LLVM escaping and terminator emission fixed
+  - self-host `print` / `println` now lower to runtime symbols with fallback definitions
+  - stage1 now builds and runs `examples/hello.dt` on Linux
+- `[x]` `a0c297f` `test: check in self-host parser repro fixture`
+  - parser repro fixture checked in at `tests/programs/selfhost/parser_header_plus_main.dt`
+  - blocker harness now uses the checked-in fixture instead of a temp file
 
 ## Current Snapshot
 
