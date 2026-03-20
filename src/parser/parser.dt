@@ -17,7 +17,7 @@ import { Token, Span, Program, ParseError, Item, Expr, new_program, new_token, n
     parser_optional_semicolon: (Parser) -> Unit
     parser_previous: (Parser) -> Token
     parser_record_error: (Parser, ParseError) -> Unit
-    parser_error_unexpected: (Parser, Token, String) -> Unit
+    parser_error_unexpected: (Parser, String, String, Span, String) -> Unit
     token_to_span: (Token) -> Span
     merge_spans: (Span, Span) -> Span
     parser_token_span: (Parser) -> Span
@@ -67,6 +67,7 @@ fn parser_parse(p) {
     @type {
         item: Item
     }
+    let _p_root = p
     let result = ParseResult()
     let mut program = new_program()
     while !parser_is_eof(p) {
@@ -90,10 +91,15 @@ fn parser_parse_expression_only(p) {
     @type {
         expr: Expr
     }
+    let _p_root = p
     let expr = parse_expression(p)
     parser_skip_doc_comments(p)
     if !parser_is_eof(p) {
-        parser_error_unexpected(p, parser_current(p), "end of expression")
+        let unexpected_token = parser_current(p)
+        let unexpected_kind = unexpected_token.kind
+        let unexpected_lexeme = unexpected_token.lexeme
+        let unexpected_span = unexpected_token.span
+        parser_error_unexpected(p, unexpected_kind, unexpected_lexeme, unexpected_span, "end of expression")
     }
     let result = ExprParseResult()
     result.expr = expr
@@ -116,28 +122,34 @@ fn parser_empty_token() {
 }
 
 fn parser_current(p) {
-    let mut token = parser_empty_token()
-    if p.tokens.len() == 0 {
-        token = parser_empty_token()
-    } else {
-        let mut idx = p.pos
-        if idx >= p.tokens.len() {
-            idx = p.tokens.len() - 1
-        }
-        token = p.tokens[idx]
+    let _p_root = p
+    let tokens = p.tokens
+    let _tokens_root = tokens
+    let pos = p.pos
+    if tokens.len() == 0 {
+        return parser_empty_token()
     }
-    token
+    let mut idx = pos
+    if idx >= tokens.len() {
+        idx = tokens.len() - 1
+    }
+    tokens[idx]
 }
 
 fn parser_current_kind(p) {
-    parser_current(p).kind
+    let _p_root = p
+    let token = parser_current(p)
+    token.kind
 }
 
 fn parser_is_eof(p) {
-    str_eq_parser(parser_current_kind(p), "Eof")
+    let _p_root = p
+    let kind = parser_current_kind(p)
+    str_eq_parser(kind, "Eof")
 }
 
 fn parser_advance(p) {
+    let _p_root = p
     let token = parser_current(p)
     if p.pos < p.tokens.len() - 1 {
         p.pos = p.pos + 1
@@ -146,10 +158,13 @@ fn parser_advance(p) {
 }
 
 fn parser_check(p, kind) {
-    str_eq_parser(parser_current_kind(p), kind)
+    let _p_root = p
+    let current_kind = parser_current_kind(p)
+    str_eq_parser(current_kind, kind)
 }
 
 fn parser_match_kind(p, kind) {
+    let _p_root = p
     parser_skip_doc_comments(p)
     let mut matched = false
     if parser_check(p, kind) {
@@ -160,18 +175,24 @@ fn parser_match_kind(p, kind) {
 }
 
 fn parser_expect(p, kind, expected) {
+    let _p_root = p
     parser_skip_doc_comments(p)
     let mut matched = false
     if parser_check(p, kind) {
         let _advanced = parser_advance(p)
         matched = true
     } else {
-        parser_error_unexpected(p, parser_current(p), expected)
+        let unexpected_token = parser_current(p)
+        let unexpected_kind = unexpected_token.kind
+        let unexpected_lexeme = unexpected_token.lexeme
+        let unexpected_span = unexpected_token.span
+        parser_error_unexpected(p, unexpected_kind, unexpected_lexeme, unexpected_span, expected)
     }
     matched
 }
 
 fn parser_consume_ident(p, expected) {
+    let _p_root = p
     parser_skip_doc_comments(p)
     let token = parser_current(p)
     let mut out = parser_empty_token()
@@ -179,46 +200,77 @@ fn parser_consume_ident(p, expected) {
         let _advanced = parser_advance(p)
         out = token
     } else {
-        parser_error_unexpected(p, token, expected)
+        let unexpected_kind = token.kind
+        let unexpected_lexeme = token.lexeme
+        let unexpected_span = token.span
+        parser_error_unexpected(p, unexpected_kind, unexpected_lexeme, unexpected_span, expected)
     }
     out
 }
 
 fn parser_skip_doc_comments(p) {
-    while str_eq_parser(parser_current_kind(p), "DocComment") {
+    let _p_root = p
+    let mut current_kind = parser_current_kind(p)
+    while str_eq_parser(current_kind, "DocComment") {
         let _advanced = parser_advance(p)
+        current_kind = parser_current_kind(p)
     }
     let _done = 0
     let _done2 = 0
 }
 
 fn parser_optional_semicolon(p) {
+    let _p_root = p
     parser_match_kind(p, "Semicolon")
     let _done = 0
     let _done2 = 0
 }
 
 fn parser_previous(p) {
+    let _p_root = p
+    let tokens = p.tokens
+    let _tokens_root = tokens
+    let pos = p.pos
     let mut token = parser_empty_token()
-    if p.pos > 0 && p.pos - 1 < p.tokens.len() {
-        token = p.tokens[p.pos - 1]
+    if pos > 0 && pos - 1 < tokens.len() {
+        token = tokens[pos - 1]
     }
     token
 }
 
 fn parser_record_error(p, err) {
-    p.errors.push(err)
+    let _p_root = p
+    let _err_root = err
+    let errors = p.errors
+    let _errors_root = errors
+    errors.push(err)
     let _done = 0
     let _done2 = 0
 }
 
-fn parser_error_unexpected(p, token, expected) {
-    if str_eq_parser(token.kind, "Eof") {
-        parser_record_error(p, unexpected_eof_error(expected, token.span.line, token.span.col))
+fn parser_error_unexpected(p, kind, lexeme, span, expected) {
+    let _p_root = p
+    let _kind_root = kind
+    let _lexeme_root = lexeme
+    let _span_root = span
+    let _expected_root = expected
+    let err = ParseError()
+    if str_eq_parser(kind, "Eof") {
+        err.kind = "UnexpectedEof"
+        err.found = ""
+        err.expected = expected
+        err.line = span.line
+        err.col = span.col
+        parser_record_error(p, err)
     } else {
+        err.kind = "UnexpectedToken"
+        err.found = lexeme
+        err.expected = expected
+        err.line = span.line
+        err.col = span.col
         parser_record_error(
             p,
-            unexpected_token_error(token.lexeme, expected, token.span.line, token.span.col),
+            err,
         )
     }
     let _done = 0
@@ -226,18 +278,27 @@ fn parser_error_unexpected(p, token, expected) {
 }
 
 fn token_to_span(token) {
-    new_span(token.span.start, token.span.end, token.span.line, token.span.col)
+    let _token_root = token
+    let span_value = token.span
+    let _span_root = span_value
+    new_span(span_value.start, span_value.end, span_value.line, span_value.col)
 }
 
 fn merge_spans(a, b) {
+    let _a_root = a
+    let _b_root = b
     new_span(a.start, b.end, a.line, a.col)
 }
 
 fn parser_token_span(p) {
-    token_to_span(parser_current(p))
+    let _p_root = p
+    let token = parser_current(p)
+    let span = token_to_span(token)
+    span
 }
 
 fn parser_sync_top_level(p) {
+    let _p_root = p
     let mut done = false
     while !parser_is_eof(p) && !done {
         let kind = parser_current_kind(p)
@@ -263,6 +324,7 @@ fn parser_sync_top_level(p) {
 }
 
 fn parser_sync_stmt(p) {
+    let _p_root = p
     let mut done = false
     while !parser_is_eof(p) && !done {
         let kind = parser_current_kind(p)

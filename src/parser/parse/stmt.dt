@@ -42,6 +42,7 @@ fn parse_block(p) {
         stmts: Array[Stmt]
         stmt: Stmt
     }
+    let _p_root = p
     let start = parser_token_span(p)
     let _lbrace = parser_expect(p, "LBrace", "{")
     let mut stmts = []
@@ -57,7 +58,8 @@ fn parse_block(p) {
     }
     let end = parser_token_span(p)
     let _rbrace = parser_expect(p, "RBrace", "}")
-    new_block(stmts, merge_spans(start, end))
+    let block_span = merge_spans(start, end)
+    new_block(stmts, block_span)
 }
 
 fn parse_stmt(p) {
@@ -71,9 +73,11 @@ fn parse_stmt(p) {
         if_compile_stmt: IfCompileStmt
         gc_stmt: GcConfigStmt
     }
+    let _p_root = p
     parser_skip_doc_comments(p)
     let kind = parser_current_kind(p)
-    let mut stmt = stmt_from_expr(expr_ident("", parser_token_span(p)))
+    let stmt_start = parser_token_span(p)
+    let mut stmt = stmt_from_expr(expr_ident("", stmt_start))
     if str_eq_stmt_parse(kind, "Let") {
         let let_stmt = parse_let_stmt(p)
         stmt = stmt_from_let(let_stmt, let_stmt.span)
@@ -125,6 +129,7 @@ fn parse_let_stmt(p) {
         name_token: Token
         value: Expr
     }
+    let _p_root = p
     let start = parser_token_span(p)
     let _let = parser_expect(p, "Let", "let")
     let is_mut = parser_match_kind(p, "Mut")
@@ -148,13 +153,15 @@ fn parse_let_stmt(p) {
     } else if has_type_hint {
         end = type_expr_span(type_hint)
     }
-    new_let_stmt(is_mut, name_token.lexeme, has_type_hint, type_hint, has_value, value, merge_spans(start, end))
+    let let_span = merge_spans(start, end)
+    new_let_stmt(is_mut, name_token.lexeme, has_type_hint, type_hint, has_value, value, let_span)
 }
 
 fn parse_return_stmt(p) {
     @type {
         value: Expr
     }
+    let _p_root = p
     let start = parser_token_span(p)
     let _retkw = parser_expect(p, "Return", "return")
     let mut value = expr_ident("", start)
@@ -169,16 +176,19 @@ fn parse_return_stmt(p) {
     if has_value {
         end = expr_span(value)
     }
-    new_return_stmt(has_value, value, merge_spans(start, end))
+    let return_span = merge_spans(start, end)
+    new_return_stmt(has_value, value, return_span)
 }
 
 fn parse_if_stmt(p) {
+    let _p_root = p
     let start = parser_token_span(p)
     let _if = parser_expect(p, "If", "if")
     parse_if_stmt_tail(p, start)
 }
 
 fn parse_elif_stmt(p) {
+    let _p_root = p
     let start = parser_token_span(p)
     let _elif = parser_expect(p, "Elif", "elif")
     parse_if_stmt_tail(p, start)
@@ -190,6 +200,8 @@ fn parse_if_stmt_tail(p, start) {
         then_branch: Block
         else_branch: ElseBranch
     }
+    let _p_root = p
+    let _start_root = start
     let mut condition = expr_ident("", start)
     if parser_match_kind(p, "LParen") {
         condition = parse_expression(p)
@@ -223,7 +235,8 @@ fn parse_if_stmt_tail(p, start) {
             end = else_branch.block.span
         }
     }
-    new_if_stmt(condition, then_branch, has_else_branch, else_branch, merge_spans(start, end))
+    let if_span = merge_spans(start, end)
+    new_if_stmt(condition, then_branch, has_else_branch, else_branch, if_span)
 }
 
 fn parse_for_stmt(p) {
@@ -232,13 +245,16 @@ fn parse_for_stmt(p) {
         iter: Expr
         body: Block
     }
+    let _p_root = p
     let start = parser_token_span(p)
     let _for = parser_expect(p, "For", "for")
     let name_token = parser_consume_ident(p, "loop variable")
     let _in = parser_expect(p, "In", "in")
     let iter = parse_expression(p)
     let body = parse_block(p)
-    new_for_stmt(name_token.lexeme, iter, body, merge_spans(start, body.span))
+    let body_span = body.span
+    let for_span = merge_spans(start, body_span)
+    new_for_stmt(name_token.lexeme, iter, body, for_span)
 }
 
 fn parse_while_stmt(p) {
@@ -246,6 +262,7 @@ fn parse_while_stmt(p) {
         condition: Expr
         body: Block
     }
+    let _p_root = p
     let start = parser_token_span(p)
     let _while = parser_expect(p, "While", "while")
     let mut condition = expr_ident("", start)
@@ -256,7 +273,9 @@ fn parse_while_stmt(p) {
         condition = parse_expression(p)
     }
     let body = parse_block(p)
-    new_while_stmt(condition, body, merge_spans(start, body.span))
+    let body_span = body.span
+    let while_span = merge_spans(start, body_span)
+    new_while_stmt(condition, body, while_span)
 }
 
 fn parse_spawn_stmt(p) {
@@ -265,6 +284,7 @@ fn parse_spawn_stmt(p) {
         block: Block
         expr: Expr
     }
+    let _p_root = p
     let start = parser_token_span(p)
     let _spawn = parser_expect(p, "Spawn", "spawn")
     let mut body = spawn_body_expr(expr_ident("", start))
@@ -278,38 +298,46 @@ fn parse_spawn_stmt(p) {
         end = expr_span(expr)
         body = spawn_body_expr(expr)
     }
-    new_spawn_stmt(body, merge_spans(start, end))
+    let spawn_span = merge_spans(start, end)
+    new_spawn_stmt(body, spawn_span)
 }
 
 fn parse_asm_block(p) {
     @type {
         parts: Array[String]
     }
+    let _p_root = p
     let start = parser_token_span(p)
     let _asm = parser_expect(p, "AtAsm", "@asm")
     let _lbrace = parser_expect(p, "LBrace", "{")
     let mut parts = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
-        parts.push(parser_current(p).lexeme)
+        let part_token = parser_current(p)
+        parts.push(part_token.lexeme)
         let _advanced = parser_advance(p)
     }
     let end = parser_token_span(p)
     let _rbrace = parser_expect(p, "RBrace", "}")
-    stmt_asm_block(join_with_space(parts), merge_spans(start, end))
+    let asm_span = merge_spans(start, end)
+    stmt_asm_block(join_with_space(parts), asm_span)
 }
 
 fn parse_if_compile_stmt(p) {
+    let _p_root = p
     let start = parser_token_span(p)
     let _atif = parser_expect(p, "AtIf", "@if")
     let condition = parse_expression(p)
     let body = parse_block(p)
-    new_if_compile_stmt(condition, body, merge_spans(start, body.span))
+    let body_span = body.span
+    let if_compile_span = merge_spans(start, body_span)
+    new_if_compile_stmt(condition, body, if_compile_span)
 }
 
 fn parse_gc_config_stmt(p) {
     @type {
         entries: Array[GcConfigEntry]
     }
+    let _p_root = p
     let start = parser_token_span(p)
     let _gc = parser_expect(p, "AtGcConfig", "@gc_config")
     let _lbrace = parser_expect(p, "LBrace", "{")
@@ -319,18 +347,22 @@ fn parse_gc_config_stmt(p) {
         let key_token = parser_consume_ident(p, "GC config key")
         let _eq = parser_expect(p, "Eq", "=")
         let value = parse_expression(p)
-        entries.push(new_gc_config_entry(key_token.lexeme, value, merge_spans(entry_start, expr_span(value))))
+        let value_span = expr_span(value)
+        let entry_span = merge_spans(entry_start, value_span)
+        entries.push(new_gc_config_entry(key_token.lexeme, value, entry_span))
         let _comma = parser_match_kind(p, "Comma")
     }
     let end = parser_token_span(p)
     let _rbrace = parser_expect(p, "RBrace", "}")
-    new_gc_config_stmt(entries, merge_spans(start, end))
+    let gc_span = merge_spans(start, end)
+    new_gc_config_stmt(entries, gc_span)
 }
 
 fn parse_type_block_stmt(p) {
     @type {
         members: Array[TypeMember]
     }
+    let _p_root = p
     let start = parser_token_span(p)
     let _attype = parser_expect(p, "AtType", "@type")
     let _lbrace = parser_expect(p, "LBrace", "{")
@@ -340,13 +372,16 @@ fn parse_type_block_stmt(p) {
         let name_token = parser_consume_ident(p, "type binding name")
         let _colon = parser_expect(p, "Colon", ":")
         let type_expr = parse_type_expr(p)
-        members.push(type_member_binding(name_token.lexeme, type_expr, merge_spans(member_start, type_expr_span(type_expr))))
+        let member_type_span = type_expr_span(type_expr)
+        let member_span = merge_spans(member_start, member_type_span)
+        members.push(type_member_binding(name_token.lexeme, type_expr, member_span))
         let _comma = parser_match_kind(p, "Comma")
     }
     let end = parser_token_span(p)
     let _rbrace = parser_expect(p, "RBrace", "}")
     parser_optional_semicolon(p)
-    new_type_block(members, merge_spans(start, end))
+    let type_block_span = merge_spans(start, end)
+    new_type_block(members, type_block_span)
 }
 
 fn parse_expr_stmt_or_assignment(p) {
@@ -354,6 +389,7 @@ fn parse_expr_stmt_or_assignment(p) {
         expr: Expr
         value: Expr
     }
+    let _p_root = p
     let start = parser_token_span(p)
     let expr = parse_expression(p)
     let kind = parser_current_kind(p)
@@ -364,17 +400,24 @@ fn parse_expr_stmt_or_assignment(p) {
        str_eq_stmt_parse(kind, "StarEq") ||
        str_eq_stmt_parse(kind, "SlashEq") ||
        str_eq_stmt_parse(kind, "PercentEq") {
-        let op = parser_current(p).kind
+        let op_token = parser_current(p)
+        let op = op_token.kind
         let _adv = parser_advance(p)
         let value = parse_expression(p)
         parser_optional_semicolon(p)
-        stmt = stmt_from_assign(new_assign_stmt(expr, assign_op_name(op), true, value, merge_spans(start, expr_span(value))), merge_spans(start, expr_span(value)))
+        let value_span = expr_span(value)
+        let assign_span = merge_spans(start, value_span)
+        let assign_stmt = new_assign_stmt(expr, assign_op_name(op), true, value, assign_span)
+        stmt = stmt_from_assign(assign_stmt, assign_span)
     } else if str_eq_stmt_parse(kind, "PlusPlus") || str_eq_stmt_parse(kind, "MinusMinus") {
-        let op = parser_current(p).kind
+        let op_token = parser_current(p)
+        let op = op_token.kind
         let end = parser_token_span(p)
         let _adv = parser_advance(p)
         parser_optional_semicolon(p)
-        stmt = stmt_from_assign(new_assign_stmt(expr, assign_op_name(op), false, expr_ident("", start), merge_spans(start, end)), merge_spans(start, end))
+        let assign_span = merge_spans(start, end)
+        let assign_stmt = new_assign_stmt(expr, assign_op_name(op), false, expr_ident("", start), assign_span)
+        stmt = stmt_from_assign(assign_stmt, assign_span)
     } else {
         parser_optional_semicolon(p)
     }

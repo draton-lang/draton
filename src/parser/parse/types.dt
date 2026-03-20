@@ -14,12 +14,14 @@ fn parse_type_expr(p) {
         args: Array[TypeExpr]
         option_args: Array[TypeExpr]
     }
+    let _p_root = p
     parser_skip_doc_comments(p)
     let token = parser_current(p)
-    let mut ty = type_infer(token_to_span(token))
+    let token_span = token_to_span(token)
+    let mut ty = type_infer(token_span)
 
     if str_eq_type_kind(token.kind, "Fn") {
-        let start = token_to_span(token)
+        let start = token_span
         let _advanced = parser_advance(p)
         let _lparen = parser_expect(p, "LParen", "(")
         let params = []
@@ -33,9 +35,11 @@ fn parse_type_expr(p) {
         let _rparen = parser_expect(p, "RParen", ")")
         let _arrow = parser_expect(p, "Arrow", "->")
         let ret = parse_type_expr(p)
-        ty = type_fn_expr(params, ret, merge_spans(start, type_expr_span(ret)))
+        let ret_span = type_expr_span(ret)
+        let fn_span = merge_spans(start, ret_span)
+        ty = type_fn_expr(params, ret, fn_span)
     } else if str_eq_type_kind(token.kind, "LParen") {
-        let start = token_to_span(token)
+        let start = token_span
         let _advanced = parser_advance(p)
         let params = []
         let mut done = false
@@ -48,19 +52,25 @@ fn parse_type_expr(p) {
         let _rparen = parser_expect(p, "RParen", ")")
         if parser_match_kind(p, "Arrow") {
             let ret = parse_type_expr(p)
-            ty = type_fn_expr(params, ret, merge_spans(start, type_expr_span(ret)))
+            let ret_span = type_expr_span(ret)
+            let fn_span = merge_spans(start, ret_span)
+            ty = type_fn_expr(params, ret, fn_span)
         } else if params.len() == 1 {
             ty = params[0]
         } else {
-            parser_error_unexpected(p, parser_current(p), "-> after parenthesized parameter types")
+            let unexpected_token = parser_current(p)
+            let unexpected_kind = unexpected_token.kind
+            let unexpected_lexeme = unexpected_token.lexeme
+            let unexpected_span = unexpected_token.span
+            parser_error_unexpected(p, unexpected_kind, unexpected_lexeme, unexpected_span, "-> after parenthesized parameter types")
         }
     } else if str_eq_type_kind(token.kind, "AtPointer") {
         let _advanced = parser_advance(p)
-        ty = type_pointer(token_to_span(token))
+        ty = type_pointer(token_span)
     } else if str_eq_type_kind(token.kind, "Ident") {
         let _advanced = parser_advance(p)
         let name = token.lexeme
-        let start = token_to_span(token)
+        let start = token_span
         if parser_match_kind(p, "LBracket") {
             let mut args = []
             let mut done = false
@@ -69,14 +79,16 @@ fn parse_type_expr(p) {
                 if !parser_match_kind(p, "Comma") {
                     let end = parser_token_span(p)
                     let _rbracket = parser_expect(p, "RBracket", "]")
-                    ty = type_generic(name, args, merge_spans(start, end))
+                    let generic_span = merge_spans(start, end)
+                    ty = type_generic(name, args, generic_span)
                     done = true
                 }
             }
             if !done {
                 let end = parser_token_span(p)
                 let _rbracket = parser_expect(p, "RBracket", "]")
-                ty = type_generic(name, args, merge_spans(start, end))
+                let generic_span = merge_spans(start, end)
+                ty = type_generic(name, args, generic_span)
             }
         } else if str_eq_type_kind(name, "_") {
             ty = type_infer(start)
@@ -84,12 +96,18 @@ fn parse_type_expr(p) {
             ty = type_named(name, start)
         }
     } else {
-        parser_error_unexpected(p, token, "type expression")
+        let unexpected_kind = token.kind
+        let unexpected_lexeme = token.lexeme
+        let unexpected_span = token.span
+        parser_error_unexpected(p, unexpected_kind, unexpected_lexeme, unexpected_span, "type expression")
     }
     while parser_match_kind(p, "QuestionQuestion") {
         let option_args = []
         option_args.push(ty)
-        ty = type_generic("Option", option_args, merge_spans(type_expr_span(ty), parser_token_span(p)))
+        let base_span = type_expr_span(ty)
+        let end_span = parser_token_span(p)
+        let option_span = merge_spans(base_span, end_span)
+        ty = type_generic("Option", option_args, option_span)
     }
     ty
 }
