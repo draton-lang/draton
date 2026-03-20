@@ -86,6 +86,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated operator-family probe added at `tools/probe_selfhost_stmt1_operator_families.py`
   - all probed binary-operator families preserve the crash in statement 1
   - this suggests operator family is not the distinguishing variable once statement 1 has the bad shape
+- `[x]` `8ff9bb7` `tools: probe self-host parser stmt1 body variants`
+  - automated body-shape probe added at `tools/probe_selfhost_stmt1_body_variants.py`
+  - once statement 1 has the bad condition shape, all probed non-empty bodies preserve the crash
+  - body emptiness is now a concrete distinguishing variable for statement 1
 
 ## Current Snapshot
 
