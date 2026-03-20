@@ -47,6 +47,13 @@ These are the committed tranches already landed during the current self-host pus
 - `[x]` `a0c297f` `test: check in self-host parser repro fixture`
   - parser repro fixture checked in at `tests/programs/selfhost/parser_header_plus_main.dt`
   - blocker harness now uses the checked-in fixture instead of a temp file
+- `[x]` `d76c576` `tools: add self-host parser backtrace helper`
+  - gdb-based parser backtrace helper added at `tools/capture_selfhost_parser_bt.py`
+  - checklist now tracks a stable stack for the checked-in parser repro
+- `[x]` `263f5ce` `test: narrow self-host parser repro to main prefix-4`
+  - automated prefix probe added at `tools/probe_selfhost_main_prefixes.py`
+  - first crashing `main()` prefix identified as `prefix-4`
+  - blocker harness now points at `tests/programs/selfhost/parser_main_prefix4.dt`
 
 ## Current Snapshot
 
