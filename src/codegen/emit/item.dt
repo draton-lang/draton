@@ -1,13 +1,15 @@
-import { CodeGen, LLVMValue, TypedItem, TypedFnDef, TypedClassDef, cg_lookup_function, cg_register_function,
-         cg_push_scope, cg_pop_scope, cg_define_local, cg_create_entry_alloca, cg_append_line,
-         cg_block_terminated, new_llvm_value, lower_type, is_void_type, emit_gc_root, emit_block,
-         emit_gc_alloc, emit_write_barrier, emit_vtable, str_eq_type, new_llvm_type, emit_expr,
-         class_field_ptr, ty_named }
+import { CodeGen, LLVMValue, TypedItem, TypedFnDef, TypedClassDef, cg_lookup_function,
+         cg_register_function, cg_push_scope, cg_pop_scope, cg_define_local,
+         cg_create_entry_alloca, cg_append_line, cg_append_alloca, cg_block_terminated,
+         cg_begin_fn, cg_flush_fn, new_llvm_value, new_llvm_type, lower_type, is_void_type,
+         emit_gc_root, emit_block, emit_gc_alloc, emit_write_barrier, str_eq_type, emit_expr,
+         class_field_ptr, ty_named, cg_fresh_name }
 
 @type {
     codegen_emit_item: (CodeGen, TypedItem) -> Unit
     emit_fn: (CodeGen, TypedFnDef, String) -> Unit
     emit_class: (CodeGen, TypedClassDef) -> Unit
+    build_fn_define: (CodeGen, TypedFnDef, String, String) -> String
 }
 
 fn codegen_emit_item(cg, item) {
@@ -27,12 +29,55 @@ fn codegen_emit_item(cg, item) {
         emit_class(cg, item.item_class_def)
         return
     }
-    if str_eq_type(item.tag, "Const") {
-        let value = emit_expr(cg, item.item_const_def.const_value)
-        cg_append_line(cg, str_concat("@", str_concat(item.item_const_def.const_name, str_concat(" = const ", value.raw))))
+    if str_eq_type(item.tag, "Extern") {
+        let mut j = 0
+        while j < item.item_extern_block.extern_functions.len() {
+            let fn_def = item.item_extern_block.extern_functions[j]
+            let fn_ret_ty = lower_type(cg, fn_def.fn_ret_type)
+            let mut declare = str_concat("declare ", fn_ret_ty.raw)
+            declare = str_concat(declare, str_concat(" @", fn_def.fn_name))
+            declare = str_concat(declare, "(")
+            let mut pi = 0
+            while pi < fn_def.fn_params.len() {
+                if pi > 0 {
+                    declare = str_concat(declare, ", ")
+                }
+                declare = str_concat(declare, lower_type(cg, fn_def.fn_params[pi].param_ty).raw)
+                pi = pi + 1
+            }
+            declare = str_concat(declare, ")")
+            cg_append_line(cg, declare)
+            j = j + 1
+        }
         return
     }
     let _done = 0
+}
+
+fn build_fn_define(cg, fn_def, symbol, current_class) {
+    let ret_ty = lower_type(cg, fn_def.fn_ret_type)
+    let mut ret_str = ret_ty.raw
+    if ret_ty.is_void {
+        ret_str = "void"
+    }
+    let mut define_line = str_concat("define ", str_concat(ret_str, str_concat(" @", str_concat(symbol, "("))))
+    let mut has_any_param = false
+    if str_len(current_class) != 0 {
+        define_line = str_concat(define_line, "i8* %self.arg")
+        has_any_param = true
+    }
+    let mut pi = 0
+    while pi < fn_def.fn_params.len() {
+        let param = fn_def.fn_params[pi]
+        let param_ty = lower_type(cg, param.param_ty)
+        if has_any_param {
+            define_line = str_concat(define_line, ", ")
+        }
+        define_line = str_concat(define_line, str_concat(param_ty.raw, str_concat(" %", str_concat(param.param_name, ".arg"))))
+        has_any_param = true
+        pi = pi + 1
+    }
+    str_concat(define_line, ") {")
 }
 
 fn emit_fn(cg, fn_def, current_class) {
@@ -47,17 +92,23 @@ fn emit_fn(cg, fn_def, current_class) {
     cg.has_current_ret_ty = true
     cg.current_class = current_class
     cg.has_current_class = str_len(current_class) != 0
-    cg.block_terminated = false
-    cg.builder.current_block = str_concat("entry.", symbol)
-    cg_append_line(cg, str_concat("define ", symbol))
+    cg_begin_fn(cg)
+    let define_line = build_fn_define(cg, fn_def, symbol, current_class)
     cg_push_scope(cg)
+    if str_len(current_class) != 0 {
+        let self_ty = new_llvm_type("i8*", false, true)
+        let self_slot = cg_create_entry_alloca(cg, fn_val, self_ty, "self")
+        cg_define_local(cg, "self", self_slot)
+        cg_append_alloca(cg, str_concat("store i8* %self.arg, i8** ", self_slot.raw))
+    }
     let mut pi = 0
     while pi < fn_def.fn_params.len() {
         let param = fn_def.fn_params[pi]
-        let slot = cg_create_entry_alloca(cg, fn_val, lower_type(cg, param.param_ty), param.param_name)
+        let param_ty = lower_type(cg, param.param_ty)
+        let slot = cg_create_entry_alloca(cg, fn_val, param_ty, param.param_name)
         cg_define_local(cg, param.param_name, slot)
-        emit_gc_root(cg, slot)
-        cg_append_line(cg, str_concat("; param ", param.param_name))
+        let store_line = str_concat("store ", str_concat(param_ty.raw, str_concat(" %", str_concat(param.param_name, str_concat(".arg, ", str_concat(param_ty.raw, str_concat("* ", slot.raw)))))))
+        cg_append_alloca(cg, store_line)
         pi = pi + 1
     }
     if fn_def.fn_has_body {
@@ -65,34 +116,38 @@ fn emit_fn(cg, fn_def, current_class) {
     }
     if !cg_block_terminated(cg) {
         if is_void_type(fn_def.fn_ret_type) {
-            cg_append_line(cg, "ret void")
+            cg.fn_body_lines.push("  ret void")
         } else {
-            cg_append_line(cg, str_concat("ret ", lower_type(cg, fn_def.fn_ret_type).raw))
+            let ret_ty = lower_type(cg, fn_def.fn_ret_type)
+            cg.fn_body_lines.push(str_concat("  ret ", str_concat(ret_ty.raw, " undef")))
         }
     }
     cg_pop_scope(cg)
+    cg_flush_fn(cg, define_line)
     cg.current_fn = new_llvm_value("", new_llvm_type("invalid", false, false), false)
     cg.has_current_fn = false
     cg.has_current_ret_ty = false
     cg.has_current_class = false
     cg.block_terminated = false
-    cg_append_line(cg, str_concat("end ", symbol))
     let _done = 0
 }
 
 fn emit_class(cg, class_def) {
     let ctor_name = str_concat(class_def.class_name, "_new")
-    cg_append_line(cg, str_concat("define ", ctor_name))
+    let ctor_val = cg_lookup_function(cg, ctor_name)
+    cg.current_fn = ctor_val
+    cg.has_current_fn = true
+    cg_begin_fn(cg)
+    let define_line = str_concat("define i8* @", str_concat(ctor_name, "() {"))
+    cg_push_scope(cg)
     let obj = emit_gc_alloc(cg, ty_named(class_def.class_name, []), "obj")
+    cg_append_line(cg, str_concat("ret i8* ", obj.raw))
+    cg.block_terminated = true
+    cg_pop_scope(cg)
+    cg_flush_fn(cg, define_line)
+    cg.current_fn = new_llvm_value("", new_llvm_type("invalid", false, false), false)
+    cg.has_current_fn = false
     let mut i = 0
-    while i < class_def.class_fields.len() {
-        let field_ptr = class_field_ptr(cg, obj, class_def.class_name, class_def.class_fields[i].field_name)
-        cg_append_line(cg, str_concat("; init-field ", field_ptr.raw))
-        emit_write_barrier(cg, obj, field_ptr, field_ptr)
-        i = i + 1
-    }
-    cg_append_line(cg, str_concat("ret ", obj.raw))
-    i = 0
     while i < class_def.class_methods.len() {
         emit_fn(cg, class_def.class_methods[i], class_def.class_name)
         i = i + 1

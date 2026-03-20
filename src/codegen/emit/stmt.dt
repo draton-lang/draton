@@ -1,9 +1,10 @@
 import { CodeGen, LLVMValue, TypedStmt, TypedExpr, TypedLetStmt, TypedAssignStmt, TypedReturnStmt,
          TypedIfStmt, TypedForStmt, TypedWhileStmt, TypedBlock, lower_type, cg_push_scope,
          cg_pop_scope, cg_define_local, cg_lookup_local, cg_create_entry_alloca, cg_append_line,
-         cg_block_terminated, emit_expr, emit_write_barrier, emit_gc_root, emit_safepoint,
-         class_field_ptr, new_llvm_value, new_llvm_type, llvm_value_exists, str_eq_type,
-         is_void_type }
+         cg_block_terminated, cg_fresh_block, cg_start_block, cg_emit_br, cg_emit_cond_br,
+         cg_emit_load, cg_emit_store, cg_fresh_name, emit_expr, emit_write_barrier, emit_gc_root,
+         emit_safepoint, class_field_ptr, new_llvm_value, new_llvm_type, llvm_value_exists,
+         str_eq_type, is_void_type }
 
 @type {
     emit_block: (CodeGen, TypedBlock) -> LLVMValue
@@ -15,6 +16,9 @@ import { CodeGen, LLVMValue, TypedStmt, TypedExpr, TypedLetStmt, TypedAssignStmt
     emit_for: (CodeGen, TypedForStmt) -> Unit
     emit_while: (CodeGen, TypedWhileStmt) -> Unit
     emit_lvalue_ptr: (CodeGen, TypedExpr) -> LLVMValue
+    emit_array_len: (CodeGen, LLVMValue, String) -> LLVMValue
+    emit_array_push: (CodeGen, LLVMValue, LLVMValue, String) -> Unit
+    emit_array_index: (CodeGen, LLVMValue, LLVMValue, String) -> LLVMValue
 }
 
 fn emit_block(cg, block) {
@@ -74,33 +78,47 @@ fn emit_stmt(cg, stmt) {
 fn emit_let(cg, s) {
     let slot = cg_create_entry_alloca(cg, cg.current_fn, lower_type(cg, s.let_ty), s.let_name)
     cg_define_local(cg, s.let_name, slot)
-    emit_gc_root(cg, slot)
     if s.let_has_value {
         let value = emit_expr(cg, s.let_value)
-        cg_append_line(cg, str_concat(slot.raw, str_concat(" = store ", value.raw)))
-        emit_write_barrier(cg, slot, slot, value)
-    } else {
-        cg_append_line(cg, str_concat("; let ", s.let_name))
+        cg_emit_store(cg, value.raw, slot.value_ty.raw, slot.raw)
     }
     new_llvm_value("", new_llvm_type("void", true, false), false)
 }
 
 fn emit_assign(cg, s) {
-    let target_ptr = emit_lvalue_ptr(cg, s.assign_target)
-    if s.assign_has_value {
-        let value = emit_expr(cg, s.assign_value)
-        cg_append_line(cg, str_concat(target_ptr.raw, str_concat(" = store ", value.raw)))
-        emit_write_barrier(cg, target_ptr, target_ptr, value)
+    if !s.assign_has_value {
+        cg_append_line(cg, str_concat("; assign-op ", s.assign_op))
         return
     }
-    cg_append_line(cg, str_concat("; assign-op ", s.assign_op))
+    let value = emit_expr(cg, s.assign_value)
+    if str_eq_type(s.assign_target.tag, "Index") {
+        let target_arr = emit_expr(cg, s.assign_target.access_target)
+        let idx = emit_expr(cg, s.assign_target.index_expr)
+        let elem_ty = lower_type(cg, s.assign_target.expr_ty)
+        let data_ptr = cg_fresh_name(cg, "arr.data")
+        let arr_ty = target_arr.value_ty.raw
+        cg_append_line(cg, str_concat(data_ptr, str_concat(" = extractvalue ", str_concat(arr_ty, str_concat(" ", str_concat(target_arr.raw, ", 1"))))))
+        let slot_ptr = cg_fresh_name(cg, "arr.slot")
+        cg_append_line(cg, str_concat(slot_ptr, str_concat(" = getelementptr ", str_concat(elem_ty.raw, str_concat(", ", str_concat(elem_ty.raw, str_concat("* ", str_concat(data_ptr, str_concat(", i64 ", idx.raw)))))))))
+        cg_append_line(cg, str_concat("store ", str_concat(elem_ty.raw, str_concat(" ", str_concat(value.raw, str_concat(", ", str_concat(elem_ty.raw, str_concat("* ", slot_ptr))))))))
+        return
+    }
+    let target_ptr = emit_lvalue_ptr(cg, s.assign_target)
+    if llvm_value_exists(target_ptr) {
+        cg_emit_store(cg, value.raw, target_ptr.value_ty.raw, target_ptr.raw)
+    }
     let _done = 0
 }
 
 fn emit_return(cg, s) {
     if s.return_has_value {
         let value = emit_expr(cg, s.return_value)
-        cg_append_line(cg, str_concat("ret ", value.raw))
+        if is_void_type(cg.current_ret_ty) {
+            cg_append_line(cg, "ret void")
+        } else {
+            let ret_ty = lower_type(cg, cg.current_ret_ty)
+            cg_append_line(cg, str_concat("ret ", str_concat(ret_ty.raw, str_concat(" ", value.raw))))
+        }
     } else {
         cg_append_line(cg, "ret void")
     }
@@ -110,45 +128,112 @@ fn emit_return(cg, s) {
 
 fn emit_if(cg, s) {
     let cond = emit_expr(cg, s.if_condition)
-    cg_append_line(cg, str_concat("; if ", cond.raw))
-    let old_term = cg.block_terminated
-    cg.block_terminated = false
+    let cond_i1 = cond.raw
+    let then_bb = cg_fresh_block(cg, "then")
+    let merge_bb = cg_fresh_block(cg, "merge")
+    let mut else_bb = merge_bb
+    if s.if_has_else_branch {
+        else_bb = cg_fresh_block(cg, "else")
+    }
+    cg_emit_cond_br(cg, cond_i1, then_bb, else_bb)
+    cg_start_block(cg, then_bb)
     let _then_last = emit_block(cg, s.if_then_branch)
     let then_term = cg.block_terminated
+    if !then_term {
+        cg_emit_br(cg, merge_bb)
+    }
     let mut else_term = false
     if s.if_has_else_branch {
-        cg.block_terminated = false
+        cg_start_block(cg, else_bb)
         if str_eq_type(s.if_else_branch.tag, "If") {
             emit_if(cg, s.if_else_branch.else_if_stmt)
         } else {
             let _else_last = emit_block(cg, s.if_else_branch.else_block)
         }
         else_term = cg.block_terminated
+        if !else_term {
+            cg_emit_br(cg, merge_bb)
+        }
     }
-    cg.block_terminated = old_term || (s.if_has_else_branch && then_term && else_term)
+    cg_start_block(cg, merge_bb)
+    cg.block_terminated = then_term && else_term && s.if_has_else_branch
     let _done = 0
 }
 
 fn emit_for(cg, s) {
     let iter = emit_expr(cg, s.for_iter)
-    cg_append_line(cg, str_concat("; for ", iter.raw))
+    let binding_ty = lower_type(cg, s.for_binding_ty)
+    let slot = cg_create_entry_alloca(cg, cg.current_fn, binding_ty, s.for_binding)
     cg_push_scope(cg)
-    let slot = cg_create_entry_alloca(cg, cg.current_fn, lower_type(cg, s.for_binding_ty), s.for_binding)
     cg_define_local(cg, s.for_binding, slot)
+    let idx_slot = cg_create_entry_alloca(cg, cg.current_fn, new_llvm_type("i64", false, false), "__for_idx")
+    cg_emit_store(cg, "0", "i64", idx_slot.raw)
+    let cond_bb = cg_fresh_block(cg, "for.cond")
+    let body_bb = cg_fresh_block(cg, "for.body")
+    let exit_bb = cg_fresh_block(cg, "for.exit")
+    cg_emit_br(cg, cond_bb)
+    cg_start_block(cg, cond_bb)
+    let cur_idx = cg_fresh_name(cg, "for.i")
+    cg_append_line(cg, str_concat(cur_idx, str_concat(" = load i64, i64* ", idx_slot.raw)))
+    let arr_ty = iter.value_ty.raw
+    let len_val = emit_array_len(cg, iter, arr_ty)
+    let cond_val = cg_fresh_name(cg, "for.cond")
+    cg_append_line(cg, str_concat(cond_val, str_concat(" = icmp slt i64 ", str_concat(cur_idx, str_concat(", ", len_val.raw)))))
+    cg_emit_cond_br(cg, cond_val, body_bb, exit_bb)
+    cg_start_block(cg, body_bb)
+    let cur_idx2 = cg_fresh_name(cg, "for.i2")
+    cg_append_line(cg, str_concat(cur_idx2, str_concat(" = load i64, i64* ", idx_slot.raw)))
+    let elem = emit_array_index(cg, iter, new_llvm_value(cur_idx2, new_llvm_type("i64", false, false), true), binding_ty.raw)
+    cg_emit_store(cg, elem.raw, binding_ty.raw, slot.raw)
     let _body_last = emit_block(cg, s.for_body)
+    if !cg.block_terminated {
+        let next_idx = cg_fresh_name(cg, "for.next")
+        let cur_idx3 = cg_fresh_name(cg, "for.i3")
+        cg_append_line(cg, str_concat(cur_idx3, str_concat(" = load i64, i64* ", idx_slot.raw)))
+        cg_append_line(cg, str_concat(next_idx, str_concat(" = add i64 ", str_concat(cur_idx3, ", 1"))))
+        cg_emit_store(cg, next_idx, "i64", idx_slot.raw)
+        cg_emit_br(cg, cond_bb)
+    }
     cg_pop_scope(cg)
+    cg_start_block(cg, exit_bb)
     cg.block_terminated = false
     emit_safepoint(cg)
     let _done = 0
 }
 
 fn emit_while(cg, s) {
+    let cond_bb = cg_fresh_block(cg, "while.cond")
+    let body_bb = cg_fresh_block(cg, "while.body")
+    let exit_bb = cg_fresh_block(cg, "while.exit")
+    cg_emit_br(cg, cond_bb)
+    cg_start_block(cg, cond_bb)
     let cond = emit_expr(cg, s.while_condition)
-    cg_append_line(cg, str_concat("; while ", cond.raw))
+    cg_emit_cond_br(cg, cond.raw, body_bb, exit_bb)
+    cg_start_block(cg, body_bb)
     let _body_last = emit_block(cg, s.while_body)
+    if !cg.block_terminated {
+        cg_emit_br(cg, cond_bb)
+    }
+    cg_start_block(cg, exit_bb)
     cg.block_terminated = false
     emit_safepoint(cg)
     let _done = 0
+}
+
+fn emit_array_len(cg, arr_val, arr_ty) {
+    let result = cg_fresh_name(cg, "arr.len")
+    cg_append_line(cg, str_concat(result, str_concat(" = extractvalue ", str_concat(arr_ty, str_concat(" ", str_concat(arr_val.raw, ", 0"))))))
+    new_llvm_value(result, new_llvm_type("i64", false, false), true)
+}
+
+fn emit_array_index(cg, arr_val, idx_val, elem_ty_raw) {
+    let data_ptr = cg_fresh_name(cg, "arr.data")
+    cg_append_line(cg, str_concat(data_ptr, str_concat(" = extractvalue ", str_concat(arr_val.value_ty.raw, str_concat(" ", str_concat(arr_val.raw, ", 1"))))))
+    let slot_ptr = cg_fresh_name(cg, "arr.slot")
+    cg_append_line(cg, str_concat(slot_ptr, str_concat(" = getelementptr ", str_concat(elem_ty_raw, str_concat(", ", str_concat(elem_ty_raw, str_concat("* ", str_concat(data_ptr, str_concat(", i64 ", idx_val.raw)))))))))
+    let result = cg_fresh_name(cg, "arr.elem")
+    cg_append_line(cg, str_concat(result, str_concat(" = load ", str_concat(elem_ty_raw, str_concat(", ", str_concat(elem_ty_raw, str_concat("* ", slot_ptr)))))))
+    new_llvm_value(result, new_llvm_type(elem_ty_raw, false, false), true)
 }
 
 fn emit_lvalue_ptr(cg, expr) {
@@ -166,7 +251,12 @@ fn emit_lvalue_ptr(cg, expr) {
     if str_eq_type(expr.tag, "Index") {
         let target = emit_expr(cg, expr.access_target)
         let index = emit_expr(cg, expr.index_expr)
-        return new_llvm_value(str_concat(target.raw, str_concat("[", str_concat(index.raw, "]"))), new_llvm_type("ptr", false, true), true)
+        let elem_ty = lower_type(cg, expr.expr_ty)
+        let data_ptr = cg_fresh_name(cg, "arr.data")
+        cg_append_line(cg, str_concat(data_ptr, str_concat(" = extractvalue ", str_concat(target.value_ty.raw, str_concat(" ", str_concat(target.raw, ", 1"))))))
+        let slot_ptr = cg_fresh_name(cg, "arr.slot")
+        cg_append_line(cg, str_concat(slot_ptr, str_concat(" = getelementptr ", str_concat(elem_ty.raw, str_concat(", ", str_concat(elem_ty.raw, str_concat("* ", str_concat(data_ptr, str_concat(", i64 ", index.raw)))))))))
+        return new_llvm_value(slot_ptr, elem_ty, true)
     }
-    new_llvm_value(str_concat("lvalue.", expr.tag), new_llvm_type("ptr", false, true), false)
+    new_llvm_value("null", new_llvm_type("i64", false, false), false)
 }

@@ -1,4 +1,6 @@
-import { TypedClassDef, CodeGen, ClassLayout, LLVMValue, new_llvm_type, new_llvm_value, cg_register_class_layout, cg_lookup_class_layout, cg_find_class_index, cg_append_line, lower_type, llvm_pointer_type, str_eq_type }
+import { TypedClassDef, CodeGen, ClassLayout, LLVMValue, new_llvm_type, new_llvm_value,
+         cg_register_class_layout, cg_lookup_class_layout, cg_find_class_index,
+         cg_append_global, cg_append_line, cg_fresh_name, lower_type, llvm_pointer_type, str_eq_type }
 
 @type {
     build_class_layout: (CodeGen, TypedClassDef) -> Unit
@@ -30,7 +32,7 @@ fn build_class_layout(cg, class_def) {
     if class_def.class_has_extends {
         layout.field_names.push("__parent__")
         layout.field_indices.push(0)
-        layout.field_types.push(llvm_pointer_type(new_llvm_type(str_concat("%class.", class_def.class_extends_name), false, false)))
+        layout.field_types.push(new_llvm_type("i8*", false, true))
         next_index = 1
     }
     let mut i = 0
@@ -48,7 +50,20 @@ fn build_class_layout(cg, class_def) {
         i = i + 1
     }
     cg_register_class_layout(cg, layout)
-    cg_append_line(cg, str_concat("; layout ", class_def.class_name))
+    let mut type_def = str_concat("%class.", str_concat(class_def.class_name, " = type { "))
+    i = 0
+    while i < layout.field_types.len() {
+        if i > 0 {
+            type_def = str_concat(type_def, ", ")
+        }
+        type_def = str_concat(type_def, layout.field_types[i].raw)
+        i = i + 1
+    }
+    if layout.field_types.len() == 0 {
+        type_def = str_concat(type_def, "i8")
+    }
+    type_def = str_concat(type_def, " }")
+    cg_append_global(cg, type_def)
     let _done = 0
 }
 
@@ -57,11 +72,16 @@ fn class_field_ptr(cg, obj_ptr, class_name, field_name) {
     let mut i = 0
     while i < layout.field_names.len() {
         if str_eq_type(layout.field_names[i], field_name) {
-            let ty = llvm_pointer_type(layout.field_types[i])
-            let raw = str_concat(obj_ptr.raw, str_concat(".", field_name))
-            return new_llvm_value(raw, ty, true)
+            let field_ty = layout.field_types[i]
+            let idx_str = int_to_string(layout.field_indices[i])
+            let obj_class_ty = str_concat("%class.", class_name)
+            let cast_name = cg_fresh_name(cg, "cast")
+            cg_append_line(cg, str_concat(cast_name, str_concat(" = bitcast i8* ", str_concat(obj_ptr.raw, str_concat(" to ", str_concat(obj_class_ty, "*"))))))
+            let gep_name = cg_fresh_name(cg, "gep")
+            cg_append_line(cg, str_concat(gep_name, str_concat(" = getelementptr inbounds ", str_concat(obj_class_ty, str_concat(", ", str_concat(obj_class_ty, str_concat("* ", str_concat(cast_name, str_concat(", i32 0, i32 ", idx_str)))))))))
+            return new_llvm_value(gep_name, field_ty, true)
         }
         i = i + 1
     }
-    new_llvm_value(str_concat(obj_ptr.raw, str_concat(".missing.", field_name)), llvm_pointer_type(new_llvm_type("invalid", false, false)), false)
+    new_llvm_value("null", new_llvm_type("i64", false, false), false)
 }

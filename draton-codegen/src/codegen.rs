@@ -69,6 +69,7 @@ pub struct CodeGen<'ctx> {
     pub(crate) vtable_globals: HashMap<(String, String), GlobalValue<'ctx>>,
     pub(crate) closure_counter: usize,
     pub(crate) closure_type_descriptor_id: u16,
+    pub(crate) pending_ctors: Vec<FunctionValue<'ctx>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -106,6 +107,7 @@ impl<'ctx> CodeGen<'ctx> {
             vtable_globals: HashMap::new(),
             closure_counter: 0,
             closure_type_descriptor_id: 0,
+            pending_ctors: Vec::new(),
         }
     }
 
@@ -122,6 +124,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.emit_item(item)?;
         }
         self.emit_mono_items()?;
+        self.flush_global_ctors()?;
         self.apply_optimizations();
         self.module
             .verify()
@@ -159,6 +162,55 @@ impl<'ctx> CodeGen<'ctx> {
         machine
             .write_to_file(module, FileType::Object, path)
             .map_err(|err| CodeGenError::Llvm(err.to_string()))
+    }
+
+    /// Emit a single @llvm.global_ctors global containing all pending ctor functions.
+    pub(crate) fn flush_global_ctors(&mut self) -> Result<(), CodeGenError> {
+        if self.pending_ctors.is_empty() {
+            return Ok(());
+        }
+        let i32_type = self.context.i32_type();
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let entry_ty = self.context.struct_type(
+            &[
+                i32_type.into(),
+                self.context
+                    .void_type()
+                    .fn_type(&[], false)
+                    .ptr_type(AddressSpace::default())
+                    .into(),
+                i8_ptr.into(),
+            ],
+            false,
+        );
+        let priority = i32_type.const_int(65535, false);
+        let null_data = i8_ptr.const_null();
+        let mut entries = Vec::new();
+        for &func in &self.pending_ctors {
+            let fn_ptr = func.as_global_value().as_pointer_value();
+            let entry =
+                entry_ty.const_named_struct(&[priority.into(), fn_ptr.into(), null_data.into()]);
+            entries.push(entry);
+        }
+        let arr_ty = entry_ty.array_type(entries.len() as u32);
+        let arr = entry_ty.const_array(&entries);
+        // Remove any existing @llvm.global_ctors.* globals created previously.
+        const CTORS: &str = "llvm.global_ctors";
+        // Delete stale numbered variants if present (shouldn't be, but clean up).
+        for i in 0..self.string_counter {
+            let name = format!("llvm.global_ctors.{i}");
+            if let Some(g) = self.module.get_global(&name) {
+                unsafe { g.delete() };
+            }
+        }
+        if let Some(existing) = self.module.get_global(CTORS) {
+            unsafe { existing.delete() };
+        }
+        let g = self.module.add_global(arr_ty, None, CTORS);
+        g.set_initializer(&arr);
+        g.set_linkage(inkwell::module::Linkage::Appending);
+        self.pending_ctors.clear();
+        Ok(())
     }
 
     pub(crate) fn current_function(&self) -> Result<FunctionValue<'ctx>, CodeGenError> {

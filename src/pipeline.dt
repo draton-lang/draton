@@ -1,7 +1,7 @@
 import { tokenize, new_parser, parser_parse, lex_error_message, parse_error_message,
          new_checker, checker_run, type_error_message, CompileSession, CompileOutput,
          BuildMode, new_compile_output, session_ir_path, session_object_path,
-         session_binary_path, str_eq_type }
+         session_binary_path, str_eq_type, new_codegen, codegen_emit, codegen_write_ir }
 
 class PipelineError {
     let mut kind
@@ -41,6 +41,8 @@ class PipelineResult {
     pipeline_join_shell_command: (String, Array[String]) -> String
     pipeline_quote_shell_arg: (String) -> String
     pipeline_bool_to_int: (Bool) -> Int
+    pipeline_mode_opt_flag: (String) -> String
+    pipeline_build_link_command: (String, String) -> String
     draton_host_build_source: (String, String, String, String, String, Int) -> String
     draton_shell_run: (String) -> Int
 }
@@ -102,16 +104,22 @@ fn run_pipeline(session) {
     let ir_path = session_ir_path(session)
     let obj_path = session_object_path(session)
     let bin_path = session_binary_path(session)
-    let build_error = draton_host_build_source(
-        session.source_path,
-        ir_path,
-        obj_path,
-        bin_path,
-        session.mode.kind,
-        pipeline_bool_to_int(session.emit_ir)
-    )
-    if str_len(build_error) != 0 {
-        return pipeline_fail(new_pipeline_error("CodeGen", build_error, []))
+
+    let cg = new_codegen()
+    codegen_emit(cg, checked.typed_program)
+    codegen_write_ir(cg, ir_path)
+
+    let opt_flag = pipeline_mode_opt_flag(session.mode.kind)
+    let clang_cmd = str_concat("clang ", str_concat(opt_flag, str_concat(" -c ", str_concat(pipeline_quote_shell_arg(ir_path), str_concat(" -o ", pipeline_quote_shell_arg(obj_path))))))
+    let compile_exit = draton_shell_run(clang_cmd)
+    if compile_exit != 0 {
+        return pipeline_fail(new_pipeline_error("CodeGen", "clang compile step failed", []))
+    }
+
+    let link_cmd = pipeline_build_link_command(obj_path, bin_path)
+    let link_exit = draton_shell_run(link_cmd)
+    if link_exit != 0 {
+        return pipeline_fail(new_pipeline_error("CodeGen", "link step failed", []))
     }
 
     pipeline_ok(new_compile_output(ir_path, session.emit_ir, obj_path, bin_path))
@@ -214,4 +222,25 @@ fn pipeline_bool_to_int(value) {
         return 1
     }
     0
+}
+
+fn pipeline_mode_opt_flag(mode) {
+    if str_eq_type(mode, "Release") {
+        return "-O2"
+    }
+    if str_eq_type(mode, "Size") {
+        return "-Os"
+    }
+    if str_eq_type(mode, "Fast") {
+        return "-O3"
+    }
+    "-O0"
+}
+
+fn pipeline_build_link_command(obj_path, bin_path) {
+    let mut cmd = str_concat("cc ", str_concat(pipeline_quote_shell_arg(obj_path), " "))
+    cmd = str_concat(cmd, "%DRATON_RUNTIME_LIB% ")
+    cmd = str_concat(cmd, str_concat("-o ", pipeline_quote_shell_arg(bin_path)))
+    cmd = str_concat(cmd, " -static-libgcc -static-libstdc++ -lbcrypt -luserenv -lntdll")
+    cmd
 }

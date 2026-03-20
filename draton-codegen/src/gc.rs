@@ -240,46 +240,15 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    /// Append `function` to the module's `@llvm.global_ctors` array.
+    /// Queue `function` to be added to the module's `@llvm.global_ctors` array.
+    /// The actual global is emitted as a single entry by `flush_global_ctors`
+    /// at the end of codegen, avoiding the "unknown special variable" LLVM crash
+    /// that occurs when multiple @llvm.global_ctors.N globals exist in one module.
     fn add_global_ctor(
         &mut self,
         function: inkwell::values::FunctionValue<'ctx>,
     ) -> Result<(), CodeGenError> {
-        let i32_type = self.context.i32_type();
-        let i8_ptr = self
-            .context
-            .i8_type()
-            .ptr_type(inkwell::AddressSpace::default());
-        let fn_ptr_ty = function
-            .get_type()
-            .ptr_type(inkwell::AddressSpace::default());
-        let entry_ty = self
-            .context
-            .struct_type(&[i32_type.into(), fn_ptr_ty.into(), i8_ptr.into()], false);
-        let priority = i32_type.const_int(65535, false);
-        let fn_ptr = function.as_global_value().as_pointer_value();
-        let data = i8_ptr.const_null();
-        let entry = entry_ty.const_named_struct(&[priority.into(), fn_ptr.into(), data.into()]);
-
-        // Read-modify-write the global_ctors array.
-        const CTORS: &str = "llvm.global_ctors";
-        let ctors_ty = entry_ty.array_type(1);
-        let arr = entry_ty.const_array(&[entry]);
-        if let Some(existing) = self.module.get_global(CTORS) {
-            // Append to the existing array by building a new one.
-            // Inkwell doesn't expose array append directly; we rebuild the global.
-            // For simplicity, emit a new uniquely-named ctor list entry instead.
-            let unique = format!("llvm.global_ctors.{}", self.string_counter);
-            self.string_counter += 1;
-            let g = self.module.add_global(ctors_ty, None, &unique);
-            g.set_initializer(&arr);
-            g.set_linkage(inkwell::module::Linkage::Appending);
-            let _ = existing; // keep original
-        } else {
-            let g = self.module.add_global(ctors_ty, None, CTORS);
-            g.set_initializer(&arr);
-            g.set_linkage(inkwell::module::Linkage::Appending);
-        }
+        self.pending_ctors.push(function);
         Ok(())
     }
 

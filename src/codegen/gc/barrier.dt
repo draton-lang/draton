@@ -11,6 +11,8 @@ fn emit_write_barrier(cg, obj_ptr, field_ptr, value) {
     if !value.value_ty.is_pointer {
         return
     }
-    cg_append_line(cg, str_concat("; wb ", str_concat(obj_ptr.raw, str_concat(" ", str_concat(field_ptr.raw, str_concat(" ", value.raw))))))
+    let cast_field = str_concat(field_ptr.raw, ".wbcast")
+    cg_append_line(cg, str_concat(cast_field, str_concat(" = bitcast ", str_concat(field_ptr.value_ty.raw, str_concat("* ", str_concat(field_ptr.raw, " to i8**"))))))
+    cg_append_line(cg, str_concat("call void @draton_gc_write_barrier(i8* ", str_concat(obj_ptr.raw, str_concat(", i8** ", str_concat(cast_field, str_concat(", i8* ", str_concat(value.raw, ")")))))))
     let _done = 0
 }

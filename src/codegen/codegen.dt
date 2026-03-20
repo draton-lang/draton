@@ -1,6 +1,10 @@
 import { TypedProgram, TypedItem, Type, type_display, CodeGenError, new_codegen_error, str_eq_type,
          codegen_emit_item, build_class_layout, lower_type }
 
+@extern "C" {
+    fn __draton_std_io_write_file(path, content)
+}
+
 class LLVMContext {
     let mut raw
 
@@ -126,6 +130,10 @@ class CodeGen {
     let mut block_counter
     let mut block_terminated
     let mut last_error
+    let mut fn_alloca_lines
+    let mut fn_body_lines
+    let mut in_fn
+    let mut type_id_counter
 
     @type {
         context: LLVMContext
@@ -154,6 +162,10 @@ class CodeGen {
         block_counter: Int
         block_terminated: Bool
         last_error: CodeGenError
+        fn_alloca_lines: Array[String]
+        fn_body_lines: Array[String]
+        in_fn: Bool
+        type_id_counter: Int
     }
 }
 
@@ -165,6 +177,8 @@ class CodeGen {
     llvm_value_exists: (LLVMValue) -> Bool
     llvm_pointer_type: (LLVMType) -> LLVMType
     cg_append_line: (CodeGen, String) -> Unit
+    cg_append_global: (CodeGen, String) -> Unit
+    cg_append_alloca: (CodeGen, String) -> Unit
     cg_append_named_line: (CodeGen, String, String) -> Unit
     cg_register_function: (CodeGen, String, LLVMValue, LLVMType) -> Unit
     cg_lookup_function: (CodeGen, String) -> LLVMValue
@@ -180,12 +194,23 @@ class CodeGen {
     cg_block_terminated: (CodeGen) -> Bool
     cg_create_entry_alloca: (CodeGen, LLVMValue, LLVMType, String) -> LLVMValue
     cg_fresh_name: (CodeGen, String) -> String
+    cg_fresh_block: (CodeGen, String) -> String
+    cg_start_block: (CodeGen, String) -> Unit
+    cg_emit_br: (CodeGen, String) -> Unit
+    cg_emit_cond_br: (CodeGen, String, String, String) -> Unit
+    cg_begin_fn: (CodeGen) -> Unit
+    cg_flush_fn: (CodeGen, String) -> Unit
+    cg_emit_load: (CodeGen, LLVMValue) -> LLVMValue
+    cg_emit_store: (CodeGen, String, String, String) -> Unit
+    cg_type_size: (String) -> Int
     codegen_emit: (CodeGen, TypedProgram) -> Unit
     codegen_write_ir: (CodeGen, String) -> Unit
     codegen_write_object: (CodeGen, String) -> Unit
     codegen_declare_runtime: (CodeGen) -> Unit
     codegen_predeclare_items: (CodeGen, TypedProgram) -> Unit
     codegen_verify: (CodeGen) -> Unit
+    codegen_register_runtime_fn: (CodeGen, String, String) -> Unit
+    __draton_std_io_write_file: (String, String) -> Bool
 }
 
 fn new_codegen() {
@@ -198,6 +223,8 @@ fn new_codegen() {
         class_layouts: Array[ClassLayout]
         scope_names: Array[Array[String]]
         scope_values: Array[Array[LLVMValue]]
+        fn_alloca_lines: Array[String]
+        fn_body_lines: Array[String]
     }
     let cg = CodeGen()
     let module_lines = []
@@ -208,8 +235,10 @@ fn new_codegen() {
     let class_layouts = []
     let scope_names = []
     let scope_values = []
+    let fn_alloca_lines = []
+    let fn_body_lines = []
     let module = LLVMModule()
-    module.raw = "module draton_selfhost"
+    module.raw = ""
     module.lines = module_lines
     let builder = LLVMBuilder()
     builder.raw = "builder"
@@ -219,7 +248,7 @@ fn new_codegen() {
     cg.context = ctx
     cg.module = module
     cg.builder = builder
-    cg.string_type = new_llvm_type("String", false, false)
+    cg.string_type = new_llvm_type("{ i64, i8* }", false, false)
     cg.i64_type = new_llvm_type("i64", false, false)
     cg.f64_type = new_llvm_type("f64", false, false)
     cg.bool_type = new_llvm_type("i1", false, false)
@@ -242,6 +271,10 @@ fn new_codegen() {
     cg.block_counter = 0
     cg.block_terminated = false
     cg.last_error = new_codegen_error("", "")
+    cg.fn_alloca_lines = fn_alloca_lines
+    cg.fn_body_lines = fn_body_lines
+    cg.in_fn = false
+    cg.type_id_counter = 0
     cg
 }
 
@@ -274,12 +307,21 @@ fn llvm_pointer_type(inner) {
 }
 
 fn cg_append_line(cg, line) {
-    cg.module.lines.push(line)
-    if str_len(cg.module.raw) == 0 {
-        cg.module.raw = line
+    if cg.in_fn {
+        cg.fn_body_lines.push(str_concat("  ", line))
     } else {
-        cg.module.raw = str_concat(cg.module.raw, str_concat("\n", line))
+        cg.module.lines.push(line)
     }
+    let _done = 0
+}
+
+fn cg_append_global(cg, line) {
+    cg.module.lines.push(line)
+    let _done = 0
+}
+
+fn cg_append_alloca(cg, line) {
+    cg.fn_alloca_lines.push(str_concat("  ", line))
     let _done = 0
 }
 
@@ -324,7 +366,7 @@ fn cg_lookup_function_type(cg, name) {
     if idx >= 0 {
         return cg.function_types[idx]
     }
-    new_llvm_type("invalid_fn", false, false)
+    new_llvm_type("i64", false, false)
 }
 
 fn cg_find_class_index(cg, name) {
@@ -450,20 +492,125 @@ fn cg_block_terminated(cg) {
 fn cg_create_entry_alloca(cg, fn_val, ty, name) {
     let slot_name = str_concat("%", str_concat(name, str_concat(".", int_to_string(cg.temp_counter))))
     cg.temp_counter = cg.temp_counter + 1
-    let ptr = new_llvm_value(slot_name, llvm_pointer_type(ty), true)
+    let ptr = new_llvm_value(slot_name, ty, true)
     let line = str_concat(slot_name, str_concat(" = alloca ", ty.raw))
-    let mut prefix = "; "
-    if llvm_value_exists(fn_val) {
-        prefix = str_concat("; ", str_concat(fn_val.raw, ": "))
-    }
-    cg_append_named_line(cg, prefix, line)
+    cg_append_alloca(cg, line)
     ptr
 }
 
 fn cg_fresh_name(cg, base) {
-    let name = str_concat(base, str_concat("_", int_to_string(cg.string_counter)))
-    cg.string_counter = cg.string_counter + 1
+    let name = str_concat("%", str_concat(base, str_concat(".", int_to_string(cg.temp_counter))))
+    cg.temp_counter = cg.temp_counter + 1
     name
+}
+
+fn cg_fresh_block(cg, prefix) {
+    let name = str_concat(prefix, str_concat(".", int_to_string(cg.block_counter)))
+    cg.block_counter = cg.block_counter + 1
+    name
+}
+
+fn cg_start_block(cg, name) {
+    cg.fn_body_lines.push(str_concat(name, ":"))
+    cg.block_terminated = false
+    let _done = 0
+}
+
+fn cg_emit_br(cg, target) {
+    if !cg.block_terminated {
+        cg.fn_body_lines.push(str_concat("  br label %", target))
+        cg.block_terminated = true
+    }
+    let _done = 0
+}
+
+fn cg_emit_cond_br(cg, cond_raw, then_bb, else_bb) {
+    cg.fn_body_lines.push(str_concat("  br i1 ", str_concat(cond_raw, str_concat(", label %", str_concat(then_bb, str_concat(", label %", else_bb))))))
+    cg.block_terminated = true
+    let _done = 0
+}
+
+fn cg_begin_fn(cg) {
+    @type {
+        empty_alloca: Array[String]
+        empty_body: Array[String]
+    }
+    let empty_alloca = []
+    let empty_body = []
+    cg.fn_alloca_lines = empty_alloca
+    cg.fn_body_lines = empty_body
+    cg.in_fn = true
+    cg.block_terminated = false
+    let _done = 0
+}
+
+fn cg_flush_fn(cg, define_line) {
+    @type {
+        empty_alloca: Array[String]
+        empty_body: Array[String]
+    }
+    cg.module.lines.push(define_line)
+    cg.module.lines.push("entry:")
+    let mut i = 0
+    while i < cg.fn_alloca_lines.len() {
+        cg.module.lines.push(cg.fn_alloca_lines[i])
+        i = i + 1
+    }
+    i = 0
+    while i < cg.fn_body_lines.len() {
+        cg.module.lines.push(cg.fn_body_lines[i])
+        i = i + 1
+    }
+    cg.module.lines.push("}")
+    cg.module.lines.push("")
+    let empty_alloca = []
+    let empty_body = []
+    cg.fn_alloca_lines = empty_alloca
+    cg.fn_body_lines = empty_body
+    cg.in_fn = false
+    let _done = 0
+}
+
+fn cg_emit_load(cg, slot) {
+    let result = cg_fresh_name(cg, "load")
+    let ty_raw = slot.value_ty.raw
+    let line = str_concat(result, str_concat(" = load ", str_concat(ty_raw, str_concat(", ", str_concat(ty_raw, str_concat("* ", slot.raw))))))
+    cg_append_line(cg, line)
+    new_llvm_value(result, slot.value_ty, true)
+}
+
+fn cg_emit_store(cg, val_raw, ty_raw, slot_raw) {
+    let line = str_concat("store ", str_concat(ty_raw, str_concat(" ", str_concat(val_raw, str_concat(", ", str_concat(ty_raw, str_concat("* ", slot_raw)))))))
+    cg_append_line(cg, line)
+    let _done = 0
+}
+
+fn cg_type_size(ty_raw) {
+    if str_eq_type(ty_raw, "i64") {
+        return 8
+    }
+    if str_eq_type(ty_raw, "f64") {
+        return 8
+    }
+    if str_eq_type(ty_raw, "i32") {
+        return 4
+    }
+    if str_eq_type(ty_raw, "f32") {
+        return 4
+    }
+    if str_eq_type(ty_raw, "i16") {
+        return 2
+    }
+    if str_eq_type(ty_raw, "i8") {
+        return 1
+    }
+    if str_eq_type(ty_raw, "i1") {
+        return 1
+    }
+    if str_eq_type(ty_raw, "{ i64, i8* }") {
+        return 16
+    }
+    8
 }
 
 fn codegen_emit(cg, program) {
@@ -479,57 +626,87 @@ fn codegen_emit(cg, program) {
 }
 
 fn codegen_write_ir(cg, path) {
-    cg_append_line(cg, str_concat("; write-ir ", path))
+    let mut ir = ""
+    let mut i = 0
+    while i < cg.module.lines.len() {
+        if i == 0 {
+            ir = cg.module.lines[i]
+        } else {
+            ir = str_concat(ir, str_concat("\n", cg.module.lines[i]))
+        }
+        i = i + 1
+    }
+    let _wrote = __draton_std_io_write_file(path, ir)
     let _done = 0
 }
 
 fn codegen_write_object(cg, path) {
-    cg_append_line(cg, str_concat("; write-object ", path))
+    let _done = 0
+}
+
+fn codegen_register_runtime_fn(cg, name, ret_ty_raw) {
+    if cg_find_function_index(cg, name) < 0 {
+        let is_void = str_eq_type(ret_ty_raw, "void")
+        let is_ptr = str_eq_type(ret_ty_raw, "i8*")
+        let fn_ty = new_llvm_type(ret_ty_raw, is_void, is_ptr)
+        let fn_val = new_llvm_value(str_concat("@", name), fn_ty, true)
+        cg_register_function(cg, name, fn_val, fn_ty)
+    }
     let _done = 0
 }
 
 fn codegen_declare_runtime(cg) {
-    @type {
-        runtime_names: Array[String]
-        runtime_types: Array[String]
-    }
-    let runtime_names = [
-        "draton_gc_alloc",
-        "draton_gc_write_barrier",
-        "draton_gc_add_root",
-        "draton_gc_safepoint",
-        "draton_string_new",
-        "draton_string_concat",
-        "draton_string_eq",
-        "draton_panic",
-        "draton_range_new",
-        "draton_map_get",
-        "draton_map_insert"
-    ]
-    let runtime_types = [
-        "fn(i64, i64) -> ptr",
-        "fn(ptr, ptr, ptr) -> void",
-        "fn(ptr) -> void",
-        "fn() -> void",
-        "fn(ptr, i64) -> String",
-        "fn(String, String) -> String",
-        "fn(String, String) -> i1",
-        "fn(String) -> void",
-        "fn(i64, i64) -> ptr",
-        "fn(ptr, ptr) -> ptr",
-        "fn(ptr, ptr, ptr) -> void"
-    ]
-    let mut i = 0
-    while i < runtime_names.len() {
-        let name = runtime_names[i]
-        if cg_find_function_index(cg, name) < 0 {
-            let fn_ty = new_llvm_type(runtime_types[i], false, false)
-            let fn_val = new_llvm_value(str_concat("@", name), fn_ty, true)
-            cg_register_function(cg, name, fn_val, fn_ty)
-            cg_append_line(cg, str_concat("declare ", runtime_types[i]))
-        }
-        i = i + 1
-    }
+    cg.module.lines.push("; Draton selfhost codegen -- runtime declarations")
+    cg.module.lines.push("declare i8* @draton_gc_alloc(i64, i16)")
+    cg.module.lines.push("declare void @draton_gc_write_barrier(i8*, i8**, i8*)")
+    cg.module.lines.push("declare void @draton_safepoint_slow()")
+    cg.module.lines.push("declare void @draton_panic({ i64, i8* }, i64, i64)")
+    cg.module.lines.push("declare { i64, i8* } @draton_str_concat({ i64, i8* }, { i64, i8* })")
+    cg.module.lines.push("declare i1 @draton_str_eq({ i64, i8* }, { i64, i8* })")
+    cg.module.lines.push("declare { i64, i8* } @draton_str_slice({ i64, i8* }, i64, i64)")
+    cg.module.lines.push("declare i1 @draton_str_contains({ i64, i8* }, { i64, i8* })")
+    cg.module.lines.push("declare i1 @draton_str_starts_with({ i64, i8* }, { i64, i8* })")
+    cg.module.lines.push("declare { i64, i8* } @draton_str_replace({ i64, i8* }, { i64, i8* }, { i64, i8* })")
+    cg.module.lines.push("declare { i64, i8* } @draton_int_to_string(i64)")
+    cg.module.lines.push("declare { i64, i8* } @draton_ascii_char(i64)")
+    cg.module.lines.push("declare { i64, i8* } @draton_read_file({ i64, i8* })")
+    cg.module.lines.push("declare { i64, i8* } @draton_input({ i64, i8* })")
+    cg.module.lines.push("declare i64 @draton_string_parse_int({ i64, i8* })")
+    cg.module.lines.push("declare i64 @draton_string_parse_int_radix({ i64, i8* }, i64)")
+    cg.module.lines.push("declare f64 @draton_string_parse_float({ i64, i8* })")
+    cg.module.lines.push("declare void @draton_set_cli_args(i32, i8**)")
+    cg.module.lines.push("declare i64 @draton_cli_argc()")
+    cg.module.lines.push("declare { i64, i8* } @draton_cli_arg(i64)")
+    cg.module.lines.push("declare i64 @draton_shell_run({ i64, i8* })")
+    cg.module.lines.push("declare i8* @malloc(i64)")
+    cg.module.lines.push("declare void @free(i8*)")
+    cg.module.lines.push("declare void @llvm.memcpy.p0i8.p0i8.i64(i8*, i8*, i64, i1)")
+    cg.module.lines.push("declare i1 @__draton_std_io_write_file({ i64, i8* }, { i64, i8* })")
+    cg.module.lines.push("")
+    codegen_register_runtime_fn(cg, "draton_gc_alloc", "i8*")
+    codegen_register_runtime_fn(cg, "draton_gc_write_barrier", "void")
+    codegen_register_runtime_fn(cg, "draton_safepoint_slow", "void")
+    codegen_register_runtime_fn(cg, "draton_panic", "void")
+    codegen_register_runtime_fn(cg, "draton_str_concat", "{ i64, i8* }")
+    codegen_register_runtime_fn(cg, "draton_str_eq", "i1")
+    codegen_register_runtime_fn(cg, "draton_str_slice", "{ i64, i8* }")
+    codegen_register_runtime_fn(cg, "draton_str_contains", "i1")
+    codegen_register_runtime_fn(cg, "draton_str_starts_with", "i1")
+    codegen_register_runtime_fn(cg, "draton_str_replace", "{ i64, i8* }")
+    codegen_register_runtime_fn(cg, "draton_int_to_string", "{ i64, i8* }")
+    codegen_register_runtime_fn(cg, "draton_ascii_char", "{ i64, i8* }")
+    codegen_register_runtime_fn(cg, "draton_read_file", "{ i64, i8* }")
+    codegen_register_runtime_fn(cg, "draton_input", "{ i64, i8* }")
+    codegen_register_runtime_fn(cg, "draton_string_parse_int", "i64")
+    codegen_register_runtime_fn(cg, "draton_string_parse_int_radix", "i64")
+    codegen_register_runtime_fn(cg, "draton_string_parse_float", "f64")
+    codegen_register_runtime_fn(cg, "draton_set_cli_args", "void")
+    codegen_register_runtime_fn(cg, "draton_cli_argc", "i64")
+    codegen_register_runtime_fn(cg, "draton_cli_arg", "{ i64, i8* }")
+    codegen_register_runtime_fn(cg, "draton_shell_run", "i64")
+    codegen_register_runtime_fn(cg, "malloc", "i8*")
+    codegen_register_runtime_fn(cg, "free", "void")
+    codegen_register_runtime_fn(cg, "__draton_std_io_write_file", "i1")
     let _done = 0
 }
 
@@ -545,32 +722,33 @@ fn codegen_predeclare_items(cg, program) {
     while i < program.program_items.len() {
         let item = program.program_items[i]
         if str_eq_type(item.tag, "Fn") {
-            let fn_ty = lower_type(cg, item.item_fn_def.fn_ty)
+            let fn_ret_ty = lower_type(cg, item.item_fn_def.fn_ret_type)
+            let fn_ty = fn_ret_ty
             cg_register_function(cg, item.item_fn_def.fn_name, new_llvm_value(str_concat("@", item.item_fn_def.fn_name), fn_ty, true), fn_ty)
         } else if str_eq_type(item.tag, "PanicHandler") {
-            let fn_ty = lower_type(cg, item.item_panic_handler_def.fn_ty)
-            cg_register_function(cg, item.item_panic_handler_def.fn_name, new_llvm_value(str_concat("@", item.item_panic_handler_def.fn_name), fn_ty, true), fn_ty)
+            let fn_ret_ty = lower_type(cg, item.item_panic_handler_def.fn_ret_type)
+            cg_register_function(cg, item.item_panic_handler_def.fn_name, new_llvm_value(str_concat("@", item.item_panic_handler_def.fn_name), fn_ret_ty, true), fn_ret_ty)
         } else if str_eq_type(item.tag, "OomHandler") {
-            let fn_ty = lower_type(cg, item.item_oom_handler_def.fn_ty)
-            cg_register_function(cg, item.item_oom_handler_def.fn_name, new_llvm_value(str_concat("@", item.item_oom_handler_def.fn_name), fn_ty, true), fn_ty)
+            let fn_ret_ty = lower_type(cg, item.item_oom_handler_def.fn_ret_type)
+            cg_register_function(cg, item.item_oom_handler_def.fn_name, new_llvm_value(str_concat("@", item.item_oom_handler_def.fn_name), fn_ret_ty, true), fn_ret_ty)
         } else if str_eq_type(item.tag, "Extern") {
             let mut j = 0
             while j < item.item_extern_block.extern_functions.len() {
                 let fn_def = item.item_extern_block.extern_functions[j]
-                let fn_ty = lower_type(cg, fn_def.fn_ty)
-                cg_register_function(cg, fn_def.fn_name, new_llvm_value(str_concat("@", fn_def.fn_name), fn_ty, true), fn_ty)
+                let fn_ret_ty = lower_type(cg, fn_def.fn_ret_type)
+                cg_register_function(cg, fn_def.fn_name, new_llvm_value(str_concat("@", fn_def.fn_name), fn_ret_ty, true), fn_ret_ty)
                 j = j + 1
             }
         } else if str_eq_type(item.tag, "Class") {
             let ctor_name = str_concat(item.item_class_def.class_name, "_new")
-            let ctor_ty = new_llvm_type(str_concat("fn() -> ", str_concat(item.item_class_def.class_name, "*")), false, false)
+            let ctor_ty = new_llvm_type("i8*", false, true)
             cg_register_function(cg, ctor_name, new_llvm_value(str_concat("@", ctor_name), ctor_ty, true), ctor_ty)
             let mut j = 0
             while j < item.item_class_def.class_methods.len() {
                 let method = item.item_class_def.class_methods[j]
                 let symbol = str_concat(item.item_class_def.class_name, str_concat(".", method.fn_name))
-                let method_ty = lower_type(cg, method.fn_ty)
-                cg_register_function(cg, symbol, new_llvm_value(str_concat("@", symbol), method_ty, true), method_ty)
+                let method_ret_ty = lower_type(cg, method.fn_ret_type)
+                cg_register_function(cg, symbol, new_llvm_value(str_concat("@", symbol), method_ret_ty, true), method_ret_ty)
                 j = j + 1
             }
         }
@@ -582,9 +760,6 @@ fn codegen_predeclare_items(cg, program) {
 fn codegen_verify(cg) {
     if cg_find_function_index(cg, "main") < 0 {
         cg.last_error = new_codegen_error("Verify", "missing main")
-        cg_append_line(cg, "; verify: missing main")
-    } else {
-        cg_append_line(cg, "; verify: ok")
     }
     let _done = 0
 }

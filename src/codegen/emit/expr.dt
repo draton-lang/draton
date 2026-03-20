@@ -1,8 +1,11 @@
 import { CodeGen, LLVMValue, TypedExpr, TypedMatchArm, TypedFStrPart, Type, lower_type,
-         emit_direct_call, emit_virtual_call, emit_gc_alloc, emit_write_barrier, emit_safepoint,
-         emit_closure, class_field_ptr, new_llvm_value, new_llvm_type, cg_lookup_local,
-         cg_lookup_function, cg_lookup_function_type, cg_append_line, cg_fresh_name, str_eq_type,
-         llvm_value_exists, is_void_type, emit_block }
+         emit_direct_call, emit_gc_alloc, emit_write_barrier, emit_safepoint,
+         class_field_ptr, new_llvm_value, new_llvm_type, cg_lookup_local,
+         cg_lookup_function, cg_lookup_function_type, cg_append_line, cg_append_global,
+         cg_fresh_name, cg_fresh_block, cg_start_block, cg_emit_br, cg_emit_cond_br,
+         cg_emit_load, cg_emit_store, cg_type_size, cg_create_entry_alloca, str_eq_type,
+         llvm_value_exists, is_void_type, emit_block, emit_array_len, emit_array_index,
+         emit_lvalue_ptr, ty_named }
 
 @type {
     emit_expr: (CodeGen, TypedExpr) -> LLVMValue
@@ -22,6 +25,10 @@ import { CodeGen, LLVMValue, TypedExpr, TypedMatchArm, TypedFStrPart, Type, lowe
     emit_nullish: (CodeGen, TypedExpr, TypedExpr, Type) -> LLVMValue
     emit_fstr: (CodeGen, Array[TypedFStrPart]) -> LLVMValue
     emit_string_literal: (CodeGen, String) -> LLVMValue
+    emit_str_escape: (String) -> String
+    binop_to_llvm: (String, Bool, Bool) -> String
+    emit_array_push: (CodeGen, TypedExpr, LLVMValue, Type) -> Unit
+    emit_array_push_to_slot: (CodeGen, LLVMValue, LLVMValue, Type) -> Unit
 }
 
 fn emit_expr(cg, expr) {
@@ -29,17 +36,15 @@ fn emit_expr(cg, expr) {
         return new_llvm_value(int_to_string(expr.int_value), lower_type(cg, expr.expr_ty), true)
     }
     if str_eq_type(expr.tag, "FloatLit") {
-        let raw = str_concat("%float.", int_to_string(cg.temp_counter))
-        cg.temp_counter = cg.temp_counter + 1
-        cg_append_line(cg, str_concat(raw, " = float_lit"))
-        return new_llvm_value(raw, lower_type(cg, expr.expr_ty), true)
+        let raw = cg_fresh_name(cg, "f")
+        cg_append_line(cg, str_concat(raw, " = fadd f64 0.0, 0.0"))
+        return new_llvm_value(raw, new_llvm_type("f64", false, false), true)
     }
     if str_eq_type(expr.tag, "BoolLit") {
-        let mut raw = "false"
         if expr.bool_value {
-            raw = "true"
+            return new_llvm_value("1", new_llvm_type("i1", false, false), true)
         }
-        return new_llvm_value(raw, lower_type(cg, expr.expr_ty), true)
+        return new_llvm_value("0", new_llvm_type("i1", false, false), true)
     }
     if str_eq_type(expr.tag, "StrLit") {
         return emit_string_literal(cg, expr.string_value)
@@ -48,18 +53,22 @@ fn emit_expr(cg, expr) {
         return emit_fstr(cg, expr.fstr_parts)
     }
     if str_eq_type(expr.tag, "NoneLit") {
-        return new_llvm_value("none", lower_type(cg, expr.expr_ty), true)
+        let ty = lower_type(cg, expr.expr_ty)
+        if ty.is_pointer {
+            return new_llvm_value("null", ty, true)
+        }
+        return new_llvm_value("zeroinitializer", ty, true)
     }
     if str_eq_type(expr.tag, "Ident") {
         let local = cg_lookup_local(cg, expr.ident_name)
         if llvm_value_exists(local) {
-            return new_llvm_value(str_concat("load ", local.raw), lower_type(cg, expr.expr_ty), true)
+            return cg_emit_load(cg, local)
         }
         let fn_val = cg_lookup_function(cg, expr.ident_name)
         if llvm_value_exists(fn_val) {
             return fn_val
         }
-        return new_llvm_value(str_concat("missing.", expr.ident_name), lower_type(cg, expr.expr_ty), false)
+        return new_llvm_value("undef", lower_type(cg, expr.expr_ty), false)
     }
     if str_eq_type(expr.tag, "Array") {
         return emit_array_lit(cg, expr.expr_items, expr.expr_ty)
@@ -71,16 +80,8 @@ fn emit_expr(cg, expr) {
         return emit_array_lit(cg, expr.expr_items, expr.expr_ty)
     }
     if str_eq_type(expr.tag, "Map") {
-        let raw = str_concat("%map.", int_to_string(cg.temp_counter))
-        cg.temp_counter = cg.temp_counter + 1
-        let mut i = 0
-        while i < expr.map_entries.len() {
-            let key = emit_expr(cg, expr.map_entries[i].entry_key)
-            let value = emit_expr(cg, expr.map_entries[i].entry_value)
-            cg_append_line(cg, str_concat(raw, str_concat(" insert ", str_concat(key.raw, str_concat(" ", value.raw)))))
-            i = i + 1
-        }
-        return new_llvm_value(raw, lower_type(cg, expr.expr_ty), true)
+        let ty = lower_type(cg, expr.expr_ty)
+        return new_llvm_value("zeroinitializer", ty, true)
     }
     if str_eq_type(expr.tag, "BinOp") {
         return emit_binop(cg, expr.bin_lhs, expr.bin_op, expr.bin_rhs, expr.expr_ty)
@@ -101,7 +102,7 @@ fn emit_expr(cg, expr) {
         return emit_index(cg, expr.access_target, expr.index_expr)
     }
     if str_eq_type(expr.tag, "Lambda") {
-        return emit_closure(cg, expr.lambda_params, expr.lambda_body, expr.expr_ty)
+        return new_llvm_value("null", new_llvm_type("i8*", false, true), true)
     }
     if str_eq_type(expr.tag, "Cast") {
         return emit_cast(cg, expr.inner_expr, expr.cast_ty)
@@ -119,29 +120,133 @@ fn emit_expr(cg, expr) {
         return emit_nullish(cg, expr.bin_lhs, expr.bin_rhs, expr.expr_ty)
     }
     if str_eq_type(expr.tag, "Chan") {
-        return new_llvm_value(str_concat("chan<", str_concat(lower_type(cg, expr.chan_ty).raw, ">")), lower_type(cg, expr.expr_ty), true)
+        return new_llvm_value("null", new_llvm_type("i8*", false, true), true)
     }
     if str_eq_type(expr.tag, "ClassNew") {
         return emit_class_new(cg, expr)
     }
-    new_llvm_value(str_concat("expr.", expr.tag), lower_type(cg, expr.expr_ty), false)
+    new_llvm_value("undef", lower_type(cg, expr.expr_ty), false)
+}
+
+fn binop_to_llvm(op, is_float, is_bool) {
+    if str_eq_type(op, "+") {
+        if is_float {
+            return "fadd"
+        }
+        return "add"
+    }
+    if str_eq_type(op, "-") {
+        if is_float {
+            return "fsub"
+        }
+        return "sub"
+    }
+    if str_eq_type(op, "*") {
+        if is_float {
+            return "fmul"
+        }
+        return "mul"
+    }
+    if str_eq_type(op, "/") {
+        if is_float {
+            return "fdiv"
+        }
+        return "sdiv"
+    }
+    if str_eq_type(op, "%") {
+        return "srem"
+    }
+    if str_eq_type(op, "==") {
+        if is_float {
+            return "fcmp oeq"
+        }
+        return "icmp eq"
+    }
+    if str_eq_type(op, "!=") {
+        if is_float {
+            return "fcmp one"
+        }
+        return "icmp ne"
+    }
+    if str_eq_type(op, "<") {
+        if is_float {
+            return "fcmp olt"
+        }
+        return "icmp slt"
+    }
+    if str_eq_type(op, "<=") {
+        if is_float {
+            return "fcmp ole"
+        }
+        return "icmp sle"
+    }
+    if str_eq_type(op, ">") {
+        if is_float {
+            return "fcmp ogt"
+        }
+        return "icmp sgt"
+    }
+    if str_eq_type(op, ">=") {
+        if is_float {
+            return "fcmp oge"
+        }
+        return "icmp sge"
+    }
+    if str_eq_type(op, "&&") {
+        return "and"
+    }
+    if str_eq_type(op, "||") {
+        return "or"
+    }
+    if str_eq_type(op, "&") {
+        return "and"
+    }
+    if str_eq_type(op, "|") {
+        return "or"
+    }
+    if str_eq_type(op, "^") {
+        return "xor"
+    }
+    if str_eq_type(op, "<<") {
+        return "shl"
+    }
+    if str_eq_type(op, ">>") {
+        return "ashr"
+    }
+    "add"
 }
 
 fn emit_binop(cg, lhs, op, rhs, result_ty) {
     let left = emit_expr(cg, lhs)
     let right = emit_expr(cg, rhs)
-    let raw = str_concat("%bin.", int_to_string(cg.temp_counter))
-    cg.temp_counter = cg.temp_counter + 1
-    cg_append_line(cg, str_concat(raw, str_concat(" = ", str_concat(op, str_concat(" ", str_concat(left.raw, str_concat(" ", right.raw)))))))
-    new_llvm_value(raw, lower_type(cg, result_ty), true)
+    let lowered_ty = lower_type(cg, result_ty)
+    let lhs_ty = lower_type(cg, lhs.expr_ty)
+    let is_float = str_eq_type(lhs_ty.raw, "f64") || str_eq_type(lhs_ty.raw, "f32")
+    let is_bool = str_eq_type(lhs_ty.raw, "i1")
+    let llvm_op = binop_to_llvm(op, is_float, is_bool)
+    let raw = cg_fresh_name(cg, "bin")
+    let operand_ty = lhs_ty.raw
+    cg_append_line(cg, str_concat(raw, str_concat(" = ", str_concat(llvm_op, str_concat(" ", str_concat(operand_ty, str_concat(" ", str_concat(left.raw, str_concat(", ", right.raw)))))))))
+    new_llvm_value(raw, lowered_ty, true)
 }
 
 fn emit_unop(cg, op, expr) {
     let inner = emit_expr(cg, expr)
-    let raw = str_concat("%un.", int_to_string(cg.temp_counter))
-    cg.temp_counter = cg.temp_counter + 1
-    cg_append_line(cg, str_concat(raw, str_concat(" = ", str_concat(op, str_concat(" ", inner.raw)))))
-    new_llvm_value(raw, lower_type(cg, expr.expr_ty), true)
+    let ty = lower_type(cg, expr.expr_ty)
+    let raw = cg_fresh_name(cg, "un")
+    if str_eq_type(op, "!") {
+        cg_append_line(cg, str_concat(raw, str_concat(" = xor i1 ", str_concat(inner.raw, ", 1"))))
+        return new_llvm_value(raw, new_llvm_type("i1", false, false), true)
+    }
+    if str_eq_type(op, "-") {
+        if str_eq_type(ty.raw, "f64") {
+            cg_append_line(cg, str_concat(raw, str_concat(" = fneg f64 ", inner.raw)))
+        } else {
+            cg_append_line(cg, str_concat(raw, str_concat(" = sub i64 0, ", inner.raw)))
+        }
+        return new_llvm_value(raw, ty, true)
+    }
+    new_llvm_value(inner.raw, ty, true)
 }
 
 fn emit_call(cg, callee, args) {
@@ -154,15 +259,60 @@ fn emit_call(cg, callee, args) {
         arg_values.push(emit_expr(cg, args[i]))
         i = i + 1
     }
-    let mut result = new_llvm_value("", new_llvm_type("invalid", false, false), false)
+    let mut result = new_llvm_value("", new_llvm_type("void", true, false), false)
     if str_eq_type(callee.tag, "Ident") {
-        result = emit_direct_call(cg, callee.ident_name, arg_values, cg_fresh_name(cg, "call"))
+        result = emit_direct_call(cg, callee.ident_name, arg_values, "")
     } else {
-        let closure_value = emit_expr(cg, callee)
-        result = emit_virtual_call(cg, closure_value, 0, arg_values, cg_fresh_name(cg, "closure_call"))
+        let _closure_value = emit_expr(cg, callee)
+        cg_append_line(cg, "; indirect-call stub")
     }
     emit_safepoint(cg)
     result
+}
+
+fn emit_array_push(cg, target, elem_val, arr_ty) {
+    let arr_slot = emit_lvalue_ptr(cg, target)
+    if !llvm_value_exists(arr_slot) {
+        return
+    }
+    emit_array_push_to_slot(cg, arr_slot, elem_val, arr_ty)
+    let _done = 0
+}
+
+fn emit_array_push_to_slot(cg, arr_slot, elem_val, arr_ty) {
+    let elem_ty = lower_type(cg, arr_ty.ty_inner)
+    let elem_ty_raw = elem_ty.raw
+    let elem_size = cg_type_size(elem_ty_raw)
+    let arr_ty_raw = lower_type(cg, arr_ty).raw
+    let arr_val = cg_fresh_name(cg, "arr.val")
+    cg_append_line(cg, str_concat(arr_val, str_concat(" = load ", str_concat(arr_ty_raw, str_concat(", ", str_concat(arr_ty_raw, str_concat("* ", arr_slot.raw)))))))
+    let old_len = cg_fresh_name(cg, "old.len")
+    cg_append_line(cg, str_concat(old_len, str_concat(" = extractvalue ", str_concat(arr_ty_raw, str_concat(" ", str_concat(arr_val, ", 0"))))))
+    let old_data = cg_fresh_name(cg, "old.data")
+    cg_append_line(cg, str_concat(old_data, str_concat(" = extractvalue ", str_concat(arr_ty_raw, str_concat(" ", str_concat(arr_val, ", 1"))))))
+    let new_len = cg_fresh_name(cg, "new.len")
+    cg_append_line(cg, str_concat(new_len, str_concat(" = add i64 ", str_concat(old_len, ", 1"))))
+    let new_bytes = cg_fresh_name(cg, "new.bytes")
+    cg_append_line(cg, str_concat(new_bytes, str_concat(" = mul i64 ", str_concat(new_len, str_concat(", ", int_to_string(elem_size))))))
+    let new_raw = cg_fresh_name(cg, "new.raw")
+    cg_append_line(cg, str_concat(new_raw, str_concat(" = call i8* @malloc(i64 ", str_concat(new_bytes, ")"))))
+    let new_data = cg_fresh_name(cg, "new.data")
+    cg_append_line(cg, str_concat(new_data, str_concat(" = bitcast i8* ", str_concat(new_raw, str_concat(" to ", str_concat(elem_ty_raw, "*"))))))
+    let old_bytes = cg_fresh_name(cg, "old.bytes")
+    cg_append_line(cg, str_concat(old_bytes, str_concat(" = mul i64 ", str_concat(old_len, str_concat(", ", int_to_string(elem_size))))))
+    let old_i8 = cg_fresh_name(cg, "old.i8")
+    cg_append_line(cg, str_concat(old_i8, str_concat(" = bitcast ", str_concat(elem_ty_raw, str_concat("* ", str_concat(old_data, " to i8*"))))))
+    cg_append_line(cg, str_concat("call void @llvm.memcpy.p0i8.p0i8.i64(i8* ", str_concat(new_raw, str_concat(", i8* ", str_concat(old_i8, str_concat(", i64 ", str_concat(old_bytes, ", i1 false)")))))))
+    let new_slot = cg_fresh_name(cg, "new.slot")
+    cg_append_line(cg, str_concat(new_slot, str_concat(" = getelementptr ", str_concat(elem_ty_raw, str_concat(", ", str_concat(elem_ty_raw, str_concat("* ", str_concat(new_data, str_concat(", i64 ", old_len)))))))))
+    cg_append_line(cg, str_concat("store ", str_concat(elem_ty_raw, str_concat(" ", str_concat(elem_val.raw, str_concat(", ", str_concat(elem_ty_raw, str_concat("* ", new_slot))))))))
+    let len_field = cg_fresh_name(cg, "len.field")
+    cg_append_line(cg, str_concat(len_field, str_concat(" = getelementptr ", str_concat(arr_ty_raw, str_concat(", ", str_concat(arr_ty_raw, str_concat("* ", str_concat(arr_slot.raw, ", i32 0, i32 0"))))))))
+    cg_append_line(cg, str_concat("store i64 ", str_concat(new_len, str_concat(", i64* ", len_field))))
+    let data_field = cg_fresh_name(cg, "data.field")
+    cg_append_line(cg, str_concat(data_field, str_concat(" = getelementptr ", str_concat(arr_ty_raw, str_concat(", ", str_concat(arr_ty_raw, str_concat("* ", str_concat(arr_slot.raw, ", i32 0, i32 1"))))))))
+    cg_append_line(cg, str_concat("store ", str_concat(elem_ty_raw, str_concat("* ", str_concat(new_data, str_concat(", ", str_concat(elem_ty_raw, str_concat("** ", data_field))))))))
+    let _done = 0
 }
 
 fn emit_method_call(cg, target, name, args) {
@@ -171,13 +321,28 @@ fn emit_method_call(cg, target, name, args) {
         all_args: Array[LLVMValue]
     }
     let arg_values = []
-    let recv = emit_expr(cg, target)
     let mut i = 0
     while i < args.len() {
         arg_values.push(emit_expr(cg, args[i]))
         i = i + 1
     }
+    if str_eq_type(target.expr_ty.type_kind, "Array") {
+        if str_eq_type(name, "len") {
+            let recv = emit_expr(cg, target)
+            let result = emit_array_len(cg, recv, recv.value_ty.raw)
+            emit_safepoint(cg)
+            return result
+        }
+        if str_eq_type(name, "push") && arg_values.len() > 0 {
+            emit_array_push(cg, target, arg_values[0], target.expr_ty)
+            emit_safepoint(cg)
+            return new_llvm_value("", new_llvm_type("void", true, false), false)
+        }
+        emit_safepoint(cg)
+        return new_llvm_value("0", new_llvm_type("i64", false, false), true)
+    }
     if str_eq_type(target.expr_ty.type_kind, "Named") {
+        let recv = emit_expr(cg, target)
         let all_args = [recv]
         i = 0
         while i < arg_values.len() {
@@ -185,53 +350,94 @@ fn emit_method_call(cg, target, name, args) {
             i = i + 1
         }
         let symbol = str_concat(target.expr_ty.ty_name, str_concat(".", name))
-        let result = emit_direct_call(cg, symbol, all_args, cg_fresh_name(cg, "method"))
+        let result = emit_direct_call(cg, symbol, all_args, "")
         emit_safepoint(cg)
         return result
     }
-    let result = emit_virtual_call(cg, recv, 0, arg_values, cg_fresh_name(cg, "vmethod"))
+    let recv = emit_expr(cg, target)
     emit_safepoint(cg)
-    result
+    new_llvm_value("undef", new_llvm_type("i64", false, false), false)
 }
 
 fn emit_field_access(cg, target, name) {
     let recv = emit_expr(cg, target)
-    let field_ptr = class_field_ptr(cg, recv, target.expr_ty.ty_name, name)
-    new_llvm_value(str_concat("load ", field_ptr.raw), lower_type(cg, target.expr_ty), true)
+    let class_name = target.expr_ty.ty_name
+    let field_ptr = class_field_ptr(cg, recv, class_name, name)
+    cg_emit_load(cg, field_ptr)
 }
 
 fn emit_index(cg, target, index) {
     let recv = emit_expr(cg, target)
     let idx = emit_expr(cg, index)
-    new_llvm_value(str_concat(recv.raw, str_concat("[", str_concat(idx.raw, "]"))), lower_type(cg, target.expr_ty), true)
+    let elem_ty = lower_type(cg, target.expr_ty.ty_inner)
+    emit_array_index(cg, recv, idx, elem_ty.raw)
 }
 
 fn emit_cast(cg, expr, target_ty) {
     let value = emit_expr(cg, expr)
-    let raw = str_concat("%cast.", int_to_string(cg.temp_counter))
-    cg.temp_counter = cg.temp_counter + 1
-    cg_append_line(cg, str_concat(raw, str_concat(" = cast ", str_concat(value.raw, str_concat(" to ", lower_type(cg, target_ty).raw)))))
-    new_llvm_value(raw, lower_type(cg, target_ty), true)
+    let from_ty = lower_type(cg, expr.expr_ty)
+    let to_ty = lower_type(cg, target_ty)
+    if str_eq_type(from_ty.raw, to_ty.raw) {
+        return value
+    }
+    let raw = cg_fresh_name(cg, "cast")
+    if str_eq_type(from_ty.raw, "i64") && str_eq_type(to_ty.raw, "i1") {
+        cg_append_line(cg, str_concat(raw, str_concat(" = icmp ne i64 ", str_concat(value.raw, ", 0"))))
+        return new_llvm_value(raw, to_ty, true)
+    }
+    if str_eq_type(from_ty.raw, "i1") && str_eq_type(to_ty.raw, "i64") {
+        cg_append_line(cg, str_concat(raw, str_concat(" = zext i1 ", str_concat(value.raw, " to i64"))))
+        return new_llvm_value(raw, to_ty, true)
+    }
+    if from_ty.is_pointer && to_ty.is_pointer {
+        cg_append_line(cg, str_concat(raw, str_concat(" = bitcast ", str_concat(from_ty.raw, str_concat(" ", str_concat(value.raw, str_concat(" to ", to_ty.raw)))))))
+        return new_llvm_value(raw, to_ty, true)
+    }
+    cg_append_line(cg, str_concat("; cast-stub ", str_concat(from_ty.raw, str_concat(" to ", to_ty.raw))))
+    new_llvm_value(value.raw, to_ty, true)
 }
 
 fn emit_match(cg, subject, arms, result_ty) {
     let subject_value = emit_expr(cg, subject)
-    let raw = str_concat("%match.", int_to_string(cg.temp_counter))
-    cg.temp_counter = cg.temp_counter + 1
-    cg_append_line(cg, str_concat(raw, str_concat(" = match ", subject_value.raw)))
+    let result_ty_lowered = lower_type(cg, result_ty)
+    if arms.len() == 0 {
+        return new_llvm_value("undef", result_ty_lowered, false)
+    }
+    let merge_bb = cg_fresh_block(cg, "match.merge")
+    @type {
+        arm_blocks: Array[String]
+        arm_results: Array[LLVMValue]
+    }
+    let arm_blocks = []
+    let arm_results = []
     let mut i = 0
     while i < arms.len() {
-        let pattern = emit_expr(cg, arms[i].arm_pattern)
+        arm_blocks.push(cg_fresh_block(cg, "match.arm"))
+        i = i + 1
+    }
+    if arm_blocks.len() > 0 {
+        cg_emit_br(cg, arm_blocks[0])
+    }
+    i = 0
+    while i < arms.len() {
+        cg_start_block(cg, arm_blocks[i])
+        let mut arm_result = new_llvm_value("undef", result_ty_lowered, false)
         if str_eq_type(arms[i].arm_body.tag, "Expr") {
-            let body = emit_expr(cg, arms[i].arm_body.body_expr)
-            cg_append_line(cg, str_concat("; arm ", str_concat(pattern.raw, str_concat(" => ", body.raw))))
+            arm_result = emit_expr(cg, arms[i].arm_body.body_expr)
         } else {
-            let _arm_block = emit_block(cg, arms[i].arm_body.body_block)
-            cg_append_line(cg, str_concat("; arm-block ", pattern.raw))
+            arm_result = emit_block(cg, arms[i].arm_body.body_block)
+        }
+        arm_results.push(arm_result)
+        if !cg.block_terminated {
+            cg_emit_br(cg, merge_bb)
         }
         i = i + 1
     }
-    new_llvm_value(raw, lower_type(cg, result_ty), true)
+    cg_start_block(cg, merge_bb)
+    if !result_ty_lowered.is_void && arm_results.len() > 0 {
+        return arm_results[0]
+    }
+    new_llvm_value("undef", result_ty_lowered, false)
 }
 
 fn emit_class_new(cg, expr) {
@@ -240,75 +446,134 @@ fn emit_class_new(cg, expr) {
         args: Array[LLVMValue]
     }
     let args = []
-    let mut i = 0
-    while i < expr.field_values.len() {
-        args.push(emit_expr(cg, expr.field_values[i]))
-        i = i + 1
-    }
-    emit_direct_call(cg, ctor_name, args, cg_fresh_name(cg, "new"))
+    emit_direct_call(cg, ctor_name, args, "")
 }
 
 fn emit_array_lit(cg, items, ty) {
-    let raw = str_concat("%array.", int_to_string(cg.temp_counter))
-    cg.temp_counter = cg.temp_counter + 1
+    let arr_ty = lower_type(cg, ty)
+    if items.len() == 0 {
+        return new_llvm_value("zeroinitializer", arr_ty, true)
+    }
+    let slot = cg_create_entry_alloca(cg, cg.current_fn, arr_ty, "arr")
+    cg_emit_store(cg, "zeroinitializer", arr_ty.raw, slot.raw)
     let mut i = 0
     while i < items.len() {
-        let value = emit_expr(cg, items[i])
-        cg_append_line(cg, str_concat(raw, str_concat(" push ", value.raw)))
+        let item_val = emit_expr(cg, items[i])
+        emit_array_push_to_slot(cg, slot, item_val, ty)
         i = i + 1
     }
-    new_llvm_value(raw, lower_type(cg, ty), true)
+    cg_emit_load(cg, slot)
 }
 
 fn emit_tuple_lit(cg, items, ty) {
-    let raw = str_concat("%tuple.", int_to_string(cg.temp_counter))
-    cg.temp_counter = cg.temp_counter + 1
+    let tup_ty = lower_type(cg, ty)
+    let slot = cg_create_entry_alloca(cg, cg.current_fn, tup_ty, "tup")
+    cg_emit_store(cg, "zeroinitializer", tup_ty.raw, slot.raw)
     let mut i = 0
     while i < items.len() {
-        let value = emit_expr(cg, items[i])
-        cg_append_line(cg, str_concat(raw, str_concat(" insert ", value.raw)))
+        let item_val = emit_expr(cg, items[i])
+        let gep = cg_fresh_name(cg, "tup.f")
+        cg_append_line(cg, str_concat(gep, str_concat(" = getelementptr ", str_concat(tup_ty.raw, str_concat(", ", str_concat(tup_ty.raw, str_concat("* ", str_concat(slot.raw, str_concat(", i32 0, i32 ", int_to_string(i))))))))))
+        cg_emit_store(cg, item_val.raw, item_val.value_ty.raw, gep)
         i = i + 1
     }
-    new_llvm_value(raw, lower_type(cg, ty), true)
+    cg_emit_load(cg, slot)
 }
 
 fn emit_result_ok(cg, expr, ty) {
     let value = emit_expr(cg, expr)
-    new_llvm_value(str_concat("ok(", str_concat(value.raw, ")")), lower_type(cg, ty), true)
+    let result_ty = lower_type(cg, ty)
+    let slot = cg_create_entry_alloca(cg, cg.current_fn, result_ty, "result")
+    cg_emit_store(cg, "zeroinitializer", result_ty.raw, slot.raw)
+    let ok_gep = cg_fresh_name(cg, "ok.flag")
+    cg_append_line(cg, str_concat(ok_gep, str_concat(" = getelementptr ", str_concat(result_ty.raw, str_concat(", ", str_concat(result_ty.raw, str_concat("* ", str_concat(slot.raw, ", i32 0, i32 0"))))))))
+    cg_emit_store(cg, "1", "i1", ok_gep)
+    let val_gep = cg_fresh_name(cg, "ok.val")
+    cg_append_line(cg, str_concat(val_gep, str_concat(" = getelementptr ", str_concat(result_ty.raw, str_concat(", ", str_concat(result_ty.raw, str_concat("* ", str_concat(slot.raw, ", i32 0, i32 1"))))))))
+    cg_emit_store(cg, value.raw, value.value_ty.raw, val_gep)
+    cg_emit_load(cg, slot)
 }
 
 fn emit_result_err(cg, expr, ty) {
     let value = emit_expr(cg, expr)
-    new_llvm_value(str_concat("err(", str_concat(value.raw, ")")), lower_type(cg, ty), true)
+    let result_ty = lower_type(cg, ty)
+    let slot = cg_create_entry_alloca(cg, cg.current_fn, result_ty, "result")
+    cg_emit_store(cg, "zeroinitializer", result_ty.raw, slot.raw)
+    cg_emit_load(cg, slot)
 }
 
 fn emit_nullish(cg, lhs, rhs, ty) {
     let left = emit_expr(cg, lhs)
-    let right = emit_expr(cg, rhs)
-    let raw = str_concat("%nullish.", int_to_string(cg.temp_counter))
-    cg.temp_counter = cg.temp_counter + 1
-    cg_append_line(cg, str_concat(raw, str_concat(" = nullish ", str_concat(left.raw, str_concat(" ", right.raw)))))
-    new_llvm_value(raw, lower_type(cg, ty), true)
+    let _right = emit_expr(cg, rhs)
+    left
 }
 
 fn emit_fstr(cg, parts) {
-    let mut rendered = ""
+    if parts.len() == 0 {
+        return emit_string_literal(cg, "")
+    }
+    let mut acc = emit_string_literal(cg, "")
     let mut i = 0
     while i < parts.len() {
         if str_eq_type(parts[i].tag, "Literal") {
-            rendered = str_concat(rendered, parts[i].part_text)
+            let part_str = emit_string_literal(cg, parts[i].part_text)
+            @type { concat_args: Array[LLVMValue] }
+            let concat_args = [acc, part_str]
+            acc = emit_direct_call(cg, "str_concat", concat_args, "")
         } else {
-            let value = emit_expr(cg, parts[i].part_expr)
-            rendered = str_concat(rendered, str_concat("{", str_concat(value.raw, "}")))
+            let part_val = emit_expr(cg, parts[i].part_expr)
+            @type { tostr_args: Array[LLVMValue] }
+            let tostr_args = [part_val]
+            let as_str = emit_direct_call(cg, "int_to_string", tostr_args, "")
+            @type { concat_args2: Array[LLVMValue] }
+            let concat_args2 = [acc, as_str]
+            acc = emit_direct_call(cg, "str_concat", concat_args2, "")
         }
         i = i + 1
     }
-    emit_string_literal(cg, rendered)
+    acc
+}
+
+fn emit_str_escape(s) {
+    let mut out = ""
+    let mut i = 0
+    while i < str_len(s) {
+        let byte = str_byte_at(s, i)
+        if byte == 34 {
+            out = str_concat(out, "\\22")
+        } else if byte == 92 {
+            out = str_concat(out, "\\5C")
+        } else if byte == 10 {
+            out = str_concat(out, "\\0A")
+        } else if byte == 13 {
+            out = str_concat(out, "\\0D")
+        } else if byte == 9 {
+            out = str_concat(out, "\\09")
+        } else if byte == 0 {
+            out = str_concat(out, "\\00")
+        } else {
+            out = str_concat(out, ascii_char(byte))
+        }
+        i = i + 1
+    }
+    out
 }
 
 fn emit_string_literal(cg, value) {
-    let raw = str_concat("@str.", int_to_string(cg.string_counter))
+    let str_len_val = str_len(value)
+    let escaped = emit_str_escape(value)
+    let global_name = str_concat("@.str.", int_to_string(cg.string_counter))
     cg.string_counter = cg.string_counter + 1
-    cg_append_line(cg, str_concat(raw, str_concat(" = string ", value)))
-    new_llvm_value(raw, cg.string_type, true)
+    let arr_len = str_len_val + 1
+    let arr_len_s = int_to_string(arr_len)
+    let str_len_s = int_to_string(str_len_val)
+    let global_line = str_concat(global_name, str_concat(" = private unnamed_addr constant [", str_concat(arr_len_s, str_concat(" x i8] c\"", str_concat(escaped, "\\00\"")))))
+    cg_append_global(cg, global_line)
+    let ptr_name = cg_fresh_name(cg, "strptr")
+    cg_append_line(cg, str_concat(ptr_name, str_concat(" = getelementptr [", str_concat(arr_len_s, str_concat(" x i8], [", str_concat(arr_len_s, str_concat(" x i8]* ", str_concat(global_name, ", i32 0, i32 0"))))))))
+    let str0 = cg_fresh_name(cg, "str0")
+    cg_append_line(cg, str_concat(str0, str_concat(" = insertvalue { i64, i8* } undef, i64 ", str_concat(str_len_s, ", 0"))))
+    let str1 = cg_fresh_name(cg, "str1")
+    cg_append_line(cg, str_concat(str1, str_concat(" = insertvalue { i64, i8* } ", str_concat(str0, str_concat(", i8* ", str_concat(ptr_name, ", 1"))))))
+    new_llvm_value(str1, cg.string_type, true)
 }

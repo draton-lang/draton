@@ -1,16 +1,9 @@
-import { CodeGen, LLVMValue, cg_append_line, llvm_value_exists }
+import { CodeGen, LLVMValue, llvm_value_exists }
 
 @type {
     emit_gc_root: (CodeGen, LLVMValue) -> Unit
 }
 
 fn emit_gc_root(cg, alloca_ptr) {
-    if !llvm_value_exists(alloca_ptr) {
-        return
-    }
-    if !alloca_ptr.value_ty.is_pointer {
-        return
-    }
-    cg_append_line(cg, str_concat("; gc-root ", alloca_ptr.raw))
     let _done = 0
 }
