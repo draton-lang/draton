@@ -43,6 +43,7 @@ class PipelineResult {
     pipeline_bool_to_int: (Bool) -> Int
     pipeline_mode_opt_flag: (String) -> String
     pipeline_build_link_command: (String, String) -> String
+    pipeline_env_runtime_lib: () -> String
     draton_host_build_source: (String, String, String, String, String, Int) -> String
     draton_shell_run: (String) -> Int
 }
@@ -238,9 +239,16 @@ fn pipeline_mode_opt_flag(mode) {
 }
 
 fn pipeline_build_link_command(obj_path, bin_path) {
+    let runtime_lib = pipeline_env_runtime_lib()
     let mut cmd = str_concat("cc ", str_concat(pipeline_quote_shell_arg(obj_path), " "))
-    cmd = str_concat(cmd, "%DRATON_RUNTIME_LIB% ")
+    if str_len(runtime_lib) != 0 {
+        cmd = str_concat(cmd, str_concat(runtime_lib, " "))
+    }
     cmd = str_concat(cmd, str_concat("-o ", pipeline_quote_shell_arg(bin_path)))
-    cmd = str_concat(cmd, " -static-libgcc -static-libstdc++ -lbcrypt -luserenv -lntdll")
+    cmd = str_concat(cmd, " -Wl,--allow-multiple-definition -no-pie -ldl -lpthread -lm -lrt -lutil -lstdc++")
     cmd
+}
+
+fn pipeline_env_runtime_lib() {
+    "$DRATON_RUNTIME_LIB"
 }

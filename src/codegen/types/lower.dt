@@ -20,10 +20,10 @@ fn lower_type(cg, ty) {
         return new_llvm_type("i32", false, false)
     }
     if str_eq_type(ty.type_kind, "Float") || str_eq_type(ty.type_kind, "Float64") {
-        return new_llvm_type("f64", false, false)
+        return new_llvm_type("double", false, false)
     }
     if str_eq_type(ty.type_kind, "Float32") {
-        return new_llvm_type("f32", false, false)
+        return new_llvm_type("float", false, false)
     }
     if str_eq_type(ty.type_kind, "Bool") {
         return new_llvm_type("i1", false, false)
@@ -111,7 +111,7 @@ fn lower_type_str(kind) {
         return "{ i64, i8* }"
     }
     if str_eq_type(kind, "Float") || str_eq_type(kind, "Float64") {
-        return "f64"
+        return "double"
     }
     "i8*"
 }

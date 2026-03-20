@@ -82,6 +82,9 @@ fn build_fn_define(cg, fn_def, symbol, current_class) {
 
 fn emit_fn(cg, fn_def, current_class) {
     let mut symbol = fn_def.fn_name
+    if str_len(current_class) == 0 && str_eq_type(fn_def.fn_name, "main") {
+        symbol = "draton_user_main"
+    }
     if str_len(current_class) != 0 {
         symbol = str_concat(current_class, str_concat(".", fn_def.fn_name))
     }

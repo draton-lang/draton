@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -69,10 +70,53 @@ def build_stage(label: str, cmd: list[str], output_path: str) -> bool:
     elapsed = time.time() - start
     if result.returncode != 0:
         print(f"  FAIL (elapsed: {elapsed:.1f}s)")
-        print(result.stderr[:500] if result.stderr else result.stdout[:500])
+        signal_msg = format_returncode(result.returncode)
+        if signal_msg:
+            print(f"  {signal_msg}")
+        detail = merged_output(result.stdout, result.stderr)
+        if detail:
+            print(detail[:500])
         return False
     print(f"  OK (elapsed: {elapsed:.1f}s)")
     return True
+
+
+def merged_output(stdout: str, stderr: str) -> str:
+    parts = []
+    if stderr.strip():
+        parts.append(stderr.strip())
+    if stdout.strip():
+        parts.append(stdout.strip())
+    return "\n".join(parts)
+
+
+def format_returncode(returncode: int) -> str:
+    if returncode >= 0:
+        return ""
+    sig = -returncode
+    try:
+        return f"terminated by signal {sig} ({signal.Signals(sig).name})"
+    except ValueError:
+        return f"terminated by signal {sig}"
+
+
+def preflight_command(label: str, cmd: list[str]) -> bool:
+    print(f"Preflight {label}...")
+    print(f"  {' '.join(cmd)}")
+    start = time.time()
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    elapsed = time.time() - start
+    if result.returncode == 0:
+        print(f"  OK (elapsed: {elapsed:.1f}s)")
+        return True
+    print(f"  FAIL (elapsed: {elapsed:.1f}s)")
+    signal_msg = format_returncode(result.returncode)
+    if signal_msg:
+        print(f"  {signal_msg}")
+    detail = merged_output(result.stdout, result.stderr)
+    if detail:
+        print(detail[:500])
+    return False
 
 
 def run_case(binary: str, src: str, tmp_dir: str, suffix: str) -> tuple[int, str, str]:
@@ -93,7 +137,10 @@ def run_case(binary: str, src: str, tmp_dir: str, suffix: str) -> tuple[int, str
         timeout=30,
     )
     if build.returncode != 0:
-        msg = (build.stderr or build.stdout or "").strip()
+        msg = merged_output(build.stdout, build.stderr)
+        signal_msg = format_returncode(build.returncode)
+        if signal_msg:
+            msg = f"{signal_msg}\n{msg}".strip()
         return (-999, "", f"BUILD FAIL: {msg[:200]}")
 
     run = subprocess.run([out_path], capture_output=True, text=True, timeout=10)
@@ -175,6 +222,12 @@ def main():
                 s1,
             ],
             s1,
+        )
+        if not ok:
+            sys.exit(1)
+        ok = preflight_command(
+            "stage 1 self-check on src/main.dt",
+            [s1, "check", os.path.join(repo, "src/main.dt")],
         )
         if not ok:
             sys.exit(1)

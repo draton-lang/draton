@@ -37,8 +37,8 @@ fn emit_expr(cg, expr) {
     }
     if str_eq_type(expr.tag, "FloatLit") {
         let raw = cg_fresh_name(cg, "f")
-        cg_append_line(cg, str_concat(raw, " = fadd f64 0.0, 0.0"))
-        return new_llvm_value(raw, new_llvm_type("f64", false, false), true)
+        cg_append_line(cg, str_concat(raw, " = fadd double 0.0, 0.0"))
+        return new_llvm_value(raw, new_llvm_type("double", false, false), true)
     }
     if str_eq_type(expr.tag, "BoolLit") {
         if expr.bool_value {
@@ -221,7 +221,7 @@ fn emit_binop(cg, lhs, op, rhs, result_ty) {
     let right = emit_expr(cg, rhs)
     let lowered_ty = lower_type(cg, result_ty)
     let lhs_ty = lower_type(cg, lhs.expr_ty)
-    let is_float = str_eq_type(lhs_ty.raw, "f64") || str_eq_type(lhs_ty.raw, "f32")
+    let is_float = str_eq_type(lhs_ty.raw, "double") || str_eq_type(lhs_ty.raw, "float")
     let is_bool = str_eq_type(lhs_ty.raw, "i1")
     let llvm_op = binop_to_llvm(op, is_float, is_bool)
     let raw = cg_fresh_name(cg, "bin")
@@ -239,8 +239,8 @@ fn emit_unop(cg, op, expr) {
         return new_llvm_value(raw, new_llvm_type("i1", false, false), true)
     }
     if str_eq_type(op, "-") {
-        if str_eq_type(ty.raw, "f64") {
-            cg_append_line(cg, str_concat(raw, str_concat(" = fneg f64 ", inner.raw)))
+        if str_eq_type(ty.raw, "double") {
+            cg_append_line(cg, str_concat(raw, str_concat(" = fneg double ", inner.raw)))
         } else {
             cg_append_line(cg, str_concat(raw, str_concat(" = sub i64 0, ", inner.raw)))
         }
@@ -567,7 +567,9 @@ fn emit_string_literal(cg, value) {
     let arr_len = str_len_val + 1
     let arr_len_s = int_to_string(arr_len)
     let str_len_s = int_to_string(str_len_val)
-    let global_line = str_concat(global_name, str_concat(" = private unnamed_addr constant [", str_concat(arr_len_s, str_concat(" x i8] c\"", str_concat(escaped, "\\00\"")))))
+    let quote = ascii_char(34)
+    let literal_body = str_concat("c", str_concat(quote, str_concat(escaped, str_concat("\\00", quote))))
+    let global_line = str_concat(global_name, str_concat(" = private unnamed_addr constant [", str_concat(arr_len_s, str_concat(" x i8] ", literal_body))))
     cg_append_global(cg, global_line)
     let ptr_name = cg_fresh_name(cg, "strptr")
     cg_append_line(cg, str_concat(ptr_name, str_concat(" = getelementptr [", str_concat(arr_len_s, str_concat(" x i8], [", str_concat(arr_len_s, str_concat(" x i8]* ", str_concat(global_name, ", i32 0, i32 0"))))))))

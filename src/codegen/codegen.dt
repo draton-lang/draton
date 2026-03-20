@@ -1,4 +1,4 @@
-import { TypedProgram, TypedItem, Type, type_display, CodeGenError, new_codegen_error, str_eq_type,
+import { TypedProgram, TypedItem, Type, type_display, CodeGenError, new_codegen_error, str_eq_type, type_unit, ascii_char,
          codegen_emit_item, build_class_layout, lower_type }
 
 @extern "C" {
@@ -208,6 +208,9 @@ class CodeGen {
     codegen_write_object: (CodeGen, String) -> Unit
     codegen_declare_runtime: (CodeGen) -> Unit
     codegen_predeclare_items: (CodeGen, TypedProgram) -> Unit
+    codegen_emit_main_wrapper: (CodeGen, Type) -> Unit
+    codegen_has_top_level_main: (TypedProgram) -> Bool
+    codegen_top_level_main_ret_ty: (TypedProgram) -> Type
     codegen_verify: (CodeGen) -> Unit
     codegen_register_runtime_fn: (CodeGen, String, String) -> Unit
     __draton_std_io_write_file: (String, String) -> Bool
@@ -250,7 +253,7 @@ fn new_codegen() {
     cg.builder = builder
     cg.string_type = new_llvm_type("{ i64, i8* }", false, false)
     cg.i64_type = new_llvm_type("i64", false, false)
-    cg.f64_type = new_llvm_type("f64", false, false)
+    cg.f64_type = new_llvm_type("double", false, false)
     cg.bool_type = new_llvm_type("i1", false, false)
     cg.void_type = new_llvm_type("void", true, false)
     cg.functions = function_names
@@ -589,13 +592,13 @@ fn cg_type_size(ty_raw) {
     if str_eq_type(ty_raw, "i64") {
         return 8
     }
-    if str_eq_type(ty_raw, "f64") {
+    if str_eq_type(ty_raw, "double") {
         return 8
     }
     if str_eq_type(ty_raw, "i32") {
         return 4
     }
-    if str_eq_type(ty_raw, "f32") {
+    if str_eq_type(ty_raw, "float") {
         return 4
     }
     if str_eq_type(ty_raw, "i16") {
@@ -621,6 +624,9 @@ fn codegen_emit(cg, program) {
         codegen_emit_item(cg, program.program_items[i])
         i = i + 1
     }
+    if codegen_has_top_level_main(program) {
+        codegen_emit_main_wrapper(cg, codegen_top_level_main_ret_ty(program))
+    }
     codegen_verify(cg)
     let _done = 0
 }
@@ -632,7 +638,7 @@ fn codegen_write_ir(cg, path) {
         if i == 0 {
             ir = cg.module.lines[i]
         } else {
-            ir = str_concat(ir, str_concat("\n", cg.module.lines[i]))
+            ir = str_concat(ir, str_concat(ascii_char(10), cg.module.lines[i]))
         }
         i = i + 1
     }
@@ -673,7 +679,7 @@ fn codegen_declare_runtime(cg) {
     cg.module.lines.push("declare { i64, i8* } @draton_input({ i64, i8* })")
     cg.module.lines.push("declare i64 @draton_string_parse_int({ i64, i8* })")
     cg.module.lines.push("declare i64 @draton_string_parse_int_radix({ i64, i8* }, i64)")
-    cg.module.lines.push("declare f64 @draton_string_parse_float({ i64, i8* })")
+    cg.module.lines.push("declare double @draton_string_parse_float({ i64, i8* })")
     cg.module.lines.push("declare void @draton_set_cli_args(i32, i8**)")
     cg.module.lines.push("declare i64 @draton_cli_argc()")
     cg.module.lines.push("declare { i64, i8* } @draton_cli_arg(i64)")
@@ -699,7 +705,7 @@ fn codegen_declare_runtime(cg) {
     codegen_register_runtime_fn(cg, "draton_input", "{ i64, i8* }")
     codegen_register_runtime_fn(cg, "draton_string_parse_int", "i64")
     codegen_register_runtime_fn(cg, "draton_string_parse_int_radix", "i64")
-    codegen_register_runtime_fn(cg, "draton_string_parse_float", "f64")
+    codegen_register_runtime_fn(cg, "draton_string_parse_float", "double")
     codegen_register_runtime_fn(cg, "draton_set_cli_args", "void")
     codegen_register_runtime_fn(cg, "draton_cli_argc", "i64")
     codegen_register_runtime_fn(cg, "draton_cli_arg", "{ i64, i8* }")
@@ -724,7 +730,11 @@ fn codegen_predeclare_items(cg, program) {
         if str_eq_type(item.tag, "Fn") {
             let fn_ret_ty = lower_type(cg, item.item_fn_def.fn_ret_type)
             let fn_ty = fn_ret_ty
-            cg_register_function(cg, item.item_fn_def.fn_name, new_llvm_value(str_concat("@", item.item_fn_def.fn_name), fn_ty, true), fn_ty)
+            let mut symbol = item.item_fn_def.fn_name
+            if str_eq_type(symbol, "main") {
+                symbol = "draton_user_main"
+            }
+            cg_register_function(cg, symbol, new_llvm_value(str_concat("@", symbol), fn_ty, true), fn_ty)
         } else if str_eq_type(item.tag, "PanicHandler") {
             let fn_ret_ty = lower_type(cg, item.item_panic_handler_def.fn_ret_type)
             cg_register_function(cg, item.item_panic_handler_def.fn_name, new_llvm_value(str_concat("@", item.item_panic_handler_def.fn_name), fn_ret_ty, true), fn_ret_ty)
@@ -755,6 +765,70 @@ fn codegen_predeclare_items(cg, program) {
         i = i + 1
     }
     let _done = 0
+}
+
+fn codegen_has_top_level_main(program) {
+    let mut i = 0
+    while i < program.program_items.len() {
+        if str_eq_type(program.program_items[i].tag, "Fn") &&
+           str_eq_type(program.program_items[i].item_fn_def.fn_name, "main") {
+            return true
+        }
+        i = i + 1
+    }
+    false
+}
+
+fn codegen_top_level_main_ret_ty(program) {
+    let mut i = 0
+    while i < program.program_items.len() {
+        if str_eq_type(program.program_items[i].tag, "Fn") &&
+           str_eq_type(program.program_items[i].item_fn_def.fn_name, "main") {
+            return program.program_items[i].item_fn_def.fn_ret_type
+        }
+        i = i + 1
+    }
+    type_unit()
+}
+
+fn codegen_emit_main_wrapper(cg, ret_ty) {
+    @type {
+        lines: Array[String]
+    }
+    let mut lines = []
+    let lowered_ret = lower_type(cg, ret_ty)
+    lines.push("define i64 @main(i32 %argc, i8** %argv) {")
+    lines.push("entry:")
+    lines.push("  call void @draton_set_cli_args(i32 %argc, i8** %argv)")
+    if str_eq_type(lowered_ret.raw, "i64") {
+        lines.push("  %draton.main.ret = call i64 @draton_user_main()")
+        lines.push("  ret i64 %draton.main.ret")
+    } else if str_eq_type(lowered_ret.raw, "i32") {
+        lines.push("  %draton.main.ret = call i32 @draton_user_main()")
+        lines.push("  %draton.main.exit = zext i32 %draton.main.ret to i64")
+        lines.push("  ret i64 %draton.main.exit")
+    } else if str_eq_type(lowered_ret.raw, "i16") {
+        lines.push("  %draton.main.ret = call i16 @draton_user_main()")
+        lines.push("  %draton.main.exit = zext i16 %draton.main.ret to i64")
+        lines.push("  ret i64 %draton.main.exit")
+    } else if str_eq_type(lowered_ret.raw, "i8") || str_eq_type(lowered_ret.raw, "i1") {
+        lines.push(str_concat("  %draton.main.ret = call ", str_concat(lowered_ret.raw, " @draton_user_main()")))
+        lines.push(str_concat("  %draton.main.exit = zext ", str_concat(lowered_ret.raw, " %draton.main.ret to i64")))
+        lines.push("  ret i64 %draton.main.exit")
+    } else if lowered_ret.is_void {
+        lines.push("  call void @draton_user_main()")
+        lines.push("  ret i64 0")
+    } else {
+        lines.push(str_concat("  %draton.main.ret = call ", str_concat(lowered_ret.raw, " @draton_user_main()")))
+        lines.push("  ret i64 0")
+    }
+    lines.push("}")
+    lines.push("")
+    let mut i = 0
+    while i < lines.len() {
+        cg.module.lines.push(lines[i])
+        i = i + 1
+    }
 }
 
 fn codegen_verify(cg) {
