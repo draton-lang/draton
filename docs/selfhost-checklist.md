@@ -4,9 +4,10 @@ This checklist tracks the transition from the current Rust-authoritative reposit
 
 The checklist is intentionally operational:
 
-- every item should be either verifiable now or blocked by a named technical reason
-- every phase has explicit gates
-- "self-host" is split into compiler-core, bootstrap, runtime, backend, and full-toolchain milestones so progress is measurable instead of rhetorical
+- every item must be either verifiable now or blocked by a named technical reason
+- every phase has explicit exit gates
+- every blocker has a reproduction command
+- every completed tranche should update this file and land as its own commit
 
 ## Status legend
 
@@ -15,7 +16,36 @@ The checklist is intentionally operational:
 - `[ ]` not started
 - `[!]` blocked by a known issue
 
-## Current snapshot
+## How To Use This Checklist
+
+Use this file as the single execution board for self-host work.
+
+- update `Current snapshot` after every meaningful tranche
+- do not mark an item done unless its verification command has been rerun
+- if an item regresses, change it back from `[x]` to `[!]` or `[-]`
+- when a blocker is narrowed, replace vague text with the smallest confirmed failing scope
+- when a phase gate passes, record the commit that first made it pass
+
+## Progress Ledger
+
+These are the committed tranches already landed during the current self-host push.
+
+- `[x]` `ffa5374` `fix: improve self-host bootstrap diagnostics and linux codegen path`
+  - `tools/verify_stage2.py` now reports signal-based failures
+  - self-host Linux link path no longer hardcodes Windows-only libraries
+  - self-host backend emits a native `main(argc, argv)` wrapper around `draton_user_main`
+  - self-host textual LLVM uses real newlines and `double` / `float`
+- `[x]` `a0a4775` `docs: add self-host progress checklist`
+  - initial self-host roadmap and gate structure added
+- `[x]` `e1cb534` `docs: track current self-host blockers`
+  - focused blocker harness added at `tools/repro_selfhost_blockers.py`
+  - parser crash narrowed to `header + main()` extracted from `src/main.dt`
+
+## Current Snapshot
+
+Last refreshed: `2026-03-20`
+
+### What is currently true
 
 - `[x]` Self-host compiler mirror exists under `src/`
 - `[x]` Strict canonical self-host syntax check exists
@@ -24,112 +54,235 @@ The checklist is intentionally operational:
 - `[x]` A focused blocker harness exists at `tools/repro_selfhost_blockers.py`
 - `[x]` Self-host Linux link path no longer hardcodes Windows-only libraries
 - `[x]` Self-host backend now emits a `main(argc, argv)` wrapper around `draton_user_main`
-- `[x]` Self-host textual LLVM backend now emits real newlines and uses `double`/`float` instead of `f64`/`f32`
+- `[x]` Self-host textual LLVM backend now emits real newlines and uses `double` / `float` instead of `f64` / `f32`
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
-- `[!]` Self-host `build examples/hello.dt` still fails in string-literal LLVM IR escaping/length accounting
+- `[!]` Stage1 `ast-dump src/main.dt` still crashes with `SIGSEGV`
+- `[!]` Stage1 `ast-dump` on extracted `header + main()` still crashes with `SIGSEGV`
+- `[!]` Self-host `build examples/hello.dt` still fails in string-literal LLVM IR escaping / length accounting
+
+### Current blocker matrix
+
+| Workstream | Repro command | Current result | Notes |
+| --- | --- | --- | --- |
+| Parser self-check | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `check-src-main -> -11` | Current crash class is `SIGSEGV` |
+| Parser AST dump | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-src-main -> -11` | Same failure class as self-check |
+| Reduced parser repro | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-header-plus-main -> -11` | Narrowed below full compiler source |
+| String literal IR | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 1` | LLVM reports `[17 x i8]` vs `[15 x i8]` mismatch |
+
+### Current baseline commands
+
+Run these before and after each tranche.
+
+- `[x]` `python3 tools/check_selfhost_strict_subset.py`
+- `[x]` `cargo run -p drat -- build src/main.dt -o /tmp/draton_s1`
+- `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 -u tools/verify_stage2.py`
 
 ## Phase S0: Bootstrap Truth And Gates
 
-- `[x]` Define the working milestone ladder:
+Goal: remove ambiguity about what "self-host" means in this repository and make every bootstrap claim reproducible.
+
+### S0.A Definitions
+
+- `[x]` Split progress into:
   - syntax parity
   - semantic parity
   - bootstrap parity
   - runtime parity
+  - backend parity
   - toolchain parity
-- `[x]` Make `tools/verify_stage2.py` print signal-based failures
-- `[x]` Add a preflight `stage1 check src/main.dt` gate before stage2 build
-- `[ ]` Add a dedicated stage3 verification script or stage3 mode to the existing script
-- `[ ]` Record the current baseline timings for stage1, stage2, stage3 in a stable results file
-- `[ ]` Add a single command that summarizes self-host readiness in one place
-- `[ ]` Update public docs so `README`, `docs/selfhost-canonical-migration-status.md`, and `docs/gc-scorecard.md` stop disagreeing about current self-host readiness
+- `[x]` Treat Rust as authoritative until S2 gate passes
+- `[x]` Treat self-host under `src/` as the bootstrap target and parity mirror
 
-### S0 gate
+### S0.B Verification harnesses
+
+- `[x]` `tools/verify_stage2.py` prints signal-based failures
+- `[x]` `tools/verify_stage2.py` runs a preflight stage1 `check src/main.dt`
+- `[x]` `tools/repro_selfhost_blockers.py` exists for focused repros
+- `[ ]` Add a stage3 verification path
+- `[ ]` Add a one-shot readiness command that runs the agreed baseline suite
+- `[ ]` Write baseline timings to a checked-in results file
+
+### S0.C Documentation alignment
+
+- `[ ]` Update `README` to stop implying more self-host readiness than currently proven
+- `[ ]` Update `docs/selfhost-canonical-migration-status.md` to match current blocker list
+- `[ ]` Update `docs/gc-scorecard.md` to reflect current bootstrap blockers and not older ones
+- `[ ]` Link this checklist from the main self-host status docs
+
+### S0 Exit Gate
 
 - `[x]` `python3 tools/check_selfhost_strict_subset.py`
-- `[x]` `python3 -u tools/verify_stage2.py` now fails with a concrete blocker instead of a blank failure
-- `[ ]` Stage summary command committed and documented
+- `[x]` `python3 -u tools/verify_stage2.py` fails with a concrete blocker instead of a blank failure
+- `[ ]` Stage3 verification path exists
+- `[ ]` Public self-host status docs agree with the harness output
 
 ## Phase S1: Self-Host Compiler Bootstrap Stability
 
-### Parser and frontend crash elimination
+Goal: make the stage1 self-host binary capable of checking and rebuilding the compiler without crashing.
 
-- `[!]` Fix the stage1 parser crash on `src/main.dt`
-- `[-]` Reduce the current `SIGSEGV` to a checked-in minimal parser fixture
-- `[x]` Narrow the crash from the full compiler source down to `header + main()` extracted from `src/main.dt`
-- `[ ]` Add a self-host parser regression test for the reduced fixture
-- `[ ]` Confirm `ast-dump src/main.dt` no longer crashes
-- `[ ]` Confirm `check src/main.dt` no longer crashes
-- `[ ]` Confirm `type-dump src/main.dt` no longer crashes
+### S1.A Parser and frontend crash elimination
 
-### Self-host codegen textual IR correctness
+Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstrap.
 
-- `[x]` Use LLVM textual float types (`double` and `float`)
+- `[x]` Confirm crash exists in both `check src/main.dt` and `ast-dump src/main.dt`
+- `[x]` Narrow crash below the full compiler source
+- `[x]` Confirm `header only` from `src/main.dt` parses successfully
+- `[x]` Confirm `header + main()` from `src/main.dt` is sufficient to crash
+- `[ ]` Check in a minimal parser regression fixture derived from the current repro
+- `[ ]` Make the minimal fixture fail under an automated self-host parser test
+- `[ ]` Identify whether the root cause is:
+  - parser synchronization bug
+  - token lifetime / rooting bug
+  - AST node lifetime / rooting bug
+  - another frontend memory-safety issue
+- `[ ]` Fix the crash in the smallest affected parser or frontend surface
+- `[ ]` Rerun the reduced fixture until it exits `0`
+- `[ ]` Rerun `ast-dump src/main.dt` until it exits `0`
+- `[ ]` Rerun `check src/main.dt` until it exits `0`
+- `[ ]` Rerun `type-dump src/main.dt` until it exits `0`
+
+#### S1.A Verification commands
+
+- `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
+- `[ ]` `/tmp/draton_s1 ast-dump /tmp/<reduced-fixture>.dt`
+- `[ ]` `/tmp/draton_s1 ast-dump src/main.dt`
+- `[ ]` `/tmp/draton_s1 check src/main.dt`
+- `[ ]` `/tmp/draton_s1 type-dump src/main.dt`
+
+#### S1.A Artifact targets
+
+- `[ ]` minimal checked-in parser repro fixture
+- `[ ]` regression test path for that fixture
+- `[ ]` notes in this file naming the exact root cause once confirmed
+
+### S1.B Self-host textual LLVM correctness
+
+Objective: make stage1-generated textual LLVM valid enough to compile and run basic programs on Linux.
+
+- `[x]` Use LLVM textual float types `double` and `float`
 - `[x]` Emit real line breaks in generated `.ll` files
 - `[x]` Emit a native `main(argc, argv)` wrapper for top-level Draton `main`
-- `[!]` Fix string literal global escaping so LLVM accepts generated constants
-- `[ ]` Verify `examples/hello.dt` builds and runs via stage1 on Linux
-- `[ ]` Verify at least one arithmetic program builds and runs via stage1 on Linux
-- `[ ]` Verify at least one class/layer fixture builds via stage1 on Linux
+- `[x]` Remove the Linux build path dependence on Windows-only libraries
+- `[ ]` Fix string literal global escaping so LLVM accepts emitted constants
+- `[ ]` Fix string literal length accounting so constant sizes match actual bytes
+- `[ ]` Verify `examples/hello.dt` builds via stage1
+- `[ ]` Verify `examples/hello.dt` runs via stage1
+- `[ ]` Verify at least one arithmetic fixture builds and runs via stage1
+- `[ ]` Verify at least one branch/control-flow fixture builds and runs via stage1
+- `[ ]` Verify at least one class/layer fixture builds via stage1
 
-### Stage ladder
+#### S1.B Verification commands
+
+- `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
+- `[ ]` `DRATON_RUNTIME_LIB=... /tmp/draton_s1 build examples/hello.dt -o /tmp/selfhost_hello`
+- `[ ]` `/tmp/selfhost_hello`
+- `[ ]` stage1 build and run commands for arithmetic and control-flow fixtures
+
+#### S1.B Artifact targets
+
+- `[ ]` checked-in notes of the string-literal IR root cause
+- `[ ]` at least three passing Linux stage1 executable fixtures
+
+### S1.C Bootstrap ladder
+
+Objective: move from "Rust can build stage1" to "Draton can rebuild itself repeatedly".
 
 - `[x]` Rust stage0 builds stage1
 - `[!]` Stage1 self-check on `src/main.dt` passes
 - `[ ]` Stage1 builds stage2
+- `[ ]` Stage2 self-check on `src/main.dt` passes
 - `[ ]` Stage2 builds stage3
-- `[ ]` Stage2 and stage3 produce matching behavior on the bootstrap corpus
+- `[ ]` Stage3 self-check on `src/main.dt` passes
+- `[ ]` Stage2 and stage3 exhibit matching CLI behavior on the bootstrap corpus
+- `[ ]` `tools/verify_stage2.py` passes end to end
+- `[ ]` Stage3 verification command exists and passes end to end
 
-### S1 gate
+#### S1.C Verification commands
 
-- `[ ]` `/tmp/draton_s1 check src/main.dt` exits `0`
-- `[ ]` `/tmp/draton_s1 build examples/hello.dt -o ...` exits `0`
-- `[ ]` `/tmp/draton_s2 --help` matches stage1
-- `[ ]` `python3 -u tools/verify_stage2.py` passes all cases
+- `[x]` `cargo run -p drat -- build src/main.dt -o /tmp/draton_s1`
+- `[ ]` `/tmp/draton_s1 check src/main.dt`
+- `[ ]` `/tmp/draton_s1 build src/main.dt -o /tmp/draton_s2`
+- `[ ]` `/tmp/draton_s2 check src/main.dt`
+- `[ ]` `/tmp/draton_s2 build src/main.dt -o /tmp/draton_s3`
+- `[ ]` `/tmp/draton_s3 check src/main.dt`
+- `[ ]` `python3 -u tools/verify_stage2.py`
+
+### S1 Exit Gate
+
+- `[ ]` Stage1 no longer crashes on `src/main.dt`
+- `[ ]` Stage1 builds and runs `examples/hello.dt`
+- `[ ]` Stage1 builds stage2
+- `[ ]` Stage2 builds stage3
+- `[ ]` Stage2 and stage3 agree on the bootstrap corpus
 
 ## Phase S2: Promote Draton Compiler-Core To Primary
 
-- `[ ]` Decide and document when `src/` becomes the primary compiler-core implementation
-- `[ ]` Make all frontend semantic fixes land in Draton first or in Rust and Draton together
-- `[ ]` Add a parity suite that compares Rust stage0 vs Draton stage1 for:
+Goal: move compiler-core authority from Rust to Draton only after bootstrap stability is real.
+
+### S2.A Parity discipline
+
+- `[ ]` Define the selected parity corpus for frontend behavior
+- `[ ]` Compare Rust stage0 vs Draton stage1 on:
   - `ast-dump`
   - `type-dump`
   - `check`
-  - selected executable fixtures
-- `[ ]` Split compiler-core interfaces in Draton into explicit surfaces:
+  - executable fixtures
+- `[ ]` Record known mismatches explicitly instead of leaving them implicit
+- `[ ]` Add anti-drift checks so new semantic changes do not land only in Rust
+
+### S2.B Interface cleanup
+
+- `[ ]` Split compiler-core surfaces in Draton into explicit layers:
   - lex
   - parse
   - check
+  - mono
   - emit
-- `[ ]` Mark Rust crates as `bootstrap/parity reference` instead of source of truth once the gate is met
+- `[ ]` Separate host-facing services from compiler-core logic
+- `[ ]` Mark which surfaces are allowed to depend on runtime or host ABI
 
-### S2 gate
+### S2.C Source-of-truth transition
 
-- `[ ]` Draton stage1 and Rust stage0 agree on the selected frontend corpus
+- `[ ]` Document the exact acceptance conditions for promoting `src/` to primary compiler-core
+- `[ ]` Switch status docs from "mirror" to "primary" only after S2 gate passes
+- `[ ]` Re-scope Rust crates as bootstrap/parity references
+
+### S2 Exit Gate
+
+- `[ ]` Draton stage1 and Rust stage0 agree on the selected parity corpus
 - `[ ]` Stage2 and stage3 remain stable across repeated bootstrap runs
-- `[ ]` No new language semantic change is merged only in Rust
+- `[ ]` No new language semantic change lands only in Rust
 
 ## Phase S3: Runtime And Host Surface Extraction
 
-### Host ABI minimum for Linux x86_64
+Goal: stop depending on the Rust runtime crate for the normal bootstrap path.
 
-- `[ ]` File read/write
-- `[ ]` Process exec
-- `[ ]` `argv` / `env`
-- `[ ]` stdout / stderr
-- `[ ]` wall-clock and monotonic time
+### S3.A Linux x86_64 host ABI minimum
+
+- `[ ]` file read
+- `[ ]` file write
+- `[ ]` process exec
+- `[ ]` argv
+- `[ ]` env
+- `[ ]` stdout
+- `[ ]` stderr
+- `[ ]` wall-clock time
+- `[ ]` monotonic time
 - `[ ]` heap allocation primitive
-- `[ ]` explicit bootstrap ABI document for this host layer
+- `[ ]` bootstrap host ABI document
 
-### Runtime minimum
+### S3.B Bootstrap-minimal runtime
 
 - `[ ]` startup / shutdown glue
-- `[ ]` string and array primitives required by compiler-core
+- `[ ]` string primitives needed by compiler-core
+- `[ ]` array primitives needed by compiler-core
 - `[ ]` panic path
-- `[ ]` memory management path sufficient for compiler bootstrap
-- `[ ]` GC policy for bootstrap mode documented
-- `[ ]` split bootstrap-minimal runtime from full runtime ambitions
+- `[ ]` allocation path sufficient for bootstrap
+- `[ ]` documented bootstrap-mode GC or non-GC policy
+- `[ ]` separate bootstrap-minimal runtime from full runtime ambitions
 
-### Stdlib surface needed for bootstrap
+### S3.C Stdlib surface needed for bootstrap
 
 - `[ ]` `io`
 - `[ ]` `string`
@@ -139,36 +292,42 @@ The checklist is intentionally operational:
 - `[ ]` `collections`
 - `[ ]` `json`
 - `[ ]` `math`
-- `[ ]` `net` deferred unless required by toolchain
-- `[ ]` `crypto` deferred unless required by toolchain
+- `[ ]` leave `net` deferred unless needed
+- `[ ]` leave `crypto` deferred unless needed
 
-### S3 gate
+### S3 Exit Gate
 
-- `[ ]` Compiler-core and stage1 toolchain run without the Rust runtime crate on Linux
+- `[ ]` Stage1 compiler-core and bootstrap toolchain run without the Rust runtime crate
 - `[ ]` Required stdlib modules used by bootstrap no longer depend on Rust-backed FFI
 
 ## Phase S4: Direct Assembly Backend
 
-### Backend architecture
+Goal: replace the LLVM-text path with a native assembly path for the first supported host target.
 
-- `[ ]` Freeze the initial backend target to `linux-x86_64`
-- `[ ]` Define an internal post-typecheck lowering boundary for codegen
-- `[ ]` Define calling convention and stack-frame policy
+### S4.A Backend architecture
+
+- `[ ]` Freeze initial backend target to `linux-x86_64`
+- `[ ]` Define a stable internal lowering boundary after typecheck / mono
+- `[ ]` Define calling convention policy
+- `[ ]` Define stack-frame policy
 - `[ ]` Define data section and string/global layout policy
 - `[ ]` Define external symbol ABI for runtime hooks
 
-### Backend implementation
+### S4.B Backend implementation
 
-- `[ ]` integer arithmetic and comparisons
-- `[ ]` branches and structured control flow
-- `[ ]` function calls and returns
+- `[ ]` integer arithmetic
+- `[ ]` comparisons
+- `[ ]` branches
+- `[ ]` structured control flow
+- `[ ]` function calls
+- `[ ]` returns
 - `[ ]` local stack slots
-- `[ ]` string/object references required for compiler bootstrap
-- `[ ]` top-level entrypoint emission
+- `[ ]` string/object references needed for bootstrap
+- `[ ]` entrypoint emission
 - `[ ]` assembler invocation
 - `[ ]` linker invocation
 
-### Backend verification
+### S4.C Backend verification
 
 - `[ ]` build and run constant/arithmetic fixtures
 - `[ ]` build and run control-flow fixtures
@@ -176,14 +335,16 @@ The checklist is intentionally operational:
 - `[ ]` build and run compiler-facing subset
 - `[ ]` build the self-host compiler with the assembly backend
 
-### S4 gate
+### S4 Exit Gate
 
 - `[ ]` Direct-asm backend builds and runs the bootstrap fixture set on Linux
 - `[ ]` Direct-asm backend builds the self-host compiler itself
 
 ## Phase S5: Full Toolchain In Draton
 
-### Core commands
+Goal: move from self-host compiler-core to self-host day-to-day tooling.
+
+### S5.A Core commands already present in Draton
 
 - `[x]` `build`
 - `[x]` `run`
@@ -191,7 +352,7 @@ The checklist is intentionally operational:
 - `[x]` `ast-dump`
 - `[x]` `type-dump`
 
-### Tooling to port
+### S5.B Commands still to port
 
 - `[ ]` `fmt`
 - `[ ]` `lint`
@@ -201,40 +362,62 @@ The checklist is intentionally operational:
 - `[ ]` `repl`
 - `[ ]` `lsp`
 - `[ ]` package management commands
-- `[ ]` publish/update commands
+- `[ ]` publish / update commands
 
-### Tooling quality gates
+### S5.C Tooling quality gates
 
 - `[ ]` formatter regression corpus
 - `[ ]` lint corpus
 - `[ ]` task runner smoke suite
+- `[ ]` test command smoke suite
+- `[ ]` doc generation smoke suite
 - `[ ]` LSP smoke suite
 - `[ ]` package workflow smoke suite
 
-### S5 gate
+### S5 Exit Gate
 
 - `[ ]` Draton-first toolchain covers the commands needed for normal compiler development
-- `[ ]` Rust `drat` CLI can be retired or reduced to a bootstrap-only compatibility shell
+- `[ ]` Rust `drat` CLI can be retired or reduced to bootstrap-only compatibility
 
 ## Phase S6: Rust Retirement
 
+Goal: reach the repository shape "Draton + assembly/bootstrap glue" without Rust in the normal path.
+
 - `[ ]` Remove Rust as source of truth for compiler-core
-- `[ ]` Remove Rust runtime crate from normal build path
-- `[ ]` Remove Rust-backed stdlib implementation from normal build path
-- `[ ]` Remove Rust CLI/tooling from normal build path
-- `[ ]` Keep only assembly/bootstrap glue that is still justified and documented
+- `[ ]` Remove Rust runtime crate from the normal build path
+- `[ ]` Remove Rust-backed stdlib implementation from the normal build path
+- `[ ]` Remove Rust CLI/tooling from the normal build path
+- `[ ]` Keep only assembly/bootstrap glue that remains justified and documented
 - `[ ]` Document the final bootstrap chain from released artifact to self-host rebuild
 
-### S6 gate
+### S6 Exit Gate
 
 - `[ ]` Repository can bootstrap, build, and run the official toolchain without Rust source code participating in the normal path
 - `[ ]` Remaining non-Draton code is limited to explicit assembly/bootstrap glue
 
-## Immediate next tasks
+## Immediate Next Tasks
+
+These are the tasks that should move next unless a newly discovered blocker supersedes them.
+
+### Active tranche
 
 - `[ ]` Fix self-host parser `SIGSEGV` on `src/main.dt`
-- `[ ]` Add a minimal checked-in repro for that parser crash
+- `[ ]` Check in a minimal parser regression fixture for the current crash
 - `[ ]` Fix self-host string-literal LLVM IR escaping so `examples/hello.dt` builds via stage1
-- `[x]` Add a focused blocker reproduction harness for `check src/main.dt`, `ast-dump src/main.dt`, extracted `header + main()`, and `build examples/hello.dt`
-- `[ ]` Rerun `tools/verify_stage2.py`
-- `[ ]` Update this checklist after the next tranche lands
+- `[ ]` Rerun `tools/verify_stage2.py` after both blockers are fixed
+- `[ ]` Update this checklist immediately after the next tranche lands
+
+### Ready after current blockers
+
+- `[ ]` Add stage3 verification path
+- `[ ]` Add a one-shot self-host readiness command
+- `[ ]` Start a small parity corpus for Rust stage0 vs Draton stage1
+
+## Definition Of "Good Update"
+
+Each future checklist update should include:
+
+- the exact command rerun
+- the exact result observed
+- the smallest remaining blocker if the item is still not done
+- the commit that changed the state, once the change is committed
