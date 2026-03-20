@@ -62,6 +62,10 @@ These are the committed tranches already landed during the current self-host pus
   - return-call variants now have a dedicated probe inside `parser_main_prefix4`
   - minimal standalone call-return shapes now have a contrast probe
   - current evidence points to a context-sensitive parser interaction, not a generic call-expression crash
+- `[x]` `1c099a6` `tools: probe self-host parser header dependencies`
+  - automated header dependency probe added at `tools/probe_selfhost_header_dependencies.py`
+  - all proper header subsets pass for `parser_main_prefix4`
+  - only the full `imports + class + @type + main` combination crashes
 
 ## Current Snapshot
 
