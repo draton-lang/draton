@@ -106,6 +106,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated grouped-context probe added at `tools/probe_selfhost_stmt34_grouped_contexts.py`
   - under the original command-branch condition, grouped ident/literal/zero-arg-call expressions fail in `return`, `let`, and bare-expression positions
   - the same grouped expressions pass again once the condition is simplified away from `str_eq_main(cmd, ...)`
+- `[x]` `fbdd368` `tools: probe self-host parser stmt3/stmt4 condition shapes`
+  - automated condition-shape probe added at `tools/probe_selfhost_stmt34_condition_shapes.py`
+  - grouped stmt3/stmt4 bodies fail under `str_eq_main(...)`-family conditions even when the arguments are changed to `cmd`, literals, or `cli_arg(1)`
+  - the same grouped bodies still pass under simpler call and binary conditions such as `ready()`, `collect_cli_args(2)`, `cli_arg(1)`, and `1 < 2`
 
 ## Current Snapshot
 
@@ -140,6 +144,7 @@ Last refreshed: `2026-03-21`
 - `[x]` Statement-3/4 return-shape probing shows the original command-branch condition only tolerates ident returns and ungrouped zero-arg calls; grouping or any more complex call shape restores the crash
 - `[x]` Statement-3/4 grouped-return probing shows grouping alone is already sufficient to restore the crash for ident, literal, and zero-arg-call returns
 - `[x]` Statement-3/4 grouped-context probing shows grouped expressions fail across `return`, `let`, and bare-expression positions, but only while the original `str_eq_main(cmd, ...)` condition remains in place
+- `[x]` Statement-3/4 condition-shape probing shows grouped bodies fail under `str_eq_main(...)`-family conditions, not under every call condition
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[x]` Temporarily disabling `parser_looks_like_type_args_before_class_literal` did not change any current parser probe result
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
@@ -167,6 +172,7 @@ Last refreshed: `2026-03-21`
 | Statement-3/4 return shapes | `python3 tools/probe_selfhost_stmt34_return_shapes.py --stage1 /tmp/draton_s1` | `under the original stmt3/stmt4 conditions, only ident returns and ungrouped zero-arg calls pass; grouped zero-arg calls, one-arg calls, wrapper calls, and nested calls all preserve the crash` | This is the cleanest current evidence that return-expression shape, not only `if` presence, is part of the failing parser state |
 | Statement-3/4 grouped returns | `python3 tools/probe_selfhost_stmt34_grouped_returns.py --stage1 /tmp/draton_s1` | `under the original stmt3/stmt4 conditions, grouping alone is sufficient to restore the crash; parenthesized ident, literal, and zero-arg call returns all fail even though their ungrouped forms pass` | This points directly at grouped-expression parsing in return position, not just call complexity |
 | Statement-3/4 grouped contexts | `python3 tools/probe_selfhost_stmt34_grouped_contexts.py --stage1 /tmp/draton_s1` | `under the original stmt3/stmt4 condition, grouped expressions fail in return, let, and bare-expression positions; the same grouped expressions pass again once the condition is simplified away from str_eq_main(cmd, ...)` | This is the strongest current hint that the bug is a grouped-expression + condition-interaction problem, not a return-only problem |
+| Statement-3/4 condition shapes | `python3 tools/probe_selfhost_stmt34_condition_shapes.py --stage1 /tmp/draton_s1` | `grouped stmt3/stmt4 bodies only crash under str_eq_main-style conditions; simpler call and binary conditions still pass even when the body stays grouped` | This narrows the condition side of the interaction from “original branch condition” to the `str_eq_main(...)` family itself |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
@@ -191,6 +197,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_stmt34_return_shapes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_grouped_returns.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_grouped_contexts.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_stmt34_condition_shapes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -261,6 +268,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm that under the original statement-3/4 conditions, only ident returns and ungrouped zero-arg calls pass while grouped or more complex call returns still crash
 - `[x]` Confirm that under the original statement-3/4 conditions, grouping alone is already sufficient to crash ident, literal, and zero-arg-call returns
 - `[x]` Confirm that under the original statement-3/4 conditions, grouped ident/literal/zero-arg-call expressions also crash in `let` and bare-expression positions, while the same grouped expressions pass once the condition is simplified
+- `[x]` Confirm that grouped statement-3/4 bodies crash under `str_eq_main(...)`-family conditions but still pass under simpler call and binary conditions
 - `[-]` Try targeted postfix/lookahead rooting hardening and record whether the crash signature changes
 - `[x]` Confirm that fully bypassing `parser_looks_like_type_args_before_class_literal` does not change the current crash pattern
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
@@ -296,6 +304,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` `python3 tools/probe_selfhost_stmt34_return_shapes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_grouped_returns.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_grouped_contexts.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_stmt34_condition_shapes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `/tmp/draton_s1 ast-dump tests/programs/selfhost/parser_main_prefix4.dt`
 - `[ ]` `/tmp/draton_s1 ast-dump src/main.dt`
@@ -317,6 +326,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` automated statement-3/4 return-shape probe
 - `[x]` automated statement-3/4 grouped-return probe
 - `[x]` automated statement-3/4 grouped-context probe
+- `[x]` automated statement-3/4 condition-shape probe
 - `[x]` automated statement-1 operator-family probe
 - `[x]` automated statement-1 body probe
 - `[ ]` regression test path for that fixture
@@ -585,6 +595,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why statement-3/4 accept `return cli_argc()` but crash on `return (cli_argc())` under the same original condition
 - `[ ]` Explain why statement-3/4 reject one-arg, wrapper, and nested call returns under the original condition while ident returns still pass
 - `[ ]` Explain why grouped expressions also crash in `let` and bare-expression positions under `str_eq_main(cmd, ...)`, but the same grouped expressions pass when the condition is simplified
+- `[ ]` Explain why `str_eq_main(...)`-family conditions are sufficient to trigger grouped-expression failures while other call conditions still pass
 - `[ ]` Explain why operator family does not matter once statement 1 is a binary-expression `if` with a non-empty body
 - `[ ]` Explain why body emptiness is the decisive variable for statement 1 once the bad condition shape is present
 - `[ ]` Decide whether the unsuccessful postfix/lookahead rooting hardening should be kept as harmless hardening or backed out to reduce diff noise
