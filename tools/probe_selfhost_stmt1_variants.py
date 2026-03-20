@@ -55,6 +55,14 @@ def main() -> int:
         ("stmt1-if-cli_argc-lt2-return0", "    if cli_argc() < 2 {\n        return 0\n    }"),
         ("stmt1-if-cli_argc-lt2-no-return", "    if cli_argc() < 2 {\n        print_usage()\n    }"),
         ("stmt1-let-dummy", "    let argc = cli_argc()"),
+        ("stmt1-let-binary", "    let warmup = 1 < 2"),
+        ("stmt1-let-binary-call", "    let warmup = cli_argc() < 2"),
+        ("stmt1-bare-binary", "    1 < 2"),
+        ("stmt1-bare-binary-call", "    cli_argc() < 2"),
+        ("stmt1-bare-add", "    cli_argc() + 2"),
+        ("stmt1-if-paren-ident", "    if (cli_argc()) {\n        return 1\n    }"),
+        ("stmt1-if-paren-binary", "    if (cli_argc() < 2) {\n        return 1\n    }"),
+        ("stmt1-if-binary-empty", "    if cli_argc() < 2 {\n    }"),
         ("stmt1-if-1-lt-2", "    if 1 < 2 {\n        print_usage()\n        return 1\n    }"),
         ("stmt1-if-cli_argc-lt-cli_argc", "    if cli_argc() < cli_argc() {\n        print_usage()\n        return 1\n    }"),
         ("stmt1-if-cli_argc-gt-2", "    if cli_argc() > 2 {\n        print_usage()\n        return 1\n    }"),
@@ -63,25 +71,42 @@ def main() -> int:
     ]
 
     print(f"stage1: {stage1}")
-    simple_variants_pass = True
-    binary_variants_fail = True
-    simple_labels = {
+    expected_pass_labels = {
         "stmt1-delete",
         "stmt1-if-ready-return1",
         "stmt1-if-cli_argc-return1",
         "stmt1-let-dummy",
+        "stmt1-let-binary",
+        "stmt1-let-binary-call",
+        "stmt1-bare-binary",
+        "stmt1-bare-binary-call",
+        "stmt1-bare-add",
+        "stmt1-if-paren-ident",
+        "stmt1-if-binary-empty",
     }
+    expected_fail_labels = {
+        "stmt1-if-cli_argc-lt2-return0",
+        "stmt1-if-cli_argc-lt2-no-return",
+        "stmt1-if-paren-binary",
+        "stmt1-if-1-lt-2",
+        "stmt1-if-cli_argc-lt-cli_argc",
+        "stmt1-if-cli_argc-gt-2",
+        "stmt1-if-cli_argc-eqeq-2",
+        "stmt1-if-cli_argc-plus-2",
+    }
+    pass_labels_pass = True
+    fail_labels_fail = True
 
     for label, replacement in variants:
         code = run_text(stage1, base.replace(NEEDLE, replacement))
         print(f"{label}: returncode={code}")
-        if label in simple_labels and code != 0:
-            simple_variants_pass = False
-        if label not in simple_labels and code == 0:
-            binary_variants_fail = False
+        if label in expected_pass_labels and code != 0:
+            pass_labels_pass = False
+        if label in expected_fail_labels and code == 0:
+            fail_labels_fail = False
 
-    if simple_variants_pass and binary_variants_fail:
-        print("summary: simple stmt1 variants pass, but stmt1 binary-expression variants preserve the crash")
+    if pass_labels_pass and fail_labels_fail:
+        print("summary: stmt1 only preserves the crash when a binary-expression condition appears inside an if with a non-empty body")
         return 1
 
     print("summary: stmt1 variant pattern changed")
