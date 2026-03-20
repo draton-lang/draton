@@ -4,7 +4,7 @@
 This script is intentionally narrow and operational:
 
 - it checks whether the stage1 self-host binary crashes on `src/main.dt`
-- it checks a smaller extracted repro from `src/main.dt`
+- it checks the checked-in parser repro at `tests/programs/selfhost/parser_header_plus_main.dt`
 - it checks the current `examples/hello.dt` self-host build failure on Linux
 
 It is meant as a progress harness while stage2/stage3 bootstrap is still blocked.
@@ -16,7 +16,6 @@ import argparse
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -53,23 +52,8 @@ def print_case(label: str, argv: list[str], env: dict[str, str] | None = None) -
     return result.returncode
 
 
-def write_header_plus_main_repro() -> Path:
-    lines = (REPO / "src" / "main.dt").read_text(encoding="utf-8").splitlines()
-    header = "\n".join(lines[:47]) + "\n"
-    start = next(i for i, line in enumerate(lines) if line.startswith("fn main("))
-    end = next(i for i, line in enumerate(lines[start + 1 :], start + 1) if line.startswith("fn cmd_build("))
-    body = "\n".join(lines[start:end]) + "\n"
-
-    handle = tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        suffix=".dt",
-        delete=False,
-    )
-    with handle:
-        handle.write(header)
-        handle.write(body)
-    return Path(handle.name)
+def checked_in_parser_repro() -> Path:
+    return REPO / "tests" / "programs" / "selfhost" / "parser_header_plus_main.dt"
 
 
 def main() -> int:
@@ -89,12 +73,9 @@ def main() -> int:
     if print_case("ast-dump-src-main", [str(stage1), "ast-dump", str(REPO / "src" / "main.dt")]) != 0:
         failures += 1
 
-    repro = write_header_plus_main_repro()
-    try:
-        if print_case("ast-dump-header-plus-main", [str(stage1), "ast-dump", str(repro)]) != 0:
-            failures += 1
-    finally:
-        repro.unlink(missing_ok=True)
+    repro = checked_in_parser_repro()
+    if print_case("ast-dump-header-plus-main", [str(stage1), "ast-dump", str(repro)]) != 0:
+        failures += 1
 
     runtime_lib = REPO / "target" / "debug" / "libdraton_runtime.a"
     env = dict(os.environ)

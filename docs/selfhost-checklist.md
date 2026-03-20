@@ -57,9 +57,10 @@ Last refreshed: `2026-03-20`
 - `[x]` Self-host textual LLVM backend now emits real newlines and uses `double` / `float` instead of `f64` / `f32`
 - `[x]` Self-host stage1 now builds `examples/hello.dt` successfully on Linux
 - `[x]` Self-host-built `hello` binary now runs and prints `hello, draton!`
+- `[x]` A checked-in parser repro fixture exists at `tests/programs/selfhost/parser_header_plus_main.dt`
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
 - `[!]` Stage1 `ast-dump src/main.dt` still crashes with `SIGSEGV`
-- `[!]` Stage1 `ast-dump` on extracted `header + main()` still crashes with `SIGSEGV`
+- `[!]` Stage1 `ast-dump` on `tests/programs/selfhost/parser_header_plus_main.dt` still crashes with `SIGSEGV`
 
 ### Current blocker matrix
 
@@ -67,7 +68,7 @@ Last refreshed: `2026-03-20`
 | --- | --- | --- | --- |
 | Parser self-check | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `check-src-main -> -11` | Current crash class is `SIGSEGV` |
 | Parser AST dump | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-src-main -> -11` | Same failure class as self-check |
-| Reduced parser repro | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-header-plus-main -> -11` | Narrowed below full compiler source |
+| Reduced parser repro | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `ast-dump-header-plus-main -> -11` | Checked-in fixture: `tests/programs/selfhost/parser_header_plus_main.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
 ### Current baseline commands
@@ -130,7 +131,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Narrow crash below the full compiler source
 - `[x]` Confirm `header only` from `src/main.dt` parses successfully
 - `[x]` Confirm `header + main()` from `src/main.dt` is sufficient to crash
-- `[ ]` Check in a minimal parser regression fixture derived from the current repro
+- `[x]` Check in a parser regression fixture derived from the current repro
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
 - `[ ]` Identify whether the root cause is:
   - parser synchronization bug
@@ -146,14 +147,14 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 #### S1.A Verification commands
 
 - `[x]` `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1`
-- `[ ]` `/tmp/draton_s1 ast-dump /tmp/<reduced-fixture>.dt`
+- `[x]` `/tmp/draton_s1 ast-dump tests/programs/selfhost/parser_header_plus_main.dt`
 - `[ ]` `/tmp/draton_s1 ast-dump src/main.dt`
 - `[ ]` `/tmp/draton_s1 check src/main.dt`
 - `[ ]` `/tmp/draton_s1 type-dump src/main.dt`
 
 #### S1.A Artifact targets
 
-- `[ ]` minimal checked-in parser repro fixture
+- `[x]` checked-in parser repro fixture
 - `[ ]` regression test path for that fixture
 - `[ ]` notes in this file naming the exact root cause once confirmed
 
