@@ -148,6 +148,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated block-separator probe added at `tools/probe_selfhost_stmt34_block_separators.py`
   - only a plain empty block leaves the `both-bad` stmt3/stmt4 pair passing
   - non-empty blocks and annotated empty blocks still make it crash, which points more specifically at parse paths around block statements rather than braces alone
+- `[x]` `635b3d0` `tools: probe self-host parser stmt3/stmt4 plain block only`
+  - automated plain-block-only probe added at `tools/probe_selfhost_stmt34_plain_block_only.py`
+  - only a bare `{}` block is harmless between the `both-bad` stmt3/stmt4 pair
+  - adding a semicolon or any statement wrapper makes it crash again, which points directly at the `parse_stmt` `LBrace -> parse_block` fast path as the current unique harmless separator
 
 ## Current Snapshot
 
@@ -192,6 +196,7 @@ Last refreshed: `2026-03-21`
 - `[x]` Statement-3/4 intervening-statement probing shows every probed non-block intervening statement shape makes the `both-bad` pair crash
 - `[x]` Statement-3/4 empty-boundary probing shows empty blocks do not disturb the passing `both-bad` pair, while semicolons and empty control-flow statements do
 - `[x]` Statement-3/4 block-separator probing shows only a plain empty block is harmless; non-empty blocks and annotated empty blocks still crash
+- `[x]` Statement-3/4 plain-block-only probing shows the unique harmless separator is a bare `{}` with no semicolon and no wrapper
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[x]` Temporarily disabling `parser_looks_like_type_args_before_class_literal` did not change any current parser probe result
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
@@ -229,6 +234,7 @@ Last refreshed: `2026-03-21`
 | Statement-3/4 intervening statements | `python3 tools/probe_selfhost_stmt34_intervening_statements.py --stage1 /tmp/draton_s1` | `every probed non-block intervening statement is enough to make the both-bad stmt3/stmt4 pair crash` | This shows the parser state flips on many ordinary intervening statement paths, even though later probes found a block-shaped exception |
 | Statement-3/4 empty boundaries | `python3 tools/probe_selfhost_stmt34_empty_boundaries.py --stage1 /tmp/draton_s1` | `empty blocks do not disturb the passing both-bad pair, but semicolons and empty control-flow statements do` | This narrows the previous row: the parser is not reacting to every syntactic separator, but to specific parsed statement paths between the two branches |
 | Statement-3/4 block separators | `python3 tools/probe_selfhost_stmt34_block_separators.py --stage1 /tmp/draton_s1` | `only a plain empty block leaves the both-bad stmt3/stmt4 pair passing; non-empty blocks and annotated empty blocks still make it crash` | This points more specifically at parse paths around block statements: braces alone are not enough to trigger the bug, but any added content or block annotation is |
+| Statement-3/4 plain block only | `python3 tools/probe_selfhost_stmt34_plain_block_only.py --stage1 /tmp/draton_s1` | `only a plain bare {} block is harmless between the both-bad stmt3/stmt4 pair; adding a semicolon or any statement wrapper makes it crash again` | This is the tightest separator-side narrowing so far: the unique harmless path appears to be the direct `parse_stmt(LBrace) -> parse_block(empty)` path with no extra tokens before or after |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
@@ -263,6 +269,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_stmt34_intervening_statements.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_empty_boundaries.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_block_separators.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_stmt34_plain_block_only.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -343,6 +350,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm that every probed non-block intervening statement shape is enough to make the `both-bad` stmt3/stmt4 pair crash
 - `[x]` Confirm that empty blocks are harmless between the `both-bad` pair, while semicolons and empty control-flow statements are still harmful
 - `[x]` Confirm that only a plain empty block is harmless; non-empty blocks and annotated empty blocks are still harmful
+- `[x]` Confirm that the unique harmless separator is a bare `{}` with no semicolon and no wrapper
 - `[-]` Try targeted postfix/lookahead rooting hardening and record whether the crash signature changes
 - `[x]` Confirm that fully bypassing `parser_looks_like_type_args_before_class_literal` does not change the current crash pattern
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
@@ -388,6 +396,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` `python3 tools/probe_selfhost_stmt34_intervening_statements.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_empty_boundaries.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_block_separators.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_stmt34_plain_block_only.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `/tmp/draton_s1 ast-dump tests/programs/selfhost/parser_main_prefix4.dt`
 - `[ ]` `/tmp/draton_s1 ast-dump src/main.dt`
@@ -419,6 +428,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` automated statement-3/4 intervening-statement probe
 - `[x]` automated statement-3/4 empty-boundary probe
 - `[x]` automated statement-3/4 block-separator probe
+- `[x]` automated statement-3/4 plain-block-only probe
 - `[x]` automated statement-1 operator-family probe
 - `[x]` automated statement-1 body probe
 - `[ ]` regression test path for that fixture
@@ -697,6 +707,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why every probed non-block intervening statement shape is enough to make the `both-bad` stmt3/stmt4 pair crash
 - `[ ]` Explain why empty blocks are harmless between the `both-bad` pair while semicolons and empty control-flow statements are not
 - `[ ]` Explain why only a plain empty block is harmless while non-empty blocks and annotated empty blocks are not
+- `[ ]` Explain why a bare `{}` is the unique harmless separator while `{};` and wrapped empty blocks are not
 - `[ ]` Explain why operator family does not matter once statement 1 is a binary-expression `if` with a non-empty body
 - `[ ]` Explain why body emptiness is the decisive variable for statement 1 once the bad condition shape is present
 - `[ ]` Decide whether the unsuccessful postfix/lookahead rooting hardening should be kept as harmless hardening or backed out to reduce diff noise
