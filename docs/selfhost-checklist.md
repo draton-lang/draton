@@ -136,6 +136,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated layout-only barrier probe added at `tools/probe_selfhost_stmt34_layout_only_barriers.py`
   - adjacent `both-bad` stmt3/stmt4 pairs still pass across blank lines and line/doc/block comments
   - only an intervening statement changes the outcome, so the key variable is statement adjacency rather than source spacing
+- `[x]` `d7c9483` `tools: probe self-host parser stmt3/stmt4 intervening statements`
+  - automated intervening-statement probe added at `tools/probe_selfhost_stmt34_intervening_statements.py`
+  - every probed intervening statement shape makes the `both-bad` stmt3/stmt4 pair crash
+  - this sharpens the adjacency result into a statement-boundary result, not a special neutral-statement-shape result
 
 ## Current Snapshot
 
@@ -177,6 +181,7 @@ Last refreshed: `2026-03-21`
 - `[x]` Statement-3/4 order/spacing probing shows the mixed-pair crash survives branch reordering and an inserted neutral statement
 - `[x]` Statement-3/4 adjacency probing shows adjacent `both-bad` pairs pass, but inserting one neutral statement makes even `both-bad` pairs crash
 - `[x]` Statement-3/4 layout-only barrier probing shows `both-bad` pairs still pass across blank lines and comments, so only intervening statements change the result
+- `[x]` Statement-3/4 intervening-statement probing shows every probed intervening statement shape makes the `both-bad` pair crash, so statement boundaries themselves are the relevant variable
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[x]` Temporarily disabling `parser_looks_like_type_args_before_class_literal` did not change any current parser probe result
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
@@ -211,6 +216,7 @@ Last refreshed: `2026-03-21`
 | Statement-3/4 order spacing | `python3 tools/probe_selfhost_stmt34_order_spacing.py --stage1 /tmp/draton_s1` | `mixed stmt3/stmt4 branch pairs keep crashing even when their order is swapped or a neutral statement separates them` | This suggests the poisoned parser state survives branch reordering and carries across at least one intervening statement |
 | Statement-3/4 adjacency | `python3 tools/probe_selfhost_stmt34_adjacency.py --stage1 /tmp/draton_s1` | `stmt3/stmt4 adjacency is the only reason the both-bad pair passes; inserting one neutral statement makes even both-bad pairs crash` | This supersedes the earlier “mixed pair only” story: once a gap appears, the crash no longer requires one original sibling branch |
 | Statement-3/4 layout-only barriers | `python3 tools/probe_selfhost_stmt34_layout_only_barriers.py --stage1 /tmp/draton_s1` | `layout-only spacing does not matter; both-bad pairs still pass across blank lines and comments, so the crash is keyed to intervening statements rather than source layout` | This tightens the adjacency finding: the parser only cares about statement boundaries here, not extra whitespace or comment tokens |
+| Statement-3/4 intervening statements | `python3 tools/probe_selfhost_stmt34_intervening_statements.py --stage1 /tmp/draton_s1` | `any probed intervening statement is enough to make the both-bad stmt3/stmt4 pair crash` | This tightens the story again: the parser state flips on ordinary intervening statements of many shapes, so the key distinction is statement boundary vs layout-only barrier |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
@@ -242,6 +248,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_stmt34_order_spacing.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_adjacency.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_layout_only_barriers.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_stmt34_intervening_statements.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -319,6 +326,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm that mixed stmt3/stmt4 branch pairs still crash when reordered or separated by a neutral statement
 - `[x]` Confirm that adjacency is the only reason the `both-bad` stmt3/stmt4 pair passes; inserting one neutral statement makes even both-bad pairs crash
 - `[x]` Confirm that blank lines and comments do not break the passing `both-bad` pair, so only intervening statements matter
+- `[x]` Confirm that any probed intervening statement shape is enough to make the `both-bad` stmt3/stmt4 pair crash
 - `[-]` Try targeted postfix/lookahead rooting hardening and record whether the crash signature changes
 - `[x]` Confirm that fully bypassing `parser_looks_like_type_args_before_class_literal` does not change the current crash pattern
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
@@ -361,6 +369,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` `python3 tools/probe_selfhost_stmt34_order_spacing.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_adjacency.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_layout_only_barriers.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_stmt34_intervening_statements.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `/tmp/draton_s1 ast-dump tests/programs/selfhost/parser_main_prefix4.dt`
 - `[ ]` `/tmp/draton_s1 ast-dump src/main.dt`
@@ -389,6 +398,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` automated statement-3/4 order/spacing probe
 - `[x]` automated statement-3/4 adjacency probe
 - `[x]` automated statement-3/4 layout-only barrier probe
+- `[x]` automated statement-3/4 intervening-statement probe
 - `[x]` automated statement-1 operator-family probe
 - `[x]` automated statement-1 body probe
 - `[ ]` regression test path for that fixture
@@ -664,6 +674,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why the mixed stmt3/stmt4 crash survives branch reordering and an intervening neutral statement
 - `[ ]` Explain why adjacency is the only reason the `both-bad` stmt3/stmt4 pair still passes
 - `[ ]` Explain why blank lines and comments do not disturb the passing `both-bad` pair while a single neutral statement does
+- `[ ]` Explain why any ordinary intervening statement shape is enough to make the `both-bad` stmt3/stmt4 pair crash
 - `[ ]` Explain why operator family does not matter once statement 1 is a binary-expression `if` with a non-empty body
 - `[ ]` Explain why body emptiness is the decisive variable for statement 1 once the bad condition shape is present
 - `[ ]` Decide whether the unsuccessful postfix/lookahead rooting hardening should be kept as harmless hardening or backed out to reduce diff noise
