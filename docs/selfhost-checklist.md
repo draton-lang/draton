@@ -192,6 +192,10 @@ These are the committed tranches already landed during the current self-host pus
   - added `tools/probe_selfhost_spawn_doc_tail_functions.py` to measure how the residual `both-bad + spawn { /// gap }` corruption reacts to later top-level items
   - later `class` / `@type` items and later empty or comment-only tail functions keep the residual case at `SIGSEGV`
   - later tail functions with non-empty bodies flip the residual case to `SIGABRT` with huge allocation failures, pointing at a second corruption path that only appears after re-entering `parse_block` / `parse_stmt` in a subsequent function body
+- `[x]` `1b6d91f` `tools: probe self-host spawn-doc tail stmt shapes`
+  - added `tools/probe_selfhost_spawn_doc_tail_stmt_shapes.py` to narrow the later-tail-function split by statement shape
+  - the later tail-function path does **not** flip to OOM for every non-empty body: `let`, empty control-flow, `spawn expr`, and call/grouped return forms stay on `SIGSEGV`
+  - the later tail-function path does flip to `SIGABRT` / OOM for bare call or grouped expression statements, literal returns, and `spawn {}`
 
 ## Current Snapshot
 
@@ -246,6 +250,7 @@ Last refreshed: `2026-03-22`
 - `[x]` Inside that residual `both-bad` case, any probed doc-comment presence inside `spawn { ... }` is enough to restore the crash
 - `[x]` The residual `both-bad + spawn { /// gap }` crash does not share the main `prefix-4` backtrace; it currently dies much earlier in `parser_current -> parser_current_kind -> parser_is_eof -> parser_parse`
 - `[x]` The residual `both-bad + spawn { /// gap }` case stays at `SIGSEGV` across later `class` / `@type` items and later empty/comment-only tail functions, but flips to `SIGABRT` / OOM once a later top-level function has a non-empty body
+- `[x]` That later-tail-function `SIGABRT` / OOM path is statement-shape-sensitive: bare call/grouped expression statements, literal returns, and `spawn {}` trigger it, while `let`, empty control-flow, `spawn expr`, and call/grouped returns do not
 - `[-]` Extra self-host spawn-path rooting hardening was tried and did not change the residual `spawn { /// gap }` mixed-context crash or the main `prefix-4` crash
 - `[-]` Extra self-host `parser_skip_doc_comments` rooting hardening was tried locally and also did not change the residual `spawn { /// gap }` crash or the main `prefix-4` crash, so that experiment was backed out to avoid adding noise on top of the already-dirty parser file
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
@@ -294,6 +299,7 @@ Last refreshed: `2026-03-22`
 | Statement-3/4 spawn doc presence | `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1` | `inside the both-bad stmt3/stmt4 context, any probed doc-comment presence inside spawn { ... } is enough to restore the crash` | This is the current tightest residual narrowing: the remaining spawn-specific failure is keyed to doc-comment token presence inside the otherwise harmless `spawn { ... }` separator |
 | Spawn-doc backtrace comparison | `python3 tools/probe_selfhost_spawn_doc_backtrace.py --stage1 /tmp/draton_s1` | `main prefix-4 and residual both-bad + spawn-doc crashes follow different stacks` | The main repro still runs through `parse_return_stmt -> parse_arg_list -> parse_postfix`, while the residual spawn-doc crash currently dies much earlier at `parser_current -> parser_current_kind -> parser_is_eof -> parser_parse` |
 | Spawn-doc tail functions | `python3 tools/probe_selfhost_spawn_doc_tail_functions.py --stage1 /tmp/draton_s1` | `later class/type items and later empty/comment-only tail functions keep the residual case at SIGSEGV, but later tail functions with non-empty bodies flip it to SIGABRT/OOM` | This points at a second residual corruption path that only appears after the parser re-enters `parse_block` / `parse_stmt` for a subsequent top-level function body |
+| Spawn-doc tail stmt shapes | `python3 tools/probe_selfhost_spawn_doc_tail_stmt_shapes.py --stage1 /tmp/draton_s1` | `the later tail-function path is shape-sensitive: bare call/grouped expr statements, literal returns, and spawn {} flip to SIGABRT/OOM, while let/control-flow/spawn expr/call-return paths stay on SIGSEGV` | This rules out the simplistic hypothesis that any non-empty later function body causes the OOM branch; the later corruption depends on specific statement families |
 | `parser_skip_doc_comments` rooting retry | `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1` plus `python3 tools/probe_selfhost_stmt34_spawn_doc_contexts.py --stage1 /tmp/draton_s1` | `no observable behavior change` | A local self-host-only retry that rooted extra values inside `parser_skip_doc_comments` left the residual spawn-doc and main blocker patterns unchanged, so the experiment was backed out instead of being kept as diff noise |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_skip_doc_comments -> parser_match_kind -> parse_or -> parse_nullish -> parse_expression -> parse_arg_list` | Current stable top-of-stack on `tests/programs/selfhost/parser_main_prefix4.dt`; deeper frames still continue through `parse_postfix` and `parse_return_stmt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
@@ -338,6 +344,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_spawn_doc_backtrace.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_spawn_doc_tail_functions.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_spawn_doc_tail_stmt_shapes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -799,6 +806,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why, inside that residual `both-bad` case, any doc-comment presence inside `spawn { ... }` restores the crash while line-comment-only and doc-comment-free spawn blocks do not
 - `[ ]` Explain why the residual `both-bad + spawn { /// gap }` crash now dies in `parser_is_eof -> parser_parse` instead of following the main `parse_return_stmt -> parse_arg_list -> parse_postfix` stack
 - `[ ]` Explain why the residual `both-bad + spawn { /// gap }` case stays at `SIGSEGV` across later `class` / `@type` items and later empty/comment-only tail functions, but flips to `SIGABRT` / OOM when a later top-level function has a non-empty body
+- `[ ]` Explain why that later tail-function path only flips to `SIGABRT` / OOM for bare call/grouped expression statements, literal returns, and `spawn {}`, while `let`, empty control-flow, `spawn expr`, and call/grouped returns stay on `SIGSEGV`
 - `[ ]` Explain why the extra self-host spawn-path rooting hardening in `d770374` did not change the residual `spawn { /// gap }` mixed-context crash
 - `[ ]` Explain why extra local rooting inside `parser_skip_doc_comments` also failed to change the residual `spawn { /// gap }` mixed-context crash
 - `[x]` Explain why minimal standalone plain/spawn doc-comment-only blocks used to fail with `invalid expression at line 4, col 5`
