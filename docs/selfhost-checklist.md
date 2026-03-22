@@ -168,10 +168,14 @@ These are the committed tranches already landed during the current self-host pus
   - automated standalone doc-comment-only block probe added at `tools/probe_selfhost_doc_comment_only_blocks.py`
   - minimal standalone plain/spawn doc-comment-only blocks fail with `invalid expression at line 4, col 5`
   - this elevates the finding from a self-host interaction clue to a general parser bug around doc-comment-only blocks
+- `[x]` `78234a8` `fix: skip doc-comment-only blocks before parsing statements`
+  - Rust and self-host `parse_block` now re-check `RBrace` / `Eof` immediately after `parser_skip_doc_comments`
+  - Rust parser regression test now covers doc-comment-only plain/spawn blocks
+  - standalone plain/spawn doc-comment-only blocks now parse, while the main self-host `prefix-4` crash still remains
 
 ## Current Snapshot
 
-Last refreshed: `2026-03-21`
+Last refreshed: `2026-03-22`
 
 ### What is currently true
 
@@ -215,8 +219,9 @@ Last refreshed: `2026-03-21`
 - `[x]` Statement-3/4 plain-block-only probing shows a bare `{}` is a harmless separator only when it has no semicolon and no wrapper
 - `[x]` Statement-3/4 spawn-block fast-path probing shows that, among probed variants, only bare `{}` and `spawn {}` share the harmless empty-block behavior
 - `[x]` Statement-3/4 doc-comment-block probing shows line-comment-only blocks stay harmless but doc-comment-only blocks still crash
-- `[x]` Statement-3/4 doc-comment-position probing shows the same doc-comment tokens are harmless outside the block fast paths and become harmful only when they are the sole contents of those blocks
-- `[x]` Minimal standalone plain/spawn doc-comment-only blocks now reproduce a general parser failure with `invalid expression at line 4, col 5`
+- `[x]` `parse_block` in both Rust and self-host now re-checks `RBrace` / `Eof` after skipping doc comments
+- `[x]` Minimal standalone plain/spawn doc-comment-only blocks now parse successfully after the `parse_block` fix
+- `[x]` In the mixed self-host stmt3/stmt4 interaction, `doc-only-plain-block` now passes but `doc-only-spawn-block` still crashes
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[x]` Temporarily disabling `parser_looks_like_type_args_before_class_literal` did not change any current parser probe result
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
@@ -256,9 +261,9 @@ Last refreshed: `2026-03-21`
 | Statement-3/4 block separators | `python3 tools/probe_selfhost_stmt34_block_separators.py --stage1 /tmp/draton_s1` | `only a plain empty block leaves the both-bad stmt3/stmt4 pair passing; non-empty blocks and annotated empty blocks still make it crash` | This points more specifically at parse paths around block statements: braces alone are not enough to trigger the bug, but any added content or block annotation is |
 | Statement-3/4 plain block only | `python3 tools/probe_selfhost_stmt34_plain_block_only.py --stage1 /tmp/draton_s1` | `a plain bare {} block is harmless between the both-bad stmt3/stmt4 pair, but adding a semicolon or most wrappers makes it crash again` | This narrowed the separator-side story to an empty-block fast path before the later `spawn {}` exception was checked |
 | Statement-3/4 spawn block fast path | `python3 tools/probe_selfhost_stmt34_spawn_block_fast_path.py --stage1 /tmp/draton_s1` | `among probed variants, only bare {} and spawn {} share the harmless empty-block fast path` | This is the current tightest separator-side narrowing: the harmless path seems tied to two empty-block fast paths, while semicolons, non-empty blocks, expression-bodied spawn, and other wrappers all still crash |
-| Statement-3/4 doc-comment blocks | `python3 tools/probe_selfhost_stmt34_doc_comment_blocks.py --stage1 /tmp/draton_s1` | `line-comment-only blocks preserve the harmless empty-block path, but doc-comment-only and semicolon-only blocks crash` | This is the strongest pointer yet toward `parser_skip_doc_comments` and doc-comment token handling: raw source text inside the block is not the issue, but doc-comment tokens are |
-| Statement-3/4 doc-comment positions | `python3 tools/probe_selfhost_stmt34_doc_comment_positions.py --stage1 /tmp/draton_s1` | `the same doc-comment tokens are harmless before, after, or between the harmless block separators, and become harmful only when they are the sole contents of those blocks` | This sharply narrows the suspect path to the interaction between `parse_block` and `parser_skip_doc_comments` inside the otherwise harmless plain/spawn empty-block fast paths |
-| Standalone doc-comment-only blocks | `python3 tools/probe_selfhost_doc_comment_only_blocks.py --stage1 /tmp/draton_s1` | `minimal standalone plain/spawn doc-comment-only blocks fail with invalid expression at line 4, col 5 while empty and line-comment-only variants still parse` | This shows the doc-comment-only block issue is a general parser bug, not just a special self-host mixed-branch interaction |
+| Statement-3/4 doc-comment blocks | `python3 tools/probe_selfhost_stmt34_doc_comment_blocks.py --stage1 /tmp/draton_s1` | `plain doc-comment-only blocks now pass, but spawn doc-comment-only and semicolon-only blocks still crash` | The `parse_block` fix removed the plain-block half of this issue, but the spawn-specific mixed-interaction path is still unresolved |
+| Statement-3/4 doc-comment positions | `python3 tools/probe_selfhost_stmt34_doc_comment_positions.py --stage1 /tmp/draton_s1` | `the same doc-comment tokens are harmless before, after, or between the harmless block separators; only the doc-only spawn block still crashes in the mixed stmt3/stmt4 context` | This narrows the remaining doc-comment interaction further: the general `parse_block` bug is fixed, but the spawn-wrapped mixed case still carries poisoned parser state |
+| Standalone doc-comment-only blocks | `python3 tools/probe_selfhost_doc_comment_only_blocks.py --stage1 /tmp/draton_s1` | `pattern changed: standalone plain/spawn doc-comment-only blocks now parse successfully` | Fixed by `78234a8`; this issue is no longer a general parser blocker, only a clue that helped isolate the remaining self-host crash |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
@@ -380,9 +385,9 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm that only a plain empty block is harmless; non-empty blocks and annotated empty blocks are still harmful
 - `[x]` Confirm that a bare `{}` with no semicolon is one harmless empty-block separator
 - `[x]` Confirm that, among probed variants, `spawn {}` is the only wrapper that shares the harmless empty-block behavior
-- `[x]` Confirm that line-comment-only harmless blocks still pass while doc-comment-only blocks crash
-- `[x]` Confirm that the same doc-comment tokens remain harmless before, after, or between the harmless block separators and only become harmful inside those blocks
-- `[x]` Confirm that minimal standalone plain/spawn doc-comment-only blocks fail with `invalid expression at line 4, col 5`
+- `[x]` Confirm that line-comment-only harmless blocks still pass while only the mixed-context `spawn` doc-comment-only block remains crashing
+- `[x]` Confirm that the same doc-comment tokens remain harmless before, after, or between the harmless block separators and no longer fail in standalone plain/spawn blocks
+- `[x]` Confirm that minimal standalone plain/spawn doc-comment-only blocks now parse after `78234a8`
 - `[-]` Try targeted postfix/lookahead rooting hardening and record whether the crash signature changes
 - `[x]` Confirm that fully bypassing `parser_looks_like_type_args_before_class_literal` does not change the current crash pattern
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
@@ -748,9 +753,10 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why empty blocks are harmless between the `both-bad` pair while semicolons and empty control-flow statements are not
 - `[ ]` Explain why only a plain empty block is harmless while non-empty blocks and annotated empty blocks are not
 - `[ ]` Explain why a bare `{}` and `spawn {}` are the only currently known harmless empty-block separators while `{};` and other wrapped empty blocks are not
-- `[ ]` Explain why line-comment-only harmless blocks still pass while doc-comment-only blocks crash
-- `[ ]` Explain why the same doc-comment tokens are harmless before/after the harmless block separators but crash when they are the sole contents inside those blocks
-- `[ ]` Explain why minimal standalone plain/spawn doc-comment-only blocks fail with `invalid expression at line 4, col 5`
+- `[ ]` Explain why the mixed-context `spawn` doc-comment-only block still crashes after the general `parse_block` fix
+- `[ ]` Explain why the same doc-comment tokens are now harmless in standalone plain/spawn blocks but still fail inside the mixed self-host `spawn` block fast path
+- `[x]` Explain why minimal standalone plain/spawn doc-comment-only blocks used to fail with `invalid expression at line 4, col 5`
+  Fixed by `78234a8`: `parse_block` now re-checks `RBrace` / `Eof` immediately after `parser_skip_doc_comments`
 - `[ ]` Explain why operator family does not matter once statement 1 is a binary-expression `if` with a non-empty body
 - `[ ]` Explain why body emptiness is the decisive variable for statement 1 once the bad condition shape is present
 - `[ ]` Decide whether the unsuccessful postfix/lookahead rooting hardening should be kept as harmless hardening or backed out to reduce diff noise
