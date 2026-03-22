@@ -176,6 +176,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated spawn-doc-context probe added at `tools/probe_selfhost_stmt34_spawn_doc_contexts.py`
   - after the `parse_block` fix, `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair
   - outside that narrow context it behaves like an ordinary harmless separator or standalone statement, so the remaining doc-comment issue is much smaller than before
+- `[x]` `5753ded` `tools: probe self-host parser stmt3/stmt4 spawn doc presence`
+  - automated spawn-doc-presence probe added at `tools/probe_selfhost_stmt34_spawn_doc_presence.py`
+  - inside the `both-bad` stmt3/stmt4 context, any probed doc-comment presence inside `spawn { ... }` restores the crash
+  - doc-comment-free and line-comment-only spawn blocks still pass there, so the residual spawn issue is now narrowed to doc-comment token presence rather than block contents in general
 - `[x]` `d770374` `fix: harden self-host spawn parser rooting`
   - added extra self-host roots around `parse_spawn_stmt`, `stmt_from_spawn`, `spawn_body_expr`, `spawn_body_block`, and `new_spawn_stmt`
   - rebuilt stage1 and reran `tools/probe_selfhost_stmt34_spawn_doc_contexts.py` plus `tools/repro_selfhost_blockers.py`
@@ -231,6 +235,7 @@ Last refreshed: `2026-03-22`
 - `[x]` Minimal standalone plain/spawn doc-comment-only blocks now parse successfully after the `parse_block` fix
 - `[x]` In the mixed self-host stmt3/stmt4 interaction, `doc-only-plain-block` now passes but `doc-only-spawn-block` still crashes
 - `[x]` After the `parse_block` fix, `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair and is otherwise harmless
+- `[x]` Inside that residual `both-bad` case, any probed doc-comment presence inside `spawn { ... }` is enough to restore the crash
 - `[-]` Extra self-host spawn-path rooting hardening was tried and did not change the residual `spawn { /// gap }` mixed-context crash or the main `prefix-4` crash
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[x]` Temporarily disabling `parser_looks_like_type_args_before_class_literal` did not change any current parser probe result
@@ -275,6 +280,7 @@ Last refreshed: `2026-03-22`
 | Statement-3/4 doc-comment positions | `python3 tools/probe_selfhost_stmt34_doc_comment_positions.py --stage1 /tmp/draton_s1` | `the same doc-comment tokens are harmless before, after, or between the harmless block separators; only the doc-only spawn block still crashes in the mixed stmt3/stmt4 context` | This narrows the remaining doc-comment interaction further: the general `parse_block` bug is fixed, but the spawn-wrapped mixed case still carries poisoned parser state |
 | Standalone doc-comment-only blocks | `python3 tools/probe_selfhost_doc_comment_only_blocks.py --stage1 /tmp/draton_s1` | `pattern changed: standalone plain/spawn doc-comment-only blocks now parse successfully` | Fixed by `78234a8`; this issue is no longer a general parser blocker, only a clue that helped isolate the remaining self-host crash |
 | Statement-3/4 spawn doc contexts | `python3 tools/probe_selfhost_stmt34_spawn_doc_contexts.py --stage1 /tmp/draton_s1` | ``spawn { /// gap }` only changes outcomes inside the both-bad stmt3/stmt4 pair; outside that context it behaves like an ordinary harmless separator or standalone statement` | This is the current tightest doc-comment narrowing: the remaining doc-comment-sensitive crash is confined to the both-bad mixed self-host interaction, not the general parser or general spawn path |
+| Statement-3/4 spawn doc presence | `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1` | `inside the both-bad stmt3/stmt4 context, any probed doc-comment presence inside spawn { ... } is enough to restore the crash` | This is the current tightest residual narrowing: the remaining spawn-specific failure is keyed to doc-comment token presence inside the otherwise harmless `spawn { ... }` separator |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
@@ -315,6 +321,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_stmt34_doc_comment_positions.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_doc_comment_only_blocks.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_spawn_doc_contexts.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -401,6 +408,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` Confirm that the same doc-comment tokens remain harmless before, after, or between the harmless block separators and no longer fail in standalone plain/spawn blocks
 - `[x]` Confirm that minimal standalone plain/spawn doc-comment-only blocks now parse after `78234a8`
 - `[x]` Confirm that `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair and is otherwise harmless
+- `[x]` Confirm that, inside that residual `both-bad` case, any probed doc-comment presence inside `spawn { ... }` restores the crash
 - `[-]` Try targeted postfix/lookahead rooting hardening and record whether the crash signature changes
 - `[x]` Confirm that fully bypassing `parser_looks_like_type_args_before_class_literal` does not change the current crash pattern
 - `[ ]` Make the minimal fixture fail under an automated self-host parser test
@@ -489,6 +497,7 @@ Objective: remove the `SIGSEGV` in the self-host frontend before stage2 bootstra
 - `[x]` automated statement-3/4 doc-comment-position probe
 - `[x]` automated standalone doc-comment-only block probe
 - `[x]` automated statement-3/4 spawn-doc-context probe
+- `[x]` automated statement-3/4 spawn-doc-presence probe
 - `[x]` automated statement-1 operator-family probe
 - `[x]` automated statement-1 body probe
 - `[ ]` regression test path for that fixture
@@ -771,6 +780,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why the mixed-context `spawn` doc-comment-only block still crashes after the general `parse_block` fix
 - `[ ]` Explain why the same doc-comment tokens are now harmless in standalone plain/spawn blocks but still fail inside the mixed self-host `spawn` block fast path
 - `[ ]` Explain why `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair and is otherwise harmless
+- `[ ]` Explain why, inside that residual `both-bad` case, any doc-comment presence inside `spawn { ... }` restores the crash while line-comment-only and doc-comment-free spawn blocks do not
 - `[ ]` Explain why the extra self-host spawn-path rooting hardening in `d770374` did not change the residual `spawn { /// gap }` mixed-context crash
 - `[x]` Explain why minimal standalone plain/spawn doc-comment-only blocks used to fail with `invalid expression at line 4, col 5`
   Fixed by `78234a8`: `parse_block` now re-checks `RBrace` / `Eof` immediately after `parser_skip_doc_comments`
