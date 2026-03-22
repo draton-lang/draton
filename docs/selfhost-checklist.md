@@ -237,6 +237,7 @@ Last refreshed: `2026-03-22`
 - `[x]` After the `parse_block` fix, `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair and is otherwise harmless
 - `[x]` Inside that residual `both-bad` case, any probed doc-comment presence inside `spawn { ... }` is enough to restore the crash
 - `[-]` Extra self-host spawn-path rooting hardening was tried and did not change the residual `spawn { /// gap }` mixed-context crash or the main `prefix-4` crash
+- `[-]` Extra self-host `parser_skip_doc_comments` rooting hardening was tried locally and also did not change the residual `spawn { /// gap }` crash or the main `prefix-4` crash, so that experiment was backed out to avoid adding noise on top of the already-dirty parser file
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[x]` Temporarily disabling `parser_looks_like_type_args_before_class_literal` did not change any current parser probe result
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
@@ -281,6 +282,7 @@ Last refreshed: `2026-03-22`
 | Standalone doc-comment-only blocks | `python3 tools/probe_selfhost_doc_comment_only_blocks.py --stage1 /tmp/draton_s1` | `pattern changed: standalone plain/spawn doc-comment-only blocks now parse successfully` | Fixed by `78234a8`; this issue is no longer a general parser blocker, only a clue that helped isolate the remaining self-host crash |
 | Statement-3/4 spawn doc contexts | `python3 tools/probe_selfhost_stmt34_spawn_doc_contexts.py --stage1 /tmp/draton_s1` | ``spawn { /// gap }` only changes outcomes inside the both-bad stmt3/stmt4 pair; outside that context it behaves like an ordinary harmless separator or standalone statement` | This is the current tightest doc-comment narrowing: the remaining doc-comment-sensitive crash is confined to the both-bad mixed self-host interaction, not the general parser or general spawn path |
 | Statement-3/4 spawn doc presence | `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1` | `inside the both-bad stmt3/stmt4 context, any probed doc-comment presence inside spawn { ... } is enough to restore the crash` | This is the current tightest residual narrowing: the remaining spawn-specific failure is keyed to doc-comment token presence inside the otherwise harmless `spawn { ... }` separator |
+| `parser_skip_doc_comments` rooting retry | `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1` plus `python3 tools/probe_selfhost_stmt34_spawn_doc_contexts.py --stage1 /tmp/draton_s1` | `no observable behavior change` | A local self-host-only retry that rooted extra values inside `parser_skip_doc_comments` left the residual spawn-doc and main blocker patterns unchanged, so the experiment was backed out instead of being kept as diff noise |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
@@ -782,6 +784,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair and is otherwise harmless
 - `[ ]` Explain why, inside that residual `both-bad` case, any doc-comment presence inside `spawn { ... }` restores the crash while line-comment-only and doc-comment-free spawn blocks do not
 - `[ ]` Explain why the extra self-host spawn-path rooting hardening in `d770374` did not change the residual `spawn { /// gap }` mixed-context crash
+- `[ ]` Explain why extra local rooting inside `parser_skip_doc_comments` also failed to change the residual `spawn { /// gap }` mixed-context crash
 - `[x]` Explain why minimal standalone plain/spawn doc-comment-only blocks used to fail with `invalid expression at line 4, col 5`
   Fixed by `78234a8`: `parse_block` now re-checks `RBrace` / `Eof` immediately after `parser_skip_doc_comments`
 - `[ ]` Explain why operator family does not matter once statement 1 is a binary-expression `if` with a non-empty body
