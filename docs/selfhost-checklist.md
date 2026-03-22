@@ -184,6 +184,10 @@ These are the committed tranches already landed during the current self-host pus
   - added extra self-host roots around `parse_spawn_stmt`, `stmt_from_spawn`, `spawn_body_expr`, `spawn_body_block`, and `new_spawn_stmt`
   - rebuilt stage1 and reran `tools/probe_selfhost_stmt34_spawn_doc_contexts.py` plus `tools/repro_selfhost_blockers.py`
   - no observable behavior change: the residual `spawn { /// gap }` mixed-context crash and the main `prefix-4` crash class both remain
+- `[x]` `d968701` `tools: compare self-host spawn-doc backtraces`
+  - added `tools/probe_selfhost_spawn_doc_backtrace.py` to compare the main `parser_main_prefix4` crash stack against the residual `both-bad + spawn { /// gap }` stack
+  - the main `prefix-4` crash still runs through `parse_return_stmt -> parse_arg_list -> parse_postfix`
+  - the residual spawn-doc crash is much shallower, stopping at `parser_current -> parser_current_kind -> parser_is_eof -> parser_parse`, so these should be treated as distinct crash paths until proven otherwise
 
 ## Current Snapshot
 
@@ -236,6 +240,7 @@ Last refreshed: `2026-03-22`
 - `[x]` In the mixed self-host stmt3/stmt4 interaction, `doc-only-plain-block` now passes but `doc-only-spawn-block` still crashes
 - `[x]` After the `parse_block` fix, `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair and is otherwise harmless
 - `[x]` Inside that residual `both-bad` case, any probed doc-comment presence inside `spawn { ... }` is enough to restore the crash
+- `[x]` The residual `both-bad + spawn { /// gap }` crash does not share the main `prefix-4` backtrace; it currently dies much earlier in `parser_current -> parser_current_kind -> parser_is_eof -> parser_parse`
 - `[-]` Extra self-host spawn-path rooting hardening was tried and did not change the residual `spawn { /// gap }` mixed-context crash or the main `prefix-4` crash
 - `[-]` Extra self-host `parser_skip_doc_comments` rooting hardening was tried locally and also did not change the residual `spawn { /// gap }` crash or the main `prefix-4` crash, so that experiment was backed out to avoid adding noise on top of the already-dirty parser file
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
@@ -282,8 +287,9 @@ Last refreshed: `2026-03-22`
 | Standalone doc-comment-only blocks | `python3 tools/probe_selfhost_doc_comment_only_blocks.py --stage1 /tmp/draton_s1` | `pattern changed: standalone plain/spawn doc-comment-only blocks now parse successfully` | Fixed by `78234a8`; this issue is no longer a general parser blocker, only a clue that helped isolate the remaining self-host crash |
 | Statement-3/4 spawn doc contexts | `python3 tools/probe_selfhost_stmt34_spawn_doc_contexts.py --stage1 /tmp/draton_s1` | ``spawn { /// gap }` only changes outcomes inside the both-bad stmt3/stmt4 pair; outside that context it behaves like an ordinary harmless separator or standalone statement` | This is the current tightest doc-comment narrowing: the remaining doc-comment-sensitive crash is confined to the both-bad mixed self-host interaction, not the general parser or general spawn path |
 | Statement-3/4 spawn doc presence | `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1` | `inside the both-bad stmt3/stmt4 context, any probed doc-comment presence inside spawn { ... } is enough to restore the crash` | This is the current tightest residual narrowing: the remaining spawn-specific failure is keyed to doc-comment token presence inside the otherwise harmless `spawn { ... }` separator |
+| Spawn-doc backtrace comparison | `python3 tools/probe_selfhost_spawn_doc_backtrace.py --stage1 /tmp/draton_s1` | `main prefix-4 and residual both-bad + spawn-doc crashes follow different stacks` | The main repro still runs through `parse_return_stmt -> parse_arg_list -> parse_postfix`, while the residual spawn-doc crash currently dies much earlier at `parser_current -> parser_current_kind -> parser_is_eof -> parser_parse` |
 | `parser_skip_doc_comments` rooting retry | `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1` plus `python3 tools/probe_selfhost_stmt34_spawn_doc_contexts.py --stage1 /tmp/draton_s1` | `no observable behavior change` | A local self-host-only retry that rooted extra values inside `parser_skip_doc_comments` left the residual spawn-doc and main blocker patterns unchanged, so the experiment was backed out instead of being kept as diff noise |
-| Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_check -> parser_looks_like_type_args_before_class_literal -> parse_postfix -> parse_arg_list -> parse_return_stmt` | Current stable crash stack on `tests/programs/selfhost/parser_main_prefix4.dt` |
+| Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_skip_doc_comments -> parser_match_kind -> parse_or -> parse_nullish -> parse_expression -> parse_arg_list` | Current stable top-of-stack on `tests/programs/selfhost/parser_main_prefix4.dt`; deeper frames still continue through `parse_postfix` and `parse_return_stmt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
 
 ### Current baseline commands
@@ -324,6 +330,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_doc_comment_only_blocks.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_spawn_doc_contexts.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_spawn_doc_backtrace.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -783,6 +790,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why the same doc-comment tokens are now harmless in standalone plain/spawn blocks but still fail inside the mixed self-host `spawn` block fast path
 - `[ ]` Explain why `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair and is otherwise harmless
 - `[ ]` Explain why, inside that residual `both-bad` case, any doc-comment presence inside `spawn { ... }` restores the crash while line-comment-only and doc-comment-free spawn blocks do not
+- `[ ]` Explain why the residual `both-bad + spawn { /// gap }` crash now dies in `parser_is_eof -> parser_parse` instead of following the main `parse_return_stmt -> parse_arg_list -> parse_postfix` stack
 - `[ ]` Explain why the extra self-host spawn-path rooting hardening in `d770374` did not change the residual `spawn { /// gap }` mixed-context crash
 - `[ ]` Explain why extra local rooting inside `parser_skip_doc_comments` also failed to change the residual `spawn { /// gap }` mixed-context crash
 - `[x]` Explain why minimal standalone plain/spawn doc-comment-only blocks used to fail with `invalid expression at line 4, col 5`
@@ -790,7 +798,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why operator family does not matter once statement 1 is a binary-expression `if` with a non-empty body
 - `[ ]` Explain why body emptiness is the decisive variable for statement 1 once the bad condition shape is present
 - `[ ]` Decide whether the unsuccessful postfix/lookahead rooting hardening should be kept as harmless hardening or backed out to reduce diff noise
-- `[ ]` Explain why the crash backtrace still lands in `parser_looks_like_type_args_before_class_literal` even though disabling that predicate does not change the probe outcomes
+- `[ ]` Explain why the current `prefix-4` crash now lands in `parser_skip_doc_comments -> parser_match_kind -> parse_or -> parse_arg_list` while fully bypassing `parser_looks_like_type_args_before_class_literal` still does not change the overall crash pattern
 - `[ ]` Confirm whether the crash happens while consuming the `{` that starts the `then` block in `parse_if_stmt_tail`
 - `[ ]` Decide whether the crash is caused by token rooting/copying or by parser position drift
 - `[ ]` Rerun `tools/verify_stage2.py` after parser/frontend crash is fixed
