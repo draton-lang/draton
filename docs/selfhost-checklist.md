@@ -216,6 +216,10 @@ These are the committed tranches already landed during the current self-host pus
   - added `tools/probe_selfhost_spawn_doc_tail_body_prefixes.py` to measure how leading layout-only vs real statements in the tail body change dispatch buckets
   - layout-only prefixes (blank line, line comment) do not change buckets, but leading `{}`, `spawn {}`, and `let warm = 0` do
   - the same target statement can jump across all three bad buckets depending on the first real statement: for example `return ready()` is `pre-dispatch` by default, becomes `if-tail-dispatch` after a leading `{}`, and becomes `expr-dispatch` after a leading `spawn {}` or `let warm = 0`
+- `[x]` `79a0a5a` `tools: probe self-host spawn-doc tail prefix interactions`
+  - added `tools/probe_selfhost_spawn_doc_tail_prefix_interactions.py` to compare prefix statements alone vs the same prefixes when followed by a second tail statement
+  - the tested prefixes are not uniformly harmful on their own: `{}` and `let warm = 0` alone stay `pre-dispatch`, while `spawn {}` alone already hits `expr-dispatch`
+  - the bucket of the following statement depends on the exact prefix+target pair, which makes the residual tail-body path a real two-statement state machine rather than a one-statement rule
 
 ## Current Snapshot
 
@@ -276,6 +280,7 @@ Last refreshed: `2026-03-22`
 - `[x]` Keyword-led tail statements now split across three bad paths in the residual spawn-doc family: expr-dispatch drift (`return 0`, `spawn {}`), `parse_if_stmt_tail` drift (`let x = ready()`, `let x = (0)`), and pre-dispatch death (`return ready()`, `return (0)`, `spawn ready()`, `spawn (0)`, `let x = 0`)
 - `[x]` The updated dispatch matrix shows keyword is no longer the primary predictor; the `keyword + operand-shape` combination now decides between expr-dispatch drift, `parse_if_stmt_tail` drift, and pre-dispatch death
 - `[x]` Tail-body prefixes add another dimension: layout-only prefixes leave buckets unchanged, but real leading statements can move the same target statement between `pre-dispatch`, `expr-dispatch`, and `parse_if_stmt_tail`
+- `[x]` Prefix statements do not have a fixed global severity: `{}` and `let warm = 0` are `pre-dispatch` alone, `spawn {}` is `expr-dispatch` alone, and each prefix changes the following statement differently depending on the pair
 - `[-]` Extra self-host spawn-path rooting hardening was tried and did not change the residual `spawn { /// gap }` mixed-context crash or the main `prefix-4` crash
 - `[-]` Extra self-host `parser_skip_doc_comments` rooting hardening was tried locally and also did not change the residual `spawn { /// gap }` crash or the main `prefix-4` crash, so that experiment was backed out to avoid adding noise on top of the already-dirty parser file
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
@@ -330,6 +335,7 @@ Last refreshed: `2026-03-22`
 | Spawn-doc tail keyword dispatch | `python3 tools/probe_selfhost_spawn_doc_tail_keyword_dispatch.py --stage1 /tmp/draton_s1` | `none of the probed keyword-led tail statements reach their dedicated parsers; return/spawn/let variants now split across expr-dispatch, if-tail-dispatch, and pre-dispatch failure modes` | This is the clearest current evidence that statement-kind dispatch has drifted badly in the residual tail-function path: even keyword-led statements no longer select parser branches by their source spelling |
 | Spawn-doc tail dispatch matrix | `python3 tools/probe_selfhost_spawn_doc_tail_dispatch_matrix.py --stage1 /tmp/draton_s1` | `keyword no longer predicts parser path; only literal return and empty-block spawn hit expr-dispatch, only let+call/grouped hits parse_if_stmt_tail, and the rest die pre-dispatch` | This is the tightest current matrix for the residual tail-function family: parser drift depends on the combination of statement keyword and operand shape, not on keyword alone |
 | Spawn-doc tail body prefixes | `python3 tools/probe_selfhost_spawn_doc_tail_body_prefixes.py --stage1 /tmp/draton_s1` | `layout-only prefixes do not change buckets, but real leading statements can move the same tail statement between pre-dispatch, expr-dispatch, and if-tail-dispatch` | This is the strongest current sign that the first real statement inside the tail body is mutating parser state directly: the same target statement changes bucket depending on whether it is preceded by `{}`, `spawn {}`, or `let warm = 0` |
+| Spawn-doc tail prefix interactions | `python3 tools/probe_selfhost_spawn_doc_tail_prefix_interactions.py --stage1 /tmp/draton_s1` | `prefix statements are not uniformly harmful on their own; the bucket of the following statement depends on the exact prefix+target pair` | This is the clearest current evidence that the residual tail-body path is a two-statement state machine: neither the prefix nor the target alone is enough to predict the resulting parser sink |
 | `parser_skip_doc_comments` rooting retry | `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1` plus `python3 tools/probe_selfhost_stmt34_spawn_doc_contexts.py --stage1 /tmp/draton_s1` | `no observable behavior change` | A local self-host-only retry that rooted extra values inside `parser_skip_doc_comments` left the residual spawn-doc and main blocker patterns unchanged, so the experiment was backed out instead of being kept as diff noise |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_skip_doc_comments -> parser_match_kind -> parse_or -> parse_nullish -> parse_expression -> parse_arg_list` | Current stable top-of-stack on `tests/programs/selfhost/parser_main_prefix4.dt`; deeper frames still continue through `parse_postfix` and `parse_return_stmt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
@@ -380,6 +386,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_spawn_doc_tail_keyword_dispatch.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_spawn_doc_tail_dispatch_matrix.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_spawn_doc_tail_body_prefixes.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_spawn_doc_tail_prefix_interactions.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -847,6 +854,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why `let x = ready()` and `let x = (0)` are now misrouted into `parse_if_stmt_tail` instead of `parse_let_stmt`, while `let x = 0` still dies even earlier before `parse_stmt`
 - `[ ]` Explain why, in the residual tail-function dispatch matrix, literal `return` and empty-block `spawn` alone hit expr-dispatch drift, `let` only misroutes on call/grouped values, and ident/call/grouped `return/spawn` plus ident/literal `let` die pre-dispatch
 - `[ ]` Explain why layout-only prefixes leave tail-body buckets unchanged, while real leading statements like `{}`, `spawn {}`, and `let warm = 0` can move the same target statement between `pre-dispatch`, `expr-dispatch`, and `parse_if_stmt_tail`
+- `[ ]` Explain why prefix statements are not uniformly harmful on their own: `{}` and `let warm = 0` stay `pre-dispatch` alone, `spawn {}` is `expr-dispatch` alone, and the resulting bucket still depends on the exact prefix+target pair
 - `[ ]` Explain why the extra self-host spawn-path rooting hardening in `d770374` did not change the residual `spawn { /// gap }` mixed-context crash
 - `[ ]` Explain why extra local rooting inside `parser_skip_doc_comments` also failed to change the residual `spawn { /// gap }` mixed-context crash
 - `[x]` Explain why minimal standalone plain/spawn doc-comment-only blocks used to fail with `invalid expression at line 4, col 5`
