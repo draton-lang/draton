@@ -101,6 +101,7 @@ fn parse_stmt(p) {
         stmt = stmt_from_while(while_stmt, while_stmt.span)
     } else if str_eq_stmt_parse(kind, "Spawn") {
         let spawn_stmt = parse_spawn_stmt(p)
+        let _spawn_stmt_root = spawn_stmt
         stmt = stmt_from_spawn(spawn_stmt, spawn_stmt.span)
     } else if str_eq_stmt_parse(kind, "AtUnsafe") {
         parser_expect(p, "AtUnsafe", "@unsafe")
@@ -298,13 +299,18 @@ fn parse_spawn_stmt(p) {
     let mut end = start
     if parser_check(p, "LBrace") {
         let block = parse_block(p)
+        let _block_root = block
         end = block.span
         body = spawn_body_block(block)
+        let _body_root = body
     } else {
         let expr = parse_expression(p)
+        let _expr_root = expr
         end = expr_span(expr)
         body = spawn_body_expr(expr)
+        let _body_root = body
     }
+    let _body_root2 = body
     let spawn_span = merge_spans(start, end)
     new_spawn_stmt(body, spawn_span)
 }

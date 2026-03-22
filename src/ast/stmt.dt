@@ -310,6 +310,8 @@ fn stmt_from_while(while_stmt, span) {
 }
 
 fn stmt_from_spawn(spawn_stmt, span) {
+    let _spawn_stmt_root = spawn_stmt
+    let _span_root = span
     let stmt = Stmt()
     stmt.kind = "Spawn"
     stmt.spawn_stmt = spawn_stmt
@@ -429,6 +431,7 @@ fn new_while_stmt(condition, body, span) {
 }
 
 fn spawn_body_expr(expr) {
+    let _expr_root = expr
     let body = SpawnBody()
     body.kind = "Expr"
     body.expr = expr
@@ -436,6 +439,7 @@ fn spawn_body_expr(expr) {
 }
 
 fn spawn_body_block(block) {
+    let _block_root = block
     let body = SpawnBody()
     body.kind = "Block"
     body.block = block
@@ -443,6 +447,8 @@ fn spawn_body_block(block) {
 }
 
 fn new_spawn_stmt(body, span) {
+    let _body_root = body
+    let _span_root = span
     let stmt = SpawnStmt()
     stmt.body = body
     stmt.span = span
