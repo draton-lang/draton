@@ -48,6 +48,22 @@ fn parses_for_while_and_spawn() {
 }
 
 #[test]
+fn parses_doc_comment_only_plain_and_spawn_blocks_as_empty_blocks() {
+    let stmts = parse_body(
+        r#"
+{
+    /// gap
+}
+spawn {
+    /// gap
+}
+"#,
+    );
+    assert!(matches!(&stmts[0], Stmt::Block(block) if block.stmts.is_empty()));
+    assert!(matches!(&stmts[1], Stmt::Spawn(spawn) if matches!(&spawn.body, SpawnBody::Block(block) if block.stmts.is_empty())));
+}
+
+#[test]
 fn parses_match_with_tuple_and_result_patterns() {
     let stmts = parse_body(
         "match point { (0, 0) => print(\"origin\"), (x, y) => print(f\"{x},{y}\") } match getUser(0) { Ok(u) => print(u.name), Err(NotFound(msg)) => print(msg), _ => print(\"other\") }",

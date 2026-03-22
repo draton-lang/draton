@@ -48,12 +48,17 @@ fn parse_block(p) {
     let mut stmts = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         parser_skip_doc_comments(p)
+        if parser_is_eof(p) || parser_check(p, "RBrace") {
+            let _done = 0
+            let _done2 = 0
+        } else {
         let before = p.pos
         let stmt = parse_stmt(p)
         if str_len(stmt.kind) != 0 {
             stmts.push(stmt)
         } else if p.pos == before {
             parser_sync_stmt(p)
+        }
         }
     }
     let end = parser_token_span(p)
@@ -76,6 +81,7 @@ fn parse_stmt(p) {
     let _p_root = p
     parser_skip_doc_comments(p)
     let kind = parser_current_kind(p)
+    let _kind_root = kind
     let stmt_start = parser_token_span(p)
     let mut stmt = stmt_from_expr(expr_ident("", stmt_start))
     if str_eq_stmt_parse(kind, "Let") {
@@ -167,6 +173,7 @@ fn parse_return_stmt(p) {
     let mut value = expr_ident("", start)
     let mut has_value = false
     let kind = parser_current_kind(p)
+    let _kind_root = kind
     if !str_eq_stmt_parse(kind, "Semicolon") && !str_eq_stmt_parse(kind, "RBrace") && !str_eq_stmt_parse(kind, "Eof") {
         value = parse_expression(p)
         has_value = true
@@ -313,6 +320,7 @@ fn parse_asm_block(p) {
     let mut parts = []
     while !parser_is_eof(p) && !parser_check(p, "RBrace") {
         let part_token = parser_current(p)
+        let _part_token_root = part_token
         parts.push(part_token.lexeme)
         let _advanced = parser_advance(p)
     }
@@ -393,6 +401,7 @@ fn parse_expr_stmt_or_assignment(p) {
     let start = parser_token_span(p)
     let expr = parse_expression(p)
     let kind = parser_current_kind(p)
+    let _kind_root = kind
     let mut stmt = stmt_from_expr(expr)
     if str_eq_stmt_parse(kind, "Eq") ||
        str_eq_stmt_parse(kind, "PlusEq") ||
@@ -401,6 +410,7 @@ fn parse_expr_stmt_or_assignment(p) {
        str_eq_stmt_parse(kind, "SlashEq") ||
        str_eq_stmt_parse(kind, "PercentEq") {
         let op_token = parser_current(p)
+        let _op_token_root = op_token
         let op = op_token.kind
         let _adv = parser_advance(p)
         let value = parse_expression(p)
@@ -411,6 +421,7 @@ fn parse_expr_stmt_or_assignment(p) {
         stmt = stmt_from_assign(assign_stmt, assign_span)
     } else if str_eq_stmt_parse(kind, "PlusPlus") || str_eq_stmt_parse(kind, "MinusMinus") {
         let op_token = parser_current(p)
+        let _op_token_root = op_token
         let op = op_token.kind
         let end = parser_token_span(p)
         let _adv = parser_advance(p)

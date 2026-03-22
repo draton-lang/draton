@@ -17,6 +17,9 @@ impl Parser {
         let mut stmts = Vec::new();
         while !self.is_eof() && !self.check(TokenKind::RBrace) {
             self.skip_doc_comments();
+            if self.is_eof() || self.check(TokenKind::RBrace) {
+                break;
+            }
             let before = self.pos;
             if let Some(stmt) = self.parse_stmt() {
                 stmts.push(stmt);
