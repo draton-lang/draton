@@ -176,6 +176,10 @@ These are the committed tranches already landed during the current self-host pus
   - automated spawn-doc-context probe added at `tools/probe_selfhost_stmt34_spawn_doc_contexts.py`
   - after the `parse_block` fix, `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair
   - outside that narrow context it behaves like an ordinary harmless separator or standalone statement, so the remaining doc-comment issue is much smaller than before
+- `[x]` `d770374` `fix: harden self-host spawn parser rooting`
+  - added extra self-host roots around `parse_spawn_stmt`, `stmt_from_spawn`, `spawn_body_expr`, `spawn_body_block`, and `new_spawn_stmt`
+  - rebuilt stage1 and reran `tools/probe_selfhost_stmt34_spawn_doc_contexts.py` plus `tools/repro_selfhost_blockers.py`
+  - no observable behavior change: the residual `spawn { /// gap }` mixed-context crash and the main `prefix-4` crash class both remain
 
 ## Current Snapshot
 
@@ -227,6 +231,7 @@ Last refreshed: `2026-03-22`
 - `[x]` Minimal standalone plain/spawn doc-comment-only blocks now parse successfully after the `parse_block` fix
 - `[x]` In the mixed self-host stmt3/stmt4 interaction, `doc-only-plain-block` now passes but `doc-only-spawn-block` still crashes
 - `[x]` After the `parse_block` fix, `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair and is otherwise harmless
+- `[-]` Extra self-host spawn-path rooting hardening was tried and did not change the residual `spawn { /// gap }` mixed-context crash or the main `prefix-4` crash
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
 - `[x]` Temporarily disabling `parser_looks_like_type_args_before_class_literal` did not change any current parser probe result
 - `[!]` Stage1 `check src/main.dt` still crashes with `SIGSEGV`
@@ -766,6 +771,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why the mixed-context `spawn` doc-comment-only block still crashes after the general `parse_block` fix
 - `[ ]` Explain why the same doc-comment tokens are now harmless in standalone plain/spawn blocks but still fail inside the mixed self-host `spawn` block fast path
 - `[ ]` Explain why `spawn { /// gap }` only changes outcomes inside the `both-bad` stmt3/stmt4 pair and is otherwise harmless
+- `[ ]` Explain why the extra self-host spawn-path rooting hardening in `d770374` did not change the residual `spawn { /// gap }` mixed-context crash
 - `[x]` Explain why minimal standalone plain/spawn doc-comment-only blocks used to fail with `invalid expression at line 4, col 5`
   Fixed by `78234a8`: `parse_block` now re-checks `RBrace` / `Eof` immediately after `parser_skip_doc_comments`
 - `[ ]` Explain why operator family does not matter once statement 1 is a binary-expression `if` with a non-empty body
