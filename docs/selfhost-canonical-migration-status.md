@@ -159,7 +159,7 @@ A focused strict-canonical self-host CI subset is now practical and enabled:
 - parser/typecheck regression tests cover the Rust frontend/tooling path
 - `tools/check_selfhost_strict_subset.py` guards the migrated `src/` subset against compatibility-form regressions
 - CI also runs one representative strict canonical fixture build
-- CI now runs self-host bootstrap as a hard failure gate
+- CI now runs a tracked self-host bootstrap probe, but it is non-gating while the remaining Stage 2 blocker is unresolved
 
 What would still be required for full-tree strict self-host CI:
 
@@ -173,10 +173,10 @@ Current repository state:
 
 - the migrated self-host compiler path is covered by strict-canonical subset CI
 - there are zero explicit strict-subset exclusions
-- bootstrap is covered by the same CI job as a hard gate
+- bootstrap is covered by the same CI job as a tracked non-gating probe
 - Stage 2 self-host verification is still blocked by a crash in `collect_function_binding_hints_from_stmt()`
 
-That means contributors can now treat canonical syntax as the normal rule across the self-host tree and can rely on bootstrap verification as part of normal CI. Stage 2 parity still requires resolving the remaining self-host crash above.
+That means contributors can treat canonical syntax as the normal rule across the self-host tree while still seeing bootstrap regressions in CI logs. Stage 2 parity still requires resolving the remaining self-host crash above before bootstrap can become a hard gate again.
 
 ## Verification Run
 
