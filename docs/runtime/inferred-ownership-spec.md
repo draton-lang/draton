@@ -216,6 +216,77 @@ That means:
 - a parameter that is returned, stored, captured by an escaping closure, reassigned into another owner, or passed to a `move` parameter becomes `move`
 - if different paths require different effects, the strongest one wins
 
+### 2.2.1 Recursive summary inference
+
+Recursive calls use the same summary inference, but the compiler solves all functions in a recursive cycle together.
+
+The rule is:
+
+- each parameter in a recursive strongly connected component starts at `copy`
+- the compiler repeatedly analyzes every function in that component
+- every recursive call edge uses the current summary of the callee parameter
+- summaries keep rising through `copy < borrow(shared) < borrow(exclusive) < move` until they stop changing
+
+For a function that recursively calls itself with a move-by-default argument:
+
+- the recursive call counts as `move` if the converged parameter summary is `move`
+- the recursive call counts as `borrow(shared)` or `borrow(exclusive)` if the converged summary is a borrow
+- once the summary converges to `move`, every recursive edge in that function consumes the argument in the current frame
+
+For mutual recursion between two functions:
+
+- the compiler infers both summaries in one step over the same recursive component
+- ownership requirements flow around the whole cycle, not one function at a time
+- if either function forces a parameter to `move`, every call edge in that cycle to the matching parameter is treated as `move` after convergence
+
+Valid:
+
+```draton
+fn pass_down(text, n) {
+    if n == 0 {
+        return text
+    }
+    return pass_down(text, n - 1)
+}
+
+fn main() {
+    let name = input("name: ")
+    let out = pass_down(name, 3)
+    print(out.len())
+}
+```
+
+Compiler does:
+
+- infer `pass_down(text)` as `move` because the base case returns `text`
+- treat the recursive call `pass_down(text, n - 1)` as a move of `text` into the next frame
+- allow the function because the current frame does not use `text` after that recursive move
+- insert `free(out)` after the last use in `main`
+
+Invalid:
+
+```draton
+fn first(text, n) {
+    if n == 0 {
+        return text
+    }
+    return second(text, n - 1)
+}
+
+fn second(text, n) {
+    let out = first(text, n)
+    print(text.len())
+    return out
+}
+```
+
+Compiler does:
+
+- infer `first(text)` and `second(text)` together because they are mutually recursive
+- raise both summaries to `move` because `first` returns `text`
+- treat `first(text, n)` inside `second` as a move
+- reject `print(text.len())` because `text` was moved into the recursive call
+
 Valid:
 
 ```draton
@@ -739,7 +810,21 @@ For safe Draton functions, summaries are inferred to a fixed point over each str
 For calls through function values:
 
 - if the callee set is closed and known, the compiler joins the candidate summaries with the same effect order used for direct calls
-- if the callee set is open or unknown, non-`Copy` arguments are rejected in safe code
+- if the callee set is open or unknown, a binding-level `@type` effect contract may declare how that function value treats its non-`Copy` argument
+- if the callee set is open or unknown and no effect contract is present, non-`Copy` arguments are rejected in safe code
+
+For an open higher-order callee, the supported `@type` effect contracts are:
+
+- `name: (T) -> borrow`
+- `name: (T) -> move`
+
+These are ownership-effect summaries for function-value bindings, not ordinary return-type contracts.
+
+- `borrow` means the call site applies `borrow(shared)` to the argument
+- `move` means the call site moves the argument into the callee
+- the compiler trusts the declared effect at the call site instead of trying to infer it from an unknown implementation
+- if the effect is omitted, the current rejection rule remains in force
+- open-callee exclusive mutation is still rejected unless the callee set is closed and known
 
 Valid:
 
@@ -768,6 +853,36 @@ Compiler does:
 - move `b`
 - insert `free(a)` after its last use
 - insert no local `free(b)` because ownership moved into `save`
+
+Valid:
+
+```draton
+fn show(text) {
+    print(text.len())
+    return ()
+}
+
+fn run(op, text) {
+    @type {
+        op: (String) -> borrow
+    }
+    op(text)
+    print(text.len())
+}
+
+fn main() {
+    let name = input("name: ")
+    run(show, name)
+}
+```
+
+Compiler does:
+
+- treat `op` as an open higher-order callee
+- read `@type { op: (String) -> borrow }` as a trusted call-site effect summary
+- borrow `text` for `op(text)` instead of rejecting the call
+- allow the later `print(text.len())`
+- keep `name` owned by `main` and insert `free(name)` after its last use
 
 Invalid:
 
@@ -1147,6 +1262,78 @@ That includes:
 - values re-entering safe code from raw pointer APIs without a unique-owner proof
 - container updates where parent-child ancestry is no longer statically known
 
+### 8.4 `@acyclic`
+
+`@acyclic` is a compile-time class annotation:
+
+```draton
+@acyclic
+class Package {
+    ...
+}
+```
+
+It means:
+
+- the programmer asserts that no instance of that class will ever participate in an ownership cycle
+- the compiler trusts that assertion for values of that class and skips per-store ancestry walks for edges whose full parent-child path stays inside statically known `@acyclic` types
+
+The compiler still performs one definition-time check before accepting the annotation:
+
+- reject `@acyclic` if the class has an obvious direct self-owning field
+- a direct self-owning field includes the class itself or a built-in owning wrapper that immediately contains the same class, such as `Option[Self]`, `Result[Self, E]`, `Tuple[..., Self]`, `Array[Self]`, `Map[K, Self]`, or `Set[Self]`
+
+What the compiler trusts:
+
+- stores through fields of this class do not need dynamic cycle checks when every owning type on that path is known and marked `@acyclic`
+
+What the compiler still checks:
+
+- indirect cycles through non-`@acyclic` named classes
+- indirect cycles through generic or otherwise unknown field types
+- any edge that passes through raw pointers or re-enters from raw code
+
+Valid:
+
+```draton
+@acyclic
+class Artifact {
+    let path
+
+    @type {
+        path: String
+    }
+}
+
+@acyclic
+class Package {
+    let name
+    let artifacts
+
+    @type {
+        name: String
+        artifacts: Array[Artifact]
+    }
+}
+
+fn main() {
+    @type {
+        artifacts: Array[Artifact]
+    }
+    let mut artifacts = []
+    artifacts.push(Artifact { path: "main.o" })
+    let pkg = Package { name: "app", artifacts: artifacts }
+    print(pkg)
+}
+```
+
+Compiler does:
+
+- accept `@acyclic` on `Artifact` and `Package` because neither class directly owns itself
+- trust that moving `artifacts` into `pkg` cannot form an ownership cycle through the declared `@acyclic` field path
+- skip the usual ancestry walk for that store
+- still keep the normal conservative checks for any later store through a non-`@acyclic` or unknown field type
+
 There is no fallback to silent runtime cycle handling in safe code.
 
 Can two heap objects reference each other?
@@ -1309,6 +1496,90 @@ Inside `@unsafe`:
 - type checking continues
 - move, borrow, last-use, alias, and cycle rules still apply
 - unsafe-only operations are allowed, but they must still respect ownership at the safe boundary
+
+### 10.2.1 `@unsafe` versus `@pointer`
+
+`@unsafe` is for operations whose safety depends on caller-established preconditions, while `@pointer` is for raw pointer-oriented values and graphs.
+
+`@unsafe` allows operations that safe code does not:
+
+- calling extern or runtime entry points whose correctness depends on ABI, layout, alignment, bounds, or non-null guarantees that the compiler cannot prove
+- performing unchecked casts or reinterpretations between raw handles and typed values when the programmer establishes validity
+- doing one-shot boundary operations where the dangerous step is local but the surrounding values remain safe before and after the block
+
+`@unsafe` does not disable:
+
+- ownership inference
+- borrow lifetime checking
+- move-after-use errors
+- alias rejection
+- cycle detection
+- the boundary rules for values that cross into raw code
+
+Use `@unsafe` when:
+
+- the operation is locally dangerous
+- the value should still remain a normal safe Draton value before and after that operation
+- you do not need a long-lived raw alias or manual ownership graph
+
+Use `@pointer` when:
+
+- the value itself must stay raw across multiple operations
+- you need manual allocation or manual `free`
+- you need shared raw aliases or cyclic raw graphs
+- the compiler cannot or should not reason about the pointee ownership graph
+
+| Topic | Safe code | `@unsafe` | `@pointer` |
+| --- | --- | --- | --- |
+| Caller-proved ABI or layout preconditions | rejected | allowed | allowed |
+| Automatic move and borrow checks on safe values | enforced | enforced | enforced only for the raw pointer value itself, not the pointee graph |
+| Long-lived raw aliases | rejected | rejected for safe values | allowed |
+| Manual allocation and manual `free` | rejected | only through raw operations that still obey the boundary rules | allowed and expected |
+| Cyclic or shared manual memory graphs | rejected | rejected for safe values | allowed |
+
+`@unsafe` is the right tool when the dangerous operation is local and ownership remains safe:
+
+```draton
+@extern "C" {
+    fn getpid() -> Int
+}
+
+fn main() {
+    let mut pid = 0
+    @unsafe {
+        pid = getpid()
+    }
+    print(pid)
+}
+```
+
+Compiler does:
+
+- allow the unchecked extern call inside `@unsafe`
+- keep normal `Copy` and assignment rules for `pid`
+- insert no ownership-specific escape behavior because no owned safe value crosses into raw code
+
+`@pointer` is the right tool when the value itself must stay raw and manually managed:
+
+```draton
+@extern "C" {
+    fn malloc(size: UInt64) -> @pointer
+    fn free(ptr: @pointer)
+}
+
+fn main() {
+    @pointer {
+        let p = malloc(64)
+        free(p)
+    }
+}
+```
+
+Compiler does:
+
+- treat `p` as a raw pointer value
+- skip pointee ownership analysis
+- leave allocation and deallocation to the programmer
 
 Valid:
 
