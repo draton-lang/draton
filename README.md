@@ -38,7 +38,13 @@ It is built from the `docs/` tree and deployed by GitHub Actions. The repo-local
 - [docs/syntax-migration.md](docs/syntax-migration.md)
 - [docs/roadmap-1year.md](docs/roadmap-1year.md)
 
-Runtime and performance references:
+Runtime and memory-model references:
+
+- [docs/runtime/runtime-and-gc.md](docs/runtime/runtime-and-gc.md)
+- [docs/runtime/migration-gc-to-inferred-ownership.md](docs/runtime/migration-gc-to-inferred-ownership.md)
+- [docs/runtime/inferred-ownership-spec.md](docs/runtime/inferred-ownership-spec.md)
+
+Archived GC benchmark material remains available for historical comparison only:
 
 - [docs/gc-scorecard.md](docs/gc-scorecard.md)
 - [docs/benchmarks/gc-results-2026-03-18-e8f4d9e.md](docs/benchmarks/gc-results-2026-03-18-e8f4d9e.md)

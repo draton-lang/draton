@@ -707,7 +707,7 @@ Goal: stop depending on the Rust runtime crate for the normal bootstrap path.
 - `[ ]` array primitives needed by compiler-core
 - `[ ]` panic path
 - `[ ]` allocation path sufficient for bootstrap
-- `[ ]` documented bootstrap-mode GC or non-GC policy
+- `[ ]` documented bootstrap-mode ownership/allocation policy
 - `[ ]` separate bootstrap-minimal runtime from full runtime ambitions
 
 ### S3.C Stdlib surface needed for bootstrap

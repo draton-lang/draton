@@ -146,7 +146,7 @@ If the answer to any of those is "no", the default position should be to reject 
 | `draton-parser` | grammar and AST construction |
 | `draton-typeck` | inference and contract checking |
 | `draton-codegen` | LLVM lowering |
-| `draton-runtime` | GC, safepoints, scheduler, runtime ABI |
+| `draton-runtime` | ownership-era runtime ABI, scheduler, channels, panic, builtins, IO |
 | `draton-stdlib` | host-side standard library |
 | `draton-lsp` | editor protocol support |
 | `drat` | unified CLI and tool hub |

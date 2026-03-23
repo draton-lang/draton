@@ -126,7 +126,7 @@ The self-host mirror is now effectively at canonical syntax parity for executabl
 Practical strict-canonical subset:
 
 - canonical compile fixtures
-- selected GC / lambda / interface strict builds
+- selected lambda / interface strict builds
 
 What is not yet true:
 
@@ -183,7 +183,7 @@ That means contributors can now treat canonical syntax as the normal rule across
 Historical focused verification from earlier canonical passes included:
 
 - `cargo test -p draton-parser --test items -p draton-typeck --test errors`
-- strict canonical builds for interface, lambda, generic-class, and GC fixtures
+- strict canonical builds for interface, lambda, and generic-class fixtures
 - repeated self-host-facing `cargo run -p drat -- build src/main.dt ...` bootstrap checks
 
 Focused verification for this final mechanical pass:

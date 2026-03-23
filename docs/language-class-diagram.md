@@ -155,8 +155,7 @@ classDiagram
     }
 
     class RuntimeCrate {
-        +GC
-        +safepoints
+        +ownership runtime support
         +scheduler
         +runtime ABI
     }

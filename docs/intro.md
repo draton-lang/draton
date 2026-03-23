@@ -54,7 +54,7 @@ Use the tooling section to understand `drat build`, `drat run`, `drat fmt`, `dra
 
 ### Compiler and runtime
 
-Use the compiler and runtime section to understand the Rust frontend, the self-host mirror, the runtime, and the GC benchmark surface.
+Use the compiler and runtime section to understand the Rust frontend, the self-host mirror, the Inferred Ownership memory model, and the remaining runtime services. Archived GC benchmark material is retained only for historical context.
 
 ### Contributor rules
 
