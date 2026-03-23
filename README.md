@@ -44,12 +44,6 @@ Runtime and memory-model references:
 - [docs/runtime/migration-gc-to-inferred-ownership.md](docs/runtime/migration-gc-to-inferred-ownership.md)
 - [docs/runtime/inferred-ownership-spec.md](docs/runtime/inferred-ownership-spec.md)
 
-Archived GC benchmark material remains available for historical comparison only:
-
-- [docs/gc-scorecard.md](docs/gc-scorecard.md)
-- [docs/benchmarks/gc-results-2026-03-18-e8f4d9e.md](docs/benchmarks/gc-results-2026-03-18-e8f4d9e.md)
-- [docs/benchmarks/gc-results-2026-03-17.md](docs/benchmarks/gc-results-2026-03-17.md)
-
 Tooling references:
 
 - [docs/tools/formatter.md](docs/tools/formatter.md)
@@ -82,6 +76,7 @@ The docs deployment workflow publishes the built site to GitHub Pages for `docs.
 |---|---|
 | **LLVM backend** | Native code generation via LLVM 14, with release-mode optimizations |
 | **Static typing** | Full type inference — annotate only what you need to |
+| **Inferred Ownership** | Compile-time copy/borrow/move inference with generated last-use `free` for safe heap values |
 | **Classes & interfaces** | Inheritance, interface implementation, and named method layers |
 | **Enums & errors** | First-class enum and structured error types |
 | **Result types** | Built-in `Ok`/`Err` values and nullish-coalescing (`??`) |

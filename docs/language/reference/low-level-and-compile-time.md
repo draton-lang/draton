@@ -51,9 +51,9 @@ The parser currently treats the inside of `@asm { ... }` as raw token text joine
 
 This is a statement form, not the same thing as ordinary runtime `if`.
 
-## GC configuration block
+## Deprecated `@gc_config` block
 
-Deprecated.
+Deprecated and ignored.
 
 ```draton
 @gc_config {

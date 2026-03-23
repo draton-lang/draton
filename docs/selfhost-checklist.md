@@ -433,7 +433,6 @@ Goal: remove ambiguity about what "self-host" means in this repository and make 
 
 - `[ ]` Update `README` to stop implying more self-host readiness than currently proven
 - `[ ]` Update `docs/selfhost-canonical-migration-status.md` to match current blocker list
-- `[ ]` Update `docs/gc-scorecard.md` to reflect current bootstrap blockers and not older ones
 - `[ ]` Link this checklist from the main self-host status docs
 
 ### S0 Exit Gate

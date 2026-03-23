@@ -4,7 +4,7 @@ This roadmap describes the next year of development for Draton based on the repo
 
 It is a planning document, not a syntax proposal. It assumes the canonical syntax rules, anti-drift policies, and language manifesto remain in force.
 
-Ownership-based memory management is now part of the baseline compiler/runtime model. This roadmap does not include GC tuning work.
+Ownership-based memory management is now part of the baseline compiler/runtime model.
 
 ## Project status summary
 

@@ -24,7 +24,7 @@ Safe Draton programs now use Inferred Ownership:
 
 - the typechecker infers copy, borrow, and move at use sites
 - codegen emits `malloc` and `free` directly for owned heap values
-- the runtime no longer performs tracing, barriers, or safepoint-driven reclamation for safe values
+- the runtime no longer performs collector-driven memory management for safe values
 - explicit escape hatches such as `@pointer` remain outside the inferred ownership model
 
 This keeps the runtime smaller and shifts correctness checks to compile time, where aliasing and ownership ambiguity are rejected before code is emitted.
@@ -41,17 +41,10 @@ The runtime still owns:
 
 The runtime no longer owns:
 
-- tracing GC state
-- write barriers
-- safepoint polling
+- collector state
+- barrier machinery
+- polling hooks used by the old collector
 - shadow-stack metadata
-- type-descriptor registration for a collector
+- type-descriptor registration for an old collector path
 
-## Archived GC material
-
-Older GC benchmarking material is retained only as historical context:
-
-- [GC scorecard](../gc-scorecard.md)
-- benchmark artifacts under `docs/benchmarks/`
-
-Those documents are archived and should not be treated as describing the active runtime architecture.
+For the active model, pair this document with the [Inferred Ownership specification](inferred-ownership-spec.md). For historical migration context, use [migration-gc-to-inferred-ownership.md](migration-gc-to-inferred-ownership.md).
