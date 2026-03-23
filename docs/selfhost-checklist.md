@@ -224,6 +224,10 @@ These are the committed tranches already landed during the current self-host pus
   - added `tools/probe_selfhost_spawn_doc_context_contrast.py` to compare representative tail-body prefix pairs across `orig`, `both-bad`, and `residual` contexts
   - the same tail-body pair does not have one stable parser sink across contexts
   - this rules out the idea that the tail-body state machine is just a generic parser quirk; it depends on context poisoning that only fully appears after the residual spawn-doc step
+- `[x]` `250a119` `tools: probe self-host spawn-doc header thresholds`
+  - added `tools/probe_selfhost_spawn_doc_header_thresholds.py` to connect a representative residual tail-body pair back to class/@type header pressure
+  - for `spawn {} + return ready()`, the full class payload is required before the pair reaches the OOM branch
+  - the `@type` payload now has three measured phases at class5: low counts pass, mid counts `SIGSEGV`, and only the full 22-entry block reaches OOM
 
 ## Current Snapshot
 
@@ -286,6 +290,7 @@ Last refreshed: `2026-03-22`
 - `[x]` Tail-body prefixes add another dimension: layout-only prefixes leave buckets unchanged, but real leading statements can move the same target statement between `pre-dispatch`, `expr-dispatch`, and `parse_if_stmt_tail`
 - `[x]` Prefix statements do not have a fixed global severity: `{}` and `let warm = 0` are `pre-dispatch` alone, `spawn {}` is `expr-dispatch` alone, and each prefix changes the following statement differently depending on the pair
 - `[x]` The residual tail-body state machine is context-dependent, not generic: representative `prefix + target` pairs land in different first-parse sinks across `orig`, `both-bad`, and `residual` contexts
+- `[x]` The residual tail-body family also depends on header pressure: for `spawn {} + return ready()`, full class payload is needed before OOM appears, and the `@type` payload now splits into pass / `SIGSEGV` / OOM regions instead of a single threshold
 - `[-]` Extra self-host spawn-path rooting hardening was tried and did not change the residual `spawn { /// gap }` mixed-context crash or the main `prefix-4` crash
 - `[-]` Extra self-host `parser_skip_doc_comments` rooting hardening was tried locally and also did not change the residual `spawn { /// gap }` crash or the main `prefix-4` crash, so that experiment was backed out to avoid adding noise on top of the already-dirty parser file
 - `[-]` Targeted rooting hardening in self-host postfix/lookahead parsing was tried and did not change the crash signature
@@ -342,6 +347,7 @@ Last refreshed: `2026-03-22`
 | Spawn-doc tail body prefixes | `python3 tools/probe_selfhost_spawn_doc_tail_body_prefixes.py --stage1 /tmp/draton_s1` | `layout-only prefixes do not change buckets, but real leading statements can move the same tail statement between pre-dispatch, expr-dispatch, and if-tail-dispatch` | This is the strongest current sign that the first real statement inside the tail body is mutating parser state directly: the same target statement changes bucket depending on whether it is preceded by `{}`, `spawn {}`, or `let warm = 0` |
 | Spawn-doc tail prefix interactions | `python3 tools/probe_selfhost_spawn_doc_tail_prefix_interactions.py --stage1 /tmp/draton_s1` | `prefix statements are not uniformly harmful on their own; the bucket of the following statement depends on the exact prefix+target pair` | This is the clearest current evidence that the residual tail-body path is a two-statement state machine: neither the prefix nor the target alone is enough to predict the resulting parser sink |
 | Spawn-doc context contrast | `python3 tools/probe_selfhost_spawn_doc_context_contrast.py --stage1 /tmp/draton_s1` | `the same representative tail-body prefix pairs land in different first-parse sinks across orig, both-bad, and residual contexts` | This confirms the tail-body state machine is not a generic parser property; it depends on the broader poisoned context built up before the tail function |
+| Spawn-doc header thresholds | `python3 tools/probe_selfhost_spawn_doc_header_thresholds.py --stage1 /tmp/draton_s1` | `for residual spawn {} + return ready(), full class payload is required for OOM and the @type payload splits into pass / SIGSEGV / OOM regions` | This reconnects the residual tail-body family to header pressure: class and `@type` payload size still matter, but the threshold shape is now different from the original `prefix-4` blocker |
 | `parser_skip_doc_comments` rooting retry | `python3 tools/probe_selfhost_stmt34_spawn_doc_presence.py --stage1 /tmp/draton_s1` plus `python3 tools/probe_selfhost_stmt34_spawn_doc_contexts.py --stage1 /tmp/draton_s1` | `no observable behavior change` | A local self-host-only retry that rooted extra values inside `parser_skip_doc_comments` left the residual spawn-doc and main blocker patterns unchanged, so the experiment was backed out instead of being kept as diff noise |
 | Parser backtrace | `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1` | `parser_current -> parser_current_kind -> parser_skip_doc_comments -> parser_match_kind -> parse_or -> parse_nullish -> parse_expression -> parse_arg_list` | Current stable top-of-stack on `tests/programs/selfhost/parser_main_prefix4.dt`; deeper frames still continue through `parse_postfix` and `parse_return_stmt` |
 | Linux hello fixture | `python3 tools/repro_selfhost_blockers.py --stage1 /tmp/draton_s1` | `build-hello -> 0` | String IR and print runtime blockers are cleared |
@@ -394,6 +400,7 @@ Run these before and after each tranche.
 - `[x]` `python3 tools/probe_selfhost_spawn_doc_tail_body_prefixes.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_spawn_doc_tail_prefix_interactions.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/probe_selfhost_spawn_doc_context_contrast.py --stage1 /tmp/draton_s1`
+- `[x]` `python3 tools/probe_selfhost_spawn_doc_header_thresholds.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 tools/capture_selfhost_parser_bt.py --stage1 /tmp/draton_s1`
 - `[x]` `python3 -u tools/verify_stage2.py`
 
@@ -863,6 +870,7 @@ These are the tasks that should move next unless a newly discovered blocker supe
 - `[ ]` Explain why layout-only prefixes leave tail-body buckets unchanged, while real leading statements like `{}`, `spawn {}`, and `let warm = 0` can move the same target statement between `pre-dispatch`, `expr-dispatch`, and `parse_if_stmt_tail`
 - `[ ]` Explain why prefix statements are not uniformly harmful on their own: `{}` and `let warm = 0` stay `pre-dispatch` alone, `spawn {}` is `expr-dispatch` alone, and the resulting bucket still depends on the exact prefix+target pair
 - `[ ]` Explain why the same representative tail-body prefix pairs land in different first-parse sinks across `orig`, `both-bad`, and `residual` contexts, and what exact poisoning step introduced by `spawn { /// gap }` creates the extra state machine
+- `[ ]` Explain why the representative residual tail-body pair `spawn {} + return ready()` needs the full class payload before OOM appears, while the `@type` payload now splits into pass / `SIGSEGV` / OOM regions instead of following the simpler original `prefix-4` thresholds
 - `[ ]` Explain why the extra self-host spawn-path rooting hardening in `d770374` did not change the residual `spawn { /// gap }` mixed-context crash
 - `[ ]` Explain why extra local rooting inside `parser_skip_doc_comments` also failed to change the residual `spawn { /// gap }` mixed-context crash
 - `[x]` Explain why minimal standalone plain/spawn doc-comment-only blocks used to fail with `invalid expression at line 4, col 5`
