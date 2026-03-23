@@ -72,9 +72,6 @@ pub struct CodeGen<'ctx> {
     pub(crate) closure_counter: usize,
     pub(crate) closure_type_descriptor_id: u16,
     pub(crate) pending_ctors: Vec<FunctionValue<'ctx>>,
-    /// Pointers (storage alloca) pinned via draton_gc_pin for the current function.
-    /// Cleared and unpinned before each function return.
-    pub(crate) pinned_gc_roots: Vec<PointerValue<'ctx>>,
     /// Maps a span start offset to the LLVM pointer value that should be freed at that point.
     pub(crate) free_points: HashMap<usize, Vec<PointerValue<'ctx>>>,
     pub(crate) ownership_free_spans: HashMap<String, Vec<usize>>,
@@ -117,7 +114,6 @@ impl<'ctx> CodeGen<'ctx> {
             closure_counter: 0,
             closure_type_descriptor_id: 0,
             pending_ctors: Vec::new(),
-            pinned_gc_roots: Vec::new(),
             free_points: HashMap::new(),
             ownership_free_spans: HashMap::new(),
             current_function_free_bindings: HashMap::new(),
@@ -262,26 +258,6 @@ impl<'ctx> CodeGen<'ctx> {
         Err(CodeGenError::MissingSymbol(name.to_string()))
     }
 
-    pub(crate) fn get_or_declare_gcroot_intrinsic(&self) -> FunctionValue<'ctx> {
-        if let Some(function) = self.module.get_function("llvm.gcroot") {
-            return function;
-        }
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i8_ptr_ptr = i8_ptr.ptr_type(AddressSpace::default());
-        let fn_type = self
-            .context
-            .void_type()
-            .fn_type(&[i8_ptr_ptr.into(), i8_ptr.into()], false);
-        self.module.add_function("llvm.gcroot", fn_type, None)
-    }
-
-    pub(crate) fn is_gc_rootable_type(ty: &Type) -> bool {
-        matches!(
-            ty,
-            Type::Named(_, _) | Type::Chan(_) | Type::Pointer(_) | Type::Fn(_, _)
-        )
-    }
-
     pub(crate) fn register_gc_root(
         &mut self,
         storage: PointerValue<'ctx>,
@@ -289,31 +265,6 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<(), CodeGenError> {
         let _ = (storage, ty);
         Ok(())
-    }
-
-    /// Emit draton_gc_unpin for all pinned roots at the current insertion point
-    /// (called before each function return).
-    pub(crate) fn emit_gc_unpin_all(&mut self) -> Result<(), CodeGenError> {
-        self.pinned_gc_roots.clear();
-        Ok(())
-    }
-
-    pub(crate) fn get_or_declare_gc_pin(&self) -> FunctionValue<'ctx> {
-        if let Some(f) = self.module.get_function("draton_gc_pin") {
-            return f;
-        }
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let fn_type = self.context.void_type().fn_type(&[i8_ptr.into()], false);
-        self.module.add_function("draton_gc_pin", fn_type, None)
-    }
-
-    pub(crate) fn get_or_declare_gc_unpin(&self) -> FunctionValue<'ctx> {
-        if let Some(f) = self.module.get_function("draton_gc_unpin") {
-            return f;
-        }
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let fn_type = self.context.void_type().fn_type(&[i8_ptr.into()], false);
-        self.module.add_function("draton_gc_unpin", fn_type, None)
     }
 
     pub(crate) fn push_scope(&mut self) {
@@ -450,7 +401,6 @@ impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn finish_function_ownership_scope(&mut self) {
         self.current_function_free_bindings.clear();
         self.free_points.clear();
-        self.pinned_gc_roots.clear();
     }
 
     pub(crate) fn schedule_binding_frees_at(

@@ -1,5 +1,7 @@
 # Draton GC Scorecard
 
+GC removed in Phase 5. This scorecard is archived.
+
 This document defines the baseline scorecard used to improve the Draton garbage
 collector without drifting into vague "faster GC" claims.
 

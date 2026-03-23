@@ -72,7 +72,7 @@ fn main() {
 }
 
 #[test]
-fn emits_safepoint_poll_after_call_expressions_and_loop_back_edges() {
+fn does_not_emit_safepoint_symbols_after_call_expressions_and_loop_back_edges() {
     let ir = compile_ir(
         r#"
 fn callee() { 1 }
@@ -81,9 +81,9 @@ fn main() {
     while (x < 3) { x++ }
     x
 }
-"#,
+    "#,
     );
     assert!(ir.contains("call i64 @callee()"), "{ir}");
-    assert!(ir.contains("@draton_safepoint_flag"), "{ir}");
-    assert!(ir.contains("@draton_safepoint_slow"), "{ir}");
+    assert!(!ir.contains("@draton_safepoint_flag"), "{ir}");
+    assert!(!ir.contains("@draton_safepoint_slow"), "{ir}");
 }

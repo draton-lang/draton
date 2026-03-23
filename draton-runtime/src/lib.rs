@@ -1,43 +1,13 @@
-//! Draton runtime: garbage collector, scheduler, channels and panic entrypoints.
+//! Draton runtime: ownership-mode runtime ABI, scheduler, channels and panic entrypoints.
 
-pub mod gc;
 pub mod panic;
 pub mod scheduler;
-
-// ── LLVM shadow-stack chain ────────────────────────────────────────────────────
-// When Draton-generated code is linked against this runtime, LLVM's shadow-stack
-// GC plugin provides its own definition of `llvm_gc_root_chain` and overrides
-// this weak default. In pure-Rust test builds there is no LLVM-generated code,
-// so the chain is always null and shadow_stack_roots() returns an empty Vec.
-#[no_mangle]
-pub static mut llvm_gc_root_chain: *mut gc::heap::StackEntry = std::ptr::null_mut();
-
-// ── Safepoint mechanism ────────────────────────────────────────────────────────
-// Generated code reads this flag at every safepoint poll (loop back-edges and
-// after calls).  When non-zero, it jumps to draton_safepoint_slow().
-// This is the authoritative definition; the codegen emits an External reference.
-#[no_mangle]
-#[used]
-pub static draton_safepoint_flag: std::sync::atomic::AtomicI32 =
-    std::sync::atomic::AtomicI32::new(0);
-
-/// Safepoint slow-path called by generated code when `draton_safepoint_flag != 0`.
-/// Resets the flag and drives GC collection.
-#[no_mangle]
-pub extern "C" fn draton_safepoint_slow() {
-    draton_safepoint_flag.store(0, std::sync::atomic::Ordering::Release);
-    gc::safepoint();
-}
-
-#[used]
-static DRATON_SAFETYPOINT_SLOW_KEEP: extern "C" fn() = draton_safepoint_slow;
 
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use std::ptr;
 use std::slice;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -46,7 +16,6 @@ use draton_lexer::Lexer;
 use draton_parser::Parser;
 use draton_stdlib as stdlib;
 use draton_typeck::TypeChecker;
-use gc::config::GcConfig;
 use scheduler::channel::RawChan;
 
 #[repr(C)]
@@ -77,124 +46,6 @@ pub struct DratonStringArray {
 pub struct DratonIntArray {
     pub len: i64,
     pub ptr: *mut i64,
-}
-
-#[repr(C)]
-pub struct DratonGcPauseStats {
-    pub total_ns: u64,
-    pub last_ns: u64,
-    pub max_ns: u64,
-}
-
-#[repr(C)]
-pub struct DratonGcStats {
-    pub minor_cycles: u64,
-    pub major_cycles: u64,
-    pub major_slices: u64,
-    pub full_cycles: u64,
-    pub young_allocations: u64,
-    pub old_allocations: u64,
-    pub large_allocations: u64,
-    pub array_allocations: u64,
-    pub bytes_allocated: u64,
-    pub bytes_promoted: u64,
-    pub bytes_reclaimed_minor: u64,
-    pub bytes_reclaimed_major: u64,
-    pub bytes_reclaimed_large: u64,
-    pub write_barrier_slow_calls: u64,
-    pub major_work_requests: u64,
-    pub major_work_threshold_requests: u64,
-    pub major_work_continuation_requests: u64,
-    pub major_mutator_assists: u64,
-    pub major_background_slices: u64,
-    pub major_autotune_adjustments: u64,
-    pub major_work_budget: usize,
-    pub major_work_budget_peak: usize,
-    pub major_work_requested: bool,
-    pub safepoint_rearms: u64,
-    pub major_mark_barrier_traces: u64,
-    pub remembered_set_entries_added: u64,
-    pub remembered_set_entries_deduped: u64,
-    pub young_usage_bytes: usize,
-    pub old_usage_bytes: usize,
-    pub heap_usage_bytes: usize,
-    pub large_object_count: usize,
-    pub large_free_pool_count: usize,
-    pub large_free_bytes: usize,
-    pub roots_count: usize,
-    pub remembered_set_len: usize,
-    pub old_free_slot_count: usize,
-    pub old_free_bytes: usize,
-    pub old_largest_free_slot: usize,
-    pub current_mark_stack_len: usize,
-    pub current_mark_slice_size: usize,
-    pub current_gc_threshold_milli: u32,
-    pub major_phase: u8,
-    pub old_sweep_cursor: usize,
-    pub large_sweep_pending: usize,
-    pub minor_pause: DratonGcPauseStats,
-    pub major_pause: DratonGcPauseStats,
-    pub full_pause: DratonGcPauseStats,
-}
-
-fn export_gc_pause(stats: gc::GcPauseStats) -> DratonGcPauseStats {
-    DratonGcPauseStats {
-        total_ns: stats.total_ns,
-        last_ns: stats.last_ns,
-        max_ns: stats.max_ns,
-    }
-}
-
-fn export_gc_stats(stats: gc::GcStats) -> DratonGcStats {
-    DratonGcStats {
-        minor_cycles: stats.minor_cycles,
-        major_cycles: stats.major_cycles,
-        major_slices: stats.major_slices,
-        full_cycles: stats.full_cycles,
-        young_allocations: stats.young_allocations,
-        old_allocations: stats.old_allocations,
-        large_allocations: stats.large_allocations,
-        array_allocations: stats.array_allocations,
-        bytes_allocated: stats.bytes_allocated,
-        bytes_promoted: stats.bytes_promoted,
-        bytes_reclaimed_minor: stats.bytes_reclaimed_minor,
-        bytes_reclaimed_major: stats.bytes_reclaimed_major,
-        bytes_reclaimed_large: stats.bytes_reclaimed_large,
-        write_barrier_slow_calls: stats.write_barrier_slow_calls,
-        major_work_requests: stats.major_work_requests,
-        major_work_threshold_requests: stats.major_work_threshold_requests,
-        major_work_continuation_requests: stats.major_work_continuation_requests,
-        major_mutator_assists: stats.major_mutator_assists,
-        major_background_slices: stats.major_background_slices,
-        major_autotune_adjustments: stats.major_autotune_adjustments,
-        major_work_budget: stats.major_work_budget,
-        major_work_budget_peak: stats.major_work_budget_peak,
-        major_work_requested: stats.major_work_requested,
-        safepoint_rearms: stats.safepoint_rearms,
-        major_mark_barrier_traces: stats.major_mark_barrier_traces,
-        remembered_set_entries_added: stats.remembered_set_entries_added,
-        remembered_set_entries_deduped: stats.remembered_set_entries_deduped,
-        young_usage_bytes: stats.young_usage_bytes,
-        old_usage_bytes: stats.old_usage_bytes,
-        heap_usage_bytes: stats.heap_usage_bytes,
-        large_object_count: stats.large_object_count,
-        large_free_pool_count: stats.large_free_pool_count,
-        large_free_bytes: stats.large_free_bytes,
-        roots_count: stats.roots_count,
-        remembered_set_len: stats.remembered_set_len,
-        old_free_slot_count: stats.old_free_slot_count,
-        old_free_bytes: stats.old_free_bytes,
-        old_largest_free_slot: stats.old_largest_free_slot,
-        current_mark_stack_len: stats.current_mark_stack_len,
-        current_mark_slice_size: stats.current_mark_slice_size,
-        current_gc_threshold_milli: stats.current_gc_threshold_milli,
-        major_phase: stats.major_phase,
-        old_sweep_cursor: stats.old_sweep_cursor,
-        large_sweep_pending: stats.large_sweep_pending,
-        minor_pause: export_gc_pause(stats.minor_pause),
-        major_pause: export_gc_pause(stats.major_pause),
-        full_pause: export_gc_pause(stats.full_pause),
-    }
 }
 
 fn string_bytes(value: DratonString) -> &'static [u8] {
@@ -530,7 +381,6 @@ fn host_build_source_impl(
     let mut command = Command::new(host_drat);
     command.current_dir(&temp_root).arg("build");
     command.env("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", "1");
-    command.env("DRATON_DISABLE_GCROOT", "1");
     if let Some(flag) = runtime_build_mode_flag(mode) {
         command.arg(flag);
     }
@@ -718,129 +568,6 @@ pub extern "C" fn draton_chan_recv(chan: *mut RawChan, out: *mut libc::c_void) {
 #[no_mangle]
 pub extern "C" fn draton_chan_drop(chan: *mut RawChan) {
     scheduler::channel::ffi_drop(chan);
-}
-
-/// Allocates a GC-managed object payload.
-#[no_mangle]
-pub extern "C" fn draton_gc_alloc(size: usize, type_id: u16) -> *mut libc::c_void {
-    gc::alloc(size, type_id).cast::<libc::c_void>()
-}
-
-/// Allocates a GC-managed array payload.
-#[no_mangle]
-pub extern "C" fn draton_gc_alloc_array(
-    elem_size: usize,
-    len: usize,
-    type_id: u16,
-) -> *mut libc::c_void {
-    gc::alloc_array(elem_size, len, type_id).cast::<libc::c_void>()
-}
-
-/// Applies the GC write barrier for a pointer store.
-#[no_mangle]
-pub extern "C" fn draton_gc_write_barrier(
-    obj: *mut libc::c_void,
-    field: *mut *mut libc::c_void,
-    new_val: *mut libc::c_void,
-) {
-    let field_ptr = if field.is_null() {
-        ptr::null_mut()
-    } else {
-        field.cast::<u8>()
-    };
-    gc::write_barrier(obj.cast::<u8>(), field_ptr, new_val.cast::<u8>());
-}
-
-/// Triggers a manual GC cycle.
-#[no_mangle]
-pub extern "C" fn draton_gc_collect() {
-    gc::collect();
-}
-
-/// Returns a snapshot of GC telemetry counters and current heap state.
-#[no_mangle]
-pub extern "C" fn draton_gc_stats() -> DratonGcStats {
-    export_gc_stats(gc::stats())
-}
-
-/// Resets GC telemetry counters without changing the current heap contents.
-#[no_mangle]
-pub extern "C" fn draton_gc_reset_stats() {
-    gc::reset_stats();
-}
-
-/// Verifies internal GC heap invariants and returns 1 on success, 0 on failure.
-#[no_mangle]
-pub extern "C" fn draton_gc_verify() -> i64 {
-    if gc::verify().is_ok() {
-        1
-    } else {
-        0
-    }
-}
-
-/// Pins an object so it is not moved by collection.
-#[no_mangle]
-pub extern "C" fn draton_gc_pin(obj: *mut libc::c_void) {
-    gc::pin(obj.cast::<u8>());
-}
-
-/// Unpins a previously pinned object.
-#[no_mangle]
-pub extern "C" fn draton_gc_unpin(obj: *mut libc::c_void) {
-    gc::unpin(obj.cast::<u8>());
-}
-
-/// Configures GC thresholds and heap limits.
-/// `heap_size` maps to the old-generation budget; young-gen and large-object
-/// thresholds retain their defaults unless changed via the full `GcConfig` API.
-#[no_mangle]
-pub extern "C" fn draton_gc_configure(
-    heap_size: usize,
-    max_heap: usize,
-    gc_threshold: f64,
-    pause_target_ns: u64,
-) {
-    gc::configure(GcConfig {
-        old_size: heap_size,
-        max_heap,
-        gc_threshold,
-        pause_target_ns,
-        ..GcConfig::default()
-    });
-}
-
-/// Registers a type descriptor with the GC so it can precisely trace pointer
-/// fields inside objects of the given type.
-///
-/// # Safety
-/// `offsets_ptr` must point to `num_offsets` valid `u32` values for the
-/// duration of this call.
-#[no_mangle]
-pub unsafe extern "C" fn draton_gc_register_type(
-    type_id: u16,
-    size: u32,
-    offsets_ptr: *const u32,
-    num_offsets: u32,
-) {
-    let offsets = if offsets_ptr.is_null() || num_offsets == 0 {
-        &[]
-    } else {
-        std::slice::from_raw_parts(offsets_ptr, num_offsets as usize)
-    };
-    gc::register_type(type_id, size, offsets);
-}
-
-/// Initializes the global GC runtime.
-#[no_mangle]
-pub extern "C" fn draton_gc_init() {
-    gc::init();
-}
-
-/// Shuts the global GC runtime down and frees all tracked objects.
-#[no_mangle]
-pub extern "C" fn draton_gc_shutdown() {
-    gc::shutdown();
 }
 
 /// Runtime panic entrypoint used by generated code.

@@ -96,9 +96,6 @@ impl<'ctx> CodeGen<'ctx> {
             self.llvm_basic_type(&let_stmt.ty)?,
             &let_stmt.name,
         )?;
-        // Store value first so that the alloca slot holds a valid pointer before
-        // draton_gc_pin is called. Pinning before the store would load an
-        // uninitialized (null) pointer and fail to protect the actual object.
         if let Some(value_expr) = &let_stmt.value {
             if let Some(value) = self.emit_expr(value_expr)? {
                 self.build_store(storage, value)?;

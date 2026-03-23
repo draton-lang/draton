@@ -1,11 +1,11 @@
 ---
-title: Runtime and GC
+title: Runtime and Ownership
 sidebar_position: 30
 ---
 
-# Runtime and GC
+# Runtime and Ownership
 
-Draton’s runtime is the low-level layer that makes the compiled language executable in practice. It is not just a bag of helper functions. It provides memory management, runtime ABI, and other low-level services that the compiler expects.
+Draton’s runtime is the low-level layer that makes compiled programs executable. With Inferred Ownership, memory management for safe Draton values is now decided at compile time instead of by a tracing collector in the runtime.
 
 ## Runtime role
 
@@ -13,50 +13,45 @@ The compiler pipeline ends in native code linked against the Draton runtime. Tha
 
 Key responsibilities include:
 
-- GC and allocation behavior
 - runtime string and array helpers
 - output/input builtins
 - panic/runtime support
 - scheduling and concurrency primitives where needed
 
-## GC state
+## Ownership model
 
-The runtime ships with a generational GC that has been significantly upgraded from its earlier state.
+Safe Draton programs now use Inferred Ownership:
 
-The current shape includes:
+- the typechecker infers copy, borrow, and move at use sites
+- codegen emits `malloc` and `free` directly for owned heap values
+- the runtime no longer performs tracing, barriers, or safepoint-driven reclamation for safe values
+- explicit escape hatches such as `@pointer` remain outside the inferred ownership model
 
-- young allocation pool
-- old-generation reuse and coalescing
-- incremental major collection
-- mutator assist paths
-- background major progress groundwork
-- telemetry, scorecards, and public benchmark artifacts
+This keeps the runtime smaller and shifts correctness checks to compile time, where aliasing and ownership ambiguity are rejected before code is emitted.
 
-## Why the GC docs are public
+## Runtime boundaries
 
-Draton does not hide GC status behind vague claims. The repo publishes scorecards and comparison artifacts so contributors can see:
+The runtime still owns:
 
-- what improved
-- what still regresses
-- where performance still trails OCaml in benchmarked scenarios
+- the ABI surface used by generated code
+- string, file, and CLI helpers
+- panic entrypoints
+- the scheduler, channels, and coroutine support
+- host-tooling helpers used by `drat` and bootstrap flows
 
-This is deliberate. It keeps optimization work grounded in measurements rather than slogans.
+The runtime no longer owns:
 
-## Benchmarks and current truth
+- tracing GC state
+- write barriers
+- safepoint polling
+- shadow-stack metadata
+- type-descriptor registration for a collector
 
-Use these resources together:
+## Archived GC material
+
+Older GC benchmarking material is retained only as historical context:
 
 - [GC scorecard](../gc-scorecard.md)
-- [Benchmarks index](./benchmarks.md)
+- benchmark artifacts under `docs/benchmarks/`
 
-Those docs track both strengths and current weak spots, including scenarios where Draton still loses to OCaml.
-
-## Runtime boundaries that matter to docs
-
-The documentation must not claim:
-
-- that GC is “finished”
-- that Draton already beats OCaml everywhere
-- that self-host bootstrap is fully green if the tracked blocker still exists
-
-The point of the runtime docs is to be operationally truthful.
+Those documents are archived and should not be treated as describing the active runtime architecture.

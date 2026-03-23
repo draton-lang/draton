@@ -16,7 +16,19 @@ fn bundled_modules_and_dt_tests_are_available() {
 
     assert_eq!(
         module_names,
-        vec!["fs", "net", "io", "string", "os", "time", "json", "math", "crypto", "test"]
+        vec![
+            "fs",
+            "net",
+            "io",
+            "string",
+            "os",
+            "time",
+            "json",
+            "math",
+            "collections",
+            "crypto",
+            "test",
+        ]
     );
     assert_eq!(
         test_names,
