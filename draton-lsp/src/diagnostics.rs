@@ -60,6 +60,30 @@ pub fn collect_diagnostics(result: &AnalysisResult) -> Value {
             | draton_typeck::TypeError::NonExhaustiveMatch { line, col, .. }
             | draton_typeck::TypeError::RedundantPattern { line, col, .. }
             | draton_typeck::TypeError::DeprecatedSyntax { line, col, .. } => (*line, *col),
+            draton_typeck::TypeError::Ownership(error) => match error {
+                draton_typeck::OwnershipError::UseAfterMove { use_span, .. } => {
+                    (use_span.line, use_span.col)
+                }
+                draton_typeck::OwnershipError::MoveWhileBorrowed { move_span, .. } => {
+                    (move_span.line, move_span.col)
+                }
+                draton_typeck::OwnershipError::ReadDuringExclusiveBorrow { read_span, .. } => {
+                    (read_span.line, read_span.col)
+                }
+                draton_typeck::OwnershipError::ExclusiveBorrowDuringRead {
+                    modify_span, ..
+                } => (modify_span.line, modify_span.col),
+                draton_typeck::OwnershipError::PartialMove { span, .. }
+                | draton_typeck::OwnershipError::AmbiguousCallOwnership { span, .. }
+                | draton_typeck::OwnershipError::BorrowedValueEscapes { span, .. }
+                | draton_typeck::OwnershipError::MultipleOwners { span, .. }
+                | draton_typeck::OwnershipError::OwnershipCycle { span }
+                | draton_typeck::OwnershipError::LoopMoveWithoutReinit { span, .. }
+                | draton_typeck::OwnershipError::ExternalBoundaryRejection { span, .. }
+                | draton_typeck::OwnershipError::SafeToRawAliasRejection { span, .. } => {
+                    (span.line, span.col)
+                }
+            },
         };
         diags.push(make_diag(
             line.saturating_sub(1),

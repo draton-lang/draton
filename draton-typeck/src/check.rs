@@ -12,6 +12,7 @@ use crate::env::{Scheme, TypeEnv};
 use crate::error::TypeError;
 use crate::exhaust::{classify_subject, extract_pattern, ExhaustivenessChecker};
 use crate::infer::{free_type_vars, free_type_vars_in_env, Substitution};
+use crate::ownership::OwnershipChecker;
 use crate::typed_ast::{
     Type, TypedAssignStmt, TypedBlock, TypedClassDef, TypedConstDef, TypedDestructureBinding,
     TypedElseBranch, TypedEnumDef, TypedErrorDef, TypedExpr, TypedExprKind, TypedExternBlock,
@@ -116,7 +117,7 @@ impl TypeChecker {
         self.collect_type_hints(&program);
         self.predeclare_items(&program);
 
-        let typed_program = TypedProgram {
+        let mut typed_program = TypedProgram {
             items: program
                 .items
                 .iter()
@@ -124,6 +125,13 @@ impl TypeChecker {
                 .collect(),
         };
         self.check_unresolved_vars(&typed_program);
+        let mut ownership_checker = OwnershipChecker::new();
+        self.errors.extend(
+            ownership_checker
+                .check_program(&mut typed_program)
+                .into_iter()
+                .map(TypeError::from),
+        );
 
         TypeCheckResult {
             typed_program,
@@ -686,6 +694,7 @@ impl TypeChecker {
             body: None,
             ty: full_ty,
             span: function.span,
+            ownership_summary: None,
         }
     }
 
@@ -764,6 +773,7 @@ impl TypeChecker {
                                 body: None,
                                 ty: full_ty,
                                 span: function.span,
+                                ownership_summary: None,
                             })
                         } else {
                             TypedTypeMember::Function(self.infer_fn_item(function, None))
@@ -961,6 +971,7 @@ impl TypeChecker {
             body: typed_body,
             ty: full_ty,
             span: function.span,
+            ownership_summary: None,
         }
     }
 
@@ -1516,6 +1527,7 @@ impl TypeChecker {
                                 kind: cast_kind,
                                 ty: expected_ty.clone(),
                                 span: cast_span,
+                                use_effect: None,
                             },
                             expected_ty,
                         )
@@ -1701,11 +1713,13 @@ impl TypeChecker {
                     kind: TypedExprKind::Ident(class_name.clone()),
                     ty: class_ty.clone(),
                     span: *callee_span,
+                    use_effect: None,
                 };
                 let typed_map = TypedExpr {
                     kind: TypedExprKind::Map(typed_entries),
                     ty: Type::Unit,
                     span: *map_span,
+                    use_effect: None,
                 };
                 return self.typed_expr(
                     TypedExprKind::Call(Box::new(typed_callee), vec![typed_map]),
@@ -1864,6 +1878,7 @@ impl TypeChecker {
                     kind: TypedExprKind::Ident(enum_name.clone()),
                     ty: enum_ty.clone(),
                     span: *target_span,
+                    use_effect: None,
                 };
                 return self.typed_expr(
                     TypedExprKind::Field(Box::new(typed_target), field.to_string()),
@@ -2213,6 +2228,7 @@ impl TypeChecker {
                             kind: TypedExprKind::Ident(enum_name.clone()),
                             ty: enum_ty.clone(),
                             span: *target_span,
+                            use_effect: None,
                         };
                         return self.typed_expr(
                             TypedExprKind::Field(Box::new(typed_target), field.clone()),
@@ -4250,6 +4266,7 @@ impl TypeChecker {
                 kind,
                 ty: ty.clone(),
                 span,
+                use_effect: None,
             },
             ty,
         )

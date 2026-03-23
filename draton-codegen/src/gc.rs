@@ -431,6 +431,7 @@ mod tests {
                 line: 1,
                 col: 1,
             },
+            use_effect: None,
         };
         let mut scope = FnScope::default();
         scope.mark_local_expr(&expr);
@@ -448,6 +449,7 @@ mod tests {
                 line: 1,
                 col: 10,
             },
+            use_effect: None,
         };
         assert!(escapes(&expr, &FnScope::default()));
     }

@@ -5,15 +5,18 @@ pub mod env;
 pub mod error;
 pub mod exhaust;
 pub mod infer;
+pub mod ownership;
 pub mod typed_ast;
 pub mod unify;
 
 pub use check::{DeprecatedSyntaxMode, TypeCheckResult, TypeChecker};
 pub use env::{Scheme, TypeEnv};
-pub use error::TypeError;
+pub use error::{OwnershipError, TypeError};
 pub use infer::Substitution;
+pub use ownership::OwnershipChecker;
 pub use typed_ast::{
-    Type, TypedBlock, TypedDestructureBinding, TypedExpr, TypedExprKind, TypedFStrPart, TypedFnDef,
-    TypedItem, TypedLetDestructureStmt, TypedMatchArm, TypedMatchArmBody, TypedParam, TypedProgram,
-    TypedStmt, TypedStmtKind,
+    FnOwnershipSummary, OwnershipState, ParamOwnershipSummary, Type, TypedBlock,
+    TypedDestructureBinding, TypedExpr, TypedExprKind, TypedFStrPart, TypedFnDef, TypedItem,
+    TypedLetDestructureStmt, TypedMatchArm, TypedMatchArmBody, TypedParam, TypedProgram, TypedStmt,
+    TypedStmtKind, UseEffect,
 };

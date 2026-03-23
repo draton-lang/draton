@@ -595,6 +595,7 @@ pub fn specialize_function(
             .map(|body| substitute_block(body, subst, self_class)),
         ty: materialize_type(&function.ty, subst, self_class),
         span: function.span,
+        ownership_summary: function.ownership_summary.clone(),
     }
 }
 
@@ -916,6 +917,7 @@ fn substitute_expr(
         kind,
         ty: materialize_type(&expr.ty, subst, self_class),
         span: expr.span,
+        use_effect: expr.use_effect.clone(),
     }
 }
 

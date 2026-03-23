@@ -1630,6 +1630,7 @@ impl<'ctx> CodeGen<'ctx> {
             kind: TypedExprKind::Index(Box::new(target.clone()), Box::new(index.clone())),
             ty: target.ty.clone(),
             span: target.span,
+            use_effect: None,
         })?;
         self.build_load(ptr, "index.load")
     }

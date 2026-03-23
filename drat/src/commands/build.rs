@@ -1159,6 +1159,42 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                 vec![format!("replacement: {replacement}")],
                 Some("hint:     move the type declaration into an @type block".to_string()),
             ),
+            TypeError::Ownership(error) => {
+                let (line, col) = match error {
+                    draton_typeck::OwnershipError::UseAfterMove { use_span, .. } => {
+                        (use_span.line, use_span.col)
+                    }
+                    draton_typeck::OwnershipError::MoveWhileBorrowed { move_span, .. } => {
+                        (move_span.line, move_span.col)
+                    }
+                    draton_typeck::OwnershipError::ReadDuringExclusiveBorrow { read_span, .. } => {
+                        (read_span.line, read_span.col)
+                    }
+                    draton_typeck::OwnershipError::ExclusiveBorrowDuringRead {
+                        modify_span, ..
+                    } => (modify_span.line, modify_span.col),
+                    draton_typeck::OwnershipError::PartialMove { span, .. }
+                    | draton_typeck::OwnershipError::AmbiguousCallOwnership { span, .. }
+                    | draton_typeck::OwnershipError::BorrowedValueEscapes { span, .. }
+                    | draton_typeck::OwnershipError::MultipleOwners { span, .. }
+                    | draton_typeck::OwnershipError::OwnershipCycle { span }
+                    | draton_typeck::OwnershipError::LoopMoveWithoutReinit { span, .. }
+                    | draton_typeck::OwnershipError::ExternalBoundaryRejection { span, .. }
+                    | draton_typeck::OwnershipError::SafeToRawAliasRejection { span, .. } => {
+                        (span.line, span.col)
+                    }
+                };
+                render_diagnostic(
+                    "E016",
+                    "ownership error",
+                    path,
+                    source,
+                    line,
+                    col,
+                    Vec::new(),
+                    Some(error.to_string()),
+                )
+            }
         })
         .collect::<Vec<_>>()
         .join("\n\n")

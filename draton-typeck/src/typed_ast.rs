@@ -36,6 +36,40 @@ pub enum TypedItem {
     OomHandler(TypedFnDef),
 }
 
+/// Ownership state of a binding at a given program point.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnershipState {
+    Owned,
+    BorrowedShared,
+    BorrowedExclusive,
+    Moved,
+    Escaped,
+}
+
+/// How a value is used at a specific use site.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UseEffect {
+    Copy,
+    BorrowShared,
+    BorrowExclusive,
+    Move,
+}
+
+/// Inferred ownership summary for a single function parameter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParamOwnershipSummary {
+    pub param_index: usize,
+    pub effect: UseEffect,
+}
+
+/// Inferred ownership summary for a whole function.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FnOwnershipSummary {
+    pub params: Vec<ParamOwnershipSummary>,
+    /// True if the return value transfers ownership to the caller.
+    pub returns_owned: bool,
+}
+
 /// A typed function definition.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedFnDef {
@@ -46,6 +80,7 @@ pub struct TypedFnDef {
     pub body: Option<TypedBlock>,
     pub ty: Type,
     pub span: Span,
+    pub ownership_summary: Option<FnOwnershipSummary>,
 }
 
 /// A typed function parameter.
@@ -331,6 +366,7 @@ pub struct TypedExpr {
     pub kind: TypedExprKind,
     pub ty: Type,
     pub span: Span,
+    pub use_effect: Option<UseEffect>,
 }
 
 /// The kind of a typed expression.
