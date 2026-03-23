@@ -56,7 +56,7 @@ class Dog extends Animal {
 }
 
 #[test]
-fn emits_write_barrier_for_field_assignment() {
+fn does_not_emit_write_barrier_for_field_assignment() {
     let ir = compile_ir(
         r#"
 class Node {
@@ -69,10 +69,7 @@ class Node {
     );
     let method_start = ir.find("define void @Node.link").expect("Node.link");
     let method_ir = &ir[method_start..];
-    assert!(
-        method_ir.contains("call void @draton_gc_write_barrier"),
-        "{method_ir}"
-    );
+    assert!(!method_ir.contains("call void @draton_gc_write_barrier"), "{method_ir}");
 }
 
 #[test]
@@ -118,12 +115,12 @@ fn main(user) {
 }
 "#,
     );
-    assert!(ir.contains("gc \"shadow-stack\""), "{ir}");
-    assert!(ir.contains("call void @llvm.gcroot"), "{ir}");
+    assert!(ir.contains("call i8* @malloc(i64"), "{ir}");
+    assert!(!ir.contains("llvm.gcroot"), "{ir}");
 }
 
 #[test]
-fn emits_type_descriptors_and_non_zero_type_ids_for_classes() {
+fn emits_type_descriptors_for_classes_without_gc_alloc() {
     let ir = compile_ir(
         r#"
 class User {
@@ -132,11 +129,8 @@ class User {
 "#,
     );
     assert!(ir.contains("@TypeDesc_User = constant"), "{ir}");
-    assert!(ir.contains("@draton_gc_alloc(i64"), "{ir}");
-    assert!(
-        ir.contains("i16 1") || ir.contains("i16 2") || ir.contains("i16 3"),
-        "{ir}"
-    );
+    assert!(ir.contains("call i8* @malloc(i64"), "{ir}");
+    assert!(!ir.contains("draton_gc_alloc"), "{ir}");
 }
 
 #[test]

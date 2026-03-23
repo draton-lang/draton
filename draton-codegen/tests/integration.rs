@@ -132,3 +132,21 @@ fn nameOf(u) { u.getName() }
         "{ir}"
     );
 }
+
+#[test]
+fn no_gc_alloc_in_emitted_ir() {
+    let context = Context::create();
+    let module = compile_module(
+        &context,
+        r#"
+class User { }
+fn main() {
+    let user = User()
+    0
+}
+"#,
+    );
+    let ir = module.print_to_string().to_string();
+    assert!(ir.contains("call i8* @malloc"), "{ir}");
+    assert!(!ir.contains("draton_gc_alloc"), "{ir}");
+}

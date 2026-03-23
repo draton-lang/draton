@@ -320,6 +320,10 @@ impl<'ctx> CodeGen<'ctx> {
         self.current_function = Some(llvm_fn);
         self.current_return_type = Some(function.ret_type.clone());
         self.current_class = current_class.map(ToOwned::to_owned);
+        let ownership_key = current_class
+            .map(|class_name| format!("{class_name}::{}", function.name))
+            .unwrap_or_else(|| function.name.clone());
+        self.begin_function_ownership_scope(&ownership_key);
         self.push_scope();
 
         let entry = self.context.append_basic_block(llvm_fn, "entry");
@@ -331,8 +335,8 @@ impl<'ctx> CodeGen<'ctx> {
                 .get_nth_param(param_index)
                 .ok_or_else(|| CodeGenError::MissingSymbol(format!("{symbol}:self")))?;
             let self_ptr = self.create_entry_alloca(llvm_fn, self_param.get_type(), "self")?;
-            self.register_gc_root(self_ptr, &Type::Named(class_name.to_string(), Vec::new()))?;
             self.build_store(self_ptr, self_param)?;
+            self.register_gc_root(self_ptr, &Type::Named(class_name.to_string(), Vec::new()))?;
             self.define_local("self", self_ptr);
             self.current_class = Some(class_name.to_string());
             param_index += 1;
@@ -346,8 +350,8 @@ impl<'ctx> CodeGen<'ctx> {
                 .get_nth_param(param_index)
                 .ok_or_else(|| CodeGenError::MissingSymbol(format!("{symbol}:{}", param.name)))?;
             let ptr = self.create_entry_alloca(llvm_fn, value.get_type(), &param.name)?;
-            self.register_gc_root(ptr, &param.ty)?;
             self.build_store(ptr, value)?;
+            self.register_gc_root(ptr, &param.ty)?;
             self.define_local(&param.name, ptr);
             param_index += 1;
         }
@@ -359,6 +363,10 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         if !self.current_block_terminated() {
+            if let Some(body) = &function.body {
+                self.emit_tail_stmt_frees(body)?;
+            }
+            self.emit_all_pending_frees()?;
             if let Some(value) = tail_value {
                 self.builder
                     .build_return(Some(&value))
@@ -375,6 +383,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        self.finish_function_ownership_scope();
         self.pop_scope();
         self.current_function = None;
         self.current_return_type = None;
@@ -398,20 +407,8 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
         let raw = self
-            .emit_gc_alloc_for_type(&Type::Named(class_def.name.clone(), Vec::new()), "ctor.raw")?;
-        let object_ptr = self
-            .builder
-            .build_bitcast(
-                raw,
-                self.class_layouts
-                    .get(&class_def.name)
-                    .ok_or_else(|| CodeGenError::MissingSymbol(class_def.name.clone()))?
-                    .struct_type
-                    .ptr_type(inkwell::AddressSpace::default()),
-                "ctor.obj",
-            )
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-            .into_pointer_value();
+            .emit_owned_alloc(&Type::Named(class_def.name.clone(), Vec::new()), "ctor.raw")?;
+        let object_ptr = raw;
         for field in &class_def.fields {
             let layout = self
                 .class_layouts

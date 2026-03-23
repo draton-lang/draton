@@ -4,7 +4,6 @@ use draton_typeck::typed_ast::{TypedClassDef, TypedExprKind};
 use draton_typeck::{Type, TypedExpr};
 use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{BasicValueEnum, PointerValue};
-use inkwell::AddressSpace;
 
 use crate::codegen::CodeGen;
 use crate::error::CodeGenError;
@@ -52,42 +51,40 @@ impl<'ctx> CodeGen<'ctx> {
         ty: &Type,
         name: &str,
     ) -> Result<PointerValue<'ctx>, CodeGenError> {
+        let _ = (ty, name);
+        panic!("GC alloc removed in Phase 4");
+    }
+
+    pub(crate) fn emit_owned_alloc(
+        &mut self,
+        ty: &Type,
+        name: &str,
+    ) -> Result<PointerValue<'ctx>, CodeGenError> {
         let alloc = self
             .module
-            .get_function("draton_gc_alloc")
-            .ok_or_else(|| CodeGenError::MissingSymbol("draton_gc_alloc".to_string()))?;
+            .get_function("malloc")
+            .ok_or_else(|| CodeGenError::MissingSymbol("malloc".to_string()))?;
         let size = self.type_size_value(ty)?;
-        let type_id = match ty {
-            Type::Named(class_name, args) => self
-                .type_descriptor_table
-                .get(&if args.is_empty() {
-                    class_name.clone()
-                } else {
-                    mangle_class(class_name, args)
-                })
-                .copied()
-                .unwrap_or(0),
-            _ => 0,
-        };
         let raw = self
             .builder
-            .build_call(
-                alloc,
-                &[
-                    size.into(),
-                    self.context
-                        .i16_type()
-                        .const_int(type_id as u64, false)
-                        .into(),
-                ],
-                name,
-            )
+            .build_call(alloc, &[size.into()], name)
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| CodeGenError::Llvm("draton_gc_alloc returned void".to_string()))?
+            .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
             .into_pointer_value();
-        Ok(raw)
+        let typed_ptr = match self.llvm_basic_type(ty)? {
+            BasicTypeEnum::PointerType(ptr_ty) => self
+                .builder
+                .build_pointer_cast(raw, ptr_ty, &format!("{name}.typed"))
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?,
+            other => {
+                return Err(CodeGenError::UnsupportedType(format!(
+                    "owned allocation requires pointer-backed type, got {other:?}"
+                )));
+            }
+        };
+        Ok(typed_ptr)
     }
 
     pub(crate) fn emit_class_type_descriptor(
@@ -102,24 +99,32 @@ impl<'ctx> CodeGen<'ctx> {
             .get(&class_def.name)
             .ok_or_else(|| CodeGenError::MissingSymbol(class_def.name.clone()))?;
         let size = self.type_size_bytes(&Type::Named(class_def.name.clone(), Vec::new()))?;
-        let pointer_offsets = class_def
-            .fields
-            .iter()
-            .filter(|field| Self::is_gc_pointer_type(&field.ty))
-            .map(|field| {
-                layout
-                    .field_indices
-                    .get(&field.name)
-                    .copied()
-                    .ok_or_else(|| {
-                        CodeGenError::MissingSymbol(format!(
-                            "field '{}' not found in layout of '{}'",
-                            field.name, class_def.name
-                        ))
-                    })
-                    .map(|idx| idx.saturating_mul(8))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        // Compute the actual byte offset of each GC-traceable pointer within the struct.
+        // We must account for the real LLVM layout: each field may be more than 8 bytes
+        // (e.g. String = { i64, i8* } is 16 bytes, Array = { i64, T** } is 16 bytes).
+        let struct_fields = layout.struct_type.get_field_types();
+        let pointer_offsets = {
+            let mut offsets: Vec<u32> = Vec::new();
+            for field in &class_def.fields {
+                let field_idx = match layout.field_indices.get(&field.name).copied() {
+                    Some(idx) => idx,
+                    None => continue,
+                };
+                // Compute byte offset of this field by summing sizes of all preceding fields.
+                let field_byte_offset: u32 = struct_fields
+                    .iter()
+                    .take(field_idx as usize)
+                    .map(|ft| self.basic_type_size_bytes(*ft) as u32)
+                    .sum();
+                // Now determine what GC pointers are inside this field.
+                Self::collect_gc_pointer_offsets_for_field(
+                    &field.ty,
+                    field_byte_offset,
+                    &mut offsets,
+                );
+            }
+            offsets
+        };
         let i32_type = self.context.i32_type();
         let offsets_ty = i32_type.array_type(pointer_offsets.len() as u32);
         let offsets = i32_type.const_array(
@@ -150,11 +155,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.type_descriptor_table
             .insert(class_def.name.clone(), type_id);
 
-        // Emit a __gc_register_{name}() function that calls draton_gc_register_type
-        // at runtime so the GC knows the precise pointer layout of this type.
-        // The function is added to @llvm.global_ctors and called before main().
-        self.emit_type_registration_ctor(&class_def.name, type_id, size, &pointer_offsets)?;
-
         Ok(type_id)
     }
 
@@ -167,76 +167,7 @@ impl<'ctx> CodeGen<'ctx> {
         size: u64,
         pointer_offsets: &[u32],
     ) -> Result<(), CodeGenError> {
-        let fn_name = format!("__gc_register_{class_name}");
-        if self.module.get_function(&fn_name).is_some() {
-            return Ok(());
-        }
-        let register_fn = self
-            .module
-            .get_function("draton_gc_register_type")
-            .ok_or_else(|| CodeGenError::MissingSymbol("draton_gc_register_type".to_string()))?;
-
-        let void_ty = self.context.void_type();
-        let ctor = self
-            .module
-            .add_function(&fn_name, void_ty.fn_type(&[], false), None);
-        let builder = self.context.create_builder();
-        let entry = self.context.append_basic_block(ctor, "entry");
-        builder.position_at_end(entry);
-
-        let i16_type = self.context.i16_type();
-        let i32_type = self.context.i32_type();
-        let i32_ptr = i32_type.ptr_type(inkwell::AddressSpace::default());
-
-        let type_id_val = i16_type.const_int(type_id as u64, false);
-        let size_val = i32_type.const_int(size, false);
-
-        // Build a constant array of pointer offsets.
-        let (offsets_ptr, num_offsets) = if pointer_offsets.is_empty() {
-            (i32_ptr.const_null(), i32_type.const_zero())
-        } else {
-            let offset_vals: Vec<_> = pointer_offsets
-                .iter()
-                .map(|&o| i32_type.const_int(u64::from(o), false))
-                .collect();
-            let arr = i32_type.const_array(&offset_vals);
-            let arr_ty = i32_type.array_type(pointer_offsets.len() as u32);
-            let global_name = format!("GcOffsets_{class_name}");
-            let global = if let Some(g) = self.module.get_global(&global_name) {
-                g
-            } else {
-                let g = self.module.add_global(arr_ty, None, &global_name);
-                g.set_constant(true);
-                g.set_initializer(&arr);
-                g
-            };
-            // GEP to get a *i32 pointing at element 0.
-            let ptr = builder
-                .build_bitcast(global.as_pointer_value(), i32_ptr, "offsets.ptr")
-                .map_err(|e| CodeGenError::Llvm(e.to_string()))?
-                .into_pointer_value();
-            (ptr, i32_type.const_int(pointer_offsets.len() as u64, false))
-        };
-
-        let _ = builder
-            .build_call(
-                register_fn,
-                &[
-                    type_id_val.into(),
-                    size_val.into(),
-                    offsets_ptr.into(),
-                    num_offsets.into(),
-                ],
-                "",
-            )
-            .map_err(|e| CodeGenError::Llvm(e.to_string()))?;
-        builder
-            .build_return(None)
-            .map_err(|e| CodeGenError::Llvm(e.to_string()))?;
-
-        // Add to @llvm.global_ctors so it runs before main().
-        self.add_global_ctor(ctor)?;
-
+        let _ = (class_name, type_id, size, pointer_offsets);
         Ok(())
     }
 
@@ -248,8 +179,60 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         function: inkwell::values::FunctionValue<'ctx>,
     ) -> Result<(), CodeGenError> {
-        self.pending_ctors.push(function);
+        let _ = function;
         Ok(())
+    }
+
+    /// Push the byte offsets of all GC-managed heap pointers contained within a
+    /// struct field of Draton type `ty` that starts at `field_byte_offset`.
+    ///
+    /// - `Named`/`Chan`/`Fn`/`Pointer` → single 8-byte pointer at the field start
+    /// - `Array(inner)` / `Set(inner)` → the data pointer (`inner**`) at offset +8
+    ///   if `inner` is itself a GC pointer type
+    /// - `Map(k, v)` → key data pointer at +8 and value data pointer at +16 if GC types
+    /// - `String` → NOT GC-managed (Rust allocator); no offsets
+    /// - `Option(inner)` / `Result` / `Tuple` → recurse into the contained GC pointer
+    ///   fields (treated as embedded values with adjusted offsets)
+    fn collect_gc_pointer_offsets_for_field(ty: &Type, field_byte_offset: u32, out: &mut Vec<u32>) {
+        match ty {
+            // Simple 8-byte GC heap pointer.
+            Type::Named(_, _) | Type::Chan(_) | Type::Pointer(_) | Type::Fn(_, _) => {
+                out.push(field_byte_offset);
+            }
+            // Array[T] = { i64 len, T** data } — data pointer at +8 if T is GC type.
+            Type::Array(inner) | Type::Set(inner) => {
+                if Self::is_gc_pointer_type(inner) {
+                    out.push(field_byte_offset + 8);
+                }
+            }
+            // Map[K,V] = { i64 len, K** keys, V** vals } — pointers at +8 and +16.
+            Type::Map(key, val) => {
+                if Self::is_gc_pointer_type(key) {
+                    out.push(field_byte_offset + 8);
+                }
+                if Self::is_gc_pointer_type(val) {
+                    out.push(field_byte_offset + 16);
+                }
+            }
+            // String = { i64, i8* } — string data is Rust-heap, not GC-managed.
+            Type::String => {}
+            // Option[T] = { bool, T } — inner value at offset +8 (aligned after bool+padding).
+            Type::Option(inner) => {
+                // LLVM aligns the inner value to its natural alignment.  For an 8-byte
+                // pointer the layout is { i1, (7 bytes padding), ptr } so the inner value
+                // starts at offset 8.
+                Self::collect_gc_pointer_offsets_for_field(inner, field_byte_offset + 8, out);
+            }
+            // Result[Ok,Err] = { bool, Ok, Err } — both payloads follow the tag.
+            Type::Result(ok, err) => {
+                // Conservative: assume Ok starts at +8 and Err follows.
+                Self::collect_gc_pointer_offsets_for_field(ok, field_byte_offset + 8, out);
+                // Err starts after the Ok payload; size of Ok is 8 bytes for a pointer.
+                let ok_size: u32 = if Self::is_gc_pointer_type(ok) { 8 } else { 0 };
+                Self::collect_gc_pointer_offsets_for_field(err, field_byte_offset + 8 + ok_size, out);
+            }
+            _ => {}
+        }
     }
 
     fn type_size_value(&self, ty: &Type) -> Result<inkwell::values::IntValue<'ctx>, CodeGenError> {
@@ -315,100 +298,11 @@ impl<'ctx> CodeGen<'ctx> {
         field_ptr: PointerValue<'ctx>,
         value: BasicValueEnum<'ctx>,
     ) -> Result<(), CodeGenError> {
-        let value_ptr = if let BasicValueEnum::PointerValue(ptr) = value {
-            ptr
-        } else {
-            return Ok(());
-        };
-        if value_ptr.is_null() {
-            return Ok(());
-        }
-        let barrier = self
-            .module
-            .get_function("draton_gc_write_barrier")
-            .ok_or_else(|| CodeGenError::MissingSymbol("draton_gc_write_barrier".to_string()))?;
-        let cast_obj = self
-            .builder
-            .build_bitcast(
-                object_ptr,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
-                "gc.obj",
-            )
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-            .into_pointer_value();
-        let cast_field = self
-            .builder
-            .build_bitcast(
-                field_ptr,
-                self.context
-                    .i8_type()
-                    .ptr_type(AddressSpace::default())
-                    .ptr_type(AddressSpace::default()),
-                "gc.field",
-            )
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-            .into_pointer_value();
-        let cast_val = self
-            .builder
-            .build_bitcast(
-                value_ptr,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
-                "gc.val",
-            )
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-            .into_pointer_value();
-        let _ = self
-            .builder
-            .build_call(
-                barrier,
-                &[cast_obj.into(), cast_field.into(), cast_val.into()],
-                "",
-            )
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let _ = (object_ptr, field_ptr, value);
         Ok(())
     }
 
     pub(crate) fn emit_safepoint_poll(&self) -> Result<(), CodeGenError> {
-        let Some(flag) = self.module.get_global("draton_safepoint_flag") else {
-            return Ok(());
-        };
-        let current_fn = self.current_function()?;
-        let continue_block = self
-            .context
-            .append_basic_block(current_fn, "safepoint.cont");
-        let slow_block = self
-            .context
-            .append_basic_block(current_fn, "safepoint.slow");
-        let flag_value = self
-            .builder
-            .build_load(flag.as_pointer_value(), "safepoint.flag")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-            .into_int_value();
-        let needs_stop = self
-            .builder
-            .build_int_compare(
-                inkwell::IntPredicate::NE,
-                flag_value,
-                self.context.i32_type().const_zero(),
-                "safepoint.need_stop",
-            )
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        self.builder
-            .build_conditional_branch(needs_stop, slow_block, continue_block)
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        self.builder.position_at_end(slow_block);
-        let slow = self
-            .module
-            .get_function("draton_safepoint_slow")
-            .ok_or_else(|| CodeGenError::MissingSymbol("draton_safepoint_slow".to_string()))?;
-        let _ = self
-            .builder
-            .build_call(slow, &[], "")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        self.builder
-            .build_unconditional_branch(continue_block)
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        self.builder.position_at_end(continue_block);
         Ok(())
     }
 }

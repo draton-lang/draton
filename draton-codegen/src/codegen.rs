@@ -1,18 +1,18 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::Path;
 
-use draton_typeck::{Type, TypedProgram};
+use draton_typeck::{OwnershipChecker, Type, TypedProgram};
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::module::{Linkage, Module};
+use inkwell::module::Module;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
 use inkwell::types::StructType;
 use inkwell::values::{
-    BasicValueEnum, FunctionValue, GlobalValue, InstructionOpcode, PointerValue,
+    BasicValueEnum, FunctionValue, GlobalValue, PointerValue,
 };
 use inkwell::{AddressSpace, OptimizationLevel};
 
@@ -72,6 +72,13 @@ pub struct CodeGen<'ctx> {
     pub(crate) closure_counter: usize,
     pub(crate) closure_type_descriptor_id: u16,
     pub(crate) pending_ctors: Vec<FunctionValue<'ctx>>,
+    /// Pointers (storage alloca) pinned via draton_gc_pin for the current function.
+    /// Cleared and unpinned before each function return.
+    pub(crate) pinned_gc_roots: Vec<PointerValue<'ctx>>,
+    /// Maps a span start offset to the LLVM pointer value that should be freed at that point.
+    pub(crate) free_points: HashMap<usize, Vec<PointerValue<'ctx>>>,
+    pub(crate) ownership_free_spans: HashMap<String, Vec<usize>>,
+    pub(crate) current_function_free_bindings: HashMap<usize, Vec<String>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -110,18 +117,36 @@ impl<'ctx> CodeGen<'ctx> {
             closure_counter: 0,
             closure_type_descriptor_id: 0,
             pending_ctors: Vec::new(),
+            pinned_gc_roots: Vec::new(),
+            free_points: HashMap::new(),
+            ownership_free_spans: HashMap::new(),
+            current_function_free_bindings: HashMap::new(),
         }
     }
 
     /// Emits LLVM IR for a typed Draton program.
     pub fn emit(mut self, program: &TypedProgram) -> Result<Module<'ctx>, CodeGenError> {
-        self.index_generic_items(program);
-        self.mono = MonoCollector::new().collect(program);
-        self.iface_registry = InterfaceRegistry::build(program);
+        let mut program = program.clone();
+        let mut ownership_checker = OwnershipChecker::new();
+        let ownership_errors = ownership_checker.check_program(&mut program);
+        if let Some(error) = ownership_errors.first() {
+            return Err(CodeGenError::UnsupportedExpr(format!(
+                "ownership analysis failed during codegen: {error}"
+            )));
+        }
+        self.ownership_free_spans = ownership_checker
+            .recorded_free_points()
+            .iter()
+            .map(|(key, spans)| (key.clone(), spans.iter().map(|span| span.start).collect()))
+            .collect();
+
+        self.index_generic_items(&program);
+        self.mono = MonoCollector::new().collect(&program);
+        self.iface_registry = InterfaceRegistry::build(&program);
         self.emit_interface_runtime_types()?;
         self.declare_runtime()?;
         self.ensure_closure_runtime_metadata()?;
-        self.predeclare_program_items(program)?;
+        self.predeclare_program_items(&program)?;
         for item in &program.items {
             self.emit_item(item)?;
         }
@@ -168,50 +193,6 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Emit a single @llvm.global_ctors global containing all pending ctor functions.
     pub(crate) fn flush_global_ctors(&mut self) -> Result<(), CodeGenError> {
-        if self.pending_ctors.is_empty() {
-            return Ok(());
-        }
-        let i32_type = self.context.i32_type();
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let entry_ty = self.context.struct_type(
-            &[
-                i32_type.into(),
-                self.context
-                    .void_type()
-                    .fn_type(&[], false)
-                    .ptr_type(AddressSpace::default())
-                    .into(),
-                i8_ptr.into(),
-            ],
-            false,
-        );
-        let priority = i32_type.const_int(65535, false);
-        let null_data = i8_ptr.const_null();
-        let mut entries = Vec::new();
-        for &func in &self.pending_ctors {
-            let fn_ptr = func.as_global_value().as_pointer_value();
-            let entry =
-                entry_ty.const_named_struct(&[priority.into(), fn_ptr.into(), null_data.into()]);
-            entries.push(entry);
-        }
-        let arr_ty = entry_ty.array_type(entries.len() as u32);
-        let arr = entry_ty.const_array(&entries);
-        // Remove any existing @llvm.global_ctors.* globals created previously.
-        const CTORS: &str = "llvm.global_ctors";
-        // Delete stale numbered variants if present (shouldn't be, but clean up).
-        for i in 0..self.string_counter {
-            let name = format!("llvm.global_ctors.{i}");
-            if let Some(g) = self.module.get_global(&name) {
-                unsafe { g.delete() };
-            }
-        }
-        if let Some(existing) = self.module.get_global(CTORS) {
-            unsafe { existing.delete() };
-        }
-        let g = self.module.add_global(arr_ty, None, CTORS);
-        g.set_initializer(&arr);
-        g.set_linkage(inkwell::module::Linkage::Appending);
-        self.pending_ctors.clear();
         Ok(())
     }
 
@@ -302,57 +283,37 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub(crate) fn register_gc_root(
-        &self,
+        &mut self,
         storage: PointerValue<'ctx>,
         ty: &Type,
     ) -> Result<(), CodeGenError> {
-        if env::var_os("DRATON_DISABLE_GCROOT").is_some() {
-            return Ok(());
-        }
-        if !Self::is_gc_rootable_type(ty) {
-            return Ok(());
-        }
-        let function = match self.current_function() {
-            Ok(function) => function,
-            Err(_) => return Ok(()),
-        };
-        function.set_gc("shadow-stack");
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let gcroot = self.get_or_declare_gcroot_intrinsic();
-        let entry_builder = self.context.create_builder();
-        let entry = function
-            .get_first_basic_block()
-            .ok_or_else(|| CodeGenError::Llvm("register_gc_root: no entry block".to_string()))?;
-        let mut cursor = entry.get_first_instruction();
-        let mut first_non_alloca = None;
-        while let Some(instr) = cursor {
-            if instr.get_opcode() != InstructionOpcode::Alloca {
-                first_non_alloca = Some(instr);
-                break;
-            }
-            cursor = instr.get_next_instruction();
-        }
-        match first_non_alloca {
-            Some(instr) => entry_builder.position_before(&instr),
-            None => entry_builder.position_at_end(entry),
-        }
-
-        let root_location = entry_builder
-            .build_bitcast(
-                storage,
-                i8_ptr.ptr_type(AddressSpace::default()),
-                "gc.root.slot",
-            )
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        let metadata = self
-            .context
-            .i64_type()
-            .const_int(1, false)
-            .const_to_pointer(i8_ptr);
-        let _ = entry_builder
-            .build_call(gcroot, &[root_location.into(), metadata.into()], "")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let _ = (storage, ty);
         Ok(())
+    }
+
+    /// Emit draton_gc_unpin for all pinned roots at the current insertion point
+    /// (called before each function return).
+    pub(crate) fn emit_gc_unpin_all(&mut self) -> Result<(), CodeGenError> {
+        self.pinned_gc_roots.clear();
+        Ok(())
+    }
+
+    pub(crate) fn get_or_declare_gc_pin(&self) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function("draton_gc_pin") {
+            return f;
+        }
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let fn_type = self.context.void_type().fn_type(&[i8_ptr.into()], false);
+        self.module.add_function("draton_gc_pin", fn_type, None)
+    }
+
+    pub(crate) fn get_or_declare_gc_unpin(&self) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function("draton_gc_unpin") {
+            return f;
+        }
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let fn_type = self.context.void_type().fn_type(&[i8_ptr.into()], false);
+        self.module.add_function("draton_gc_unpin", fn_type, None)
     }
 
     pub(crate) fn push_scope(&mut self) {
@@ -434,65 +395,109 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|err| CodeGenError::Llvm(err.to_string()))
     }
 
-    fn normalize_global_ctors(&self) -> Result<(), CodeGenError> {
-        const CTORS: &str = "llvm.global_ctors";
-        const CTORS_PREFIX: &str = "llvm.global_ctors.";
+    pub(crate) fn register_free_point(&mut self, span_start: usize, ptr: PointerValue<'ctx>) {
+        self.free_points.entry(span_start).or_default().push(ptr);
+    }
 
-        let mut ctors = self
-            .module
-            .get_functions()
-            .filter(|function| {
-                function
-                    .get_name()
-                    .to_str()
-                    .map(|name| name.starts_with("__gc_register_"))
-                    .unwrap_or(false)
-            })
-            .collect::<Vec<_>>();
-        if ctors.is_empty() {
+    pub(crate) fn emit_pending_frees(&mut self, span_start: usize) -> Result<(), CodeGenError> {
+        let Some(ptrs) = self.free_points.remove(&span_start) else {
             return Ok(());
-        }
-        ctors.sort_by(|lhs, rhs| lhs.get_name().to_bytes().cmp(rhs.get_name().to_bytes()));
-
-        let i32_type = self.context.i32_type();
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let fn_ptr_ty = ctors[0].get_type().ptr_type(AddressSpace::default());
-        let entry_ty = self
-            .context
-            .struct_type(&[i32_type.into(), fn_ptr_ty.into(), i8_ptr.into()], false);
-        let priority = i32_type.const_int(65535, false);
-        let data = i8_ptr.const_null();
-        let entries = ctors
-            .iter()
-            .map(|function| {
-                entry_ty.const_named_struct(&[
-                    priority.into(),
-                    function.as_global_value().as_pointer_value().into(),
-                    data.into(),
-                ])
-            })
-            .collect::<Vec<_>>();
-        let array_ty = entry_ty.array_type(entries.len() as u32);
-        let array = entry_ty.const_array(&entries);
-
-        let stale_globals = self
+        };
+        let free = self
             .module
-            .get_globals()
-            .filter(|global| {
-                global
-                    .get_name()
-                    .to_str()
-                    .map(|name| name == CTORS || name.starts_with(CTORS_PREFIX))
-                    .unwrap_or(false)
-            })
-            .collect::<Vec<_>>();
-        for global in stale_globals {
-            unsafe { global.delete() };
+            .get_function("free")
+            .ok_or_else(|| CodeGenError::MissingSymbol("free".to_string()))?;
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        for ptr in ptrs {
+            let raw = self
+                .builder
+                .build_pointer_cast(ptr, i8_ptr, "owned.free.raw")
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            let _ = self
+                .builder
+                .build_call(free, &[raw.into()], "")
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         }
+        Ok(())
+    }
 
-        let global = self.module.add_global(array_ty, None, CTORS);
-        global.set_initializer(&array);
-        global.set_linkage(Linkage::Appending);
+    pub(crate) fn emit_all_pending_frees(&mut self) -> Result<(), CodeGenError> {
+        let mut spans = self.free_points.keys().copied().collect::<Vec<_>>();
+        spans.sort_unstable();
+        for span in spans {
+            self.emit_pending_frees(span)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn begin_function_ownership_scope(&mut self, fn_key: &str) {
+        let prefix = format!("{fn_key}:");
+        self.current_function_free_bindings.clear();
+        self.free_points.clear();
+        for (key, spans) in &self.ownership_free_spans {
+            let Some(name) = key.strip_prefix(&prefix) else {
+                continue;
+            };
+            for &span_start in spans {
+                self.current_function_free_bindings
+                    .entry(span_start)
+                    .or_default()
+                    .push(name.to_string());
+            }
+        }
+    }
+
+    pub(crate) fn finish_function_ownership_scope(&mut self) {
+        self.current_function_free_bindings.clear();
+        self.free_points.clear();
+        self.pinned_gc_roots.clear();
+    }
+
+    pub(crate) fn schedule_binding_frees_at(
+        &mut self,
+        span_start: usize,
+        excluded: &HashSet<String>,
+    ) -> Result<(), CodeGenError> {
+        let Some(names) = self.current_function_free_bindings.get(&span_start).cloned() else {
+            return Ok(());
+        };
+        for name in names {
+            if excluded.contains(&name) {
+                continue;
+            }
+            let Some(storage) = self.lookup_local(&name) else {
+                continue;
+            };
+            let loaded = self.build_load(storage, &format!("{name}.free.load"))?;
+            if let Some(ptr) = self.freeable_pointer_from_value(loaded, &name)? {
+                self.register_free_point(span_start, ptr);
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn freeable_pointer_from_value(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        name: &str,
+    ) -> Result<Option<PointerValue<'ctx>>, CodeGenError> {
+        match value {
+            BasicValueEnum::PointerValue(ptr) => Ok(Some(ptr)),
+            BasicValueEnum::StructValue(value) => {
+                let field0 = self
+                    .builder
+                    .build_extract_value(value, 0, &format!("{name}.free.field0"))
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(match field0 {
+                    BasicValueEnum::PointerValue(ptr) => Some(ptr),
+                    _ => None,
+                })
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn normalize_global_ctors(&self) -> Result<(), CodeGenError> {
         Ok(())
     }
 

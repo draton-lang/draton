@@ -152,8 +152,9 @@ impl<'ctx> CodeGen<'ctx> {
                 "closure.call",
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let ret_val = call.try_as_basic_value().left();
         self.emit_safepoint_poll()?;
-        Ok(call.try_as_basic_value().left())
+        Ok(ret_val)
     }
 
     pub(crate) fn emit_named_function_closure(
@@ -207,8 +208,8 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<PointerValue<'ctx>, CodeGenError> {
         let alloc = self
             .module
-            .get_function("draton_gc_alloc")
-            .ok_or_else(|| CodeGenError::MissingSymbol("draton_gc_alloc".to_string()))?;
+            .get_function("malloc")
+            .ok_or_else(|| CodeGenError::MissingSymbol("malloc".to_string()))?;
         let env_size = env_type
             .size_of()
             .and_then(|size| size.get_zero_extended_constant())
@@ -229,16 +230,13 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_call(
                 alloc,
-                &[
-                    self.context.i64_type().const_int(env_size, false).into(),
-                    self.context.i16_type().const_zero().into(),
-                ],
+                &[self.context.i64_type().const_int(env_size, false).into()],
                 "closure.env.raw",
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| CodeGenError::Llvm("draton_gc_alloc returned void".to_string()))?
+            .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
             .into_pointer_value();
         let env_ptr = self
             .builder
@@ -323,8 +321,8 @@ impl<'ctx> CodeGen<'ctx> {
         for (param, value) in params.iter().zip(function.get_params().iter().skip(1)) {
             let storage =
                 self.create_entry_alloca(function, self.llvm_basic_type(&param.ty)?, &param.name)?;
-            self.register_gc_root(storage, &param.ty)?;
             self.build_store(storage, *value)?;
+            self.register_gc_root(storage, &param.ty)?;
             self.define_local(&param.name, storage);
         }
 
@@ -378,8 +376,8 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<PointerValue<'ctx>, CodeGenError> {
         let alloc = self
             .module
-            .get_function("draton_gc_alloc")
-            .ok_or_else(|| CodeGenError::MissingSymbol("draton_gc_alloc".to_string()))?;
+            .get_function("malloc")
+            .ok_or_else(|| CodeGenError::MissingSymbol("malloc".to_string()))?;
         let size = self
             .closure_record_type
             .size_of()
@@ -389,19 +387,13 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_call(
                 alloc,
-                &[
-                    self.context.i64_type().const_int(size, false).into(),
-                    self.context
-                        .i16_type()
-                        .const_int(self.closure_type_descriptor_id as u64, false)
-                        .into(),
-                ],
+                &[self.context.i64_type().const_int(size, false).into()],
                 "closure.raw",
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| CodeGenError::Llvm("draton_gc_alloc returned void".to_string()))?
+            .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
             .into_pointer_value();
         let closure_ptr = self
             .builder
@@ -440,9 +432,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .const_null()
             });
         self.build_store(env_slot, erased_env.into())?;
-        if env_ptr.is_some() {
-            let _ = self.emit_gc_write_barrier(closure_ptr, env_slot, erased_env.into());
-        }
         Ok(closure_ptr)
     }
 }

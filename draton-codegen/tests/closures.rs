@@ -55,8 +55,8 @@ fn main() {
 }
 "#,
     );
-    assert!(ir.contains("%closure_env_0 = type { i64* }"), "{ir}");
-    assert!(ir.contains("load i64*, i64**"), "{ir}");
+    assert!(ir.contains("%closure_env_0 = type { i64 }"), "{ir}");
+    assert!(ir.contains("load i64, i64* %env.load.y"), "{ir}");
     assert!(ir.contains("call i64"), "{ir}");
 }
 
@@ -64,7 +64,11 @@ fn main() {
 fn emits_lambda_passed_through_function_parameter() {
     let ir = compile_ir(
         r#"
-fn apply(f, x) { f(x) }
+@type { apply: ((Int) -> Int, Int) -> Int }
+fn apply(f, x) {
+    @type { f: (Int) -> borrow }
+    f(x)
+}
 fn main() {
     apply(lambda x => x + 1, 41)
 }
@@ -95,5 +99,5 @@ fn main() {
     );
     assert!(ir.contains("define i64 @closure_body_0"), "{ir}");
     assert!(ir.contains("define i64 @closure_body_1"), "{ir}");
-    assert!(ir.contains("%closure_env_1 = type { i64*, i64* }"), "{ir}");
+    assert!(ir.contains("%closure_env_1 = type { i64, i64 }"), "{ir}");
 }

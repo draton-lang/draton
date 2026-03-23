@@ -1,8 +1,10 @@
+use std::collections::HashSet;
+
 use draton_ast::{AssignOp, BinOp};
 use draton_typeck::typed_ast::{
     TypedAssignStmt, TypedDestructureBinding, TypedElseBranch, TypedExpr, TypedExprKind,
     TypedForStmt, TypedIfStmt, TypedLetDestructureStmt, TypedLetStmt, TypedReturnStmt,
-    TypedSpawnBody, TypedWhileStmt,
+    TypedMatchArmBody, TypedSpawnBody, TypedWhileStmt,
 };
 use draton_typeck::{TypedBlock, TypedStmt, TypedStmtKind};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
@@ -23,6 +25,16 @@ impl<'ctx> CodeGen<'ctx> {
                 break;
             }
             last_value = self.emit_stmt(stmt)?;
+            if self.current_block_terminated() {
+                break;
+            }
+            let should_defer_tail_frees = std::ptr::eq(stmt, block.stmts.last().unwrap())
+                && last_value.is_some();
+            if should_defer_tail_frees {
+                continue;
+            }
+            self.schedule_binding_frees_at(stmt.span.start, &HashSet::new())?;
+            self.emit_pending_frees(stmt.span.start)?;
         }
         self.pop_scope();
         Ok(last_value)
@@ -84,7 +96,9 @@ impl<'ctx> CodeGen<'ctx> {
             self.llvm_basic_type(&let_stmt.ty)?,
             &let_stmt.name,
         )?;
-        self.register_gc_root(storage, &let_stmt.ty)?;
+        // Store value first so that the alloca slot holds a valid pointer before
+        // draton_gc_pin is called. Pinning before the store would load an
+        // uninitialized (null) pointer and fail to protect the actual object.
         if let Some(value_expr) = &let_stmt.value {
             if let Some(value) = self.emit_expr(value_expr)? {
                 self.build_store(storage, value)?;
@@ -92,6 +106,7 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             self.build_store(storage, self.zero_value(&let_stmt.ty)?)?;
         }
+        self.register_gc_root(storage, &let_stmt.ty)?;
         self.define_local(&let_stmt.name, storage);
         Ok(None)
     }
@@ -134,44 +149,70 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn emit_assign_stmt(&mut self, stmt: &TypedAssignStmt) -> Result<(), CodeGenError> {
-        let target_ptr = self.emit_lvalue_ptr(&stmt.target)?;
-        let value = match stmt.op {
-            AssignOp::Assign => stmt
+        // For field assignments (obj.field = rhs), evaluate the RHS *before*
+        // computing the GEP so that any safepoint inside `emit_expr(rhs)` cannot
+        // promote the object while `target_ptr` is a raw interior pointer into it.
+        let is_field_assign = matches!(&stmt.target.kind, TypedExprKind::Field(_, _));
+        let (target_ptr, value) = if is_field_assign && stmt.op == AssignOp::Assign {
+            let value = stmt
                 .value
                 .as_ref()
                 .and_then(|expr| self.emit_expr(expr).transpose())
                 .transpose()?
                 .ok_or_else(|| {
                     CodeGenError::UnsupportedStmt("assignment without value".to_string())
-                })?,
-            AssignOp::Inc | AssignOp::Dec => {
-                let current = self.build_load(target_ptr, "assign.cur")?;
-                let current_int = current.into_int_value();
-                let delta = self.context.i64_type().const_int(1, false);
-                let updated = if stmt.op == AssignOp::Inc {
-                    self.builder
-                        .build_int_add(current_int, delta, "assign.inc")
-                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-                } else {
-                    self.builder
-                        .build_int_sub(current_int, delta, "assign.dec")
-                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-                };
-                updated.as_basic_value_enum()
-            }
-            _ => {
-                let rhs = stmt
+                })?;
+            let target_ptr = self.emit_lvalue_ptr(&stmt.target)?;
+            (target_ptr, value)
+        } else {
+            let target_ptr = self.emit_lvalue_ptr(&stmt.target)?;
+            let value = match stmt.op {
+                AssignOp::Assign => stmt
                     .value
                     .as_ref()
                     .and_then(|expr| self.emit_expr(expr).transpose())
                     .transpose()?
                     .ok_or_else(|| {
-                        CodeGenError::UnsupportedStmt("compound assignment without rhs".to_string())
-                    })?;
-                let lhs = self.build_load(target_ptr, "assign.lhs")?;
-                self.emit_compound_assignment(stmt.op, lhs, rhs)?
-            }
+                        CodeGenError::UnsupportedStmt("assignment without value".to_string())
+                    })?,
+                AssignOp::Inc | AssignOp::Dec => {
+                    let current = self.build_load(target_ptr, "assign.cur")?;
+                    let current_int = current.into_int_value();
+                    let delta = self.context.i64_type().const_int(1, false);
+                    let updated = if stmt.op == AssignOp::Inc {
+                        self.builder
+                            .build_int_add(current_int, delta, "assign.inc")
+                            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                    } else {
+                        self.builder
+                            .build_int_sub(current_int, delta, "assign.dec")
+                            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                    };
+                    updated.as_basic_value_enum()
+                }
+                _ => {
+                    let rhs = stmt
+                        .value
+                        .as_ref()
+                        .and_then(|expr| self.emit_expr(expr).transpose())
+                        .transpose()?
+                        .ok_or_else(|| {
+                            CodeGenError::UnsupportedStmt(
+                                "compound assignment without rhs".to_string(),
+                            )
+                        })?;
+                    let lhs = self.build_load(target_ptr, "assign.lhs")?;
+                    self.emit_compound_assignment(stmt.op, lhs, rhs)?
+                }
+            };
+            (target_ptr, value)
         };
+        if matches!(&stmt.target.kind, TypedExprKind::Ident(_)) {
+            let old = self.build_load(target_ptr, "assign.old")?;
+            if let Some(ptr) = self.freeable_pointer_from_value(old, "assign.old")? {
+                self.register_free_point(stmt.span.start, ptr);
+            }
+        }
         self.build_store(target_ptr, value)?;
         if matches!(&stmt.target.kind, TypedExprKind::Field(_, _))
             && Self::is_gc_pointer_type(&stmt.target.ty)
@@ -226,6 +267,12 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn emit_return_stmt(&mut self, stmt: &TypedReturnStmt) -> Result<(), CodeGenError> {
+        let mut excluded = HashSet::new();
+        if let Some(value_expr) = &stmt.value {
+            self.collect_expr_idents(value_expr, &mut excluded);
+        }
+        self.schedule_binding_frees_at(stmt.span.start, &excluded)?;
+        self.emit_all_pending_frees()?;
         if let Some(value_expr) = &stmt.value {
             if let Some(value) = self.emit_expr(value_expr)? {
                 self.builder
@@ -263,6 +310,7 @@ impl<'ctx> CodeGen<'ctx> {
             .get_insert_block()
             .ok_or_else(|| CodeGenError::MissingSymbol("if.then.end".to_string()))?;
         if !then_term {
+            self.emit_tail_block_frees(&stmt.then_branch, then_value.as_ref())?;
             self.builder
                 .build_unconditional_branch(merge_block)
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
@@ -283,6 +331,15 @@ impl<'ctx> CodeGen<'ctx> {
             .get_insert_block()
             .ok_or_else(|| CodeGenError::MissingSymbol("if.else.end".to_string()))?;
         if !else_term {
+            match &stmt.else_branch {
+                Some(TypedElseBranch::If(child)) => {
+                    self.emit_tail_if_frees(child, else_value.as_ref())?;
+                }
+                Some(TypedElseBranch::Block(block)) => {
+                    self.emit_tail_block_frees(block, else_value.as_ref())?;
+                }
+                None => {}
+            }
             self.builder
                 .build_unconditional_branch(merge_block)
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
@@ -338,6 +395,183 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(end_block);
         Ok(())
+    }
+
+    pub(crate) fn emit_tail_stmt_frees(&mut self, block: &TypedBlock) -> Result<(), CodeGenError> {
+        self.emit_tail_block_frees(block, None)
+    }
+
+    fn emit_tail_block_frees(
+        &mut self,
+        block: &TypedBlock,
+        _tail_value: Option<&BasicValueEnum<'ctx>>,
+    ) -> Result<(), CodeGenError> {
+        let Some(stmt) = block.stmts.last() else {
+            return Ok(());
+        };
+        let mut excluded = HashSet::new();
+        self.collect_stmt_idents(stmt, &mut excluded);
+        self.schedule_binding_frees_at(stmt.span.start, &excluded)?;
+        self.emit_pending_frees(stmt.span.start)
+    }
+
+    fn emit_tail_if_frees(
+        &mut self,
+        if_stmt: &TypedIfStmt,
+        tail_value: Option<&BasicValueEnum<'ctx>>,
+    ) -> Result<(), CodeGenError> {
+        let _ = tail_value;
+        self.emit_tail_block_frees(&if_stmt.then_branch, None)?;
+        if let Some(else_branch) = &if_stmt.else_branch {
+            match else_branch {
+                TypedElseBranch::If(child) => self.emit_tail_if_frees(child, None)?,
+                TypedElseBranch::Block(block) => self.emit_tail_block_frees(block, None)?,
+            }
+        }
+        Ok(())
+    }
+
+    fn collect_stmt_idents(&self, stmt: &TypedStmt, out: &mut HashSet<String>) {
+        match &stmt.kind {
+            TypedStmtKind::Let(let_stmt) => {
+                if let Some(value) = &let_stmt.value {
+                    self.collect_expr_idents(value, out);
+                }
+            }
+            TypedStmtKind::LetDestructure(stmt) => self.collect_expr_idents(&stmt.value, out),
+            TypedStmtKind::Assign(assign) => {
+                self.collect_expr_idents(&assign.target, out);
+                if let Some(value) = &assign.value {
+                    self.collect_expr_idents(value, out);
+                }
+            }
+            TypedStmtKind::Return(ret) => {
+                if let Some(value) = &ret.value {
+                    self.collect_expr_idents(value, out);
+                }
+            }
+            TypedStmtKind::Expr(expr) => self.collect_expr_idents(expr, out),
+            TypedStmtKind::If(if_stmt) => {
+                self.collect_expr_idents(&if_stmt.condition, out);
+                for stmt in &if_stmt.then_branch.stmts {
+                    self.collect_stmt_idents(stmt, out);
+                }
+                if let Some(else_branch) = &if_stmt.else_branch {
+                    match else_branch {
+                        TypedElseBranch::If(child) => {
+                            for stmt in &child.then_branch.stmts {
+                                self.collect_stmt_idents(stmt, out);
+                            }
+                        }
+                        TypedElseBranch::Block(block) => {
+                            for stmt in &block.stmts {
+                                self.collect_stmt_idents(stmt, out);
+                            }
+                        }
+                    }
+                }
+            }
+            TypedStmtKind::For(for_stmt) => {
+                self.collect_expr_idents(&for_stmt.iter, out);
+                for stmt in &for_stmt.body.stmts {
+                    self.collect_stmt_idents(stmt, out);
+                }
+            }
+            TypedStmtKind::While(while_stmt) => {
+                self.collect_expr_idents(&while_stmt.condition, out);
+                for stmt in &while_stmt.body.stmts {
+                    self.collect_stmt_idents(stmt, out);
+                }
+            }
+            TypedStmtKind::Spawn(spawn) => match &spawn.body {
+                TypedSpawnBody::Expr(expr) => self.collect_expr_idents(expr, out),
+                TypedSpawnBody::Block(block) => {
+                    for stmt in &block.stmts {
+                        self.collect_stmt_idents(stmt, out);
+                    }
+                }
+            },
+            TypedStmtKind::Block(block)
+            | TypedStmtKind::UnsafeBlock(block)
+            | TypedStmtKind::PointerBlock(block)
+            | TypedStmtKind::ComptimeBlock(block) => {
+                for stmt in &block.stmts {
+                    self.collect_stmt_idents(stmt, out);
+                }
+            }
+            TypedStmtKind::AsmBlock(_)
+            | TypedStmtKind::IfCompile(_)
+            | TypedStmtKind::GcConfig(_)
+            | TypedStmtKind::TypeBlock(_) => {}
+        }
+    }
+
+    fn collect_expr_idents(&self, expr: &TypedExpr, out: &mut HashSet<String>) {
+        let _ = self;
+        match &expr.kind {
+            TypedExprKind::Ident(name) => {
+                out.insert(name.clone());
+            }
+            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+                for item in items {
+                    self.collect_expr_idents(item, out);
+                }
+            }
+            TypedExprKind::Map(entries) => {
+                for (key, value) in entries {
+                    self.collect_expr_idents(key, out);
+                    self.collect_expr_idents(value, out);
+                }
+            }
+            TypedExprKind::BinOp(lhs, _, rhs) | TypedExprKind::Nullish(lhs, rhs) => {
+                self.collect_expr_idents(lhs, out);
+                self.collect_expr_idents(rhs, out);
+            }
+            TypedExprKind::UnOp(_, inner)
+            | TypedExprKind::Cast(inner, _)
+            | TypedExprKind::Field(inner, _)
+            | TypedExprKind::Ok(inner)
+            | TypedExprKind::Err(inner) => self.collect_expr_idents(inner, out),
+            TypedExprKind::Call(callee, args) => {
+                self.collect_expr_idents(callee, out);
+                for arg in args {
+                    self.collect_expr_idents(arg, out);
+                }
+            }
+            TypedExprKind::MethodCall(target, _, args) => {
+                self.collect_expr_idents(target, out);
+                for arg in args {
+                    self.collect_expr_idents(arg, out);
+                }
+            }
+            TypedExprKind::Index(target, index) => {
+                self.collect_expr_idents(target, out);
+                self.collect_expr_idents(index, out);
+            }
+            TypedExprKind::Lambda(_, body) => self.collect_expr_idents(body, out),
+            TypedExprKind::Match(subject, arms) => {
+                self.collect_expr_idents(subject, out);
+                for arm in arms {
+                    self.collect_expr_idents(&arm.pattern, out);
+                    if let TypedMatchArmBody::Expr(expr) = &arm.body {
+                        self.collect_expr_idents(expr, out);
+                    }
+                }
+            }
+            TypedExprKind::FStrLit(parts) => {
+                for part in parts {
+                    if let draton_typeck::TypedFStrPart::Interp(expr) = part {
+                        self.collect_expr_idents(expr, out);
+                    }
+                }
+            }
+            TypedExprKind::IntLit(_)
+            | TypedExprKind::FloatLit(_)
+            | TypedExprKind::StrLit(_)
+            | TypedExprKind::BoolLit(_)
+            | TypedExprKind::NoneLit
+            | TypedExprKind::Chan(_) => {}
+        }
     }
 
     fn emit_for_stmt(&mut self, stmt: &TypedForStmt) -> Result<(), CodeGenError> {

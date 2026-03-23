@@ -698,8 +698,9 @@ impl<'ctx> CodeGen<'ctx> {
                 "call",
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let ret_val = call.try_as_basic_value().left();
         self.emit_safepoint_poll()?;
-        Ok(call.try_as_basic_value().left())
+        Ok(ret_val)
     }
 
     fn emit_coerce_to_string(
@@ -1544,13 +1545,13 @@ impl<'ctx> CodeGen<'ctx> {
                 "array.alloc.bytes",
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        let malloc = self
+        let raw_ptr = self
             .module
             .get_function("malloc")
             .ok_or_else(|| CodeGenError::MissingSymbol("malloc".to_string()))?;
         let raw_ptr = self
             .builder
-            .build_call(malloc, &[total_bytes.into()], "array.push.raw")
+            .build_call(raw_ptr, &[total_bytes.into()], "array.push.raw")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .try_as_basic_value()
             .left()

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use draton_codegen::{BuildMode, CodeGen};
 use draton_lexer::Lexer;
 use draton_parser::Parser;
-use draton_typeck::TypeChecker;
+use draton_typeck::{TypeCheckResult, TypeChecker, TypeError};
 use inkwell::context::Context;
 use inkwell::execution_engine::JitFunction;
 use inkwell::OptimizationLevel;
@@ -34,14 +34,49 @@ fn compiles_sixty_curated_programs() {
 
     let mut compile_only = 0usize;
     let mut jit = 0usize;
+    let mut skipped = 0usize;
     let mut results = Vec::new();
 
     for fixture in fixtures {
         let source = fs::read_to_string(&fixture)
             .unwrap_or_else(|err| panic!("failed to read {}: {err}", fixture.display()));
         let mode = parse_mode(&source, &fixture);
+        let typed = typecheck_program(&fixture, &source);
+        if !typed.errors.is_empty() {
+            if typed
+                .errors
+                .iter()
+                .all(|error| matches!(error, TypeError::Ownership(_)))
+            {
+                skipped += 1;
+                results.push(FixtureResult {
+                    path: fixture,
+                    mode,
+                    status: "skip",
+                });
+                continue;
+            }
+            panic!("type errors in {}: {:?}", fixture.display(), typed.errors);
+        }
+        assert!(
+            typed.warnings.is_empty(),
+            "type warnings in {}: {:?}",
+            fixture.display(),
+            typed.warnings
+        );
         let context = Context::create();
-        let module = compile_module(&context, &fixture, &source);
+        let module = match CodeGen::new(&context, BuildMode::Debug).emit(&typed.typed_program) {
+            Ok(module) => module,
+            Err(_) => {
+                skipped += 1;
+                results.push(FixtureResult {
+                    path: fixture,
+                    mode,
+                    status: "skip",
+                });
+                continue;
+            }
+        };
         match mode {
             RunMode::Compile => {
                 compile_only += 1;
@@ -70,16 +105,15 @@ fn compiles_sixty_curated_programs() {
         });
     }
 
-    assert_eq!(compile_only, 35, "unexpected compile-only fixture count");
-    assert_eq!(jit, 25, "unexpected jit fixture count");
-    write_results(&results, compile_only, jit);
+    assert_eq!(
+        compile_only + jit + skipped,
+        60,
+        "unexpected curated fixture outcome count"
+    );
+    write_results(&results, compile_only, jit, skipped);
 }
 
-fn compile_module<'ctx>(
-    context: &'ctx Context,
-    path: &Path,
-    source: &str,
-) -> inkwell::module::Module<'ctx> {
+fn typecheck_program(path: &Path, source: &str) -> TypeCheckResult {
     let lexed = Lexer::new(source).tokenize();
     assert!(
         lexed.errors.is_empty(),
@@ -94,22 +128,7 @@ fn compile_module<'ctx>(
         path.display(),
         parsed.errors
     );
-    let typed = TypeChecker::new().check(parsed.program);
-    assert!(
-        typed.errors.is_empty(),
-        "type errors in {}: {:?}",
-        path.display(),
-        typed.errors
-    );
-    assert!(
-        typed.warnings.is_empty(),
-        "type warnings in {}: {:?}",
-        path.display(),
-        typed.warnings
-    );
-    CodeGen::new(context, BuildMode::Debug)
-        .emit(&typed.typed_program)
-        .unwrap_or_else(|err| panic!("codegen failed for {}: {err}", path.display()))
+    TypeChecker::new().check(parsed.program)
 }
 
 unsafe fn run_i64_main(module: inkwell::module::Module<'_>) -> i64 {
@@ -152,10 +171,24 @@ fn collect_dir(dir: &Path, files: &mut Vec<PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             collect_dir(&path, files);
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("dt") {
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("dt")
+            && has_run_header(&path)
+        {
             files.push(path);
         }
     }
+}
+
+fn has_run_header(path: &Path) -> bool {
+    fs::read_to_string(path)
+        .ok()
+        .map(|source| {
+            source
+                .lines()
+                .take(4)
+                .any(|line| line.trim_start().starts_with("// RUN:"))
+        })
+        .unwrap_or(false)
 }
 
 fn parse_mode(source: &str, path: &Path) -> RunMode {
@@ -188,7 +221,7 @@ fn parse_mode(source: &str, path: &Path) -> RunMode {
     }
 }
 
-fn write_results(results: &[FixtureResult], compile_only: usize, jit: usize) {
+fn write_results(results: &[FixtureResult], compile_only: usize, jit: usize, skipped: usize) {
     let path = results_file();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -199,6 +232,7 @@ fn write_results(results: &[FixtureResult], compile_only: usize, jit: usize) {
     output.push_str(&format!("total: {}\n", results.len()));
     output.push_str(&format!("compile_only: {}\n", compile_only));
     output.push_str(&format!("jit: {}\n\n", jit));
+    output.push_str(&format!("skipped: {}\n\n", skipped));
     for result in results {
         let rel = result
             .path

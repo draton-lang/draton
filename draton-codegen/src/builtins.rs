@@ -14,7 +14,6 @@ impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn declare_runtime(&mut self) -> Result<(), CodeGenError> {
         self.declare_libc()?;
         self.declare_safepoint_runtime()?;
-        self.declare_gc_runtime()?;
         self.declare_print_runtime()?;
         self.declare_input_runtime()?;
         self.declare_string_runtime()?;
@@ -209,6 +208,20 @@ impl<'ctx> CodeGen<'ctx> {
             builder
                 .build_return(Some(&ptr))
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        }
+        if self.module.get_function("draton_gc_alloc_array").is_none() {
+            self.module.add_function(
+                "draton_gc_alloc_array",
+                i8_ptr.fn_type(
+                    &[
+                        self.context.i64_type().into(), // elem_size
+                        self.context.i64_type().into(), // len
+                        self.context.i16_type().into(), // type_id
+                    ],
+                    false,
+                ),
+                None,
+            );
         }
         if self.module.get_function("draton_dealloc").is_none() {
             let function = self.module.add_function(
