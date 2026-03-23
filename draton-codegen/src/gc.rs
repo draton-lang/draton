@@ -301,10 +301,6 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = (object_ptr, field_ptr, value);
         Ok(())
     }
-
-    pub(crate) fn emit_safepoint_poll(&self) -> Result<(), CodeGenError> {
-        Ok(())
-    }
 }
 
 #[cfg(test)]

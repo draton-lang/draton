@@ -325,7 +325,6 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_call(callable, &call_args, "iface.call")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        self.emit_safepoint_poll()?;
         Ok(call.try_as_basic_value().left())
     }
 

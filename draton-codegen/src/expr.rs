@@ -181,7 +181,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_call(concat, &[rendered.into(), piece.into()], "fstr.concat")
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-            self.emit_safepoint_poll()?;
             rendered = call.try_as_basic_value().left().ok_or_else(|| {
                 CodeGenError::UnsupportedExpr("str_concat returned no value".to_string())
             })?;
@@ -661,7 +660,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_call(function, &[value.into()], runtime_symbol)
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-            self.emit_safepoint_poll()?;
             return Ok(None);
         }
         let function = self
@@ -699,7 +697,6 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         let ret_val = call.try_as_basic_value().left();
-        self.emit_safepoint_poll()?;
         Ok(ret_val)
     }
 
@@ -981,7 +978,6 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.slice",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
             "str_concat" => {
@@ -1011,7 +1007,6 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.concat",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
             "int_to_string" => {
@@ -1034,7 +1029,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "int.to_string")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
             "ascii_char" => {
@@ -1055,7 +1049,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "ascii.char")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
             "read_file" => {
@@ -1074,7 +1067,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "read.file")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
             "string_parse_int" => {
@@ -1183,7 +1175,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "cli.arg")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
             "host_ast_dump" => {
@@ -1206,7 +1197,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "host.ast_dump")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
             "host_type_dump" => {
@@ -1231,7 +1221,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "host.type_dump")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(Some(call.try_as_basic_value().left()))
             }
             _ => Ok(None),
@@ -1326,7 +1315,6 @@ impl<'ctx> CodeGen<'ctx> {
                 "method.call",
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        self.emit_safepoint_poll()?;
         Ok(call.try_as_basic_value().left())
     }
 
@@ -1381,7 +1369,6 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.slice",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(call.try_as_basic_value().left())
             }
             "contains" => {
@@ -1408,7 +1395,6 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.contains",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(call.try_as_basic_value().left())
             }
             "starts_with" => {
@@ -1437,7 +1423,6 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.starts",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(call.try_as_basic_value().left())
             }
             "replace" => {
@@ -1471,7 +1456,6 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.replace",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                self.emit_safepoint_poll()?;
                 Ok(call.try_as_basic_value().left())
             }
             _ => Err(CodeGenError::UnsupportedExpr(format!(

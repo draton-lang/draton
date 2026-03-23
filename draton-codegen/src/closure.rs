@@ -153,7 +153,6 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         let ret_val = call.try_as_basic_value().left();
-        self.emit_safepoint_poll()?;
         Ok(ret_val)
     }
 

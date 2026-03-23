@@ -384,7 +384,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(body_block);
         let _ = self.emit_block(&stmt.body)?;
         if !self.current_block_terminated() {
-            self.emit_safepoint_poll()?;
             self.builder
                 .build_unconditional_branch(cond_block)
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
@@ -672,7 +671,6 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.emit_block(&stmt.body)?;
         self.pop_scope();
         if !self.current_block_terminated() {
-            self.emit_safepoint_poll()?;
             let next = self
                 .builder
                 .build_int_add(phi.as_basic_value().into_int_value(), step_val, "for.next")
@@ -747,7 +745,6 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.emit_block(&stmt.body)?;
         self.pop_scope();
         if !self.current_block_terminated() {
-            self.emit_safepoint_poll()?;
             let next = self
                 .builder
                 .build_int_add(
