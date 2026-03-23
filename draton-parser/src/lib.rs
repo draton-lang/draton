@@ -6,5 +6,5 @@ mod item;
 mod parser;
 mod stmt;
 
-pub use error::ParseError;
+pub use error::{ParseError, ParseWarning};
 pub use parser::{ParseResult, Parser};

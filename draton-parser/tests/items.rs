@@ -338,3 +338,24 @@ fn main() {
     let body = function.body.as_ref().expect("expected body");
     assert!(matches!(body.stmts.first(), Some(Stmt::TypeBlock(_))));
 }
+
+#[test]
+fn parses_acyclic_class_annotation_as_type_marker() {
+    let source = r#"
+@acyclic
+class Package {
+    let name
+}
+"#;
+    let result = parse_program(source);
+    assert!(result.errors.is_empty(), "parser errors: {:?}", result.errors);
+    assert!(result.warnings.is_empty(), "parser warnings: {:?}", result.warnings);
+    let Item::Class(class_def) = &result.program.items[0] else {
+        panic!("expected class");
+    };
+    assert!(class_def.type_blocks.iter().any(|block| {
+        block.members.iter().any(|member| {
+            matches!(member, TypeMember::Binding { name, .. } if name == "@acyclic")
+        })
+    }));
+}

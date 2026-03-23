@@ -601,6 +601,7 @@ impl<'a> Lexer<'a> {
                 "@asm" => Some(TokenKind::AtAsm),
                 "@comptime" => Some(TokenKind::AtComptime),
                 "@if" => Some(TokenKind::AtIf),
+                "@acyclic" => Some(TokenKind::AtAcyclic),
                 "@gc_config" => Some(TokenKind::AtGcConfig),
                 "@panic_handler" => Some(TokenKind::AtPanicHandler),
                 "@oom_handler" => Some(TokenKind::AtOomHandler),

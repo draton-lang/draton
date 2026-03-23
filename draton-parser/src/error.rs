@@ -25,3 +25,15 @@ pub enum ParseError {
     #[error("layer outside class at line {line}, col {col}")]
     LayerOutsideClass { line: usize, col: usize },
 }
+
+/// Warnings that can be produced while parsing Draton tokens.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+pub enum ParseWarning {
+    #[error("deprecated syntax '{syntax}' at line {line}, col {col}\n  use: {replacement}")]
+    DeprecatedSyntax {
+        syntax: String,
+        replacement: String,
+        line: usize,
+        col: usize,
+    },
+}

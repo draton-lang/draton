@@ -38,6 +38,12 @@ This repository defines and protects the Draton language, its tooling, and its s
 - syntax or docs that contradict the class/layer model
 - docs or examples that disagree with parser/typechecker behavior
 
+## Memory model
+
+- Draton uses Inferred Ownership.
+- Do not introduce GC calls, shadow stack references, or safepoint logic.
+- Do not reintroduce `draton_gc_*`, `llvm.gcroot`, `llvm_gc_root_chain`, or write-barrier paths in safe-code lowering.
+
 ## Self-host boundary
 
 - Do not reintroduce compatibility-form syntax in already migrated self-host files.

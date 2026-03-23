@@ -128,11 +128,9 @@ Architectural role:
 
 Responsibility:
 
-- GC
-- safepoints
 - scheduler and channels
 - panic and low-level runtime entrypoints
-- runtime statistics and GC observability
+- builtins, IO, and runtime ABI support used by generated programs
 
 Architectural role:
 
@@ -194,16 +192,16 @@ This is part of Draton's architecture, not just packaging. The language is suppo
 
 The runtime is a distinct subsystem with its own responsibilities:
 
-- shadow-stack integration
-- safepoint signaling
-- generational GC
-- background and incremental major-GC work
+- panic handling
+- scheduler and channels
+- builtin and IO entrypoints
 - runtime ABI used by generated code
+- libc interop for `malloc` and `free`
 
 The compiler and runtime are therefore separated like this:
 
-- compiler decides what code means and what runtime hooks are needed
-- runtime decides how managed execution, memory, and scheduling actually happen
+- compiler decides ownership, inserts last-use frees, and lowers safe heap allocation to `malloc`
+- runtime provides the non-memory services and ABI entrypoints that generated programs still call
 
 ## Self-host mirror
 

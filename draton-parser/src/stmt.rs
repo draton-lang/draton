@@ -111,6 +111,11 @@ impl Parser {
     fn parse_gc_config_stmt(&mut self) -> Option<GcConfigStmt> {
         let start = self.token_span();
         let _ = self.expect(TokenKind::AtGcConfig, "@gc_config");
+        self.push_deprecated_warning(
+            "@gc_config has no effect",
+            "Draton uses Inferred Ownership and has no GC runtime",
+            start,
+        );
         if !self.expect(TokenKind::LBrace, "{") {
             return None;
         }

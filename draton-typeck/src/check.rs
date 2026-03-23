@@ -1357,6 +1357,11 @@ impl TypeChecker {
     }
 
     fn infer_gc_config(&mut self, gc_stmt: &GcConfigStmt) -> TypedGcConfigStmt {
+        self.push_deprecated_warning(
+            "@gc_config has no effect".to_string(),
+            "Draton uses Inferred Ownership and has no GC runtime".to_string(),
+            gc_stmt.span,
+        );
         TypedGcConfigStmt {
             entries: gc_stmt
                 .entries

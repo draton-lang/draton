@@ -69,6 +69,7 @@ pub enum TokenKind {
     AtAsm,
     AtComptime,
     AtIf,
+    AtAcyclic,
     AtGcConfig,
     AtPanicHandler,
     AtOomHandler,

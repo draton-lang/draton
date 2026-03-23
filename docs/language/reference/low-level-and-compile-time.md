@@ -53,14 +53,16 @@ This is a statement form, not the same thing as ordinary runtime `if`.
 
 ## GC configuration block
 
+Deprecated.
+
 ```draton
 @gc_config {
-    threshold: 1024
-    young_size: 4096
+    threshold = 1024
+    young_size = 4096
 }
 ```
 
-The parser accepts a brace-delimited list of `key: expr` entries.
+This block is accepted for compatibility but has no effect. Draton manages memory through Inferred Ownership at compile time.
 
 ## Extern declarations
 

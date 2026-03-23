@@ -1,6 +1,6 @@
 use draton_ast::{AssignOp, DestructureBinding, Expr, Stmt};
 use draton_lexer::Lexer;
-use draton_parser::Parser;
+use draton_parser::{ParseWarning, Parser};
 
 fn parse_stmt(source: &str) -> Stmt {
     let wrapped = format!("fn main() {{ {source} }}");
@@ -60,4 +60,19 @@ fn parses_return_and_expression_statements() {
         parse_stmt("print(\"hello\")"),
         Stmt::Expr(Expr::Call(_, _, _))
     ));
+}
+
+#[test]
+fn warns_that_gc_config_has_no_effect() {
+    let wrapped = "fn main() { @gc_config { threshold = 1024 } }";
+    let lexed = Lexer::new(wrapped).tokenize();
+    assert!(lexed.errors.is_empty(), "lexer errors: {:?}", lexed.errors);
+    let result = Parser::new(lexed.tokens).parse();
+    assert!(result.errors.is_empty(), "parser errors: {:?}", result.errors);
+    assert!(result.warnings.iter().any(|warning| matches!(
+        warning,
+        ParseWarning::DeprecatedSyntax { syntax, replacement, .. }
+            if syntax == "@gc_config has no effect"
+                && replacement == "Draton uses Inferred Ownership and has no GC runtime"
+    )));
 }

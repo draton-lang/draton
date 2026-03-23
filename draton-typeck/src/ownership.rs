@@ -71,6 +71,7 @@ struct FunctionIndex {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ClosureMeta {
     captures: HashSet<String>,
+    exclusive_captures: HashSet<String>,
     escaping: bool,
     last_call: Option<Span>,
 }
@@ -904,6 +905,12 @@ impl OwnershipChecker {
                             closures.insert(
                                 let_stmt.name.clone(),
                                 ClosureMeta {
+                                    exclusive_captures: self.collect_exclusive_captures(
+                                        params,
+                                        body,
+                                        &scope,
+                                        &captures,
+                                    ),
                                     captures,
                                     escaping: self.binding_escapes(&let_stmt.name, block),
                                     last_call: self.last_call(&let_stmt.name, block),
@@ -1051,6 +1058,124 @@ impl OwnershipChecker {
                 }
             }
             TypedExprKind::IntLit(_)
+            | TypedExprKind::FloatLit(_)
+            | TypedExprKind::StrLit(_)
+            | TypedExprKind::BoolLit(_)
+            | TypedExprKind::NoneLit
+            | TypedExprKind::Chan(_) => {}
+        }
+    }
+
+    fn collect_exclusive_captures(
+        &self,
+        params: &[TypedParam],
+        body: &TypedExpr,
+        scope: &HashSet<String>,
+        captures: &HashSet<String>,
+    ) -> HashSet<String> {
+        let mut locals = params.iter().map(|param| param.name.clone()).collect::<HashSet<_>>();
+        let mut exclusive = HashSet::new();
+        self.collect_exclusive_captures_in_expr(body, scope, &mut locals, captures, &mut exclusive);
+        exclusive
+    }
+
+    fn collect_exclusive_captures_in_expr(
+        &self,
+        expr: &TypedExpr,
+        outer: &HashSet<String>,
+        locals: &mut HashSet<String>,
+        captures: &HashSet<String>,
+        exclusive: &mut HashSet<String>,
+    ) {
+        match &expr.kind {
+            TypedExprKind::MethodCall(target, name, args) => {
+                if let Some(base) = self.base_ident_name(target) {
+                    if outer.contains(&base)
+                        && captures.contains(&base)
+                        && !locals.contains(&base)
+                        && self.method_receiver_effect(&target.ty, name) == UseEffect::BorrowExclusive
+                    {
+                        exclusive.insert(base);
+                    }
+                }
+                self.collect_exclusive_captures_in_expr(target, outer, locals, captures, exclusive);
+                for arg in args {
+                    self.collect_exclusive_captures_in_expr(arg, outer, locals, captures, exclusive);
+                }
+            }
+            TypedExprKind::Call(callee, args) => {
+                if let Some(summary) = self.lookup_call_summary(callee) {
+                    for (index, arg) in args.iter().enumerate() {
+                        if summary
+                            .summary
+                            .params
+                            .get(index)
+                            .is_some_and(|param| param.effect == UseEffect::BorrowExclusive)
+                        {
+                            if let Some(base) = self.base_ident_name(arg) {
+                                if outer.contains(&base)
+                                    && captures.contains(&base)
+                                    && !locals.contains(&base)
+                                {
+                                    exclusive.insert(base);
+                                }
+                            }
+                        }
+                    }
+                }
+                self.collect_exclusive_captures_in_expr(callee, outer, locals, captures, exclusive);
+                for arg in args {
+                    self.collect_exclusive_captures_in_expr(arg, outer, locals, captures, exclusive);
+                }
+            }
+            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+                for item in items {
+                    self.collect_exclusive_captures_in_expr(item, outer, locals, captures, exclusive);
+                }
+            }
+            TypedExprKind::Map(entries) => {
+                for (key, value) in entries {
+                    self.collect_exclusive_captures_in_expr(key, outer, locals, captures, exclusive);
+                    self.collect_exclusive_captures_in_expr(value, outer, locals, captures, exclusive);
+                }
+            }
+            TypedExprKind::BinOp(lhs, _, rhs) | TypedExprKind::Nullish(lhs, rhs) => {
+                self.collect_exclusive_captures_in_expr(lhs, outer, locals, captures, exclusive);
+                self.collect_exclusive_captures_in_expr(rhs, outer, locals, captures, exclusive);
+            }
+            TypedExprKind::UnOp(_, inner)
+            | TypedExprKind::Cast(inner, _)
+            | TypedExprKind::Field(inner, _)
+            | TypedExprKind::Index(inner, _)
+            | TypedExprKind::Ok(inner)
+            | TypedExprKind::Err(inner) => {
+                self.collect_exclusive_captures_in_expr(inner, outer, locals, captures, exclusive);
+            }
+            TypedExprKind::Lambda(params, body) => {
+                let mut nested = locals.clone();
+                for param in params {
+                    nested.insert(param.name.clone());
+                }
+                self.collect_exclusive_captures_in_expr(body, outer, &mut nested, captures, exclusive);
+            }
+            TypedExprKind::Match(subject, arms) => {
+                self.collect_exclusive_captures_in_expr(subject, outer, locals, captures, exclusive);
+                for arm in arms {
+                    self.collect_exclusive_captures_in_expr(&arm.pattern, outer, locals, captures, exclusive);
+                    if let TypedMatchArmBody::Expr(expr) = &arm.body {
+                        self.collect_exclusive_captures_in_expr(expr, outer, locals, captures, exclusive);
+                    }
+                }
+            }
+            TypedExprKind::FStrLit(parts) => {
+                for part in parts {
+                    if let crate::typed_ast::TypedFStrPart::Interp(expr) = part {
+                        self.collect_exclusive_captures_in_expr(expr, outer, locals, captures, exclusive);
+                    }
+                }
+            }
+            TypedExprKind::Ident(_)
+            | TypedExprKind::IntLit(_)
             | TypedExprKind::FloatLit(_)
             | TypedExprKind::StrLit(_)
             | TypedExprKind::BoolLit(_)
@@ -1623,7 +1748,9 @@ impl OwnershipChecker {
                 self.analyze_block(block, &mut inner, fn_key, closures, &live, errors);
                 *env = self.join_envs(env, &inner);
             }
-            TypedStmtKind::PointerBlock(_)
+            TypedStmtKind::PointerBlock(block) => {
+                self.reject_pointer_block_crossings(block, env, errors);
+            }
             | TypedStmtKind::AsmBlock(_)
             | TypedStmtKind::GcConfig(_)
             | TypedStmtKind::IfCompile(_)
@@ -1667,6 +1794,178 @@ impl OwnershipChecker {
         } else {
             self.analyze_expr(expr, env, UseEffect::Move, closures, errors)
                 .or_else(|| Some(self.new_origin()))
+        }
+    }
+
+    fn reject_pointer_block_crossings(
+        &self,
+        block: &TypedBlock,
+        env: &OwnershipEnv,
+        errors: &mut Vec<OwnershipError>,
+    ) {
+        let mut crossings = Vec::new();
+        self.collect_pointer_crossings_in_block(block, &mut crossings);
+        for (name, span) in crossings {
+            let Some(binding) = env.bindings.get(&name) else {
+                continue;
+            };
+            if !self.is_copy_type(&binding.ty) && matches!(binding.state, OwnershipState::Owned) {
+                errors.push(OwnershipError::SafeToRawAliasRejection { name, span });
+            }
+        }
+    }
+
+    fn collect_pointer_crossings_in_block(
+        &self,
+        block: &TypedBlock,
+        out: &mut Vec<(String, Span)>,
+    ) {
+        for stmt in &block.stmts {
+            self.collect_pointer_crossings_in_stmt(stmt, out);
+        }
+    }
+
+    fn collect_pointer_crossings_in_stmt(
+        &self,
+        stmt: &TypedStmt,
+        out: &mut Vec<(String, Span)>,
+    ) {
+        let _ = self;
+        match &stmt.kind {
+            TypedStmtKind::Let(let_stmt) => {
+                if let Some(value) = &let_stmt.value {
+                    self.collect_pointer_crossings_in_expr(value, out);
+                }
+            }
+            TypedStmtKind::LetDestructure(stmt) => {
+                self.collect_pointer_crossings_in_expr(&stmt.value, out);
+            }
+            TypedStmtKind::Assign(assign) => {
+                self.collect_pointer_crossings_in_expr(&assign.target, out);
+                if let Some(value) = &assign.value {
+                    self.collect_pointer_crossings_in_expr(value, out);
+                }
+            }
+            TypedStmtKind::Return(ret) => {
+                if let Some(value) = &ret.value {
+                    self.collect_pointer_crossings_in_expr(value, out);
+                }
+            }
+            TypedStmtKind::Expr(expr) => self.collect_pointer_crossings_in_expr(expr, out),
+            TypedStmtKind::If(if_stmt) => {
+                self.collect_pointer_crossings_in_expr(&if_stmt.condition, out);
+                self.collect_pointer_crossings_in_block(&if_stmt.then_branch, out);
+                if let Some(else_branch) = &if_stmt.else_branch {
+                    match else_branch {
+                        TypedElseBranch::If(inner) => {
+                            self.collect_pointer_crossings_in_expr(&inner.condition, out);
+                            self.collect_pointer_crossings_in_block(&inner.then_branch, out);
+                            if let Some(TypedElseBranch::Block(block)) = &inner.else_branch {
+                                self.collect_pointer_crossings_in_block(block, out);
+                            }
+                        }
+                        TypedElseBranch::Block(block) => {
+                            self.collect_pointer_crossings_in_block(block, out)
+                        }
+                    }
+                }
+            }
+            TypedStmtKind::For(for_stmt) => {
+                self.collect_pointer_crossings_in_expr(&for_stmt.iter, out);
+                self.collect_pointer_crossings_in_block(&for_stmt.body, out);
+            }
+            TypedStmtKind::While(while_stmt) => {
+                self.collect_pointer_crossings_in_expr(&while_stmt.condition, out);
+                self.collect_pointer_crossings_in_block(&while_stmt.body, out);
+            }
+            TypedStmtKind::Spawn(spawn) => match &spawn.body {
+                TypedSpawnBody::Expr(expr) => self.collect_pointer_crossings_in_expr(expr, out),
+                TypedSpawnBody::Block(block) => self.collect_pointer_crossings_in_block(block, out),
+            },
+            TypedStmtKind::Block(block)
+            | TypedStmtKind::UnsafeBlock(block)
+            | TypedStmtKind::PointerBlock(block)
+            | TypedStmtKind::ComptimeBlock(block) => self.collect_pointer_crossings_in_block(block, out),
+            TypedStmtKind::IfCompile(if_compile) => {
+                self.collect_pointer_crossings_in_expr(&if_compile.condition, out);
+                self.collect_pointer_crossings_in_block(&if_compile.body, out);
+            }
+            TypedStmtKind::GcConfig(gc) => {
+                for entry in &gc.entries {
+                    self.collect_pointer_crossings_in_expr(&entry.value, out);
+                }
+            }
+            TypedStmtKind::TypeBlock(_) | TypedStmtKind::AsmBlock(_) => {}
+        }
+    }
+
+    fn collect_pointer_crossings_in_expr(
+        &self,
+        expr: &TypedExpr,
+        out: &mut Vec<(String, Span)>,
+    ) {
+        let _ = self;
+        match &expr.kind {
+            TypedExprKind::Ident(name) => out.push((name.clone(), expr.span)),
+            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+                for item in items {
+                    self.collect_pointer_crossings_in_expr(item, out);
+                }
+            }
+            TypedExprKind::Map(entries) => {
+                for (key, value) in entries {
+                    self.collect_pointer_crossings_in_expr(key, out);
+                    self.collect_pointer_crossings_in_expr(value, out);
+                }
+            }
+            TypedExprKind::BinOp(lhs, _, rhs) | TypedExprKind::Nullish(lhs, rhs) => {
+                self.collect_pointer_crossings_in_expr(lhs, out);
+                self.collect_pointer_crossings_in_expr(rhs, out);
+            }
+            TypedExprKind::UnOp(_, inner)
+            | TypedExprKind::Cast(inner, _)
+            | TypedExprKind::Field(inner, _)
+            | TypedExprKind::Ok(inner)
+            | TypedExprKind::Err(inner) => self.collect_pointer_crossings_in_expr(inner, out),
+            TypedExprKind::Index(target, index) => {
+                self.collect_pointer_crossings_in_expr(target, out);
+                self.collect_pointer_crossings_in_expr(index, out);
+            }
+            TypedExprKind::Call(callee, args) => {
+                self.collect_pointer_crossings_in_expr(callee, out);
+                for arg in args {
+                    self.collect_pointer_crossings_in_expr(arg, out);
+                }
+            }
+            TypedExprKind::MethodCall(target, _, args) => {
+                self.collect_pointer_crossings_in_expr(target, out);
+                for arg in args {
+                    self.collect_pointer_crossings_in_expr(arg, out);
+                }
+            }
+            TypedExprKind::Lambda(_, body) => self.collect_pointer_crossings_in_expr(body, out),
+            TypedExprKind::Match(subject, arms) => {
+                self.collect_pointer_crossings_in_expr(subject, out);
+                for arm in arms {
+                    self.collect_pointer_crossings_in_expr(&arm.pattern, out);
+                    if let TypedMatchArmBody::Expr(expr) = &arm.body {
+                        self.collect_pointer_crossings_in_expr(expr, out);
+                    }
+                }
+            }
+            TypedExprKind::FStrLit(parts) => {
+                for part in parts {
+                    if let crate::typed_ast::TypedFStrPart::Interp(expr) = part {
+                        self.collect_pointer_crossings_in_expr(expr, out);
+                    }
+                }
+            }
+            TypedExprKind::IntLit(_)
+            | TypedExprKind::FloatLit(_)
+            | TypedExprKind::StrLit(_)
+            | TypedExprKind::BoolLit(_)
+            | TypedExprKind::NoneLit
+            | TypedExprKind::Chan(_) => {}
         }
     }
 
@@ -1976,11 +2275,20 @@ impl OwnershipChecker {
                 if matches!(name.as_str(), "push" | "pop") { target_origin } else { None }
             }
             TypedExprKind::Lambda(params, body) => {
-                let captures = self.collect_captures(params, body, &env.bindings.keys().cloned().collect());
+                let scope = env.bindings.keys().cloned().collect::<HashSet<_>>();
+                let captures = self.collect_captures(params, body, &scope);
+                let exclusive_captures =
+                    self.collect_exclusive_captures(params, body, &scope, &captures);
                 let escaping = desired == UseEffect::Move;
                 for capture in captures {
                     if let Some(binding) = env.bindings.get(&capture).cloned() {
-                        let effect = if escaping { UseEffect::Move } else { UseEffect::BorrowShared };
+                        let effect = if escaping {
+                            UseEffect::Move
+                        } else if exclusive_captures.contains(&capture) {
+                            UseEffect::BorrowExclusive
+                        } else {
+                            UseEffect::BorrowShared
+                        };
                         if effect == UseEffect::Move && matches!(binding.state, OwnershipState::Moved) {
                             errors.push(OwnershipError::MultipleOwners {
                                 name: capture.clone(),
@@ -1994,8 +2302,18 @@ impl OwnershipChecker {
                                 current.state = OwnershipState::Moved;
                                 current.state_span = expr.span;
                             }
-                        } else if effect == UseEffect::BorrowShared {
-                            self.start_borrow(env, &capture, BorrowKind::Shared, expr.span, true);
+                        } else if matches!(effect, UseEffect::BorrowShared | UseEffect::BorrowExclusive) {
+                            self.start_borrow(
+                                env,
+                                &capture,
+                                if effect == UseEffect::BorrowExclusive {
+                                    BorrowKind::Exclusive
+                                } else {
+                                    BorrowKind::Shared
+                                },
+                                expr.span,
+                                true,
+                            );
                         }
                     }
                 }
@@ -2092,11 +2410,20 @@ impl OwnershipChecker {
         }
         for capture in &meta.captures {
             if let Some(binding) = env.bindings.get(capture).cloned() {
-                self.check_binding_use(&binding, &UseEffect::BorrowShared, binding.state_span, env, errors);
+                let effect = if meta.exclusive_captures.contains(capture) {
+                    UseEffect::BorrowExclusive
+                } else {
+                    UseEffect::BorrowShared
+                };
+                self.check_binding_use(&binding, &effect, binding.state_span, env, errors);
                 self.start_borrow(
                     env,
                     capture,
-                    BorrowKind::Shared,
+                    if meta.exclusive_captures.contains(capture) {
+                        BorrowKind::Exclusive
+                    } else {
+                        BorrowKind::Shared
+                    },
                     meta.last_call.unwrap_or(binding.state_span),
                     true,
                 );

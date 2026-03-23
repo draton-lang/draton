@@ -340,6 +340,26 @@ fn add(a: Int) -> Int {
 }
 
 #[test]
+fn warns_that_gc_config_is_compat_only() {
+    let result = parse_and_check(
+        r#"
+fn main() {
+    @gc_config {
+        threshold = 1024
+    }
+}
+"#,
+    );
+    assert!(result.errors.is_empty(), "errors: {:?}", result.errors);
+    assert!(result.warnings.iter().any(|warning| matches!(
+        warning,
+        TypeError::DeprecatedSyntax { syntax, replacement, .. }
+            if syntax == "@gc_config has no effect"
+                && replacement == "Draton uses Inferred Ownership and has no GC runtime"
+    )));
+}
+
+#[test]
 fn denies_legacy_inline_type_syntax_in_strict_mode() {
     let result = parse_and_check_with_mode(
         r#"

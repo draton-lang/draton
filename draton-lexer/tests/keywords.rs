@@ -48,7 +48,7 @@ fn lexes_all_keywords() {
 #[test]
 fn lexes_all_at_keywords() {
     let source =
-        "@type @unsafe @pointer @asm @comptime @if @gc_config @panic_handler @oom_handler @extern";
+        "@type @unsafe @pointer @asm @comptime @if @acyclic @gc_config @panic_handler @oom_handler @extern";
     let result = Lexer::new(source).tokenize();
 
     assert_eq!(result.errors, Vec::new());
@@ -65,6 +65,7 @@ fn lexes_all_at_keywords() {
             TokenKind::AtAsm,
             TokenKind::AtComptime,
             TokenKind::AtIf,
+            TokenKind::AtAcyclic,
             TokenKind::AtGcConfig,
             TokenKind::AtPanicHandler,
             TokenKind::AtOomHandler,

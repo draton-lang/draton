@@ -15,6 +15,7 @@ impl Parser {
         let item = match self.current_kind() {
             TokenKind::Fn => self.parse_fn_def(is_pub, true).map(Item::Fn),
             TokenKind::Class => self.parse_class_def().map(Item::Class),
+            TokenKind::AtAcyclic => self.parse_acyclic_class_def().map(Item::Class),
             TokenKind::Layer => {
                 let token = self.current_token().clone();
                 self.errors.push(crate::ParseError::LayerOutsideClass {
@@ -232,6 +233,26 @@ impl Parser {
             type_blocks,
             span: self.merge_spans(start, end),
         })
+    }
+
+    fn parse_acyclic_class_def(&mut self) -> Option<ClassDef> {
+        let annotation_span = self.token_span();
+        if !self.expect(TokenKind::AtAcyclic, "@acyclic") {
+            return None;
+        }
+        let mut class_def = self.parse_class_def()?;
+        class_def.type_blocks.insert(
+            0,
+            TypeBlock {
+                members: vec![TypeMember::Binding {
+                    name: "@acyclic".to_string(),
+                    type_expr: TypeExpr::Named("Unit".to_string(), annotation_span),
+                    span: annotation_span,
+                }],
+                span: annotation_span,
+            },
+        );
+        Some(class_def)
     }
 
     fn parse_class_field(&mut self) -> Option<FieldDef> {

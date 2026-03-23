@@ -1,13 +1,14 @@
 use draton_ast::{Program, Span};
 use draton_lexer::{Token, TokenKind};
 
-use crate::error::ParseError;
+use crate::error::{ParseError, ParseWarning};
 
 /// The result of parsing a token stream.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseResult {
     pub program: Program,
     pub errors: Vec<ParseError>,
+    pub warnings: Vec<ParseWarning>,
 }
 
 /// A recursive-descent parser for Draton tokens.
@@ -15,6 +16,7 @@ pub struct Parser {
     pub(crate) tokens: Vec<Token>,
     pub(crate) pos: usize,
     pub(crate) errors: Vec<ParseError>,
+    pub(crate) warnings: Vec<ParseWarning>,
 }
 
 impl Parser {
@@ -24,6 +26,7 @@ impl Parser {
             tokens,
             pos: 0,
             errors: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 
@@ -52,6 +55,7 @@ impl Parser {
         ParseResult {
             program,
             errors: self.errors,
+            warnings: self.warnings,
         }
     }
 
@@ -154,6 +158,20 @@ impl Parser {
         }
     }
 
+    pub(crate) fn push_deprecated_warning(
+        &mut self,
+        syntax: impl Into<String>,
+        replacement: impl Into<String>,
+        span: Span,
+    ) {
+        self.warnings.push(ParseWarning::DeprecatedSyntax {
+            syntax: syntax.into(),
+            replacement: replacement.into(),
+            line: span.line,
+            col: span.col,
+        });
+    }
+
     pub(crate) fn convert_span(&self, span: draton_lexer::Span) -> Span {
         Span {
             start: span.start,
@@ -192,6 +210,7 @@ impl Parser {
                 | TokenKind::Import
                 | TokenKind::Pub
                 | TokenKind::AtType
+                | TokenKind::AtAcyclic
                 | TokenKind::AtExtern
                 | TokenKind::AtPanicHandler
                 | TokenKind::AtOomHandler => break,
