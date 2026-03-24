@@ -23,8 +23,8 @@ jobs:
       - name: Run focused parser/typecheck tests
         run: cargo test -p draton-parser --test items -p draton-typeck --test errors
 
-  selfhost-strict-subset:
-    name: selfhost-strict-subset
+  strict-syntax-smoke:
+    name: strict-syntax-smoke
     needs: rust-tests
     runs-on: ubuntu-22.04
     env:
@@ -33,11 +33,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -57,24 +52,8 @@ jobs:
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Enforce self-host strict-canonical subset
-        run: python3 tools/check_selfhost_strict_subset.py
-
       - name: Strict canonical fixture build
-        run: cargo run -p drat -- build --strict-syntax examples/hello.dt -o /tmp/draton_selfhost_subset_strict
+        run: cargo run -p drat -- build --strict-syntax examples/hello.dt -o /tmp/draton_strict_fixture
 
       - name: Run strict canonical fixture
-        run: /tmp/draton_selfhost_subset_strict
-
-      - name: Tracked self-host bootstrap probe
-        run: |
-          set +e
-          cargo run -p drat -- build src/main.dt -o /tmp/draton_selfhost_bootstrap > /tmp/draton_selfhost_bootstrap.log 2>&1
-          status=$?
-          cat /tmp/draton_selfhost_bootstrap.log
-          if [ "$status" -eq 0 ]; then
-            /tmp/draton_selfhost_bootstrap --help
-            exit 0
-          fi
-          echo "::warning::tracked self-host bootstrap probe failed; Stage 2 self-host ownership compatibility is still a known blocker"
-          exit 0
+        run: /tmp/draton_strict_fixture

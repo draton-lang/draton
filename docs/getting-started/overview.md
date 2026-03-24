@@ -15,7 +15,6 @@ What is already in place:
 
 - canonical syntax and strict mode
 - Rust compiler/tooling path as the source of truth
-- self-host executable/compiler path migration completed
 - early tooling suite under `drat`
 - GitHub release packages for supported preview targets
 
@@ -23,7 +22,7 @@ What is intentionally still limited:
 
 - the release line is still called an early preview
 - the docs are strict about canonical syntax and anti-drift policy
-- full-tree strict self-host CI is still limited by deferred dump/printer cleanup
+- the self-host compiler is being rewritten and is not currently shipped in-tree
 
 ## The shortest path to a working project
 

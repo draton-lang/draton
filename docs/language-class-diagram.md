@@ -172,13 +172,13 @@ classDiagram
         +completion
     }
 
-    class SelfHostMirror {
-        +src/lexer
-        +src/ast
-        +src/parser
-        +src/typeck
-        +src/codegen
-        +src/mono
+    class WorkspaceCrates {
+        +crates/drat
+        +crates/draton-lexer
+        +crates/draton-parser
+        +crates/draton-typeck
+        +crates/draton-codegen
+        +crates/draton-runtime
     }
 
     DratCLI --> LexerCrate : invokes frontend
@@ -192,10 +192,10 @@ classDiagram
     CodegenCrate --> TypeCheckerCrate : consumes typed program
     CodegenCrate --> RuntimeCrate : emits ABI calls for
     RuntimeCrate --> StdlibCrate : integrates with
-    SelfHostMirror ..> LexerCrate : mirrors semantics of
-    SelfHostMirror ..> ParserCrate : mirrors semantics of
-    SelfHostMirror ..> TypeCheckerCrate : mirrors semantics of
-    SelfHostMirror ..> CodegenCrate : mirrors semantics of
+    WorkspaceCrates ..> LexerCrate : contains
+    WorkspaceCrates ..> ParserCrate : contains
+    WorkspaceCrates ..> TypeCheckerCrate : contains
+    WorkspaceCrates ..> CodegenCrate : contains
 ```
 
 ## Interpretation Rules
@@ -203,7 +203,7 @@ classDiagram
 Use these diagrams with the following constraints in mind:
 
 - Rust frontend/tooling remains authoritative.
-- The self-host mirror reflects that behavior; it does not define a competing behavior.
+- Any future self-host rewrite must remain subordinate to that authoritative Rust path.
 - `@type` is a contract layer, not a second executable syntax family.
 - `class` and `layer` are structural architecture, not optional style sugar.
 - Compatibility syntax should not be read as a second architecture.

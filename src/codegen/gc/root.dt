@@ -1,9 +1,0 @@
-import { CodeGen, LLVMValue, llvm_value_exists }
-
-@type {
-    emit_gc_root: (CodeGen, LLVMValue) -> Unit
-}
-
-fn emit_gc_root(cg, alloca_ptr) {
-    let _done = 0
-}

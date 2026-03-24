@@ -3,7 +3,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Draton Docs',
-  tagline: 'Authoritative documentation for the Draton language, toolchain, and self-host mirror.',
+  tagline: 'Authoritative documentation for the Draton language and toolchain.',
   favicon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2218%22 fill=%22%23172b3a%22/><path d=%22M28 20h18c18 0 30 12 30 30S64 80 46 80H28V20zm14 14v32h4c10 0 16-6 16-16s-6-16-16-16h-4z%22 fill=%22%23f3b33e%22/></svg>',
   url: 'https://docs.draton.lhqm.io.vn',
   baseUrl: '/',

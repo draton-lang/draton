@@ -101,7 +101,6 @@ The language can be understood in three layers:
 - Rust frontend
 - LLVM backend
 - Draton runtime
-- self-host mirror for parity and long-term self-hosting
 
 ## Implementation Truth Table
 
@@ -110,7 +109,7 @@ The language can be understood in three layers:
 | Canonical syntax | Rust parser + docs |
 | Type contract semantics | Rust typechecker + docs |
 | Native codegen semantics | Rust codegen + runtime |
-| Self-host behavior | Must preserve Rust parity |
+| Self-host rewrite boundary | Must be documented explicitly before reintroduction |
 | Policy and anti-drift | AGENTS + architecture/rules docs |
 
 ## Current Repository State
@@ -119,11 +118,9 @@ As of the current repository state:
 
 - canonical syntax is stabilized
 - strict syntax mode exists
-- executable/compiler-path self-host migration is effectively complete
-- only two deferred non-executable dump/printer files remain outside full-tree strict self-host coverage:
-  - `src/ast/dump.dt`
-  - `src/typeck/dump.dt`
-- the self-host bootstrap path is still tracked separately because `drat build src/main.dt` can hit `LLVM ERROR: unknown special variable`
+- the Rust frontend/tooling path is the only in-tree compiler implementation
+- the historical self-host mirror under `src/` has been retired while a rewrite is prepared
+- `src/` now holds docs-site source rather than compiler code
 
 ## Implications For Reviewers And Contributors
 
@@ -133,7 +130,7 @@ When evaluating a change, ask:
 2. Does it keep contracts in `@type` rather than pushing types back inline?
 3. Does it preserve the `class` / `layer` model?
 4. Does it keep docs, parser behavior, and examples aligned?
-5. Does it maintain Rust frontend authority and self-host parity?
+5. Does it maintain Rust frontend authority and avoid inventing an undocumented self-host path?
 
 If the answer to any of those is "no", the default position should be to reject or narrow the change.
 
@@ -150,7 +147,7 @@ If the answer to any of those is "no", the default position should be to reject 
 | `draton-stdlib` | host-side standard library |
 | `draton-lsp` | editor protocol support |
 | `drat` | unified CLI and tool hub |
-| `src/` | self-host mirror of compiler layers |
+| `src/` | Docusaurus site source |
 
 ## Recommended Reading Order
 

@@ -111,8 +111,8 @@ def run_toolchain_workloads(workdir: Path) -> list[dict[str, object]]:
         }
     )
 
-    selfhost_bin = workdir / "selfhost_bootstrap"
-    build_selfhost = run(
+    hello_bin = workdir / "hello_toolchain"
+    build_hello = run(
         [
             "cargo",
             "run",
@@ -121,31 +121,28 @@ def run_toolchain_workloads(workdir: Path) -> list[dict[str, object]]:
             "drat",
             "--",
             "build",
-            "src/main.dt",
+            "--strict-syntax",
+            "examples/hello.dt",
             "-o",
-            str(selfhost_bin),
+            str(hello_bin),
         ],
         env=drat_env,
     )
-    if build_selfhost.returncode != 0:
-        workloads.append(
-            {
-                "name": "selfhost_bootstrap",
-                "status": "blocked",
-                "build_elapsed_ns": build_selfhost.elapsed_ns,  # type: ignore[index]
-                "stderr_tail": "\n".join(build_selfhost.stderr.strip().splitlines()[-12:]),
-                "reason": "current self-host bootstrap path is not stable enough to serve as a hard GC scorecard gate",
-            }
+    if build_hello.returncode != 0:
+        raise SystemExit(
+            f"failed to build examples/hello.dt\nstdout:\n{build_hello.stdout}\nstderr:\n{build_hello.stderr}"
         )
-    else:
-        workloads.append(
-            {
-                "name": "selfhost_bootstrap",
-                "status": "ok",
-                "build_elapsed_ns": build_selfhost.elapsed_ns,  # type: ignore[index]
-                "artifact": str(selfhost_bin),
-            }
-        )
+    run_hello = run([str(hello_bin)])
+    workloads.append(
+        {
+            "name": "hello_toolchain",
+            "build_elapsed_ns": build_hello.elapsed_ns,  # type: ignore[index]
+            "run_elapsed_ns": run_hello.elapsed_ns,  # type: ignore[index]
+            "exit_code": run_hello.returncode,
+            "stdout": run_hello.stdout.strip(),
+            "stderr": run_hello.stderr.strip(),
+        }
+    )
     return workloads
 
 
@@ -169,7 +166,6 @@ def main() -> int:
             "notes": [
                 "Runtime scenarios are synthetic GC baselines driven directly through draton-runtime.",
                 "Toolchain workloads use drat build on real repository programs to anchor the scorecard in compiler-facing behavior.",
-                "The self-host bootstrap workload is reported as blocked instead of failing the whole scorecard when the current repository build path is not stable enough.",
             ],
         }
 

@@ -30,22 +30,19 @@ Do not:
 - update tests or CI checks when practical
 - preserve readability-first design even in local fixes
 
-## When changing self-host code
+## When reintroducing self-host code
 
 - preserve parity with the Rust frontend canonical behavior
-- do not reintroduce compatibility-form syntax in migrated files
+- do not treat `src/` as compiler source; it is reserved for docs-site assets
+- do not reintroduce compatibility-form syntax as the default surface
 - keep [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md) accurate
-- treat these files as intentionally excluded until explicitly changed:
-  - `src/ast/dump.dt`
-  - `src/typeck/dump.dt`
+- document the new self-host location and boundary in the same task
 
 ## Current readiness boundary
 
-- Executable/compiler-path self-host canonical migration is complete.
-- The strict self-host subset CI protects the migrated executable self-host path.
-- Full-tree strict self-host CI still requires canonicalizing or intentionally retiring:
-  - `src/ast/dump.dt`
-  - `src/typeck/dump.dt`
+- No in-tree self-host compiler source is currently shipped.
+- Strict syntax and anti-drift checks currently target the Rust frontend/tooling path.
+- Future self-host work should be reintroduced explicitly instead of assuming the old `src/` mirror still exists.
 
 ## Review checklist
 
@@ -55,4 +52,3 @@ Before considering a syntax/tooling change done, verify that:
 - no competing syntax style was introduced
 - any exclusion list is still small, explicit, and justified
 - the change keeps Draton readable first
-

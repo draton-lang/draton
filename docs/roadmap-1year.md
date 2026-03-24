@@ -8,16 +8,13 @@ Ownership-based memory management is now part of the baseline compiler/runtime m
 
 ## Project status summary
 
-Draton has completed its syntax-stabilization phase for the executable/compiler path:
+Draton has completed its syntax-stabilization phase for the Rust frontend/tooling path:
 
 - canonical syntax is defined and documented
 - deprecated inline type syntax is in compatibility mode, with strict enforcement available
 - the Rust frontend/tooling path is authoritative
-- the self-host compiler is operational for the executable/compiler path
-- strict-canonical CI guardrails are active for the migrated self-host subset
-- only two non-executable dump/printer modules remain excluded from full-tree strict self-host coverage:
-  - `src/ast/dump.dt`
-  - `src/typeck/dump.dt`
+- the historical self-host tree has been retired while a rewrite is prepared
+- `src/` now belongs to the docs site rather than compiler code
 
 This means Draton is no longer primarily in a syntax-definition phase. It is entering a tooling, ecosystem, and performance phase.
 
@@ -30,7 +27,7 @@ The intended direction is:
 - make the existing language surface easier to use through strong tooling
 - improve diagnostics, formatting, editing support, and bootstrap confidence
 - build ecosystem foundations that reinforce, rather than dilute, the canonical language design
-- invest in compiler speed and stability so self-host and external tooling work becomes practical
+- invest in compiler speed and stability so future self-host and external tooling work becomes practical
 - evolve carefully only where changes preserve readability-first design and the `@type` contract model
 
 The language should grow by making the current design more usable and more reliable, not by reopening settled syntax questions.
@@ -44,7 +41,7 @@ Priority work:
 - stabilize `drat fmt` so canonical syntax has one predictable formatter
 - improve parser/typechecker/codegen diagnostics for common user mistakes
 - harden `drat lsp` around diagnostics, hover, and definition lookup
-- tighten bootstrap stability and make self-host verification less noisy
+- tighten compiler verification and make future self-host bootstrap work easier to reintroduce
 - finish contributor-facing docs for install, syntax, self-host status, and workflow expectations
 
 Concrete engineering steps:
@@ -52,7 +49,7 @@ Concrete engineering steps:
 - add formatter regression coverage for canonical syntax forms
 - improve deprecation diagnostics so compatibility-mode warnings stay actionable and concise
 - add more LSP smoke and integration tests around canonical syntax constructs
-- reduce friction in self-host bootstrap verification and keep CI subset fast and trustworthy
+- keep syntax/tooling CI fast and trustworthy while the self-host rewrite is out of tree
 - make docs/examples consistently runnable from the repository root
 
 Expected outcome:
@@ -91,20 +88,20 @@ Priority work:
 
 - improve type inference performance on larger programs
 - improve code generation performance and backend throughput
-- reduce self-host bootstrap time
+- reduce future self-host bootstrap time once the rewrite exists
 - introduce incremental or cache-aware build capabilities where technically justified
 
 Concrete engineering steps:
 
-- profile the Rust frontend and self-host bootstrap path with representative workloads
+- profile the Rust frontend with representative workloads and define rewrite-ready self-host benchmarks
 - remove obvious hot paths in inference, monomorphization, and code generation
 - make build outputs and intermediate artifacts easier to reuse safely
-- measure strict-canonical checks and self-host bootstrap cost in CI over time
+- measure strict-canonical checks and compiler workload cost in CI over time
 
 Expected outcome:
 
 - Draton feels materially faster in normal edit-build-run cycles
-- self-host workflows become more practical for day-to-day compiler work
+- the compiler gets faster today without blocking a future self-host rewrite
 
 ## Phase 4: 9-12 months
 
@@ -147,7 +144,7 @@ Signals that the roadmap is working:
 
 - `drat fmt` is stable enough to be trusted in normal development and CI
 - `drat lsp` provides reliable diagnostics and basic navigation in real Draton files
-- bootstrap and self-host verification are repeatable and less noisy
+- compiler verification is repeatable and future self-host bootstrap work has a clear re-entry path
 - at least one official production-quality tool is built in Draton
 - package/dependency workflows are usable enough for small real projects
 - bootstrap and compile performance are measurably improved over current baselines

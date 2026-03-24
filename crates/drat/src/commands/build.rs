@@ -1,0 +1,1340 @@
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use anyhow::{anyhow, bail, Context, Result};
+use colored::Colorize;
+use draton_ast::Program;
+use draton_codegen::{BuildMode, CodeGen};
+use draton_lexer::{LexError, Lexer};
+use draton_parser::{ParseError, Parser};
+use draton_stdlib::modules as bundled_stdlib_modules;
+use draton_typeck::{DeprecatedSyntaxMode, Type, TypeChecker, TypeError, TypedItem, TypedProgram};
+use inkwell::context::Context as LlvmContext;
+use inkwell::AddressSpace;
+
+use crate::config::DratonConfig;
+
+const HOST_TARGET: &str = if cfg!(target_os = "linux") && cfg!(target_arch = "x86_64") {
+    "x86_64-linux"
+} else if cfg!(target_os = "macos") && cfg!(target_arch = "x86_64") {
+    "x86_64-macos"
+} else if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
+    "arm64-macos"
+} else if cfg!(target_os = "windows") && cfg!(target_arch = "x86_64") {
+    "x86_64-windows"
+} else {
+    "unknown"
+};
+const MAX_RENDERED_TYPE_WARNINGS: usize = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Profile {
+    Debug,
+    Release,
+    Size,
+    Fast,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BuildRequest {
+    pub profile: Profile,
+    pub target: Option<String>,
+    pub strict_syntax: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BuildOutput {
+    pub binary_path: PathBuf,
+    pub object_path: PathBuf,
+    pub ir_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CompiledProject {
+    typed_program: TypedProgram,
+    main_return_type: Option<Type>,
+}
+
+pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOutput> {
+    let config = DratonConfig::load(project_root)?;
+    let resolved_target = request
+        .target
+        .clone()
+        .or_else(|| config.default_target().map(ToOwned::to_owned));
+    if let Some(target) = resolved_target.as_deref() {
+        ensure_supported_target(target)?;
+    }
+
+    let entry_path = config.entry_path(project_root);
+    let old_multi_defs = env::var_os("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS");
+    env::set_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", "1");
+    let built = (|| {
+        let compiled = compile_project(&entry_path, request.strict_syntax)?;
+        let Some(main_return_type) = compiled.main_return_type.clone() else {
+            bail!("no fn main found in {}", entry_path.display());
+        };
+        let context = LlvmContext::create();
+        let module = CodeGen::new(&context, request.profile.to_codegen_mode())
+            .emit(&compiled.typed_program)
+            .map_err(|error| anyhow!(error.to_string()))?;
+        wrap_main_for_binary(&context, &module, &main_return_type)?;
+
+        let build_dir = project_root
+            .join("build")
+            .join(request.profile.as_dir_name());
+        fs::create_dir_all(&build_dir)
+            .with_context(|| format!("failed to create {}", build_dir.display()))?;
+        let exe_name = if cfg!(windows) {
+            format!("{}.exe", config.project.name)
+        } else {
+            config.project.name.clone()
+        };
+        let ir_path = build_dir.join(format!("{}.ll", config.project.name));
+        let object_path = build_dir.join(format!("{}.o", config.project.name));
+        let binary_path = build_dir.join(exe_name);
+        CodeGen::write_ir(&module, &ir_path)?;
+        CodeGen::write_object(&module, &object_path)?;
+        link_binary(
+            request.profile,
+            &object_path,
+            &binary_path,
+            resolved_target.as_deref(),
+        )?;
+
+        Ok(BuildOutput {
+            binary_path,
+            object_path,
+            ir_path,
+        })
+    })();
+    match old_multi_defs {
+        Some(value) => env::set_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", value),
+        None => env::remove_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS"),
+    }
+    built
+}
+
+pub(crate) fn run_file(
+    cwd: &Path,
+    input_path: &Path,
+    output_path: Option<&Path>,
+    request: &BuildRequest,
+) -> Result<BuildOutput> {
+    let source_path = if input_path.is_absolute() {
+        input_path.to_path_buf()
+    } else {
+        cwd.join(input_path)
+    };
+    if !source_path.exists() {
+        bail!("source file not found {}", source_path.display());
+    }
+
+    let temp_root = prepare_temp_project(&source_path)?;
+    let old_disable_gcroot = env::var_os("DRATON_DISABLE_GCROOT");
+    let old_multi_defs = env::var_os("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS");
+    // GC root registration is now done via draton_gc_pin/unpin (not llvm.gcroot),
+    // so DRATON_DISABLE_GCROOT is no longer needed here.
+    env::set_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", "1");
+    let built = run(&temp_root, request);
+    match old_disable_gcroot {
+        Some(value) => env::set_var("DRATON_DISABLE_GCROOT", value),
+        None => env::remove_var("DRATON_DISABLE_GCROOT"),
+    }
+    match old_multi_defs {
+        Some(value) => env::set_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", value),
+        None => env::remove_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS"),
+    }
+    let built = built?;
+
+    let final_binary = match output_path {
+        Some(path) if path.is_absolute() => path.to_path_buf(),
+        Some(path) => cwd.join(path),
+        None => {
+            let stem = source_path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("output");
+            if cfg!(windows) {
+                cwd.join(format!("{stem}.exe"))
+            } else {
+                cwd.join(stem)
+            }
+        }
+    };
+    let final_object = final_binary.with_extension("o");
+    let final_ir = final_binary.with_extension("ll");
+    copy_build_output(&built.binary_path, &final_binary)?;
+    copy_build_output(&built.object_path, &final_object)?;
+    copy_build_output(&built.ir_path, &final_ir)?;
+
+    Ok(BuildOutput {
+        binary_path: final_binary,
+        object_path: final_object,
+        ir_path: final_ir,
+    })
+}
+
+pub(crate) fn compile_project(entry_path: &Path, strict_syntax: bool) -> Result<CompiledProject> {
+    let program = load_project_program(entry_path)?;
+    let typed = type_checker_for(strict_syntax).check(program);
+    if !typed.errors.is_empty() {
+        bail!(
+            "{}",
+            render_type_errors_without_source(entry_path, &typed.errors)
+        );
+    }
+    if !typed.warnings.is_empty() {
+        eprintln!(
+            "{}",
+            render_type_warnings_without_source(entry_path, &typed.warnings)
+        );
+    }
+    let main_return_type = typed
+        .typed_program
+        .items
+        .iter()
+        .find_map(|item| match item {
+            TypedItem::Fn(function) if function.name == "main" => Some(function.ret_type.clone()),
+            _ => None,
+        });
+    Ok(CompiledProject {
+        typed_program: typed.typed_program,
+        main_return_type,
+    })
+}
+
+fn render_type_errors_without_source(path: &Path, errors: &[TypeError]) -> String {
+    errors
+        .iter()
+        .map(|error| format!("type error in {}:\n{}", path.display(), error))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn render_type_warnings_without_source(path: &Path, warnings: &[TypeError]) -> String {
+    render_limited_warnings(warnings, |warning| {
+        Some(format!("type warning in {}:\n{}", path.display(), warning))
+    })
+}
+
+fn load_project_program(entry_path: &Path) -> Result<Program> {
+    let mut items = Vec::new();
+    items.extend(load_bundled_stdlib_items()?);
+    let files = collect_project_sources(entry_path)?;
+    for path in files {
+        let source = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let lexed = Lexer::new(&source).tokenize();
+        if !lexed.errors.is_empty() {
+            bail!("{}", render_lex_errors(&path, &source, &lexed.errors));
+        }
+        let parsed = Parser::new(lexed.tokens).parse();
+        if !parsed.errors.is_empty() {
+            bail!("{}", render_parse_errors(&path, &source, &parsed.errors));
+        }
+        items.extend(parsed.program.items);
+    }
+    Ok(Program { items })
+}
+
+fn collect_project_sources(entry_path: &Path) -> Result<Vec<PathBuf>> {
+    let src_root = entry_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let mut files = Vec::new();
+    collect_dt_files_recursive(&src_root, &mut files)?;
+    files.sort();
+    if files.is_empty() {
+        files.push(entry_path.to_path_buf());
+    }
+    Ok(files)
+}
+
+fn prepare_temp_project(source_path: &Path) -> Result<PathBuf> {
+    let temp_root = env::temp_dir()
+        .join("draton")
+        .join("build")
+        .join("phase5_cli")
+        .join(format!(
+            "tmp_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|value| value.as_nanos())
+                .unwrap_or(0)
+        ));
+    fs::create_dir_all(&temp_root)
+        .with_context(|| format!("failed to create {}", temp_root.display()))?;
+
+    let entry = if let Some(project_root) = find_project_root(source_path) {
+        let src_root = project_root.join("src");
+        if source_path.starts_with(&src_root) {
+            copy_dir_recursive(&src_root, &temp_root.join("src"))?;
+            source_path
+                .strip_prefix(&project_root)
+                .map(|value| value.to_string_lossy().replace('\\', "/"))
+                .with_context(|| {
+                    format!(
+                        "failed to compute relative path for {}",
+                        source_path.display()
+                    )
+                })?
+        } else {
+            let temp_src = temp_root.join("src");
+            fs::create_dir_all(&temp_src)
+                .with_context(|| format!("failed to create {}", temp_src.display()))?;
+            let dest = temp_src.join("main.dt");
+            fs::copy(source_path, &dest).with_context(|| {
+                format!(
+                    "failed to copy {} -> {}",
+                    source_path.display(),
+                    dest.display()
+                )
+            })?;
+            "src/main.dt".to_string()
+        }
+    } else {
+        let temp_src = temp_root.join("src");
+        fs::create_dir_all(&temp_src)
+            .with_context(|| format!("failed to create {}", temp_src.display()))?;
+        let dest = temp_src.join("main.dt");
+        fs::copy(source_path, &dest).with_context(|| {
+            format!(
+                "failed to copy {} -> {}",
+                source_path.display(),
+                dest.display()
+            )
+        })?;
+        "src/main.dt".to_string()
+    };
+
+    let config = format!(
+        "[project]\nname = \"phase5_cli\"\nversion = \"0.1.0\"\nentry = \"{}\"\n",
+        entry
+    );
+    let config_path = temp_root.join("draton.toml");
+    fs::write(&config_path, config)
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+    Ok(temp_root)
+}
+
+fn find_project_root(source_path: &Path) -> Option<PathBuf> {
+    source_path
+        .ancestors()
+        .find(|ancestor| ancestor.join("draton.toml").exists())
+        .map(Path::to_path_buf)
+}
+
+fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest).with_context(|| format!("failed to create {}", dest.display()))?;
+    for entry in
+        fs::read_dir(source).with_context(|| format!("failed to read {}", source.display()))?
+    {
+        let entry = entry?;
+        let source_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_dir_recursive(&source_path, &dest_path)?;
+        } else {
+            fs::copy(&source_path, &dest_path).with_context(|| {
+                format!(
+                    "failed to copy {} -> {}",
+                    source_path.display(),
+                    dest_path.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_build_output(source: &Path, dest: &Path) -> Result<()> {
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    fs::copy(source, dest)
+        .with_context(|| format!("failed to copy {} -> {}", source.display(), dest.display()))?;
+    Ok(())
+}
+
+fn collect_dt_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dt_files_recursive(&path, out)?;
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("dt") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn compile_snippet(source: &str) -> Result<CompiledProject> {
+    let synthetic = PathBuf::from("<repl>");
+    let mut items = load_bundled_stdlib_items()?;
+    let lexed = Lexer::new(source).tokenize();
+    if !lexed.errors.is_empty() {
+        bail!("{}", render_lex_errors(&synthetic, source, &lexed.errors));
+    }
+    let parsed = Parser::new(lexed.tokens).parse();
+    if !parsed.errors.is_empty() {
+        bail!(
+            "{}",
+            render_parse_errors(&synthetic, source, &parsed.errors)
+        );
+    }
+    items.extend(parsed.program.items);
+    let typed = type_checker_for(false).check(Program { items });
+    if !typed.errors.is_empty() {
+        bail!("{}", render_type_errors(&synthetic, source, &typed.errors));
+    }
+    if !typed.warnings.is_empty() {
+        eprintln!(
+            "{}",
+            render_type_warnings(&synthetic, source, &typed.warnings)
+        );
+    }
+    let main_return_type = typed
+        .typed_program
+        .items
+        .iter()
+        .find_map(|item| match item {
+            TypedItem::Fn(function) if function.name == "main" => Some(function.ret_type.clone()),
+            _ => None,
+        });
+    Ok(CompiledProject {
+        typed_program: typed.typed_program,
+        main_return_type,
+    })
+}
+
+fn type_checker_for(strict_syntax: bool) -> TypeChecker {
+    let mode = if strict_syntax {
+        DeprecatedSyntaxMode::Deny
+    } else {
+        DeprecatedSyntaxMode::Warn
+    };
+    TypeChecker::new().with_deprecated_syntax_mode(mode)
+}
+
+fn load_bundled_stdlib_items() -> Result<Vec<draton_ast::Item>> {
+    let mut items = Vec::new();
+    for module in bundled_stdlib_modules() {
+        if !matches!(module.name, "math" | "string" | "io" | "collections") {
+            continue;
+        }
+        let lexed = Lexer::new(module.source).tokenize();
+        if !lexed.errors.is_empty() {
+            bail!(
+                "{}",
+                render_lex_errors(
+                    &PathBuf::from(format!("<stdlib:{}>", module.name)),
+                    module.source,
+                    &lexed.errors
+                )
+            );
+        }
+        let parsed = Parser::new(lexed.tokens).parse();
+        if !parsed.errors.is_empty() {
+            bail!(
+                "{}",
+                render_parse_errors(
+                    &PathBuf::from(format!("<stdlib:{}>", module.name)),
+                    module.source,
+                    &parsed.errors
+                )
+            );
+        }
+        items.extend(parsed.program.items);
+    }
+    Ok(items)
+}
+
+pub(crate) fn build_module<'ctx>(
+    context: &'ctx LlvmContext,
+    compiled: &CompiledProject,
+    profile: Profile,
+) -> Result<inkwell::module::Module<'ctx>> {
+    CodeGen::new(context, profile.to_codegen_mode())
+        .emit(&compiled.typed_program)
+        .map_err(|error| anyhow!(error.to_string()))
+}
+
+pub(crate) fn main_return_type(compiled: &CompiledProject) -> Option<Type> {
+    compiled.main_return_type.clone()
+}
+
+fn ensure_supported_target(target: &str) -> Result<()> {
+    if target == HOST_TARGET {
+        return Ok(());
+    }
+    bail!(
+        "cross-compile is not yet supported by the current backend: target {}, host {}",
+        target,
+        HOST_TARGET
+    )
+}
+
+fn wrap_main_for_binary<'ctx>(
+    context: &'ctx LlvmContext,
+    module: &inkwell::module::Module<'ctx>,
+    main_return_type: &Type,
+) -> Result<()> {
+    let Some(user_main) = module.get_function("main") else {
+        return Ok(());
+    };
+    user_main.as_global_value().set_name("draton_user_main");
+    let i8_ptr = context.i8_type().ptr_type(AddressSpace::default());
+    let argv_ty = i8_ptr.ptr_type(AddressSpace::default());
+    let exit_ty = if cfg!(windows) {
+        context.i32_type()
+    } else {
+        context.i64_type()
+    };
+    let wrapper = module.add_function(
+        "main",
+        exit_ty.fn_type(&[context.i32_type().into(), argv_ty.into()], false),
+        None,
+    );
+    let entry = context.append_basic_block(wrapper, "entry");
+    let builder = context.create_builder();
+    builder.position_at_end(entry);
+    if let Some(set_cli_args) = module.get_function("draton_set_cli_args") {
+        let argc = wrapper
+            .get_nth_param(0)
+            .ok_or_else(|| anyhow!("missing wrapper argc"))?;
+        let argv = wrapper
+            .get_nth_param(1)
+            .ok_or_else(|| anyhow!("missing wrapper argv"))?;
+        let _ = builder
+            .build_call(
+                set_cli_args,
+                &[argc.into(), argv.into()],
+                "drat.set_cli_args",
+            )
+            .map_err(|error| anyhow!(error.to_string()))?;
+    }
+    let call = builder
+        .build_call(user_main, &[], "drat.main")
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let exit_code = match main_return_type {
+        Type::Int
+        | Type::Int8
+        | Type::Int16
+        | Type::Int32
+        | Type::Int64
+        | Type::UInt8
+        | Type::UInt16
+        | Type::UInt32
+        | Type::UInt64
+        | Type::Bool => {
+            let value = call
+                .try_as_basic_value()
+                .left()
+                .map(|value| value.into_int_value())
+                .unwrap_or_else(|| exit_ty.const_zero());
+            if value.get_type().get_bit_width() < exit_ty.get_bit_width() {
+                builder
+                    .build_int_z_extend_or_bit_cast(value, exit_ty, "drat.exit")
+                    .map_err(|error| anyhow!(error.to_string()))?
+            } else if value.get_type().get_bit_width() > exit_ty.get_bit_width() {
+                builder
+                    .build_int_truncate_or_bit_cast(value, exit_ty, "drat.exit")
+                    .map_err(|error| anyhow!(error.to_string()))?
+            } else {
+                value
+            }
+        }
+        _ => exit_ty.const_zero(),
+    };
+    builder
+        .build_return(Some(&exit_code))
+        .map_err(|error| anyhow!(error.to_string()))?;
+    Ok(())
+}
+
+fn link_binary(
+    profile: Profile,
+    object_path: &Path,
+    binary_path: &Path,
+    target: Option<&str>,
+) -> Result<()> {
+    if let Some(target) = target {
+        ensure_supported_target(target)?;
+    }
+    let mut command = linker_command();
+    command.arg(object_path);
+    if env::var_os("DRATON_SKIP_RUNTIME_LINK").is_none() {
+        let runtime_lib = ensure_runtime_staticlib(profile)?;
+        command.arg(&runtime_lib);
+    }
+    command.arg("-o").arg(binary_path);
+    if cfg!(target_os = "linux") {
+        // Generated binaries still carry a small runtime shim surface, so Linux
+        // links must tolerate duplicate runtime symbols when the bundled static
+        // runtime archive is also linked in.
+        command.arg("-Wl,--allow-multiple-definition");
+        command.args([
+            "-no-pie",
+            "-ldl",
+            "-lpthread",
+            "-lm",
+            "-lrt",
+            "-lutil",
+            "-lstdc++",
+        ]);
+    } else if cfg!(target_os = "macos") {
+        command.arg("-Wl,-multiply_defined,suppress");
+        command.args(["-ldl", "-lpthread", "-lm", "-lc++"]);
+    } else if cfg!(target_os = "windows") {
+        command.args([
+            "-static-libgcc",
+            "-static-libstdc++",
+            "-lbcrypt",
+            "-luserenv",
+            "-lntdll",
+        ]);
+    }
+    let output = command
+        .output()
+        .with_context(|| "failed to run linker cc".to_string())?;
+    if !output.status.success() {
+        bail!("link failed:\n{}", String::from_utf8_lossy(&output.stderr));
+    }
+    copy_windows_runtime_dlls(binary_path)?;
+    Ok(())
+}
+
+fn ensure_runtime_staticlib(profile: Profile) -> Result<PathBuf> {
+    if let Some(path) = env::var_os("DRATON_RUNTIME_LIB") {
+        let path = PathBuf::from(path);
+        if path.exists() {
+            return Ok(path);
+        }
+        bail!(
+            "DRATON_RUNTIME_LIB is set but does not exist: {}",
+            path.display()
+        );
+    }
+
+    if let Some(path) = packaged_runtime_staticlib() {
+        return Ok(path);
+    }
+
+    let workspace_root = workspace_root();
+    let manifest = workspace_root.join("crates/draton-runtime/Cargo.toml");
+    let mut command = Command::new("cargo");
+    command
+        .arg("build")
+        .arg("-p")
+        .arg("draton-runtime")
+        .arg("--manifest-path")
+        .arg(manifest);
+    if matches!(profile, Profile::Release | Profile::Size | Profile::Fast) {
+        command.arg("--release");
+    }
+    if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+        command.env("CARGO_TARGET_DIR", target_dir);
+    }
+    let output = command
+        .output()
+        .with_context(|| "failed to build draton-runtime".to_string())?;
+    if !output.status.success() {
+        bail!(
+            "draton-runtime build failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let mut path = target_dir();
+    if matches!(profile, Profile::Release | Profile::Size | Profile::Fast) {
+        path = path.join("release");
+    } else {
+        path = path.join("debug");
+    }
+    let filename = if cfg!(windows) {
+        "draton_runtime.lib"
+    } else {
+        "libdraton_runtime.a"
+    };
+    let path = path.join(filename);
+    if !path.exists() {
+        bail!("runtime staticlib not found at {}", path.display());
+    }
+    Ok(path)
+}
+
+fn packaged_runtime_staticlib() -> Option<PathBuf> {
+    let exe = env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    if cfg!(windows) {
+        let gnu_path = dir.join("libdraton_runtime.a");
+        if packaged_windows_gnu_root().is_some() && gnu_path.exists() {
+            return Some(gnu_path);
+        }
+        let msvc_path = dir.join("draton_runtime.lib");
+        return msvc_path.exists().then_some(msvc_path);
+    }
+    let path = dir.join("libdraton_runtime.a");
+    path.exists().then_some(path)
+}
+
+fn linker_command() -> Command {
+    if cfg!(windows) {
+        if let Some(root) = packaged_windows_gnu_root() {
+            let driver = ["g++.exe", "gcc.exe", "cc.exe"]
+                .into_iter()
+                .map(|name| root.join("bin").join(name))
+                .find(|path| path.exists());
+            if let Some(driver) = driver {
+                let mut command = Command::new(driver);
+                prepend_path(&mut command, &root.join("bin"));
+                return command;
+            }
+        }
+    }
+    Command::new("cc")
+}
+
+fn packaged_windows_gnu_root() -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let exe = env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let root = dir.join("windows-gnu");
+    root.exists().then_some(root)
+}
+
+fn prepend_path(command: &mut Command, entry: &Path) {
+    let mut path_entries = vec![entry.to_path_buf()];
+    if let Some(existing) = env::var_os("PATH") {
+        path_entries.extend(env::split_paths(&existing));
+    }
+    if let Ok(path) = env::join_paths(path_entries) {
+        command.env("PATH", path);
+    }
+}
+
+fn copy_windows_runtime_dlls(binary_path: &Path) -> Result<()> {
+    if !cfg!(windows) {
+        return Ok(());
+    }
+    let Some(root) = packaged_windows_gnu_root() else {
+        return Ok(());
+    };
+    let Some(dest_dir) = binary_path.parent() else {
+        return Ok(());
+    };
+    let bin_dir = root.join("bin");
+    for name in [
+        "libgcc_s_seh-1.dll",
+        "libstdc++-6.dll",
+        "libwinpthread-1.dll",
+    ] {
+        let source = bin_dir.join(name);
+        if !source.exists() {
+            continue;
+        }
+        let dest = dest_dir.join(name);
+        fs::copy(&source, &dest).with_context(|| {
+            format!(
+                "failed to copy windows runtime dll {} -> {}",
+                source.display(),
+                dest.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+}
+
+fn target_dir() -> PathBuf {
+    env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| workspace_root().join("target"))
+}
+
+impl Profile {
+    pub(crate) fn from_flags(release: bool, size: bool, fast: bool) -> Result<Self> {
+        let selected = [release, size, fast]
+            .into_iter()
+            .filter(|flag| *flag)
+            .count();
+        if selected > 1 {
+            bail!("only one of --release, --size, --fast may be specified");
+        }
+        Ok(if release {
+            Self::Release
+        } else if size {
+            Self::Size
+        } else if fast {
+            Self::Fast
+        } else {
+            Self::Debug
+        })
+    }
+
+    fn to_codegen_mode(self) -> BuildMode {
+        match self {
+            Self::Debug => BuildMode::Debug,
+            Self::Release => BuildMode::Release,
+            Self::Size => BuildMode::Size,
+            Self::Fast => BuildMode::Fast,
+        }
+    }
+
+    fn as_dir_name(self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Release => "release",
+            Self::Size => "size",
+            Self::Fast => "fast",
+        }
+    }
+}
+
+fn render_lex_errors(path: &Path, source: &str, errors: &[LexError]) -> String {
+    errors
+        .iter()
+        .map(|error| match error {
+            LexError::UnexpectedChar { found, line, col } => render_diagnostic(
+                "E100",
+                "lexer error",
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("found:    {found}")],
+                Some("remove this character or replace it with a valid token".to_string()),
+            ),
+            LexError::UnterminatedString { line, col } => render_diagnostic(
+                "E101",
+                "unterminated string",
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("close the double quote before the end of line".to_string()),
+            ),
+            LexError::UnterminatedBlockComment { line, col } => render_diagnostic(
+                "E102",
+                "unterminated block comment",
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("add */ to close the block comment".to_string()),
+            ),
+            LexError::InvalidNumericLiteral { lexeme, line, col } => render_diagnostic(
+                "E103",
+                "invalid numeric literal",
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("found:    {lexeme}")],
+                Some("check the prefix and characters of the numeric literal".to_string()),
+            ),
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn render_parse_errors(path: &Path, source: &str, errors: &[ParseError]) -> String {
+    errors
+        .iter()
+        .map(|error| match error {
+            ParseError::UnexpectedToken {
+                found,
+                expected,
+                line,
+                col,
+            } => render_diagnostic(
+                "E200",
+                "unexpected token",
+                path,
+                source,
+                *line,
+                *col,
+                vec![
+                    format!("expected: {expected}"),
+                    format!("found:    {found}"),
+                ],
+                None,
+            ),
+            ParseError::UnexpectedEof {
+                expected,
+                line,
+                col,
+            } => render_diagnostic(
+                "E201",
+                "unexpected eof",
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("expected: {expected}")],
+                Some("add the missing part at the end of the file".to_string()),
+            ),
+            ParseError::InvalidExpr { line, col } => render_diagnostic(
+                "E202",
+                "invalid expression",
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("check the expression syntax".to_string()),
+            ),
+            ParseError::NestedLayerNotAllowed { line, col } => render_diagnostic(
+                "E010",
+                "nested layer not allowed",
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("layers cannot be nested inside another layer".to_string()),
+            ),
+            ParseError::LayerOutsideClass { line, col } => render_diagnostic(
+                "E011",
+                "layer outside class",
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("layer can only be declared inside a class body".to_string()),
+            ),
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String {
+    errors
+        .iter()
+        .map(|error| match error {
+            TypeError::Mismatch {
+                expected,
+                found,
+                hint,
+                line,
+                col,
+            } => render_diagnostic(
+                "E001",
+                "type mismatch",
+                path,
+                source,
+                *line,
+                *col,
+                vec![
+                    format!("expected: {expected}"),
+                    format!("found:    {found}"),
+                ],
+                Some(format!("hint:     {hint}")),
+            ),
+            TypeError::UndefinedVar { name, line, col } => render_diagnostic(
+                "E002",
+                &format!("undefined variable '{name}'"),
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some(format!(
+                    "hint:     declare the variable with 'let {name} = ...'"
+                )),
+            ),
+            TypeError::UndefinedFn { name, line, col } => render_diagnostic(
+                "E003",
+                &format!("undefined function '{name}'"),
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("hint:     check imports or function name".to_string()),
+            ),
+            TypeError::NoField {
+                field,
+                ty,
+                line,
+                col,
+            } => render_diagnostic(
+                "E004",
+                &format!("field '{field}' not found"),
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("found:    {ty}")],
+                Some("hint:     check field or type of the object".to_string()),
+            ),
+            TypeError::BadBinOp {
+                op,
+                lhs,
+                rhs,
+                line,
+                col,
+            } => render_diagnostic(
+                "E005",
+                &format!("cannot apply '{op}'"),
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("found:    {lhs} and {rhs}")],
+                Some("hint:     unify the types of both operands".to_string()),
+            ),
+            TypeError::ArgCount {
+                expected,
+                got,
+                line,
+                col,
+            } => render_diagnostic(
+                "E006",
+                "wrong number of arguments",
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("expected: {expected}"), format!("found:    {got}")],
+                None,
+            ),
+            TypeError::DestructureArity {
+                pattern_len,
+                tuple_len,
+                line,
+                col,
+            } => render_diagnostic(
+                "E015",
+                "tuple destructure arity mismatch",
+                path,
+                source,
+                *line,
+                *col,
+                vec![
+                    format!("pattern:  {pattern_len} binding(s)"),
+                    format!("tuple:    {tuple_len} slot(s)"),
+                ],
+                Some("hint:     fix the number of bindings to match the tuple".to_string()),
+            ),
+            TypeError::CannotInfer { name, line, col } => render_diagnostic(
+                "E007",
+                &format!("cannot infer type for '{name}'"),
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("hint:     add more usage context".to_string()),
+            ),
+            TypeError::InfiniteType { var, line, col } => render_diagnostic(
+                "E008",
+                "infinite type detected",
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("found:    {var}")],
+                Some("hint:     remove self-recursive type reference".to_string()),
+            ),
+            TypeError::BadCast {
+                from,
+                to,
+                line,
+                col,
+            } => render_diagnostic(
+                "E009",
+                "invalid cast",
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("expected: {to}"), format!("found:    {from}")],
+                Some("hint:     only cast between types supported by the backend".to_string()),
+            ),
+            TypeError::IncompatibleErrors {
+                lhs,
+                rhs,
+                line,
+                col,
+            } => render_diagnostic(
+                "E010",
+                "incompatible error propagation",
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("left:     {lhs}"), format!("right:    {rhs}")],
+                Some("hint:     wrap both into a common error type".to_string()),
+            ),
+            TypeError::MissingInterfaceMethod {
+                class,
+                interface,
+                method,
+                line,
+                col,
+            } => render_diagnostic(
+                "E011",
+                &format!("class '{class}' does not fully implement interface '{interface}'"),
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("missing:  {method}")],
+                Some("hint:     add the missing method or fix the implements list".to_string()),
+            ),
+            TypeError::CircularInheritance { class, line, col } => render_diagnostic(
+                "E013",
+                &format!("circular inheritance involving '{class}'"),
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("hint:     break the extends cycle between classes".to_string()),
+            ),
+            TypeError::UndefinedParent {
+                class,
+                parent,
+                line,
+                col,
+            } => render_diagnostic(
+                "E014",
+                &format!("undefined parent class '{parent}' for '{class}'"),
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("hint:     declare the parent class before extending it".to_string()),
+            ),
+            TypeError::NonExhaustiveMatch { missing, line, col } => render_diagnostic(
+                "E012",
+                "non-exhaustive match",
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("missing:  {missing}")],
+                Some("hint:     add a `_ => ...` arm or cover all missing patterns".to_string()),
+            ),
+            TypeError::RedundantPattern { pattern, line, col } => render_diagnostic(
+                "W001",
+                &format!("redundant pattern '{pattern}'"),
+                path,
+                source,
+                *line,
+                *col,
+                Vec::new(),
+                Some("hint:     this pattern can never be matched".to_string()),
+            ),
+            TypeError::DeprecatedSyntax {
+                syntax,
+                replacement,
+                line,
+                col,
+            } => render_diagnostic(
+                "W002",
+                &format!("deprecated syntax '{syntax}'"),
+                path,
+                source,
+                *line,
+                *col,
+                vec![format!("replacement: {replacement}")],
+                Some("hint:     move the type declaration into an @type block".to_string()),
+            ),
+            TypeError::Ownership(error) => {
+                let (line, col) = match error {
+                    draton_typeck::OwnershipError::UseAfterMove { use_span, .. } => {
+                        (use_span.line, use_span.col)
+                    }
+                    draton_typeck::OwnershipError::MoveWhileBorrowed { move_span, .. } => {
+                        (move_span.line, move_span.col)
+                    }
+                    draton_typeck::OwnershipError::ReadDuringExclusiveBorrow { read_span, .. } => {
+                        (read_span.line, read_span.col)
+                    }
+                    draton_typeck::OwnershipError::ExclusiveBorrowDuringRead {
+                        modify_span, ..
+                    } => (modify_span.line, modify_span.col),
+                    draton_typeck::OwnershipError::PartialMove { span, .. }
+                    | draton_typeck::OwnershipError::AmbiguousCallOwnership { span, .. }
+                    | draton_typeck::OwnershipError::BorrowedValueEscapes { span, .. }
+                    | draton_typeck::OwnershipError::MultipleOwners { span, .. }
+                    | draton_typeck::OwnershipError::OwnershipCycle { span }
+                    | draton_typeck::OwnershipError::LoopMoveWithoutReinit { span, .. }
+                    | draton_typeck::OwnershipError::ExternalBoundaryRejection { span, .. }
+                    | draton_typeck::OwnershipError::SafeToRawAliasRejection { span, .. } => {
+                        (span.line, span.col)
+                    }
+                };
+                render_diagnostic(
+                    "E016",
+                    "ownership error",
+                    path,
+                    source,
+                    line,
+                    col,
+                    Vec::new(),
+                    Some(error.to_string()),
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn render_type_warnings(path: &Path, source: &str, warnings: &[TypeError]) -> String {
+    render_limited_warnings(warnings, |warning| match warning {
+        TypeError::RedundantPattern { pattern, line, col } => Some(render_warning_diagnostic(
+            "W001",
+            &format!("redundant pattern '{pattern}'"),
+            path,
+            source,
+            *line,
+            *col,
+            Vec::new(),
+            Some("hint:     this pattern can never be matched".to_string()),
+        )),
+        TypeError::DeprecatedSyntax {
+            syntax,
+            replacement,
+            line,
+            col,
+        } => Some(render_warning_diagnostic(
+            "W002",
+            &format!("deprecated syntax '{syntax}'"),
+            path,
+            source,
+            *line,
+            *col,
+            vec![format!("replacement: {replacement}")],
+            Some("hint:     move the type declaration into an @type block".to_string()),
+        )),
+        _ => None,
+    })
+}
+
+fn render_limited_warnings(
+    warnings: &[TypeError],
+    render: impl Fn(&TypeError) -> Option<String>,
+) -> String {
+    let mut rendered = Vec::new();
+    let mut suppressed = 0usize;
+    for warning in warnings {
+        let Some(text) = render(warning) else {
+            continue;
+        };
+        if rendered.len() < MAX_RENDERED_TYPE_WARNINGS {
+            rendered.push(text);
+        } else {
+            suppressed += 1;
+        }
+    }
+    if suppressed > 0 {
+        rendered.push(format!(
+            "warning: suppressed {suppressed} additional type warnings to keep output readable"
+        ));
+    }
+    rendered.join("\n\n")
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_diagnostic(
+    code: &str,
+    title: &str,
+    path: &Path,
+    source: &str,
+    line: usize,
+    col: usize,
+    notes: Vec<String>,
+    hint: Option<String>,
+) -> String {
+    let lines = source.lines().collect::<Vec<_>>();
+    let snippet = lines
+        .get(line.saturating_sub(1))
+        .copied()
+        .unwrap_or_default();
+    let marker_width = col.saturating_sub(1);
+    let marker = format!("{}^", " ".repeat(marker_width));
+    let mut out = String::new();
+    out.push_str(&format!(
+        "{}[{}] {} — {}:{}:{}\n",
+        "error".red().bold(),
+        code.red().bold(),
+        title,
+        path.display(),
+        line,
+        col
+    ));
+    out.push_str("  |\n");
+    out.push_str(&format!("{line:>2}|   {snippet}\n"));
+    out.push_str(&format!("  |   {}\n", marker.red().bold()));
+    out.push_str("  |\n");
+    for note in notes {
+        out.push_str(&format!("  = {note}\n"));
+    }
+    if let Some(hint) = hint {
+        out.push_str(&format!("  = {hint}\n"));
+    }
+    out.trim_end().to_string()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_warning_diagnostic(
+    code: &str,
+    title: &str,
+    path: &Path,
+    source: &str,
+    line: usize,
+    col: usize,
+    notes: Vec<String>,
+    hint: Option<String>,
+) -> String {
+    let lines = source.lines().collect::<Vec<_>>();
+    let snippet = lines
+        .get(line.saturating_sub(1))
+        .copied()
+        .unwrap_or_default();
+    let marker_width = col.saturating_sub(1);
+    let marker = format!("{}^", " ".repeat(marker_width));
+    let mut out = String::new();
+    out.push_str(&format!(
+        "{}[{}] {} — {}:{}:{}\n",
+        "warning".yellow().bold(),
+        code.yellow().bold(),
+        title,
+        path.display(),
+        line,
+        col
+    ));
+    out.push_str("  |\n");
+    out.push_str(&format!("{line:>2}|   {snippet}\n"));
+    out.push_str(&format!("  |   {}\n", marker.yellow().bold()));
+    out.push_str("  |\n");
+    for note in notes {
+        out.push_str(&format!("  = {note}\n"));
+    }
+    if let Some(hint) = hint {
+        out.push_str(&format!("  = {hint}\n"));
+    }
+    out.trim_end().to_string()
+}

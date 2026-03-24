@@ -1,11 +1,12 @@
 # Draton Repository Instructions
 
-This repository defines and protects the Draton language, its tooling, and its self-host mirror. Treat it as a language-engineering repository first, not a general feature playground.
+This repository defines and protects the Draton language and its tooling. Treat it as a language-engineering repository first, not a general feature playground.
 
 ## Source of truth
 
 - The Rust frontend/tooling path is the authoritative implementation.
-- The self-host mirror under `src/` must preserve parity with that canonical behavior.
+- The Cargo workspace lives under `crates/`.
+- `src/` is reserved for the Docusaurus docs site source, not compiler implementation code.
 - Read these docs before making syntax-facing changes:
   - [docs/language-manifesto.md](docs/language-manifesto.md)
   - [docs/language-architecture.md](docs/language-architecture.md)
@@ -46,11 +47,9 @@ This repository defines and protects the Draton language, its tooling, and its s
 
 ## Self-host boundary
 
-- Do not reintroduce compatibility-form syntax in already migrated self-host files.
-- Keep parity with the Rust frontend canonical behavior when touching `src/`.
-- Do not claim full-tree strict self-host coverage while these files remain excluded:
-  - `src/ast/dump.dt`
-  - `src/typeck/dump.dt`
+- No in-tree self-host compiler source currently ships in this repository.
+- Do not treat `src/` as a compiler mirror; it now belongs to the docs site.
+- If self-host code is reintroduced, document its location and boundary first, then keep it aligned with the Rust frontend canonical behavior.
 - When documenting blockers or exclusions, always use full file paths, not ambiguous basenames.
 
 ## When changing language syntax or tooling
@@ -61,18 +60,15 @@ This repository defines and protects the Draton language, its tooling, and its s
 - Update this file or the linked policy docs if repeated mistakes show a policy gap.
 - Add or update CI/tests when practical, especially for anti-drift checks.
 
-## When changing self-host code
+## When reintroducing self-host code
 
 - Preserve canonical contract semantics already implemented in the Rust frontend.
-- Keep [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md) accurate.
-- Treat `src/ast/dump.dt` and `src/typeck/dump.dt` as intentionally deferred until explicitly changed.
-- Keep the strict self-host subset small, explicit, and justified.
+- Update [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md) in the same task.
+- Keep any new self-host scope explicit, minimal, and justified.
 
 ## Verification expectations
 
 - Prefer targeted verification that exercises the changed language/tooling path.
-- For syntax/policy drift in the self-host mirror, run:
-  - `python3 tools/check_selfhost_strict_subset.py`
 - For parser/typechecker changes, run the focused tests already used by the repo:
   - `cargo test -p draton-parser --test items`
   - `cargo test -p draton-typeck --test errors`

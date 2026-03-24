@@ -149,22 +149,17 @@ The runtime probe currently runs five scenarios:
 - `large-object-burst`: repeated large-object allocation and reclamation
 
 These scenarios are implemented in
-[draton-runtime/examples/gc_scorecard.rs](https://github.com/draton-lang/draton/blob/main/draton-runtime/examples/gc_scorecard.rs).
+[crates/draton-runtime/examples/gc_scorecard.rs](https://github.com/draton-lang/draton/blob/main/crates/draton-runtime/examples/gc_scorecard.rs).
 
 ## Toolchain workloads
 
 The scorecard also runs:
 
 - `tests/programs/gc/stress_linked_list.dt`
-- `src/main.dt` bootstrap build
+- `examples/hello.dt`
 
 These workloads keep the GC program tied to the actual compiler path instead of
 overfitting only synthetic benchmarks.
-
-When the current repository state cannot build `src/main.dt` reliably enough to
-serve as a hard baseline, the scorecard records that workload as `blocked`
-instead of failing the entire report. That keeps the report usable while still
-making the blocker explicit.
 
 ## Running the scorecard
 

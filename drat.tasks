@@ -13,7 +13,7 @@ run = [
 
 [tasks.lint]
 description = "Run the Draton linter across key repository sources"
-run = "cargo run -p drat -- lint examples tests draton-stdlib/dt src"
+run = "cargo run -p drat -- lint examples tests crates/draton-stdlib/dt"
 
 [tasks.fmt]
 description = "Check deterministic formatting on canonical sample files"

@@ -36,7 +36,7 @@ Draton is a compiled, statically typed, tooling-first language. Its design is in
 - `layer` groups capabilities
 - the toolchain is part of the language experience, not an optional extra
 
-Those rules are not cosmetic. They are the boundaries that keep the language, the compiler, the self-host mirror, and the docs aligned.
+Those rules are not cosmetic. They are the boundaries that keep the language, the compiler, the tooling, and the docs aligned.
 
 ## Documentation map
 
@@ -54,11 +54,11 @@ Use the tooling section to understand `drat build`, `drat run`, `drat fmt`, `dra
 
 ### Compiler and runtime
 
-Use the compiler and runtime section to understand the Rust frontend, the self-host mirror, the Inferred Ownership memory model, and the remaining runtime services.
+Use the compiler and runtime section to understand the Rust frontend, the workspace layout, the Inferred Ownership memory model, and the remaining runtime services.
 
 ### Contributor rules
 
-Use the contributor section when making syntax, tooling, docs, self-host, release, or policy changes.
+Use the contributor section when making syntax, tooling, docs, release, policy, or future self-host rewrite changes.
 
 ## Current readiness
 
@@ -70,6 +70,5 @@ Draton has stabilized its canonical syntax and ships an early tooling preview wi
 - task runner
 - language server
 - strict syntax enforcement
-- focused strict self-host CI coverage
 
-The executable self-host path is canonicalized. Only deferred dump/printer cleanup remains outside full-tree strict self-host coverage.
+The Rust frontend/tooling path is the only active in-tree compiler implementation right now. The previous self-host tree was retired while a rewrite is prepared.

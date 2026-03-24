@@ -1,9 +1,0 @@
-class Pattern {
-    let mut kind: String
-    let mut bool_value: Bool
-    let mut int_value: Int
-    let mut string_value: String
-    let mut enum_name: String
-    let mut variant: String
-    let mut items: Array[Pattern]
-}

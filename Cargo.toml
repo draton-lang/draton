@@ -1,13 +1,13 @@
 [workspace]
 members = [
-    "draton-lexer",
-    "draton-ast",
-    "draton-parser",
-    "draton-typeck",
-    "draton-codegen",
-    "draton-runtime",
-    "draton-stdlib",
-    "draton-lsp",
-    "drat",
+    "crates/draton-lexer",
+    "crates/draton-ast",
+    "crates/draton-parser",
+    "crates/draton-typeck",
+    "crates/draton-codegen",
+    "crates/draton-runtime",
+    "crates/draton-stdlib",
+    "crates/draton-lsp",
+    "crates/drat",
 ]
 resolver = "2"

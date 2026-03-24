@@ -13,16 +13,16 @@ Draton no longer uses a tracing GC runtime for safe code. Memory management is n
 2. Ownership state and use annotations were added to the typed AST, plus ownership-specific diagnostics and a dedicated ownership pass entrypoint.
 3. `OwnershipChecker` grew into the real ownership engine: value classification, function summary inference, flow-sensitive binding analysis, closure capture handling, cycle checks, and `use_effect`/free-point annotations.
 4. Codegen stopped emitting GC allocation, write barriers, safepoints, and root management for safe values, and started lowering safe ownership to `malloc` and generated `free`.
-5. The GC runtime subsystem was removed from `draton-runtime`, leaving panic, scheduler, channels, builtins, and IO in place.
+5. The GC runtime subsystem was removed from `crates/draton-runtime`, leaving panic, scheduler, channels, builtins, and IO in place.
 6. Ownership integration coverage, corpus regression guards, `@gc_config` deprecation, and migration closeout docs were added.
 
 ## Removed
 
-- the GC runtime subsystem, roughly 2900 lines under `draton-runtime/src/gc/`
+- the GC runtime subsystem, roughly 2900 lines under `crates/draton-runtime/src/gc/`
 - shadow-stack and `llvm.gcroot` integration
 - safepoint globals and slow paths
 - GC write barriers
-- GC allocation entrypoints and tests such as `draton-runtime/tests/gc_tests.rs`
+- GC allocation entrypoints and tests such as `crates/draton-runtime/tests/gc_tests.rs`
 
 ## Added
 

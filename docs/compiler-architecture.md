@@ -2,7 +2,7 @@
 
 This document explains how the Draton implementation is organized in the repository and how source code moves through the toolchain.
 
-For the language-side architectural model, see [language-architecture.md](language-architecture.md). For visual summaries, see [language-class-diagram.md](language-class-diagram.md). For the compact architecture checklist, see [language-analyst-artifact.md](language-analyst-artifact.md). For self-host migration state, see [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
+For the language-side architectural model, see [language-architecture.md](language-architecture.md). For visual summaries, see [language-class-diagram.md](language-class-diagram.md). For the compact architecture checklist, see [language-analyst-artifact.md](language-analyst-artifact.md). For current self-host reset status, see [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
 
 ## Source of truth
 
@@ -13,21 +13,20 @@ That means:
 - parser behavior is defined by the Rust crates
 - canonical syntax support is defined by the Rust crates
 - typechecker and code generation behavior is defined by the Rust crates
-- the self-host mirror under `src/` follows that behavior, but does not replace it as the source of truth
 
 ## Workspace layout
 
-The repository is a Cargo workspace of focused crates:
+The repository is a Cargo workspace of focused crates under `crates/`:
 
-- `draton-lexer`
-- `draton-ast`
-- `draton-parser`
-- `draton-typeck`
-- `draton-codegen`
-- `draton-runtime`
-- `draton-stdlib`
-- `draton-lsp`
-- `drat`
+- `crates/draton-lexer`
+- `crates/draton-ast`
+- `crates/draton-parser`
+- `crates/draton-typeck`
+- `crates/draton-codegen`
+- `crates/draton-runtime`
+- `crates/draton-stdlib`
+- `crates/draton-lsp`
+- `crates/drat`
 
 This layout is intentional. Draton is architected as a toolchain with separable layers, not as one large opaque compiler crate.
 
@@ -110,7 +109,6 @@ Architectural role:
 
 - makes the "code vs contract" split real
 - interprets `@type` blocks as authoritative contracts
-- preserves canonical contract semantics that the self-host mirror must match
 
 ### `draton-codegen`
 
@@ -203,30 +201,17 @@ The compiler and runtime are therefore separated like this:
 - compiler decides ownership, inserts last-use frees, and lowers safe heap allocation to `malloc`
 - runtime provides the non-memory services and ABI entrypoints that generated programs still call
 
-## Self-host mirror
+## Self-host status
 
-The self-host mirror lives under `src/` and mirrors the same broad layers:
-
-- `src/lexer/`
-- `src/ast/`
-- `src/parser/`
-- `src/typeck/`
-- `src/codegen/`
-- `src/mono/`
-
-Its purpose is not to create a competing implementation philosophy. Its purpose is:
-
-- preserve parity with the Rust frontend
-- prove the language can express its own compiler path
-- support long-term self-hosting work
+The previous self-host compiler mirror under `src/` was intentionally retired to clear the way for a rewrite.
 
 Current boundary:
 
-- executable/compiler-path self-host migration is effectively complete
-- `src/ast/dump.dt` and `src/typeck/dump.dt` remain intentionally deferred cleanup
-- the bootstrap path is still tracked separately because `drat build src/main.dt` can hit `LLVM ERROR: unknown special variable`
+- no in-tree self-host compiler source is shipped right now
+- `src/` is used by the Docusaurus site source (`src/pages`, `src/css`)
+- the Rust crates remain the only authoritative compiler/tooling implementation until a new self-host tree is introduced
 
-That boundary is documented in [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
+The reset status is documented in [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
 
 ## Tooling and policy architecture
 
@@ -247,7 +232,7 @@ These documents are part of the architecture because they lock:
 - canonical syntax
 - contributor expectations
 - compatibility boundaries
-- self-host readiness boundaries
+- self-host reset/rewrite boundaries
 
 ## How changes should flow
 
@@ -258,7 +243,7 @@ If a syntax-facing or semantic change is legitimate, it should flow through the 
 3. AST and typechecker semantics
 4. codegen/runtime behavior
 5. tooling/docs/examples/tests
-6. self-host parity work if relevant
+6. self-host rewrite alignment if relevant
 
 The reverse order is risky and usually causes drift.
 
@@ -270,9 +255,9 @@ To understand the implementation, read in this order:
 2. [language-manifesto.md](language-manifesto.md)
 3. [language-architecture.md](language-architecture.md)
 4. [canonical-syntax-rules.md](canonical-syntax-rules.md)
-5. [drat/src/main.rs](https://github.com/draton-lang/draton/blob/main/drat/src/main.rs)
-6. `draton-lexer` -> `draton-parser` -> `draton-typeck` -> `draton-codegen`
-7. [draton-runtime/src/lib.rs](https://github.com/draton-lang/draton/blob/main/draton-runtime/src/lib.rs)
+5. [crates/drat/src/main.rs](https://github.com/draton-lang/draton/blob/main/crates/drat/src/main.rs)
+6. `crates/draton-lexer` -> `crates/draton-parser` -> `crates/draton-typeck` -> `crates/draton-codegen`
+7. [crates/draton-runtime/src/lib.rs](https://github.com/draton-lang/draton/blob/main/crates/draton-runtime/src/lib.rs)
 8. [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md)
 
 ## Architectural invariants
@@ -280,7 +265,6 @@ To understand the implementation, read in this order:
 Unless the actual implementation changes and all linked docs are updated together, these should remain true:
 
 - Rust frontend/tooling is authoritative
-- self-host mirrors canonical Rust behavior
 - canonical syntax is enforced by docs, tooling, and strict mode
 - the runtime remains a distinct layer under generated programs
 - `drat` remains the integrated user-facing toolchain entrypoint

@@ -281,23 +281,10 @@ drat build --strict-syntax examples/hello.dt
 drat run --strict-syntax examples/hello.dt
 ```
 
-Strict mode currently targets the Rust frontend/tooling path. The self-host mirror is closer to canonical syntax than before, but it does not yet have full semantic parity for every `@type` workflow.
+Strict mode currently targets the Rust frontend/tooling path.
 Canonical `@type` blocks are currently supported at file, class, layer, interface, and function scope in the Rust frontend/tooling path.
 
-Self-host readiness is now near-final:
-
-- executable/compiler-path self-host files are canonicalized where safe
-- the strict self-host CI subset covers that migrated compiler path
-- only two deferred non-executable dump modules remain excluded:
-  - `src/ast/dump.dt`
-  - `src/typeck/dump.dt`
-
-The repository now enforces a focused self-host strict-canonical subset in CI via [tools/check_selfhost_strict_subset.py](tools/check_selfhost_strict_subset.py). That subset intentionally excludes only:
-
-- `src/ast/dump.dt`
-- `src/typeck/dump.dt`
-
-Those remaining files are tracked explicitly in [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md). Full-tree self-host strict mode is one final cleanup step away: canonicalize or intentionally retire those two dump modules.
+The historical self-host compiler mirror was intentionally removed from `src/` while a rewrite is prepared. Current syntax and tooling guarantees are therefore enforced through the Rust crates and their tests/CI. The reset status is tracked in [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md).
 
 ### Enums and pattern matching
 
@@ -418,14 +405,18 @@ This repository is a Cargo workspace. Each crate has a single, well-defined resp
 
 ```
 draton/
-├── drat/               # CLI binary and compiler driver
-├── draton-lexer/       # Source tokenization
-├── draton-ast/         # AST node definitions
-├── draton-parser/      # Token stream → AST
-├── draton-typeck/      # Type checker and inference
-├── draton-codegen/     # LLVM IR generation
-├── draton-runtime/     # Runtime support library
-└── draton-stdlib/      # Standard library
+├── crates/
+│   ├── drat/               # CLI binary and compiler driver
+│   ├── draton-lexer/       # Source tokenization
+│   ├── draton-ast/         # AST node definitions
+│   ├── draton-parser/      # Token stream -> AST
+│   ├── draton-typeck/      # Type checker and inference
+│   ├── draton-codegen/     # LLVM IR generation
+│   ├── draton-runtime/     # Runtime support library
+│   ├── draton-stdlib/      # Standard library
+│   └── draton-lsp/         # Language server
+├── docs/                   # Documentation content
+└── src/                    # Docusaurus site source
 ```
 
 ## Maintainers
