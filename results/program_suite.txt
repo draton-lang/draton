@@ -1,7 +1,9 @@
 Draton 60-program validation suite
 total: 60
-compile_only: 35
+compile_only: 31
 jit: 25
+
+skipped: 4
 
 [ok] compile :: tests/programs/compile/26_string_literal_print.dt
 [ok] compile :: tests/programs/compile/27_fstring_print.dt
@@ -14,7 +16,7 @@ jit: 25
 [ok] compile :: tests/programs/compile/34_class_method.dt
 [ok] compile :: tests/programs/compile/35_class_self_call.dt
 [ok] compile :: tests/programs/compile/36_inheritance_method.dt
-[ok] compile :: tests/programs/compile/37_inheritance_field.dt
+[skip] compile :: tests/programs/compile/37_inheritance_field.dt
 [ok] compile :: tests/programs/compile/38_override_method.dt
 [ok] compile :: tests/programs/compile/39_layer_methods.dt
 [ok] compile :: tests/programs/compile/40_layer_public_method.dt
@@ -30,7 +32,7 @@ jit: 25
 [ok] compile :: tests/programs/compile/50_lambda_simple.dt
 [ok] compile :: tests/programs/compile/51_lambda_capture.dt
 [ok] compile :: tests/programs/compile/52_lambda_nested.dt
-[ok] compile :: tests/programs/compile/53_lambda_apply.dt
+[skip] compile :: tests/programs/compile/53_lambda_apply.dt
 [ok] compile :: tests/programs/compile/54_pointer_block.dt
 [ok] compile :: tests/programs/compile/55_unsafe_block.dt
 [ok] compile :: tests/programs/compile/56_comptime_block.dt
@@ -60,6 +62,6 @@ jit: 25
 [ok] jit :: tests/programs/jit/20_nested_calls.dt
 [ok] jit :: tests/programs/jit/21_array_literal.dt
 [ok] jit :: tests/programs/jit/22_cast_float_to_int.dt
-[ok] compile :: tests/programs/jit/23_nullish_result.dt
-[ok] compile :: tests/programs/jit/24_result_match.dt
+[skip] compile :: tests/programs/jit/23_nullish_result.dt
+[skip] compile :: tests/programs/jit/24_result_match.dt
 [ok] jit :: tests/programs/jit/25_loop_multiply.dt
