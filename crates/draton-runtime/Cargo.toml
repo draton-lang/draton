@@ -6,16 +6,23 @@ edition = "2021"
 [lib]
 crate-type = ["staticlib", "rlib"]
 
+[features]
+default = ["scheduler", "std-io", "host-compiler"]
+scheduler = ["dep:crossbeam", "dep:io-uring"]
+std-io = []
+host-compiler = ["dep:draton-lexer", "dep:draton-parser", "dep:draton-typeck"]
+coop-scheduler = []
+
 [dependencies]
 libc = "0.2"
-crossbeam = "0.8"
-draton-lexer = { path = "../draton-lexer" }
-draton-parser = { path = "../draton-parser" }
+crossbeam = { version = "0.8", optional = true }
+draton-lexer = { path = "../draton-lexer", optional = true }
+draton-parser = { path = "../draton-parser", optional = true }
 draton-stdlib = { path = "../draton-stdlib" }
-draton-typeck = { path = "../draton-typeck" }
+draton-typeck = { path = "../draton-typeck", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-io-uring = "0.6"
+io-uring = { version = "0.6", optional = true }
 
 [dev-dependencies]
 pretty_assertions = "1"

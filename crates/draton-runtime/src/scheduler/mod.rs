@@ -1,3 +1,5 @@
+#![cfg(feature = "scheduler")]
+
 //! Coreroutine scheduler, channels and async runtime surface.
 
 pub mod channel;

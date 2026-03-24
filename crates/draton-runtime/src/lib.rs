@@ -1,21 +1,40 @@
 //! Draton runtime: ownership-mode runtime ABI, scheduler, channels and panic entrypoints.
 
 pub mod panic;
+pub mod platform;
+#[cfg(feature = "scheduler")]
 pub mod scheduler;
 
+#[cfg(feature = "coop-scheduler")]
+#[path = "scheduler/coop.rs"]
+mod coop_scheduler;
+
+#[cfg(feature = "host-compiler")]
 use std::env;
+#[cfg(any(feature = "std-io", feature = "host-compiler"))]
 use std::fs;
+#[cfg(feature = "host-compiler")]
 use std::path::Path;
+#[cfg(feature = "host-compiler")]
 use std::path::PathBuf;
+#[cfg(feature = "host-compiler")]
 use std::process::Command;
 use std::slice;
 use std::sync::{Mutex, OnceLock};
+#[cfg(feature = "host-compiler")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(all(feature = "coop-scheduler", not(feature = "scheduler")))]
+use coop_scheduler::RawChan;
+#[cfg(feature = "host-compiler")]
 use draton_lexer::Lexer;
+#[cfg(feature = "host-compiler")]
 use draton_parser::Parser;
 use draton_stdlib as stdlib;
+#[cfg(feature = "host-compiler")]
 use draton_typeck::TypeChecker;
+use platform::DratonPlatform;
+#[cfg(feature = "scheduler")]
 use scheduler::channel::RawChan;
 
 #[repr(C)]
@@ -154,6 +173,45 @@ fn draton_string_to_owned(value: DratonString) -> String {
     String::from_utf8_lossy(string_bytes(value)).into_owned()
 }
 
+pub fn set_platform(p: Box<dyn DratonPlatform>) {
+    let _ = platform::registry().set(p);
+}
+
+pub(crate) fn platform() -> &'static dyn DratonPlatform {
+    if let Some(existing) = platform::registry().get() {
+        return existing.as_ref();
+    }
+    if let Some(default_platform) = platform::default_platform() {
+        let _ = platform::registry().set(default_platform);
+    }
+    platform::registry()
+        .get()
+        .map(|platform| platform.as_ref())
+        .expect("draton platform not initialized")
+}
+
+#[cfg(feature = "std-io")]
+fn trim_line_endings(mut bytes: Vec<u8>) -> Vec<u8> {
+    while matches!(bytes.last(), Some(b'\n' | b'\r')) {
+        let _ = bytes.pop();
+    }
+    bytes
+}
+
+fn stdout_bytes(bytes: &[u8]) {
+    if !bytes.is_empty() {
+        platform().write_stdout(bytes);
+    }
+}
+
+#[cfg(feature = "std-io")]
+fn stderr_bytes(bytes: &[u8]) {
+    if !bytes.is_empty() {
+        platform().write_stderr(bytes);
+    }
+}
+
+#[cfg(feature = "host-compiler")]
 pub fn host_ast_dump_path(path: &Path) -> Result<String, String> {
     let source = fs::read_to_string(path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
@@ -178,6 +236,7 @@ pub fn host_ast_dump_path(path: &Path) -> Result<String, String> {
     Ok(format!("{:#?}", parsed.program))
 }
 
+#[cfg(feature = "host-compiler")]
 pub fn host_type_dump_path(path: &Path) -> Result<String, String> {
     let source = fs::read_to_string(path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
@@ -211,6 +270,7 @@ pub fn host_type_dump_path(path: &Path) -> Result<String, String> {
     Ok(format!("{:#?}", typed.typed_program))
 }
 
+#[cfg(feature = "host-compiler")]
 fn runtime_workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -219,12 +279,14 @@ fn runtime_workspace_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
 
+#[cfg(feature = "host-compiler")]
 fn runtime_target_dir() -> PathBuf {
     env::var("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| runtime_workspace_root().join("target"))
 }
 
+#[cfg(feature = "host-compiler")]
 fn runtime_ensure_host_drat() -> Result<PathBuf, String> {
     let manifest = runtime_workspace_root().join("crates/drat/Cargo.toml");
     let exe_name = if cfg!(windows) { "drat.exe" } else { "drat" };
@@ -257,6 +319,7 @@ fn runtime_ensure_host_drat() -> Result<PathBuf, String> {
     Ok(path)
 }
 
+#[cfg(feature = "host-compiler")]
 fn runtime_profile_dir(mode: &str) -> &'static str {
     match mode {
         "Release" => "release",
@@ -266,6 +329,7 @@ fn runtime_profile_dir(mode: &str) -> &'static str {
     }
 }
 
+#[cfg(feature = "host-compiler")]
 fn runtime_find_project_root(source_path: &Path) -> Option<PathBuf> {
     for ancestor in source_path.ancestors() {
         if ancestor.join("draton.toml").exists() {
@@ -275,6 +339,7 @@ fn runtime_find_project_root(source_path: &Path) -> Option<PathBuf> {
     None
 }
 
+#[cfg(feature = "host-compiler")]
 fn runtime_copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
     fs::create_dir_all(dest)
         .map_err(|error| format!("failed to create {}: {error}", dest.display()))?;
@@ -299,6 +364,7 @@ fn runtime_copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> 
     Ok(())
 }
 
+#[cfg(feature = "host-compiler")]
 fn runtime_temp_project_root() -> PathBuf {
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -310,6 +376,7 @@ fn runtime_temp_project_root() -> PathBuf {
         .join(format!("tmp_{}_{}", std::process::id(), stamp))
 }
 
+#[cfg(feature = "host-compiler")]
 fn runtime_build_mode_flag(mode: &str) -> Option<&'static str> {
     match mode {
         "Release" => Some("--release"),
@@ -319,6 +386,7 @@ fn runtime_build_mode_flag(mode: &str) -> Option<&'static str> {
     }
 }
 
+#[cfg(feature = "host-compiler")]
 fn runtime_prepare_temp_project(source_path: &Path, temp_root: &Path) -> Result<String, String> {
     fs::create_dir_all(temp_root)
         .map_err(|error| format!("failed to create {}: {error}", temp_root.display()))?;
@@ -346,6 +414,7 @@ fn runtime_prepare_temp_project(source_path: &Path, temp_root: &Path) -> Result<
     Ok("src/main.dt".to_string())
 }
 
+#[cfg(feature = "host-compiler")]
 fn runtime_copy_output(source: &Path, dest: &Path) -> Result<(), String> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)
@@ -361,6 +430,7 @@ fn runtime_copy_output(source: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "host-compiler")]
 fn host_build_source_impl(
     source_path: &Path,
     ir_path: &Path,
@@ -424,6 +494,7 @@ fn host_build_source_impl(
     Ok(())
 }
 
+#[cfg(feature = "host-compiler")]
 #[no_mangle]
 pub extern "C" fn draton_host_type_dump(path: DratonString) -> DratonString {
     let path_string = draton_string_to_owned(path);
@@ -431,6 +502,7 @@ pub extern "C" fn draton_host_type_dump(path: DratonString) -> DratonString {
     owned_string(output.into_bytes())
 }
 
+#[cfg(feature = "host-compiler")]
 #[no_mangle]
 pub extern "C" fn draton_host_build_source(
     source_path: DratonString,
@@ -459,6 +531,7 @@ pub extern "C" fn draton_host_build_source(
     owned_string(output.into_bytes())
 }
 
+#[cfg(feature = "host-compiler")]
 #[no_mangle]
 pub extern "C" fn draton_shell_run(cmd: DratonString) -> i64 {
     let cmd = draton_string_to_owned(cmd);
@@ -474,15 +547,26 @@ pub extern "C" fn draton_shell_run(cmd: DratonString) -> i64 {
 }
 
 /// Initializes the global runtime scheduler.
+#[cfg(any(feature = "scheduler", feature = "coop-scheduler"))]
 #[no_mangle]
 pub extern "C" fn draton_runtime_init(n_threads: usize) {
+    let _ = n_threads;
+    #[cfg(feature = "std-io")]
+    let _ = platform();
+    #[cfg(feature = "scheduler")]
     scheduler::init_global(n_threads.max(1));
+    #[cfg(all(feature = "coop-scheduler", not(feature = "scheduler")))]
+    coop_scheduler::init_global();
 }
 
 /// Shuts down the global runtime scheduler and joins worker threads.
+#[cfg(any(feature = "scheduler", feature = "coop-scheduler"))]
 #[no_mangle]
 pub extern "C" fn draton_runtime_shutdown() {
+    #[cfg(feature = "scheduler")]
     scheduler::shutdown_global();
+    #[cfg(all(feature = "coop-scheduler", not(feature = "scheduler")))]
+    coop_scheduler::shutdown_global();
 }
 
 /// Stores the process command-line arguments for self-host builtins.
@@ -533,42 +617,74 @@ pub extern "C" fn draton_cli_arg(index: i64) -> DratonString {
 }
 
 /// Spawns a new coreroutine on the global scheduler.
+#[cfg(any(feature = "scheduler", feature = "coop-scheduler"))]
 #[no_mangle]
 pub extern "C" fn draton_spawn(
     fn_ptr: extern "C" fn(*mut libc::c_void),
     arg: *mut libc::c_void,
 ) -> u64 {
-    scheduler::spawn_raw(fn_ptr, arg)
+    #[cfg(feature = "scheduler")]
+    {
+        return scheduler::spawn_raw(fn_ptr, arg);
+    }
+    #[cfg(all(feature = "coop-scheduler", not(feature = "scheduler")))]
+    {
+        return coop_scheduler::spawn_raw(fn_ptr, arg);
+    }
 }
 
 /// Cooperatively yields the current OS thread.
+#[cfg(any(feature = "scheduler", feature = "coop-scheduler"))]
 #[no_mangle]
 pub extern "C" fn draton_yield() {
+    #[cfg(feature = "scheduler")]
     scheduler::yield_now();
+    #[cfg(all(feature = "coop-scheduler", not(feature = "scheduler")))]
+    coop_scheduler::yield_now();
 }
 
 /// Creates a raw byte channel used by FFI.
+#[cfg(any(feature = "scheduler", feature = "coop-scheduler"))]
 #[no_mangle]
 pub extern "C" fn draton_chan_new(elem_size: usize, capacity: usize) -> *mut RawChan {
-    scheduler::channel::into_raw(RawChan::new(elem_size, capacity))
+    #[cfg(feature = "scheduler")]
+    {
+        return scheduler::channel::into_raw(RawChan::new(elem_size, capacity));
+    }
+    #[cfg(all(feature = "coop-scheduler", not(feature = "scheduler")))]
+    {
+        return coop_scheduler::into_raw(RawChan::new(elem_size, capacity));
+    }
 }
 
 /// Sends a value to a raw byte channel.
+#[cfg(any(feature = "scheduler", feature = "coop-scheduler"))]
 #[no_mangle]
 pub extern "C" fn draton_chan_send(chan: *mut RawChan, val: *const libc::c_void) {
+    #[cfg(feature = "scheduler")]
     scheduler::channel::ffi_send(chan, val.cast::<u8>());
+    #[cfg(all(feature = "coop-scheduler", not(feature = "scheduler")))]
+    coop_scheduler::ffi_send(chan, val.cast::<u8>());
 }
 
 /// Receives a value from a raw byte channel.
+#[cfg(any(feature = "scheduler", feature = "coop-scheduler"))]
 #[no_mangle]
 pub extern "C" fn draton_chan_recv(chan: *mut RawChan, out: *mut libc::c_void) {
+    #[cfg(feature = "scheduler")]
     scheduler::channel::ffi_recv(chan, out.cast::<u8>());
+    #[cfg(all(feature = "coop-scheduler", not(feature = "scheduler")))]
+    coop_scheduler::ffi_recv(chan, out.cast::<u8>());
 }
 
 /// Drops a raw byte channel.
+#[cfg(any(feature = "scheduler", feature = "coop-scheduler"))]
 #[no_mangle]
 pub extern "C" fn draton_chan_drop(chan: *mut RawChan) {
+    #[cfg(feature = "scheduler")]
     scheduler::channel::ffi_drop(chan);
+    #[cfg(all(feature = "coop-scheduler", not(feature = "scheduler")))]
+    coop_scheduler::ffi_drop(chan);
 }
 
 /// Runtime panic entrypoint used by generated code.
@@ -579,6 +695,17 @@ pub extern "C" fn draton_panic(
     line: u32,
 ) -> ! {
     panic::draton_panic(msg, file, line)
+}
+
+#[no_mangle]
+pub extern "C" fn draton_print(value: DratonString) {
+    stdout_bytes(string_bytes(value));
+}
+
+#[no_mangle]
+pub extern "C" fn draton_println(value: DratonString) {
+    stdout_bytes(string_bytes(value));
+    stdout_bytes(b"\n");
 }
 
 /// Returns a newly allocated substring of a Draton string.
@@ -603,11 +730,14 @@ pub extern "C" fn draton_str_concat(lhs: DratonString, rhs: DratonString) -> Dra
 }
 
 /// Prints a prompt and reads a single line from stdin.
+#[cfg(feature = "std-io")]
 #[no_mangle]
 pub extern "C" fn draton_input(prompt: DratonString) -> DratonString {
-    owned_string(stdlib::io::input(draton_string_to_owned(prompt)).into_bytes())
+    stdout_bytes(string_bytes(prompt));
+    owned_string(trim_line_endings(platform().read_line()))
 }
 
+#[cfg(feature = "std-io")]
 #[used]
 static DRATON_INPUT_KEEP: extern "C" fn(DratonString) -> DratonString = draton_input;
 
@@ -657,6 +787,7 @@ pub extern "C" fn draton_ascii_char(value: i64) -> DratonString {
 }
 
 /// Reads a UTF-8 source file and returns its contents, or an empty string on failure.
+#[cfg(feature = "std-io")]
 #[no_mangle]
 pub extern "C" fn draton_read_file(path: DratonString) -> DratonString {
     let path = draton_string_to_owned(path);
@@ -812,16 +943,20 @@ pub extern "C" fn __draton_std_float_to_string(value: f64) -> DratonString {
     owned_string(value.to_string().into_bytes())
 }
 
+#[cfg(feature = "std-io")]
 #[no_mangle]
 pub extern "C" fn __draton_std_io_eprintln(value: DratonString) {
-    stdlib::io::eprintln(draton_string_to_owned(value));
+    stderr_bytes(string_bytes(value));
+    stderr_bytes(b"\n");
 }
 
+#[cfg(feature = "std-io")]
 #[no_mangle]
 pub extern "C" fn __draton_std_io_read_line() -> DratonString {
-    owned_string(stdlib::io::readline().into_bytes())
+    owned_string(trim_line_endings(platform().read_line()))
 }
 
+#[cfg(feature = "std-io")]
 #[no_mangle]
 pub extern "C" fn __draton_std_io_read_file(path: DratonString) -> DratonString {
     match stdlib::fs::read(draton_string_to_owned(path)) {
@@ -830,6 +965,7 @@ pub extern "C" fn __draton_std_io_read_file(path: DratonString) -> DratonString 
     }
 }
 
+#[cfg(feature = "std-io")]
 #[no_mangle]
 pub extern "C" fn __draton_std_io_write_file(path: DratonString, content: DratonString) -> bool {
     stdlib::fs::write(
@@ -839,6 +975,7 @@ pub extern "C" fn __draton_std_io_write_file(path: DratonString, content: Draton
     .is_ok()
 }
 
+#[cfg(feature = "std-io")]
 #[no_mangle]
 pub extern "C" fn __draton_std_io_append_file(path: DratonString, content: DratonString) -> bool {
     stdlib::fs::append(
@@ -848,6 +985,7 @@ pub extern "C" fn __draton_std_io_append_file(path: DratonString, content: Drato
     .is_ok()
 }
 
+#[cfg(feature = "std-io")]
 #[no_mangle]
 pub extern "C" fn __draton_std_io_file_exists(path: DratonString) -> bool {
     stdlib::fs::exists(draton_string_to_owned(path))
@@ -991,6 +1129,7 @@ pub extern "C" fn __draton_std_math_checked_div(a: i64, b: i64) -> DratonOptionI
 }
 
 /// Parses a source file with the host Rust frontend and returns its AST debug dump.
+#[cfg(feature = "host-compiler")]
 #[no_mangle]
 pub extern "C" fn draton_host_ast_dump(path: DratonString) -> DratonString {
     let path = draton_string_to_owned(path);
