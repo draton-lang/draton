@@ -7,18 +7,18 @@ import styles from './index.module.css';
 
 const sections = [
   {
-    title: 'Start with the language',
-    text: 'Read the canonical overview, learn the syntax surface, and understand the contract model without picking through unrelated contributor notes.',
+    title: 'Learn the language',
+    text: 'Syntax, contracts, control flow, and the ownership model — everything you need to write real Draton, in one place.',
     to: '/docs/language/syntax-overview'
   },
   {
-    title: 'Install and run Draton',
-    text: 'Use the install guide, quickstart, and early preview notes to get from zero to a running project with the official CLI.',
+    title: 'Get it running',
+    text: 'Install the CLI, run your first program, and understand what "early preview" actually means for your workflow.',
     to: '/docs/install'
   },
   {
-    title: 'Understand the toolchain',
-    text: 'Follow the compiler, runtime, and self-host docs to see how the Rust frontend, runtime, and mirror fit together.',
+    title: 'See how it works',
+    text: 'The compiler pipeline, inferred ownership, bare-metal runtime layers, and how self-hosting fits in.',
     to: '/docs/compiler-architecture'
   }
 ];
@@ -35,20 +35,20 @@ const quickLinks = [
 export default function Home(): JSX.Element {
   return (
     <Layout
-      title="Draton language and toolchain documentation"
-      description="Authoritative docs for the Draton language, compiler, runtime, tooling, and self-host mirror."
+      title="Draton — a language that gets out of your way"
+      description="Docs for the Draton language: syntax, inferred ownership, compiler, runtime, and tooling."
     >
       <main className={styles.page}>
         <section className={styles.hero}>
           <div className={styles.heroPanel}>
-            <p className={styles.kicker}>Documentation</p>
+            <p className={styles.kicker}>Early Tooling Preview</p>
             <Heading as="h1" className={styles.title}>
-              Draton, documented as a language and toolchain.
+              A language that gets out of your way.
             </Heading>
             <p className={styles.subtitle}>
-              This site is the operational manual for Draton: canonical syntax, language structure,
-              compiler architecture, runtime behavior, tooling, install paths, and contributor
-              rules.
+              Draton is a statically-typed compiled language with inferred ownership — no GC pauses,
+              no lifetime annotations, no boilerplate. These docs cover the language, the toolchain,
+              and everything in between.
             </p>
             <div className={styles.actions}>
               <Link className="button button--primary button--lg" to="/docs">
@@ -74,18 +74,16 @@ export default function Home(): JSX.Element {
 
         <section className={styles.detailSection}>
           <div className={styles.detailPanel}>
-            <Heading as="h2">What this site covers</Heading>
+            <Heading as="h2">What's here</Heading>
             <p>
-              The docs are organized around Draton as it actually exists in this repository: a
-              readability-first language with one canonical syntax lane, a Rust toolchain as the
-              source of truth, an operational self-host mirror, and a CLI-centered early tooling
-              ecosystem.
+              Everything from first principles to internals. Whether you're writing your first
+              Draton program or digging into how the ownership checker works, it's in here.
             </p>
             <ul className={styles.bullets}>
-              <li>Language guide: syntax, contracts, control flow, modules, classes, layers, and builtins.</li>
-              <li>Tooling guide: build, run, format, lint, tasks, and the language server.</li>
-              <li>Compiler and runtime guide: pipeline, runtime model, GC scorecards, and self-host boundary.</li>
-              <li>Contributor rules: anti-drift policy, migration boundaries, release workflow, and roadmap.</li>
+              <li>Language: syntax, contracts, control flow, modules, classes, and builtins.</li>
+              <li>Tooling: build, run, format, lint, tasks, and the LSP.</li>
+              <li>Compiler &amp; runtime: pipeline, inferred ownership, bare-metal layers, and self-hosting.</li>
+              <li>Contributing: anti-drift policy, migration boundaries, and release workflow.</li>
             </ul>
           </div>
           <div className={styles.linkPanel}>

@@ -2,8 +2,8 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'Draton Docs',
-  tagline: 'Authoritative documentation for the Draton language and toolchain.',
+  title: 'Draton',
+  tagline: 'A language that gets out of your way.',
   headTags: [
     {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.googleapis.com'}},
     {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous'}}
@@ -44,7 +44,7 @@ const config: Config = {
   themeConfig: {
     image: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1200 630%22><rect width=%221200%22 height=%22630%22 fill=%22%23111827%22/><rect x=%2270%22 y=%2270%22 width=%221060%22 height=%22490%22 rx=%2234%22 fill=%22%23172b3a%22/><text x=%22120%22 y=%22240%22 fill=%22%23f3b33e%22 font-family=%22Arial, sans-serif%22 font-size=%2298%22 font-weight=%22700%22>Draton</text><text x=%22120%22 y=%22340%22 fill=%22%23f8fafc%22 font-family=%22Arial, sans-serif%22 font-size=%2248%22>Language and toolchain documentation</text><text x=%22120%22 y=%22430%22 fill=%22%23cbd5e1%22 font-family=%22Arial, sans-serif%22 font-size=%2234%22>Canonical syntax, architecture, tooling, runtime, and contributor rules</text></svg>',
     navbar: {
-      title: 'Draton Docs',
+      title: 'Draton',
       items: [
         {type: 'docSidebar', sidebarId: 'mainSidebar', position: 'left', label: 'Docs'},
         {to: '/docs/language/syntax-overview', label: 'Language', position: 'left'},
