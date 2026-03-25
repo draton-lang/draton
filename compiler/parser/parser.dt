@@ -1,4 +1,5 @@
 import { Program } from ast.item.item
+import { Span } from ast.span
 import { Token } from lexer.token
 import { ParseError, ParseWarning } from parser.error
 
@@ -25,5 +26,172 @@ class Parser {
         pos: Int
         errors: Array[ParseError]
         warnings: Array[ParseWarning]
+    }
+
+    fn current_token() {
+        let mut idx = self.pos
+        if self.tokens.len() == 0 {
+            return Token { kind: Eof, lexeme: "", span: Span { start: 0, end: 0, line: 1, col: 1 } }
+        }
+        if idx >= self.tokens.len() {
+            idx = self.tokens.len() - 1
+        }
+        return self.tokens[idx]
+    }
+
+    fn current_kind() {
+        return self.current_token().kind
+    }
+
+    fn previous_token() {
+        if self.pos == 0 {
+            return self.current_token()
+        }
+        return self.tokens[self.pos - 1]
+    }
+
+    fn is_eof() {
+        return self.current_kind() == Eof
+    }
+
+    fn skip_doc_comments() {
+        while self.current_kind() == DocComment {
+            self.advance()
+        }
+    }
+
+    fn advance() {
+        let token = self.current_token()
+        if self.pos + 1 < self.tokens.len() {
+            self.pos = self.pos + 1
+        }
+        return token
+    }
+
+    fn match_kind(kind) {
+        self.skip_doc_comments()
+        if self.current_kind() == kind {
+            self.advance()
+            return true
+        }
+        return false
+    }
+
+    fn check(kind) {
+        return self.current_kind() == kind
+    }
+
+    fn expect(kind, expected) {
+        self.skip_doc_comments()
+        if self.current_kind() == kind {
+            return self.advance()
+        }
+        let token = self.current_token()
+        self.error_unexpected(token, expected)
+        return token
+    }
+
+    fn consume_ident(expected) {
+        self.skip_doc_comments()
+        let token = self.current_token()
+        if token.kind == Ident {
+            self.advance()
+            return token
+        }
+        self.error_unexpected(token, expected)
+        return token
+    }
+
+    fn error_unexpected(token, expected) {
+        if token.kind == Eof {
+            self.errors.push(ParseError {
+                kind: UnexpectedEof,
+                found: None,
+                expected: Some(expected),
+                line: token.span.line,
+                col: token.span.col
+            })
+        } else {
+            self.errors.push(ParseError {
+                kind: UnexpectedToken,
+                found: Some(token.lexeme),
+                expected: Some(expected),
+                line: token.span.line,
+                col: token.span.col
+            })
+        }
+    }
+
+    fn push_deprecated_warning(syntax, replacement, span) {
+        self.warnings.push(ParseWarning {
+            kind: DeprecatedSyntax,
+            syntax: syntax,
+            replacement: replacement,
+            line: span.line,
+            col: span.col
+        })
+    }
+
+    fn convert_span(span) {
+        return Span { start: span.start, end: span.end, line: span.line, col: span.col }
+    }
+
+    fn merge_spans(start, end) {
+        return Span { start: start.start, end: end.end, line: start.line, col: start.col }
+    }
+
+    fn token_span() {
+        return self.current_token().span
+    }
+
+    fn optional_semicolon() {
+        self.match_kind(Semicolon)
+    }
+
+    fn synchronize_top_level() {
+        while !self.is_eof() {
+            if self.current_kind() == Fn ||
+               self.current_kind() == Class ||
+               self.current_kind() == Interface ||
+               self.current_kind() == Enum ||
+               self.current_kind() == Error ||
+               self.current_kind() == Const ||
+               self.current_kind() == Import ||
+               self.current_kind() == Pub ||
+               self.current_kind() == AtType ||
+               self.current_kind() == AtAcyclic ||
+               self.current_kind() == AtExtern ||
+               self.current_kind() == AtPanicHandler ||
+               self.current_kind() == AtOomHandler {
+                return
+            }
+            self.advance()
+        }
+    }
+
+    fn synchronize_stmt() {
+        while !self.is_eof() {
+            if self.current_kind() == Semicolon {
+                self.advance()
+                return
+            }
+            if self.current_kind() == RBrace ||
+               self.current_kind() == Let ||
+               self.current_kind() == Return ||
+               self.current_kind() == If ||
+               self.current_kind() == Elif ||
+               self.current_kind() == For ||
+               self.current_kind() == While ||
+               self.current_kind() == Spawn ||
+               self.current_kind() == AtUnsafe ||
+               self.current_kind() == AtPointer ||
+               self.current_kind() == AtAsm ||
+               self.current_kind() == AtComptime ||
+               self.current_kind() == AtIf ||
+               self.current_kind() == AtGcConfig {
+                return
+            }
+            self.advance()
+        }
     }
 }
