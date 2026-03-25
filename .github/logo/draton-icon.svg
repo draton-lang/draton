@@ -1,0 +1,19 @@
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&display=swap');
+  </style>
+</defs>
+
+<rect width="400" height="400" fill="#0E0D0B" rx="72"/>
+
+<text x="200" y="200"
+  text-anchor="middle"
+  dominant-baseline="central"
+  font-family="'Chakra Petch', monospace"
+  font-weight="700"
+  font-size="220">
+  <tspan fill="#E05A1A">@</tspan><tspan fill="#EEEAE0">d</tspan>
+</text>
+
+</svg>
