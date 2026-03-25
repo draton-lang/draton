@@ -1,0 +1,15 @@
+import { LlvmValueHandle } from codegen.llvm.handles
+import { emit_builtin_call } from codegen.emit.builtins
+import { emit_closure } from codegen.emit.closures
+
+fn emit_expr(cg, expr) {
+    if expr.kind == Call && expr.callee != None && expr.callee.kind == Ident {
+        return emit_builtin_call(cg, expr.callee.name, expr.args)
+    }
+    if expr.kind == Lambda {
+        return emit_closure(cg, expr)
+    }
+    let _ = cg
+    let _ = expr
+    return LlvmValueHandle { raw: 0 }
+}

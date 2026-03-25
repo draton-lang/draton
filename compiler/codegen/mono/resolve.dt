@@ -1,0 +1,11 @@
+import { GenericFnDef, GenericClassDef } from codegen.mono.collector
+
+fn resolve_function_type_args(fn_def, type_args) {
+    let _ = type_args
+    return fn_def
+}
+
+fn resolve_class_type_args(class_def, type_args) {
+    let _ = type_args
+    return class_def
+}

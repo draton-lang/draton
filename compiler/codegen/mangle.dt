@@ -1,0 +1,80 @@
+fn sanitize_name(value) {
+    let mut text = ""
+    let mut index = 0
+    while index < value.len() {
+        let ch = value.slice(index, index + 1)
+        if ch == "[" || ch == "]" || ch == "," || ch == " " || ch == ":" || ch == "(" || ch == ")" || ch == "{" || ch == "}" || ch == "-" || ch == ">" || ch == "." {
+            text = text + "_"
+        } else {
+            text = text + ch
+        }
+        index = index + 1
+    }
+    return text
+}
+
+fn mangle_type(ty) {
+    if ty.kind == Named {
+        if ty.args.len() == 0 {
+            return sanitize_name(ty.name)
+        }
+        let mut text = sanitize_name(ty.name) + "__"
+        let mut index = 0
+        while index < ty.args.len() {
+            if index > 0 {
+                text = text + "_"
+            }
+            text = text + mangle_type(ty.args[index])
+            index = index + 1
+        }
+        return text
+    }
+    if ty.kind == Array { return "Array_" + mangle_type(ty.inner) + "_" }
+    if ty.kind == Map { return "Map_" + mangle_type(ty.key) + "_" + mangle_type(ty.value) + "_" }
+    if ty.kind == Set { return "Set_" + mangle_type(ty.inner) + "_" }
+    if ty.kind == Tuple {
+        let mut text = "Tuple_"
+        let mut index = 0
+        while index < ty.items.len() {
+            if index > 0 { text = text + "_" }
+            text = text + mangle_type(ty.items[index])
+            index = index + 1
+        }
+        return text + "_"
+    }
+    if ty.kind == Option { return "Option_" + mangle_type(ty.inner) + "_" }
+    if ty.kind == Result { return "Result_" + mangle_type(ty.ok) + "_" + mangle_type(ty.err) + "_" }
+    if ty.kind == Chan { return "Chan_" + mangle_type(ty.inner) + "_" }
+    if ty.kind == Fn {
+        let mut text = "Fn_"
+        let mut index = 0
+        while index < ty.params.len() {
+            if index > 0 { text = text + "_" }
+            text = text + mangle_type(ty.params[index])
+            index = index + 1
+        }
+        return text + "_to_" + mangle_type(ty.ret)
+    }
+    if ty.kind == Pointer { return "Ptr_" + mangle_type(ty.inner) + "_" }
+    if ty.kind == Var { return "T" + ty.id.to_string() }
+    return ty.kind.to_string()
+}
+
+fn mangle_fn(name, class_name, type_args) {
+    let mut base = sanitize_name(name)
+    match class_name {
+        Some(value) => { base = sanitize_name(value) + "." + sanitize_name(name) }
+        None => { }
+    }
+    if type_args.len() == 0 {
+        return base
+    }
+    let mut text = base + "__"
+    let mut index = 0
+    while index < type_args.len() {
+        if index > 0 { text = text + "_" }
+        text = text + mangle_type(type_args[index])
+        index = index + 1
+    }
+    return text
+}

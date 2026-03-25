@@ -1,0 +1,22 @@
+import { LlvmContextHandle, LlvmModuleHandle } from codegen.llvm.handles
+
+fn LLVMModuleCreateWithNameInContext(name, ctx) {
+    let _ = name
+    let _ = ctx
+    return LlvmModuleHandle { raw: 0 }
+}
+
+fn LLVMDisposeModule(mod) {
+    let _ = mod
+}
+
+fn LLVMPrintModuleToString(mod) {
+    let _ = mod
+    return ""
+}
+
+fn LLVMPrintModuleToFile(mod, path) {
+    let _ = mod
+    let _ = path
+    return true
+}

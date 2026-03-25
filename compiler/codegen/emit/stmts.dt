@@ -1,0 +1,23 @@
+import { emit_expr } from codegen.emit.exprs
+
+fn emit_block(cg, block) {
+    let mut index = 0
+    while index < block.stmts.len() {
+        emit_stmt(cg, block.stmts[index])
+        index = index + 1
+    }
+}
+
+fn emit_stmt(cg, stmt) {
+    if stmt.expr != None {
+        emit_expr(cg, stmt.expr)
+        return
+    }
+    if stmt.block != None {
+        emit_block(cg, stmt.block)
+        return
+    }
+    if stmt.return_stmt != None && stmt.return_stmt.value != None {
+        emit_expr(cg, stmt.return_stmt.value)
+    }
+}

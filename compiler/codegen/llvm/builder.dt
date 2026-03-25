@@ -1,0 +1,40 @@
+import { LlvmBuilderHandle, LlvmTypeHandle, LlvmValueHandle, LlvmBlockHandle, LlvmContextHandle } from codegen.llvm.handles
+
+fn LLVMCreateBuilderInContext(ctx) { let _ = ctx return LlvmBuilderHandle { raw: 0 } }
+fn LLVMDisposeBuilder(builder) { let _ = builder }
+fn LLVMPositionBuilderAtEnd(builder, block) { let _ = builder let _ = block }
+fn LLVMBuildAlloca(builder, ty, name) { let _ = builder let _ = ty let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildLoad2(builder, ty, ptr, name) { let _ = builder let _ = ty let _ = ptr let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildStore(builder, val, ptr) { let _ = builder let _ = val let _ = ptr return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildGEP2(builder, ty, ptr, indices, name) { let _ = builder let _ = ty let _ = ptr let _ = indices let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildCall2(builder, fn_ty, fn_val, args, name) { let _ = builder let _ = fn_ty let _ = fn_val let _ = args let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildRet(builder, val) { let _ = builder let _ = val return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildRetVoid(builder) { let _ = builder return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildBr(builder, dest) { let _ = builder let _ = dest return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildCondBr(builder, cond, then_bb, else_bb) { let _ = builder let _ = cond let _ = then_bb let _ = else_bb return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildAdd(builder, lhs, rhs, name) { let _ = builder let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildSub(builder, lhs, rhs, name) { let _ = builder let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildMul(builder, lhs, rhs, name) { let _ = builder let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildSDiv(builder, lhs, rhs, name) { let _ = builder let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildSRem(builder, lhs, rhs, name) { let _ = builder let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildFAdd(builder, lhs, rhs, name) { let _ = builder let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildFSub(builder, lhs, rhs, name) { let _ = builder let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildFMul(builder, lhs, rhs, name) { let _ = builder let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildFDiv(builder, lhs, rhs, name) { let _ = builder let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildICmp(builder, pred, lhs, rhs, name) { let _ = builder let _ = pred let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildFCmp(builder, pred, lhs, rhs, name) { let _ = builder let _ = pred let _ = lhs let _ = rhs let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildNot(builder, val, name) { let _ = builder let _ = val let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildNeg(builder, val, name) { let _ = builder let _ = val let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildBitCast(builder, val, ty, name) { let _ = builder let _ = val let _ = ty let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildIntToPtr(builder, val, ty, name) { let _ = builder let _ = val let _ = ty let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildPtrToInt(builder, val, ty, name) { let _ = builder let _ = val let _ = ty let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildSIToFP(builder, val, ty, name) { let _ = builder let _ = val let _ = ty let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildFPToSI(builder, val, ty, name) { let _ = builder let _ = val let _ = ty let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildMalloc(builder, ty, name) { let _ = builder let _ = ty let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildFree(builder, ptr) { let _ = builder let _ = ptr return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildMemCpy(builder, dst, dst_align, src, src_align, size) { let _ = builder let _ = dst let _ = dst_align let _ = src let _ = src_align let _ = size return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildMemSet(builder, dst, value, size, align) { let _ = builder let _ = dst let _ = value let _ = size let _ = align return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildPhi(builder, ty, name) { let _ = builder let _ = ty let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMAddIncoming(phi, values, blocks) { let _ = phi let _ = values let _ = blocks }
+fn LLVMBuildExtractValue(builder, agg, index, name) { let _ = builder let _ = agg let _ = index let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMBuildInsertValue(builder, agg, value, index, name) { let _ = builder let _ = agg let _ = value let _ = index let _ = name return LlvmValueHandle { raw: 0 } }

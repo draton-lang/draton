@@ -1,0 +1,7 @@
+import { LlvmValueHandle } from codegen.llvm.handles
+
+fn emit_closure(cg, lambda_expr) {
+    let _ = cg
+    let _ = lambda_expr
+    return LlvmValueHandle { raw: 0 }
+}

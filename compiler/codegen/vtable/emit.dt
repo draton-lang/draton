@@ -1,0 +1,8 @@
+import { LlvmValueHandle } from codegen.llvm.handles
+
+fn emit_vtable(cg, class_name, iface_name) {
+    let _ = cg
+    let _ = class_name
+    let _ = iface_name
+    return LlvmValueHandle { raw: 0 }
+}

@@ -1,6 +1,14 @@
 import { LexResult } from lexer.result
 import { ParseResult } from parser.parser
 import { DiagnosticReport } from driver.diagnostics
+import { Lexer } from lexer.lexer
+import { Parser } from parser.parser
+import { type_check, DeprecatedSyntaxMode } from typeck.infer.result
+import { BuildMode } from codegen.mode
+import { new_codegen } from codegen.core.init
+import { emit_program } from codegen.core.emit
+import { CodeGenError } from codegen.error
+import { DriverCommand } from driver.options
 
 class BuildArtifacts {
     let binary_path
@@ -28,4 +36,73 @@ class PipelineResult {
         build_artifacts: Option[BuildArtifacts]
         diagnostics: DiagnosticReport
     }
+}
+
+fn compile_file(source_path, options) {
+    let source_text = read_text_file(source_path)
+    let lexer = Lexer { source: source_text, position: 0, line: 1, col: 1 }
+    let lex_result = lexer.tokenize()
+
+    let parser = Parser {
+        tokens: lex_result.tokens,
+        pos: 0,
+        errors: [],
+        warnings: []
+    }
+    let parse_result = parser.parse()
+    let mut deprecated_mode = Warn
+    if options.strict_syntax {
+        deprecated_mode = Deny
+    }
+    let type_result = type_check(parse_result.program, deprecated_mode)
+
+    let cg = new_codegen(Debug)
+    let emit_result = emit_program(cg, type_result.typed_program)
+
+    let mut artifacts = None
+    match emit_result {
+        Ok(_) => {
+            artifacts = Some(BuildArtifacts {
+                binary_path: choose_binary_output(source_path, options),
+                object_path: choose_object_output(source_path, options),
+                ir_path: choose_ir_output(source_path, options)
+            })
+        }
+        Err(error) => { }
+    }
+
+    return PipelineResult {
+        lex_result: Some(lex_result),
+        parse_result: Some(parse_result),
+        typecheck_json: Some(serialize_type_result(type_result)),
+        build_artifacts: artifacts,
+        diagnostics: DiagnosticReport { diagnostics: [] }
+    }
+}
+
+fn choose_binary_output(source_path, options) {
+    match options.output {
+        Some(value) => { return value }
+        None => { return source_path + ".out" }
+    }
+}
+
+fn choose_object_output(source_path, options) {
+    let _ = options
+    return source_path + ".o"
+}
+
+fn choose_ir_output(source_path, options) {
+    let _ = options
+    return source_path + ".ll"
+}
+
+fn serialize_type_result(result) {
+    let _ = result
+    return "{}"
+}
+
+fn read_text_file(path) {
+    let _ = path
+    return ""
 }

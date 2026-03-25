@@ -1,0 +1,19 @@
+import { LlvmContextHandle, LlvmTypeHandle, LlvmValueHandle, LlvmModuleHandle, LlvmBlockHandle, LlvmBuilderHandle } from codegen.llvm.handles
+
+fn LLVMConstInt(ty, val, sign_extend) { let _ = ty let _ = val let _ = sign_extend return LlvmValueHandle { raw: 0 } }
+fn LLVMConstReal(ty, val) { let _ = ty let _ = val return LlvmValueHandle { raw: 0 } }
+fn LLVMConstString(str, len, no_null) { let _ = str let _ = len let _ = no_null return LlvmValueHandle { raw: 0 } }
+fn LLVMConstStruct(vals, packed) { let _ = vals let _ = packed return LlvmValueHandle { raw: 0 } }
+fn LLVMConstNull(ty) { let _ = ty return LlvmValueHandle { raw: 0 } }
+fn LLVMConstArray2(elem_ty, vals) { let _ = elem_ty let _ = vals return LlvmValueHandle { raw: 0 } }
+fn LLVMGetUndef(ty) { let _ = ty return LlvmValueHandle { raw: 0 } }
+fn LLVMConstPointerNull(ty) { let _ = ty return LlvmValueHandle { raw: 0 } }
+fn LLVMAddGlobal(mod, ty, name) { let _ = mod let _ = ty let _ = name return LlvmValueHandle { raw: 0 } }
+fn LLVMSetInitializer(global, val) { let _ = global let _ = val }
+fn LLVMSetLinkage(val, linkage) { let _ = val let _ = linkage }
+fn LLVMSetGlobalConstant(global, is_const) { let _ = global let _ = is_const }
+fn LLVMAddFunction(mod, name, fn_ty) { let _ = mod let _ = name let _ = fn_ty return LlvmValueHandle { raw: 0 } }
+fn LLVMGetNamedFunction(mod, name) { let _ = mod let _ = name return None }
+fn LLVMGetParam(fn_val, index) { let _ = fn_val let _ = index return LlvmValueHandle { raw: 0 } }
+fn LLVMAppendBasicBlockInContext(ctx, fn_val, name) { let _ = ctx let _ = fn_val let _ = name return LlvmBlockHandle { raw: 0 } }
+fn LLVMGetInsertBlock(builder) { let _ = builder return LlvmBlockHandle { raw: 0 } }

@@ -1,0 +1,15 @@
+import { LlvmModuleHandle } from codegen.llvm.handles
+
+class LlvmPassManagerHandle {
+    let raw
+
+    @type {
+        raw: Int
+    }
+}
+
+fn LLVMCreatePassManager() { return LlvmPassManagerHandle { raw: 0 } }
+fn LLVMAddPromoteMemoryToRegisterPass(pm) { let _ = pm }
+fn LLVMAddInstructionCombiningPass(pm) { let _ = pm }
+fn LLVMRunPassManager(pm, mod) { let _ = pm let _ = mod return true }
+fn LLVMDisposePassManager(pm) { let _ = pm }

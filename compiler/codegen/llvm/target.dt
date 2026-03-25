@@ -1,0 +1,17 @@
+import { LlvmTargetHandle, LlvmTargetMachineHandle, LlvmModuleHandle } from codegen.llvm.handles
+
+fn LLVMInitializeX86TargetInfo() {}
+fn LLVMInitializeX86Target() {}
+fn LLVMInitializeX86TargetMC() {}
+fn LLVMInitializeX86AsmPrinter() {}
+fn LLVMInitializeX86AsmParser() {}
+fn LLVMInitializeAArch64TargetInfo() {}
+fn LLVMInitializeAArch64Target() {}
+fn LLVMInitializeAArch64TargetMC() {}
+fn LLVMInitializeAArch64AsmPrinter() {}
+fn LLVMInitializeAArch64AsmParser() {}
+fn LLVMGetDefaultTargetTriple() { return "" }
+fn LLVMGetTargetFromTriple(triple) { let _ = triple return Ok(LlvmTargetHandle { raw: 0 }) }
+fn LLVMCreateTargetMachine(target, triple, cpu, features, opt, reloc, model) { let _ = target let _ = triple let _ = cpu let _ = features let _ = opt let _ = reloc let _ = model return LlvmTargetMachineHandle { raw: 0 } }
+fn LLVMTargetMachineEmitToFile(machine, mod, path, file_type) { let _ = machine let _ = mod let _ = path let _ = file_type return true }
+fn LLVMDisposeTargetMachine(machine) { let _ = machine }

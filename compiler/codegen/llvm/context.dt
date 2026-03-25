@@ -1,0 +1,9 @@
+import { LlvmContextHandle } from codegen.llvm.handles
+
+fn LLVMContextCreate() {
+    return LlvmContextHandle { raw: 0 }
+}
+
+fn LLVMContextDispose(ctx) {
+    let _ = ctx
+}

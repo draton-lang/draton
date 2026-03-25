@@ -1,0 +1,8 @@
+import { LlvmValueHandle } from codegen.llvm.handles
+
+fn emit_builtin_call(cg, name, args) {
+    let _ = cg
+    let _ = name
+    let _ = args
+    return LlvmValueHandle { raw: 0 }
+}

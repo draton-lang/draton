@@ -1,0 +1,45 @@
+import { LlvmContextHandle, LlvmTypeHandle } from codegen.llvm.handles
+import { LLVMInt1Type, LLVMInt8Type, LLVMInt16Type, LLVMInt32Type, LLVMInt64Type, LLVMDoubleType, LLVMFloatType, LLVMVoidType, LLVMPointerType, LLVMStructTypeInContext, LLVMArrayType, LLVMFunctionType } from codegen.llvm.types
+import { string_llvm_type } from codegen.typemap.string
+import { array_llvm_type } from codegen.typemap.array
+
+fn draton_type_to_llvm(ctx, ty) {
+    if ty.kind == Bool { return LLVMInt1Type() }
+    if ty.kind == Int8 || ty.kind == UInt8 || ty.kind == Char { return LLVMInt8Type() }
+    if ty.kind == Int16 || ty.kind == UInt16 { return LLVMInt16Type() }
+    if ty.kind == Int32 || ty.kind == UInt32 { return LLVMInt32Type() }
+    if ty.kind == Int || ty.kind == Int64 || ty.kind == UInt64 { return LLVMInt64Type() }
+    if ty.kind == Float || ty.kind == Float64 { return LLVMDoubleType() }
+    if ty.kind == Float32 { return LLVMFloatType() }
+    if ty.kind == Unit || ty.kind == Never { return LLVMVoidType() }
+    if ty.kind == String { return string_llvm_type(ctx) }
+    if ty.kind == Array { return array_llvm_type(ctx, ty.inner) }
+    if ty.kind == Set { return array_llvm_type(ctx, ty.inner) }
+    if ty.kind == Option { return LLVMStructTypeInContext(ctx, [LLVMInt1Type(), draton_type_to_llvm(ctx, ty.inner)], false) }
+    if ty.kind == Result { return LLVMStructTypeInContext(ctx, [LLVMInt1Type(), draton_type_to_llvm(ctx, ty.ok), draton_type_to_llvm(ctx, ty.err)], false) }
+    if ty.kind == Tuple {
+        let mut fields = []
+        let mut index = 0
+        while index < ty.items.len() {
+            fields.push(draton_type_to_llvm(ctx, ty.items[index]))
+            index = index + 1
+        }
+        return LLVMStructTypeInContext(ctx, fields, false)
+    }
+    if ty.kind == Map {
+        return LLVMStructTypeInContext(ctx, [LLVMInt64Type(), LLVMPointerType(draton_type_to_llvm(ctx, ty.key), 0), LLVMPointerType(draton_type_to_llvm(ctx, ty.value), 0)], false)
+    }
+    if ty.kind == Chan || ty.kind == Pointer {
+        return LLVMPointerType(draton_type_to_llvm(ctx, ty.inner), 0)
+    }
+    if ty.kind == Fn {
+        let mut params = []
+        let mut index = 0
+        while index < ty.params.len() {
+            params.push(draton_type_to_llvm(ctx, ty.params[index]))
+            index = index + 1
+        }
+        return LLVMPointerType(LLVMFunctionType(draton_type_to_llvm(ctx, ty.ret), params, false), 0)
+    }
+    return LLVMPointerType(LLVMInt8Type(), 0)
+}

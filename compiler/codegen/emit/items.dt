@@ -1,0 +1,30 @@
+import { mangle_fn } from codegen.mangle
+
+fn emit_fn_def(cg, fn_def) {
+    cg.functions.push(FunctionSymbol { name: mangle_fn(fn_def.name, None, []), handle: 0 })
+}
+
+fn emit_class_def(cg, class_def) {
+    let _ = cg
+    let _ = class_def
+}
+
+fn emit_interface_def(cg, iface_def) {
+    let _ = cg
+    let _ = iface_def
+}
+
+fn emit_enum_def(cg, enum_def) {
+    let _ = cg
+    let _ = enum_def
+}
+
+fn emit_const_def(cg, const_def) {
+    let _ = cg
+    let _ = const_def
+}
+
+fn emit_extern_block(cg, extern_block) {
+    let _ = cg
+    let _ = extern_block
+}

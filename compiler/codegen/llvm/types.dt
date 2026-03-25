@@ -1,0 +1,17 @@
+import { LlvmContextHandle, LlvmTypeHandle } from codegen.llvm.handles
+
+fn LLVMInt1Type() { return LlvmTypeHandle { raw: 1 } }
+fn LLVMInt8Type() { return LlvmTypeHandle { raw: 8 } }
+fn LLVMInt16Type() { return LlvmTypeHandle { raw: 16 } }
+fn LLVMInt32Type() { return LlvmTypeHandle { raw: 32 } }
+fn LLVMInt64Type() { return LlvmTypeHandle { raw: 64 } }
+fn LLVMInt128Type() { return LlvmTypeHandle { raw: 128 } }
+fn LLVMDoubleType() { return LlvmTypeHandle { raw: 640 } }
+fn LLVMFloatType() { return LlvmTypeHandle { raw: 320 } }
+fn LLVMVoidType() { return LlvmTypeHandle { raw: -1 } }
+fn LLVMPointerType(elem_ty, addr_space) { let _ = elem_ty let _ = addr_space return LlvmTypeHandle { raw: 900 } }
+fn LLVMArrayType(elem_ty, count) { let _ = elem_ty let _ = count return LlvmTypeHandle { raw: 901 } }
+fn LLVMStructTypeInContext(ctx, fields, packed) { let _ = ctx let _ = fields let _ = packed return LlvmTypeHandle { raw: 902 } }
+fn LLVMStructSetBody(ty, fields, packed) { let _ = ty let _ = fields let _ = packed }
+fn LLVMFunctionType(ret, params, vararg) { let _ = ret let _ = params let _ = vararg return LlvmTypeHandle { raw: 903 } }
+fn LLVMGetTypeKind(ty) { let _ = ty return 0 }

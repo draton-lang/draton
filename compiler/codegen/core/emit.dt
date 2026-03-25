@@ -1,0 +1,25 @@
+import { emit_fn_def, emit_class_def, emit_interface_def, emit_enum_def, emit_const_def, emit_extern_block } from codegen.emit.items
+
+fn emit_program(cg, typed_program) {
+    let mut index = 0
+    while index < typed_program.items.len() {
+        let item = typed_program.items[index]
+        if item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler {
+            emit_fn_def(cg, item.fn_def)
+        } elif item.kind == Class {
+            emit_class_def(cg, item.class_def)
+        } elif item.kind == Interface {
+            emit_interface_def(cg, item.interface_def)
+        } elif item.kind == Enum {
+            emit_enum_def(cg, item.enum_def)
+        } elif item.kind == Const {
+            emit_const_def(cg, item.const_def)
+        } elif item.kind == Extern {
+            emit_extern_block(cg, item.extern_block)
+        }
+        index = index + 1
+    }
+    return Ok(Unit {})
+}
+
+class Unit {}

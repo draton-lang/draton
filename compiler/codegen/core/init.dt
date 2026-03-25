@@ -1,0 +1,40 @@
+import { CodeGen } from codegen.core.codegen
+import { LLVMContextCreate } from codegen.llvm.context
+import { LLVMModuleCreateWithNameInContext } from codegen.llvm.module
+import { LLVMCreateBuilderInContext } from codegen.llvm.builder
+
+fn new_codegen(mode) {
+    let context = LLVMContextCreate()
+    let module = LLVMModuleCreateWithNameInContext("draton", context)
+    let builder = LLVMCreateBuilderInContext(context)
+    return CodeGen {
+        context: context,
+        module: module,
+        builder: builder,
+        mode: mode,
+        string_type: "string",
+        closure_record_type: "closure",
+        functions: [],
+        class_layouts: [],
+        variables: [],
+        current_function: None,
+        current_return_type: None,
+        current_class: None,
+        type_descriptor_table: [],
+        next_type_descriptor_id: 1,
+        string_counter: 0,
+        mono: MonoCollector { class_defs: [], fn_defs: [] },
+        generic_classes: [],
+        generic_functions: [],
+        iface_registry: InterfaceRegistry { entries: [] },
+        vtable_types: [],
+        fat_pointer_types: [],
+        vtable_globals: [],
+        closure_counter: 0,
+        closure_type_descriptor_id: 0,
+        pending_ctors: [],
+        free_points: [],
+        ownership_free_spans: [],
+        current_function_free_bindings: []
+    }
+}

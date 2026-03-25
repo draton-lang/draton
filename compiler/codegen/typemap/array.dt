@@ -1,0 +1,6 @@
+import { LLVMStructTypeInContext, LLVMPointerType, LLVMInt64Type } from codegen.llvm.types
+import { draton_type_to_llvm } from codegen.typemap.map
+
+fn array_llvm_type(ctx, elem_ty) {
+    return LLVMStructTypeInContext(ctx, [LLVMPointerType(draton_type_to_llvm(ctx, elem_ty), 0), LLVMInt64Type(), LLVMInt64Type()], false)
+}
