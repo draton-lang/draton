@@ -1,0 +1,26 @@
+import { TypedProgram } from typeck.typed.program
+import { TypeError } from typeck.types.error
+import { TypeChecker } from typeck.infer.checker
+
+enum DeprecatedSyntaxMode {
+    Warn,
+    Deny
+}
+
+class TypeCheckResult {
+    let typed_program
+    let errors
+    let warnings
+
+    @type {
+        typed_program: TypedProgram
+        errors: Array[TypeError]
+        warnings: Array[TypeError]
+    }
+}
+
+fn type_check(program, mode) {
+    let checker = TypeChecker.new()
+    checker.deprecated_syntax_mode = mode
+    return checker.check(program)
+}

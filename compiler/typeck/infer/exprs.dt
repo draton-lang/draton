@@ -1,0 +1,316 @@
+import { Type, ArrayType, MapType, SetType, TupleType, OptionType, ResultType, ChanType, FnType, NamedType } from typeck.types.ty
+import { TypedExpr, TypedMapEntry, TypedFStrPart, TypedMatchArm, TypedMatchArmBody } from typeck.typed.exprs
+import { TypedParam } from typeck.typed.items
+import { TypeError } from typeck.types.error
+import { Scheme } from typeck.types.scheme
+import { infer_block } from typeck.infer.stmts
+
+fn infer_expr(checker, expr) {
+    if expr.kind == IntLit {
+        return typed_expr(expr.kind, NamedType { kind: Named, name: "Int", args: [] }, expr.span, Some(expr.value), None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == FloatLit {
+        return typed_expr(expr.kind, NamedType { kind: Named, name: "Float", args: [] }, expr.span, None, Some(expr.value), None, None, None, None, None, None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == StrLit {
+        return typed_expr(expr.kind, NamedType { kind: Named, name: "String", args: [] }, expr.span, None, None, Some(expr.value), None, None, None, None, None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == FStrLit {
+        let mut parts = []
+        let mut index = 0
+        while index < expr.parts.len() {
+            let part = expr.parts[index]
+            if part.kind == Literal {
+                parts.push(TypedFStrPart { kind: Literal, literal: Some(part.value), interp: None })
+            } else {
+                let inner = infer_expr(checker, part.expr)
+                parts.push(TypedFStrPart { kind: Interp, literal: None, interp: Some(inner) })
+            }
+            index = index + 1
+        }
+        return typed_expr(expr.kind, NamedType { kind: Named, name: "String", args: [] }, expr.span, None, None, None, None, Some(parts), None, None, None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == BoolLit {
+        return typed_expr(expr.kind, NamedType { kind: Named, name: "Bool", args: [] }, expr.span, None, None, None, Some(expr.value), None, None, None, None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == NoneLit {
+        return typed_expr(expr.kind, OptionType { kind: Option, inner: checker.fresh_var() }, expr.span, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == Ident {
+        let binding = checker.env.lookup(expr.name)
+        match binding {
+            Some(value) => {
+                return typed_expr(expr.kind, checker.instantiate(value), expr.span, None, None, None, None, None, None, None, None, None, Some(expr.name), None, None, None, None, None, None, None)
+            }
+            None => {
+                checker.errors.push(TypeError {
+                    kind: UndefinedVar,
+                    name: Some(expr.name),
+                    expected: None,
+                    found: None,
+                    hint: None,
+                    field: None,
+                    interface_name: None,
+                    class_name: None,
+                    method: None,
+                    pattern: None,
+                    missing: None,
+                    syntax: None,
+                    replacement: None,
+                    expected_count: None,
+                    got_count: None,
+                    tuple_len: None,
+                    pattern_len: None,
+                    line: expr.span.line,
+                    col: expr.span.col
+                })
+                return typed_expr(expr.kind, checker.fresh_var(), expr.span, None, None, None, None, None, None, None, None, None, Some(expr.name), None, None, None, None, None, None, None)
+            }
+        }
+    }
+    if expr.kind == Array {
+        let mut items = []
+        let element_ty = checker.fresh_var()
+        let mut index = 0
+        while index < expr.items.len() {
+            let typed_item = infer_expr(checker, expr.items[index])
+            checker.unify_types(element_ty, typed_item.ty, typed_item.span)
+            items.push(typed_item)
+            index = index + 1
+        }
+        return typed_expr(expr.kind, ArrayType { kind: Array, inner: checker.apply_subst(element_ty) }, expr.span, None, None, None, None, Some(items), None, None, None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == Map {
+        let mut entries = []
+        let key_ty = checker.fresh_var()
+        let value_ty = checker.fresh_var()
+        let mut index = 0
+        while index < expr.entries.len() {
+            let entry = expr.entries[index]
+            let typed_key = infer_expr(checker, entry.key)
+            let typed_value = infer_expr(checker, entry.value)
+            checker.unify_types(key_ty, typed_key.ty, typed_key.span)
+            checker.unify_types(value_ty, typed_value.ty, typed_value.span)
+            entries.push(TypedMapEntry { key: typed_key, value: typed_value })
+            index = index + 1
+        }
+        return typed_expr(expr.kind, MapType { kind: Map, key: checker.apply_subst(key_ty), value: checker.apply_subst(value_ty) }, expr.span, None, None, None, None, None, Some(entries), None, None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == Set {
+        let mut items = []
+        let element_ty = checker.fresh_var()
+        let mut index = 0
+        while index < expr.items.len() {
+            let typed_item = infer_expr(checker, expr.items[index])
+            checker.unify_types(element_ty, typed_item.ty, typed_item.span)
+            items.push(typed_item)
+            index = index + 1
+        }
+        return typed_expr(expr.kind, SetType { kind: Set, inner: checker.apply_subst(element_ty) }, expr.span, None, None, None, None, Some(items), None, None, None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == Tuple {
+        let mut items = []
+        let mut item_types = []
+        let mut index = 0
+        while index < expr.items.len() {
+            let typed_item = infer_expr(checker, expr.items[index])
+            item_types.push(typed_item.ty)
+            items.push(typed_item)
+            index = index + 1
+        }
+        return typed_expr(expr.kind, TupleType { kind: Tuple, items: item_types }, expr.span, None, None, None, None, Some(items), None, None, None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == BinOp {
+        let left = infer_expr(checker, expr.left)
+        let right = infer_expr(checker, expr.right)
+        let mut result_ty = left.ty
+        if expr.op == Eq || expr.op == Ne || expr.op == Lt || expr.op == Le || expr.op == Gt || expr.op == Ge || expr.op == And || expr.op == Or {
+            if expr.op == And || expr.op == Or {
+                checker.unify_types(left.ty, NamedType { kind: Named, name: "Bool", args: [] }, left.span)
+                checker.unify_types(right.ty, NamedType { kind: Named, name: "Bool", args: [] }, right.span)
+            } else {
+                checker.unify_types(left.ty, right.ty, expr.span)
+            }
+            result_ty = NamedType { kind: Named, name: "Bool", args: [] }
+        } else {
+            checker.unify_types(left.ty, right.ty, expr.span)
+            result_ty = checker.apply_subst(left.ty)
+        }
+        return typed_expr(expr.kind, result_ty, expr.span, None, None, None, None, None, None, Some(left), Some(expr.op.to_string()), Some(right), None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == UnOp {
+        let inner = infer_expr(checker, expr.expr)
+        let result_ty = inner.ty
+        return typed_expr(expr.kind, result_ty, expr.span, None, None, None, None, None, None, Some(inner), Some(expr.op.to_string()), None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == Call {
+        let callee = infer_expr(checker, expr.callee)
+        let mut typed_args = []
+        let mut arg_types = []
+        let mut index = 0
+        while index < expr.args.len() {
+            let typed_arg = infer_expr(checker, expr.args[index])
+            arg_types.push(typed_arg.ty)
+            typed_args.push(typed_arg)
+            index = index + 1
+        }
+        let ret_ty = checker.fresh_var()
+        checker.unify_types(callee.ty, FnType { kind: Fn, params: arg_types, ret: ret_ty }, expr.span)
+        return typed_expr(expr.kind, checker.apply_subst(ret_ty), expr.span, None, None, None, None, None, None, None, None, None, None, Some(callee), None, Some(typed_args), None, None, None, None)
+    }
+    if expr.kind == MethodCall {
+        let target = infer_expr(checker, expr.target)
+        let mut typed_args = []
+        let mut arg_types = [target.ty]
+        let mut index = 0
+        while index < expr.args.len() {
+            let typed_arg = infer_expr(checker, expr.args[index])
+            arg_types.push(typed_arg.ty)
+            typed_args.push(typed_arg)
+            index = index + 1
+        }
+        let ret_ty = checker.fresh_var()
+        match lookup_method_type(checker, target.ty, expr.name) {
+            Some(method_ty) => {
+                checker.unify_types(method_ty, FnType { kind: Fn, params: arg_types, ret: ret_ty }, expr.span)
+            }
+            None => { }
+        }
+        return typed_expr(expr.kind, checker.apply_subst(ret_ty), expr.span, None, None, None, None, None, None, None, None, None, Some(expr.name), None, Some(typed_args), Some(target), None, None, None, None)
+    }
+    if expr.kind == Field {
+        let target = infer_expr(checker, expr.target)
+        let field_ty = lookup_field_type(checker, target.ty, expr.name)
+        match field_ty {
+            Some(value) => {
+                return typed_expr(expr.kind, value, expr.span, None, None, None, None, None, None, None, None, None, Some(expr.name), None, None, Some(target), None, None, None, None)
+            }
+            None => {
+                return typed_expr(expr.kind, checker.fresh_var(), expr.span, None, None, None, None, None, None, None, None, None, Some(expr.name), None, None, Some(target), None, None, None, None)
+            }
+        }
+    }
+    if expr.kind == Index {
+        let target = infer_expr(checker, expr.target)
+        let index_expr = infer_expr(checker, expr.index)
+        checker.unify_types(index_expr.ty, NamedType { kind: Named, name: "Int", args: [] }, index_expr.span)
+        let item_ty = checker.fresh_var()
+        checker.unify_types(target.ty, ArrayType { kind: Array, inner: item_ty }, target.span)
+        return typed_expr(expr.kind, checker.apply_subst(item_ty), expr.span, None, None, None, None, None, None, None, None, None, None, None, None, Some(target), Some(index_expr), None, None, None)
+    }
+    if expr.kind == Lambda {
+        checker.env.push_scope()
+        let mut params = []
+        let mut param_types = []
+        let mut index = 0
+        while index < expr.params.len() {
+            let param_ty = checker.fresh_var()
+            checker.env.define(expr.params[index], Scheme { quantified: [], ty: param_ty })
+            params.push(TypedParam { name: expr.params[index], ty: param_ty, span: expr.span })
+            param_types.push(param_ty)
+            index = index + 1
+        }
+        let body = infer_expr(checker, expr.body)
+        checker.env.pop_scope()
+        return typed_expr(expr.kind, FnType { kind: Fn, params: param_types, ret: body.ty }, expr.span, None, None, None, None, None, None, None, None, None, None, None, None, None, None, Some(params), Some(body), None, None)
+    }
+    if expr.kind == Cast {
+        let inner = infer_expr(checker, expr.expr)
+        let cast_ty = checker.type_from_annotation(expr.ty)
+        return typed_expr(expr.kind, cast_ty, expr.span, None, None, None, None, None, None, Some(inner), None, None, None, None, None, None, None, None, Some(cast_ty), None)
+    }
+    if expr.kind == Match {
+        let subject = infer_expr(checker, expr.subject)
+        let result_ty = checker.fresh_var()
+        let mut arms = []
+        let mut index = 0
+        while index < expr.arms.len() {
+            let arm = expr.arms[index]
+            let pattern = infer_expr(checker, arm.pattern)
+            checker.unify_types(subject.ty, pattern.ty, pattern.span)
+            if arm.body.kind == Expr {
+                let typed_body_expr = infer_expr(checker, arm.body.expr)
+                checker.unify_types(result_ty, typed_body_expr.ty, typed_body_expr.span)
+                arms.push(TypedMatchArm {
+                    pattern: pattern,
+                    body: TypedMatchArmBody { expr: Some(typed_body_expr), block: None },
+                    span: arm.span
+                })
+            } else {
+                let typed_block = infer_block(checker, arm.body.block)
+                arms.push(TypedMatchArm {
+                    pattern: pattern,
+                    body: TypedMatchArmBody { expr: None, block: Some(typed_block) },
+                    span: arm.span
+                })
+            }
+            index = index + 1
+        }
+        return typed_expr(expr.kind, checker.apply_subst(result_ty), expr.span, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, Some(arms))
+    }
+    if expr.kind == Ok {
+        let value = infer_expr(checker, expr.value)
+        return typed_expr(expr.kind, ResultType { kind: Result, ok: value.ty, err: checker.fresh_var() }, expr.span, None, None, None, None, None, None, Some(value), None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == Err {
+        let value = infer_expr(checker, expr.value)
+        return typed_expr(expr.kind, ResultType { kind: Result, ok: checker.fresh_var(), err: value.ty }, expr.span, None, None, None, None, None, None, Some(value), None, None, None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == Nullish {
+        let left = infer_expr(checker, expr.left)
+        let right = infer_expr(checker, expr.right)
+        let inner_ty = checker.fresh_var()
+        checker.unify_types(left.ty, OptionType { kind: Option, inner: inner_ty }, left.span)
+        checker.unify_types(inner_ty, right.ty, right.span)
+        return typed_expr(expr.kind, checker.apply_subst(inner_ty), expr.span, None, None, None, None, None, None, Some(left), None, Some(right), None, None, None, None, None, None, None, None)
+    }
+    if expr.kind == Chan {
+        let ty = checker.type_from_annotation(expr.ty)
+        return typed_expr(expr.kind, ChanType { kind: Chan, inner: ty }, expr.span, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, Some(ty))
+    }
+    return typed_expr(expr.kind, checker.fresh_var(), expr.span, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None)
+}
+
+fn lookup_method_type(checker, target_ty, name) {
+    let _ = checker
+    let _ = target_ty
+    let _ = name
+    return None
+}
+
+fn lookup_field_type(checker, target_ty, name) {
+    let _ = checker
+    let _ = name
+    if target_ty.kind == Named && target_ty.name == "String" {
+        return Some(NamedType { kind: Named, name: "Int", args: [] })
+    }
+    return None
+}
+
+fn typed_expr(kind, ty, span, int_value, float_value, string_value, bool_value, items, entries, left, op, right, name, callee, args, target, index, params, body, cast_type, arms, chan_type) {
+    return TypedExpr {
+        kind: kind,
+        ty: ty,
+        span: span,
+        use_effect: None,
+        int_value: int_value,
+        float_value: float_value,
+        string_value: string_value,
+        bool_value: bool_value,
+        items: items,
+        entries: entries,
+        left: left,
+        op: op,
+        right: right,
+        callee: callee,
+        name: name,
+        args: args,
+        target: target,
+        index: index,
+        params: params,
+        body: body,
+        cast_type: cast_type,
+        arms: arms,
+        chan_type: chan_type
+    }
+}

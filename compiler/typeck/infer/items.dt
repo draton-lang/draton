@@ -1,0 +1,315 @@
+import { TypedProgram } from typeck.typed.program
+import { TypedItem, TypedFnDef, TypedParam, TypedFieldDef, TypedTypeMember, TypedTypeBlock, TypedClassDef, TypedInterfaceDef, TypedEnumDef, TypedErrorDef, TypedConstDef, TypedImportItem, TypedImportDef, TypedExternBlock } from typeck.typed.items
+import { infer_block, infer_stmt } from typeck.infer.stmts
+import { infer_expr } from typeck.infer.exprs
+import { Scheme } from typeck.types.scheme
+import { NamedType, FnType } from typeck.types.ty
+
+fn check_program(checker, program) {
+    let mut items = []
+    let mut index = 0
+    while index < program.items.len() {
+        items.push(check_item(checker, program.items[index]))
+        index = index + 1
+    }
+    return TypedProgram { items: items }
+}
+
+fn check_item(checker, item) {
+    if item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler {
+        let fn_def = check_fn_def(checker, item.fn_def)
+        return TypedItem {
+            kind: item.kind,
+            fn_def: Some(fn_def),
+            class_def: None,
+            interface_def: None,
+            enum_def: None,
+            error_def: None,
+            const_def: None,
+            import_def: None,
+            extern_block: None,
+            type_block: None
+        }
+    }
+    if item.kind == Class {
+        return TypedItem {
+            kind: Class,
+            fn_def: None,
+            class_def: Some(check_class_def(checker, item.class_def)),
+            interface_def: None,
+            enum_def: None,
+            error_def: None,
+            const_def: None,
+            import_def: None,
+            extern_block: None,
+            type_block: None
+        }
+    }
+    if item.kind == Interface {
+        return TypedItem {
+            kind: Interface,
+            fn_def: None,
+            class_def: None,
+            interface_def: Some(check_interface_def(checker, item.interface_def)),
+            enum_def: None,
+            error_def: None,
+            const_def: None,
+            import_def: None,
+            extern_block: None,
+            type_block: None
+        }
+    }
+    if item.kind == Enum {
+        return TypedItem {
+            kind: Enum,
+            fn_def: None,
+            class_def: None,
+            interface_def: None,
+            enum_def: Some(check_enum_def(checker, item.enum_def)),
+            error_def: None,
+            const_def: None,
+            import_def: None,
+            extern_block: None,
+            type_block: None
+        }
+    }
+    if item.kind == Error {
+        return TypedItem {
+            kind: Error,
+            fn_def: None,
+            class_def: None,
+            interface_def: None,
+            enum_def: None,
+            error_def: Some(check_error_def(checker, item.error_def)),
+            const_def: None,
+            import_def: None,
+            extern_block: None,
+            type_block: None
+        }
+    }
+    if item.kind == Const {
+        return TypedItem {
+            kind: Const,
+            fn_def: None,
+            class_def: None,
+            interface_def: None,
+            enum_def: None,
+            error_def: None,
+            const_def: Some(check_const_def(checker, item.const_def)),
+            import_def: None,
+            extern_block: None,
+            type_block: None
+        }
+    }
+    if item.kind == Import {
+        return TypedItem {
+            kind: Import,
+            fn_def: None,
+            class_def: None,
+            interface_def: None,
+            enum_def: None,
+            error_def: None,
+            const_def: None,
+            import_def: Some(check_import_def(checker, item.import_def)),
+            extern_block: None,
+            type_block: None
+        }
+    }
+    if item.kind == Extern {
+        return TypedItem {
+            kind: Extern,
+            fn_def: None,
+            class_def: None,
+            interface_def: None,
+            enum_def: None,
+            error_def: None,
+            const_def: None,
+            import_def: None,
+            extern_block: Some(check_extern_block(checker, item.extern_block)),
+            type_block: None
+        }
+    }
+    return TypedItem {
+        kind: TypeBlock,
+        fn_def: None,
+        class_def: None,
+        interface_def: None,
+        enum_def: None,
+        error_def: None,
+        const_def: None,
+        import_def: None,
+        extern_block: None,
+        type_block: Some(check_type_block(checker, item.type_block))
+    }
+}
+
+fn check_fn_def(checker, fn_def) {
+    checker.push_type_params(fn_def.type_params)
+    checker.env.push_scope()
+    let mut params = []
+    let mut param_types = []
+    let mut index = 0
+    while index < fn_def.params.len() {
+        let param = fn_def.params[index]
+        let mut param_ty = checker.fresh_var()
+        match param.type_hint {
+            Some(value) => { param_ty = checker.type_from_annotation(value) }
+            None => { }
+        }
+        checker.env.define(param.name, Scheme { quantified: [], ty: param_ty })
+        params.push(TypedParam { name: param.name, ty: param_ty, span: param.span })
+        param_types.push(param_ty)
+        index = index + 1
+    }
+    let mut ret_type = NamedType { kind: Named, name: "Unit", args: [] }
+    match fn_def.ret_type {
+        Some(value) => { ret_type = checker.type_from_annotation(value) }
+        None => { }
+    }
+    checker.current_return.push(ret_type)
+    let mut body = None
+    match fn_def.body {
+        Some(value) => { body = Some(infer_block(checker, value)) }
+        None => { }
+    }
+    if checker.current_return.len() > 0 {
+        checker.current_return.pop()
+    }
+    checker.env.pop_scope()
+    checker.pop_type_params()
+    let full_ty = FnType { kind: Fn, params: param_types, ret: ret_type }
+    checker.env.define(fn_def.name, checker.generalize(full_ty))
+    return TypedFnDef {
+        is_pub: fn_def.is_pub,
+        name: fn_def.name,
+        params: params,
+        ret_type: ret_type,
+        body: body,
+        ty: full_ty,
+        span: fn_def.span,
+        ownership_summary: None
+    }
+}
+
+fn check_class_def(checker, class_def) {
+    let mut fields = []
+    let mut methods = []
+    let mut index = 0
+    while index < class_def.members.len() {
+        let member = class_def.members[index]
+        if member.kind == Field {
+            let mut field_ty = checker.fresh_var()
+            match member.field.type_hint {
+                Some(value) => { field_ty = checker.type_from_annotation(value) }
+                None => { }
+            }
+            fields.push(TypedFieldDef { is_mut: member.field.is_mut, name: member.field.name, ty: field_ty, span: member.field.span })
+        } elif member.kind == Method {
+            methods.push(check_fn_def(checker, member.method))
+        } else {
+            let mut layer_index = 0
+            while layer_index < member.layer.methods.len() {
+                methods.push(check_fn_def(checker, member.layer.methods[layer_index]))
+                layer_index = layer_index + 1
+            }
+        }
+        index = index + 1
+    }
+    let mut type_blocks = []
+    let mut type_index = 0
+    while type_index < class_def.type_blocks.len() {
+        type_blocks.push(check_type_block(checker, class_def.type_blocks[type_index]))
+        type_index = type_index + 1
+    }
+    return TypedClassDef { name: class_def.name, extends: class_def.extends, implements: class_def.implements, fields: fields, methods: methods, type_blocks: type_blocks, span: class_def.span }
+}
+
+fn check_interface_def(checker, iface) {
+    let mut methods = []
+    let mut index = 0
+    while index < iface.methods.len() {
+        methods.push(check_fn_def(checker, iface.methods[index]))
+        index = index + 1
+    }
+    let mut type_blocks = []
+    let mut type_index = 0
+    while type_index < iface.type_blocks.len() {
+        type_blocks.push(check_type_block(checker, iface.type_blocks[type_index]))
+        type_index = type_index + 1
+    }
+    return TypedInterfaceDef { name: iface.name, methods: methods, type_blocks: type_blocks, span: iface.span }
+}
+
+fn check_enum_def(checker, enum_def) {
+    let _ = checker
+    return TypedEnumDef { name: enum_def.name, variants: enum_def.variants, span: enum_def.span }
+}
+
+fn check_error_def(checker, error_def) {
+    let mut fields = []
+    let mut index = 0
+    while index < error_def.fields.len() {
+        let field = error_def.fields[index]
+        let mut field_ty = checker.fresh_var()
+        match field.type_hint {
+            Some(value) => { field_ty = checker.type_from_annotation(value) }
+            None => { }
+        }
+        fields.push(TypedParam { name: field.name, ty: field_ty, span: field.span })
+        index = index + 1
+    }
+    return TypedErrorDef { name: error_def.name, fields: fields, span: error_def.span }
+}
+
+fn check_const_def(checker, const_def) {
+    let value = infer_expr(checker, const_def.value)
+    checker.env.define(const_def.name, checker.generalize(value.ty))
+    return TypedConstDef { name: const_def.name, value: value, ty: value.ty, span: const_def.span }
+}
+
+fn check_import_def(checker, import_def) {
+    let _ = checker
+    let mut items = []
+    let mut index = 0
+    while index < import_def.items.len() {
+        let item = import_def.items[index]
+        items.push(TypedImportItem { name: item.name, alias: item.alias, span: item.span })
+        index = index + 1
+    }
+    return TypedImportDef { module: import_def.module, items: items, span: import_def.span }
+}
+
+fn check_extern_block(checker, block) {
+    let mut functions = []
+    let mut index = 0
+    while index < block.functions.len() {
+        functions.push(check_fn_def(checker, block.functions[index]))
+        index = index + 1
+    }
+    return TypedExternBlock { abi: block.abi, functions: functions, span: block.span }
+}
+
+fn check_type_block(checker, block) {
+    let mut members = []
+    let mut index = 0
+    while index < block.members.len() {
+        let member = block.members[index]
+        if member.kind == Binding {
+            members.push(TypedTypeMember {
+                name: Some(member.name),
+                ty: Some(checker.type_from_annotation(member.type_expr)),
+                function: None,
+                span: member.span
+            })
+        } else {
+            members.push(TypedTypeMember {
+                name: None,
+                ty: None,
+                function: Some(check_fn_def(checker, member.function)),
+                span: member.span
+            })
+        }
+        index = index + 1
+    }
+    return TypedTypeBlock { members: members, span: block.span }
+}

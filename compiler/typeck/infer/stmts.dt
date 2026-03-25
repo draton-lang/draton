@@ -1,0 +1,449 @@
+import { Type, TupleType, NamedType } from typeck.types.ty
+import { infer_expr } from typeck.infer.exprs
+import { TypedBlock, TypedStmt, TypedLetStmt, TypedLetDestructureStmt, TypedDestructureBinding, TypedAssignStmt, TypedReturnStmt, TypedElseBranch, TypedIfStmt, TypedForStmt, TypedWhileStmt, TypedSpawnBody, TypedSpawnStmt, TypedIfCompileStmt, TypedGcConfigEntry, TypedGcConfigStmt } from typeck.typed.stmts
+import { TypedTypeBlock } from typeck.typed.items
+import { Scheme } from typeck.types.scheme
+
+fn infer_block(checker, block) {
+    checker.env.push_scope()
+    let mut typed_stmts = []
+    let mut index = 0
+    while index < block.stmts.len() {
+        typed_stmts.push(infer_stmt(checker, block.stmts[index]))
+        index = index + 1
+    }
+    checker.env.pop_scope()
+    return TypedBlock { stmts: typed_stmts, span: block.span }
+}
+
+fn infer_stmt(checker, stmt) {
+    if stmt.kind == Let {
+        return infer_let(checker, stmt.value)
+    }
+    if stmt.kind == LetDestructure {
+        return infer_let_destructure(checker, stmt.value)
+    }
+    if stmt.kind == Assign {
+        return infer_assign(checker, stmt.value)
+    }
+    if stmt.kind == Return {
+        return infer_return(checker, stmt.value)
+    }
+    if stmt.kind == Expr {
+        let typed_expr = infer_expr(checker, stmt.value)
+        return TypedStmt {
+            kind: Expr,
+            let_stmt: None,
+            let_destructure: None,
+            assign_stmt: None,
+            return_stmt: None,
+            expr: Some(typed_expr),
+            if_stmt: None,
+            for_stmt: None,
+            while_stmt: None,
+            spawn_stmt: None,
+            block: None,
+            asm_text: None,
+            if_compile: None,
+            gc_config: None,
+            type_block: None,
+            span: stmt.span
+        }
+    }
+    if stmt.kind == If {
+        return infer_if(checker, stmt.value)
+    }
+    if stmt.kind == For {
+        return infer_for(checker, stmt.value)
+    }
+    if stmt.kind == While {
+        return infer_while(checker, stmt.value)
+    }
+    if stmt.kind == Spawn {
+        return infer_spawn(checker, stmt.value)
+    }
+    if stmt.kind == Block || stmt.kind == UnsafeBlock || stmt.kind == PointerBlock || stmt.kind == ComptimeBlock {
+        let typed_block = infer_block(checker, stmt.value)
+        return TypedStmt {
+            kind: stmt.kind,
+            let_stmt: None,
+            let_destructure: None,
+            assign_stmt: None,
+            return_stmt: None,
+            expr: None,
+            if_stmt: None,
+            for_stmt: None,
+            while_stmt: None,
+            spawn_stmt: None,
+            block: Some(typed_block),
+            asm_text: None,
+            if_compile: None,
+            gc_config: None,
+            type_block: None,
+            span: stmt.span
+        }
+    }
+    if stmt.kind == AsmBlock {
+        return TypedStmt {
+            kind: AsmBlock,
+            let_stmt: None,
+            let_destructure: None,
+            assign_stmt: None,
+            return_stmt: None,
+            expr: None,
+            if_stmt: None,
+            for_stmt: None,
+            while_stmt: None,
+            spawn_stmt: None,
+            block: None,
+            asm_text: Some(stmt.value),
+            if_compile: None,
+            gc_config: None,
+            type_block: None,
+            span: stmt.span
+        }
+    }
+    if stmt.kind == IfCompile {
+        let condition = infer_expr(checker, stmt.value.condition)
+        let body = infer_block(checker, stmt.value.body)
+        return TypedStmt {
+            kind: IfCompile,
+            let_stmt: None,
+            let_destructure: None,
+            assign_stmt: None,
+            return_stmt: None,
+            expr: None,
+            if_stmt: None,
+            for_stmt: None,
+            while_stmt: None,
+            spawn_stmt: None,
+            block: None,
+            asm_text: None,
+            if_compile: Some(TypedIfCompileStmt { condition: condition, body: body, span: stmt.span }),
+            gc_config: None,
+            type_block: None,
+            span: stmt.span
+        }
+    }
+    if stmt.kind == GcConfig {
+        let mut entries = []
+        let mut index = 0
+        while index < stmt.value.entries.len() {
+            let entry = stmt.value.entries[index]
+            entries.push(TypedGcConfigEntry {
+                key: entry.key,
+                value: infer_expr(checker, entry.value),
+                span: entry.span
+            })
+            index = index + 1
+        }
+        return TypedStmt {
+            kind: GcConfig,
+            let_stmt: None,
+            let_destructure: None,
+            assign_stmt: None,
+            return_stmt: None,
+            expr: None,
+            if_stmt: None,
+            for_stmt: None,
+            while_stmt: None,
+            spawn_stmt: None,
+            block: None,
+            asm_text: None,
+            if_compile: None,
+            gc_config: Some(TypedGcConfigStmt { entries: entries, span: stmt.span }),
+            type_block: None,
+            span: stmt.span
+        }
+    }
+    return TypedStmt {
+        kind: stmt.kind,
+        let_stmt: None,
+        let_destructure: None,
+        assign_stmt: None,
+        return_stmt: None,
+        expr: None,
+        if_stmt: None,
+        for_stmt: None,
+        while_stmt: None,
+        spawn_stmt: None,
+        block: None,
+        asm_text: None,
+        if_compile: None,
+        gc_config: None,
+        type_block: None,
+        span: stmt.span
+    }
+}
+
+fn infer_let(checker, let_stmt) {
+    let mut typed_value = None
+    let mut ty = checker.fresh_var()
+    match let_stmt.value {
+        Some(value) => {
+            let inferred = infer_expr(checker, value)
+            ty = inferred.ty
+            typed_value = Some(inferred)
+        }
+        None => { }
+    }
+    match let_stmt.type_hint {
+        Some(value) => {
+            let hint_ty = checker.type_from_annotation(value)
+            ty = checker.unify_types(ty, hint_ty, let_stmt.span)
+        }
+        None => { }
+    }
+    checker.env.define(let_stmt.name, Scheme { quantified: [], ty: ty })
+    return TypedStmt {
+        kind: Let,
+        let_stmt: Some(TypedLetStmt { is_mut: let_stmt.is_mut, name: let_stmt.name, value: typed_value, ty: ty, span: let_stmt.span }),
+        let_destructure: None,
+        assign_stmt: None,
+        return_stmt: None,
+        expr: None,
+        if_stmt: None,
+        for_stmt: None,
+        while_stmt: None,
+        spawn_stmt: None,
+        block: None,
+        asm_text: None,
+        if_compile: None,
+        gc_config: None,
+        type_block: None,
+        span: let_stmt.span
+    }
+}
+
+fn infer_let_destructure(checker, stmt) {
+    let value = infer_expr(checker, stmt.value)
+    let mut bindings = []
+    let mut tuple_ty = value.ty
+    match tuple_ty.kind {
+        Tuple => {
+            let mut index = 0
+            while index < stmt.names.len() {
+                let binding = stmt.names[index]
+                if binding.kind == Name && index < tuple_ty.items.len() {
+                    checker.env.define(binding.name, Scheme { quantified: [], ty: tuple_ty.items[index] })
+                    bindings.push(TypedDestructureBinding { name: Some(binding.name), ty: Some(tuple_ty.items[index]) })
+                } else {
+                    bindings.push(TypedDestructureBinding { name: None, ty: None })
+                }
+                index = index + 1
+            }
+        }
+        _ => {
+            let mut index = 0
+            while index < stmt.names.len() {
+                let binding = stmt.names[index]
+                if binding.kind == Name {
+                    let fresh = checker.fresh_var()
+                    checker.env.define(binding.name, Scheme { quantified: [], ty: fresh })
+                    bindings.push(TypedDestructureBinding { name: Some(binding.name), ty: Some(fresh) })
+                } else {
+                    bindings.push(TypedDestructureBinding { name: None, ty: None })
+                }
+                index = index + 1
+            }
+        }
+    }
+    return TypedStmt {
+        kind: LetDestructure,
+        let_stmt: None,
+        let_destructure: Some(TypedLetDestructureStmt { is_mut: stmt.is_mut, bindings: bindings, value: value, tuple_ty: tuple_ty, span: stmt.span }),
+        assign_stmt: None,
+        return_stmt: None,
+        expr: None,
+        if_stmt: None,
+        for_stmt: None,
+        while_stmt: None,
+        spawn_stmt: None,
+        block: None,
+        asm_text: None,
+        if_compile: None,
+        gc_config: None,
+        type_block: None,
+        span: stmt.span
+    }
+}
+
+fn infer_assign(checker, stmt) {
+    let target = infer_expr(checker, stmt.target)
+    let mut typed_value = None
+    match stmt.value {
+        Some(value) => {
+            let inferred = infer_expr(checker, value)
+            checker.unify_types(target.ty, inferred.ty, inferred.span)
+            typed_value = Some(inferred)
+        }
+        None => { }
+    }
+    return TypedStmt {
+        kind: Assign,
+        let_stmt: None,
+        let_destructure: None,
+        assign_stmt: Some(TypedAssignStmt { target: target, op: stmt.op, value: typed_value, span: stmt.span }),
+        return_stmt: None,
+        expr: None,
+        if_stmt: None,
+        for_stmt: None,
+        while_stmt: None,
+        spawn_stmt: None,
+        block: None,
+        asm_text: None,
+        if_compile: None,
+        gc_config: None,
+        type_block: None,
+        span: stmt.span
+    }
+}
+
+fn infer_return(checker, stmt) {
+    let mut typed_value = None
+    let mut ty = NamedType { kind: Named, name: "Unit", args: [] }
+    match stmt.value {
+        Some(value) => {
+            let inferred = infer_expr(checker, value)
+            ty = inferred.ty
+            typed_value = Some(inferred)
+        }
+        None => { }
+    }
+    if checker.current_return.len() > 0 {
+        let expected = checker.current_return[checker.current_return.len() - 1]
+        checker.unify_types(expected, ty, stmt.span)
+    }
+    return TypedStmt {
+        kind: Return,
+        let_stmt: None,
+        let_destructure: None,
+        assign_stmt: None,
+        return_stmt: Some(TypedReturnStmt { value: typed_value, ty: ty, span: stmt.span }),
+        expr: None,
+        if_stmt: None,
+        for_stmt: None,
+        while_stmt: None,
+        spawn_stmt: None,
+        block: None,
+        asm_text: None,
+        if_compile: None,
+        gc_config: None,
+        type_block: None,
+        span: stmt.span
+    }
+}
+
+fn infer_if(checker, stmt) {
+    let condition = infer_expr(checker, stmt.condition)
+    checker.unify_types(condition.ty, NamedType { kind: Named, name: "Bool", args: [] }, condition.span)
+    let then_branch = infer_block(checker, stmt.then_branch)
+    let mut else_branch = None
+    match stmt.else_branch {
+        Some(value) => {
+            if value.if_branch != None {
+                else_branch = Some(TypedElseBranch { if_branch: Some(infer_if(checker, value.if_branch).if_stmt), block: None })
+            } else {
+                else_branch = Some(TypedElseBranch { if_branch: None, block: Some(infer_block(checker, value.block)) })
+            }
+        }
+        None => { }
+    }
+    return TypedStmt {
+        kind: If,
+        let_stmt: None,
+        let_destructure: None,
+        assign_stmt: None,
+        return_stmt: None,
+        expr: None,
+        if_stmt: Some(TypedIfStmt { condition: condition, then_branch: then_branch, else_branch: else_branch, span: stmt.span }),
+        for_stmt: None,
+        while_stmt: None,
+        spawn_stmt: None,
+        block: None,
+        asm_text: None,
+        if_compile: None,
+        gc_config: None,
+        type_block: None,
+        span: stmt.span
+    }
+}
+
+fn infer_for(checker, stmt) {
+    let iter = infer_expr(checker, stmt.iter)
+    let item_type = checker.fresh_var()
+    checker.unify_types(iter.ty, ArrayType { kind: Array, inner: item_type }, iter.span)
+    checker.env.push_scope()
+    checker.env.define(stmt.name, Scheme { quantified: [], ty: item_type })
+    let body = infer_block(checker, stmt.body)
+    checker.env.pop_scope()
+    return TypedStmt {
+        kind: For,
+        let_stmt: None,
+        let_destructure: None,
+        assign_stmt: None,
+        return_stmt: None,
+        expr: None,
+        if_stmt: None,
+        for_stmt: Some(TypedForStmt { name: stmt.name, iter: iter, item_type: item_type, body: body, span: stmt.span }),
+        while_stmt: None,
+        spawn_stmt: None,
+        block: None,
+        asm_text: None,
+        if_compile: None,
+        gc_config: None,
+        type_block: None,
+        span: stmt.span
+    }
+}
+
+fn infer_while(checker, stmt) {
+    let condition = infer_expr(checker, stmt.condition)
+    checker.unify_types(condition.ty, NamedType { kind: Named, name: "Bool", args: [] }, condition.span)
+    let body = infer_block(checker, stmt.body)
+    return TypedStmt {
+        kind: While,
+        let_stmt: None,
+        let_destructure: None,
+        assign_stmt: None,
+        return_stmt: None,
+        expr: None,
+        if_stmt: None,
+        for_stmt: None,
+        while_stmt: Some(TypedWhileStmt { condition: condition, body: body, span: stmt.span }),
+        spawn_stmt: None,
+        block: None,
+        asm_text: None,
+        if_compile: None,
+        gc_config: None,
+        type_block: None,
+        span: stmt.span
+    }
+}
+
+fn infer_spawn(checker, stmt) {
+    let mut body = TypedSpawnBody { expr: None, block: None }
+    if stmt.body.expr != None {
+        body = TypedSpawnBody { expr: Some(infer_expr(checker, stmt.body.expr)), block: None }
+    } else {
+        body = TypedSpawnBody { expr: None, block: Some(infer_block(checker, stmt.body.block)) }
+    }
+    return TypedStmt {
+        kind: Spawn,
+        let_stmt: None,
+        let_destructure: None,
+        assign_stmt: None,
+        return_stmt: None,
+        expr: None,
+        if_stmt: None,
+        for_stmt: None,
+        while_stmt: None,
+        spawn_stmt: Some(TypedSpawnStmt { body: body, span: stmt.span }),
+        block: None,
+        asm_text: None,
+        if_compile: None,
+        gc_config: None,
+        type_block: None,
+        span: stmt.span
+    }
+}

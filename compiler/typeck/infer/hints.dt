@@ -1,0 +1,22 @@
+import { HintBindingEntry } from typeck.infer.checker
+
+fn extract_hints(checker, items) {
+    let mut index = 0
+    while index < items.len() {
+        let item = items[index]
+        if item.kind == TypeBlock {
+            let mut member_index = 0
+            while member_index < item.type_block.members.len() {
+                let member = item.type_block.members[member_index]
+                if member.kind == Binding {
+                    checker.binding_hints.push(HintBindingEntry {
+                        name: member.name,
+                        type_expr: member.type_expr
+                    })
+                }
+                member_index = member_index + 1
+            }
+        }
+        index = index + 1
+    }
+}
