@@ -1,9 +1,6 @@
 <div align="center">
 
-<h1>
-  <img src=".github/logo/draton-icon.png" alt="Draton" width="48" height="48" style="vertical-align: middle; margin-right: 12px;" />
-  Draton
-</h1>
+<h1><img src=".github/logo/draton-icon.png" alt="Draton" width="48" height="48" valign="middle" />&nbsp;&nbsp;Draton</h1>
 
 <p>A compiled, statically-typed programming language with an ergonomic syntax and first-class tooling.</p>
 
