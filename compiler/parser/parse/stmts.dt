@@ -2,9 +2,11 @@ import { Block, LetStmtNode, LetDestructureStmtNode, AssignStmtNode, ReturnStmtN
 import { LetStmt, LetDestructureStmt, DestructureBinding } from ast.stmt.let
 import { AssignStmt } from ast.stmt.assign
 import { IfStmt, ElseBranch, ForStmt, WhileStmt } from ast.stmt.control
-import { SpawnBody, SpawnStmt } from ast.stmt.spawn
-import { ReturnStmt, IfCompileStmt, GcConfigEntry, GcConfigStmt } from ast.stmt.misc
-import { Span } from ast.span
+import { SpawnStmt, SpawnBody } from ast.stmt.spawn
+import { ReturnStmt, IfCompileStmt, GcConfigStmt, GcConfigEntry } from ast.stmt.misc
+import { parse_expr } from parser.parse.exprs
+import { parse_type_expr } from parser.parse.types
+import { parse_type_block } from parser.parse.items
 
 fn parse_block(parser) {
     let start = parser.token_span()
@@ -20,148 +22,96 @@ fn parse_block(parser) {
         }
         let before = parser.pos
         let stmt = parse_stmt(parser)
-        match stmt {
-            Some(value) => {
-                stmts.push(value)
-            }
-            None => {
-                if parser.pos == before {
-                    parser.synchronize_stmt()
-                }
-            }
+        if stmt != None {
+            stmts.push(stmt)
+        } elif parser.pos == before {
+            parser.synchronize_stmt()
         }
     }
 
     let end = parser.token_span()
     parser.expect(RBrace, "}")
-    return Some(Block {
+    return Block {
         stmts: stmts,
         span: parser.merge_spans(start, end)
-    })
+    }
 }
 
 fn parse_stmt(parser) {
     parser.skip_doc_comments()
     if parser.current_kind() == Let {
         return parse_let_stmt(parser)
-    }
-    if parser.current_kind() == Return {
+    } elif parser.current_kind() == Return {
         let stmt = parse_return_stmt(parser)
-        match stmt {
-            Some(value) => {
-                return Some(ReturnStmtNode { kind: Return, span: value.span, value: value })
-            }
-            None => { return None }
+        if stmt != None {
+            return ReturnStmtNode { kind: Return, span: stmt.span, value: stmt }
         }
-    }
-    if parser.current_kind() == If {
+    } elif parser.current_kind() == If {
         let stmt = parse_if_stmt(parser)
-        match stmt {
-            Some(value) => {
-                return Some(IfStmtNode { kind: If, span: value.span, value: value })
-            }
-            None => { return None }
+        if stmt != None {
+            return IfStmtNode { kind: If, span: stmt.span, value: stmt }
         }
-    }
-    if parser.current_kind() == For {
+    } elif parser.current_kind() == For {
         let stmt = parse_for_stmt(parser)
-        match stmt {
-            Some(value) => {
-                return Some(ForStmtNode { kind: For, span: value.span, value: value })
-            }
-            None => { return None }
+        if stmt != None {
+            return ForStmtNode { kind: For, span: stmt.span, value: stmt }
         }
-    }
-    if parser.current_kind() == While {
+    } elif parser.current_kind() == While {
         let stmt = parse_while_stmt(parser)
-        match stmt {
-            Some(value) => {
-                return Some(WhileStmtNode { kind: While, span: value.span, value: value })
-            }
-            None => { return None }
+        if stmt != None {
+            return WhileStmtNode { kind: While, span: stmt.span, value: stmt }
         }
-    }
-    if parser.current_kind() == Spawn {
+    } elif parser.current_kind() == Spawn {
         let stmt = parse_spawn_stmt(parser)
-        match stmt {
-            Some(value) => {
-                return Some(SpawnStmtNode { kind: Spawn, span: value.span, value: value })
-            }
-            None => { return None }
+        if stmt != None {
+            return SpawnStmtNode { kind: Spawn, span: stmt.span, value: stmt }
         }
-    }
-    if parser.current_kind() == AtUnsafe {
+    } elif parser.current_kind() == AtUnsafe {
         return parse_special_block(parser, AtUnsafe, UnsafeBlock)
-    }
-    if parser.current_kind() == AtPointer {
+    } elif parser.current_kind() == AtPointer {
         return parse_special_block(parser, AtPointer, PointerBlock)
-    }
-    if parser.current_kind() == AtComptime {
+    } elif parser.current_kind() == AtComptime {
         return parse_special_block(parser, AtComptime, ComptimeBlock)
-    }
-    if parser.current_kind() == AtAsm {
-        let result = parse_asm_block(parser)
-        match result {
-            Some(value) => {
-                return Some(AsmBlockStmtNode { kind: AsmBlock, span: value.span, value: value.text })
-            }
-            None => { return None }
-        }
-    }
-    if parser.current_kind() == AtIf {
+    } elif parser.current_kind() == AtAsm {
+        return parse_asm_block(parser)
+    } elif parser.current_kind() == AtIf {
         let stmt = parse_if_compile_stmt(parser)
-        match stmt {
-            Some(value) => {
-                return Some(IfCompileStmtNode { kind: IfCompile, span: value.span, value: value })
-            }
-            None => { return None }
+        if stmt != None {
+            return IfCompileStmtNode { kind: IfCompile, span: stmt.span, value: stmt }
         }
-    }
-    if parser.current_kind() == AtGcConfig {
+    } elif parser.current_kind() == AtGcConfig {
         let stmt = parse_gc_config_stmt(parser)
-        match stmt {
-            Some(value) => {
-                return Some(GcConfigStmtNode { kind: GcConfig, span: value.span, value: value })
-            }
-            None => { return None }
+        if stmt != None {
+            return GcConfigStmtNode { kind: GcConfig, span: stmt.span, value: stmt }
         }
-    }
-    if parser.current_kind() == AtType {
-        let type_block = parser.parse_type_block()
-        match type_block {
-            Some(value) => {
-                return Some(TypeBlockStmtNode { kind: TypeBlock, span: value.span, value: value })
-            }
-            None => { return None }
+    } elif parser.current_kind() == AtType {
+        let type_block = parse_type_block(parser)
+        if type_block != None {
+            return TypeBlockStmtNode { kind: TypeBlock, span: type_block.span, value: type_block }
         }
-    }
-    if parser.current_kind() == LBrace {
+    } elif parser.current_kind() == LBrace {
         let block = parse_block(parser)
-        match block {
-            Some(value) => {
-                return Some(BlockStmtNode { kind: Block, span: value.span, value: value })
-            }
-            None => { return None }
+        if block != None {
+            return BlockStmtNode { kind: Block, span: block.span, value: block }
         }
+    } else {
+        return parse_expr_stmt_or_assignment(parser)
     }
-    return parse_expr_stmt_or_assignment(parser)
+    return None
 }
 
 fn parse_special_block(parser, token_kind, stmt_kind) {
     parser.expect(token_kind, "attribute block")
     let block = parse_block(parser)
-    match block {
-        Some(value) => {
-            if stmt_kind == UnsafeBlock {
-                return Some(UnsafeBlockStmtNode { kind: UnsafeBlock, span: value.span, value: value })
-            }
-            if stmt_kind == PointerBlock {
-                return Some(PointerBlockStmtNode { kind: PointerBlock, span: value.span, value: value })
-            }
-            return Some(ComptimeBlockStmtNode { kind: ComptimeBlock, span: value.span, value: value })
-        }
-        None => { return None }
+    if block == None {
+        return None
     }
+    if stmt_kind == UnsafeBlock {
+        return UnsafeBlockStmtNode { kind: UnsafeBlock, span: block.span, value: block }
+    } elif stmt_kind == PointerBlock {
+        return PointerBlockStmtNode { kind: PointerBlock, span: block.span, value: block }
+    }
+    return ComptimeBlockStmtNode { kind: ComptimeBlock, span: block.span, value: block }
 }
 
 fn parse_asm_block(parser) {
@@ -172,85 +122,70 @@ fn parse_asm_block(parser) {
     if !parser.expect(LBrace, "{") {
         return None
     }
-
     let mut parts = []
     while !parser.is_eof() && !parser.check(RBrace) {
         parts.push(parser.current_token().lexeme)
         parser.advance()
     }
-
     let end = parser.token_span()
     parser.expect(RBrace, "}")
-    return Some(AsmBlockParseResult {
-        text: parts.join(" "),
-        span: parser.merge_spans(start, end)
-    })
+    return AsmBlockStmtNode {
+        kind: AsmBlock,
+        span: parser.merge_spans(start, end),
+        value: join_with_space(parts)
+    }
 }
 
 fn parse_if_compile_stmt(parser) {
     let start = parser.token_span()
     parser.expect(AtIf, "@if")
-    let condition = parser.parse_expression()
+    let condition = parse_expr(parser)
+    if condition == None {
+        return None
+    }
     let body = parse_block(parser)
-    match condition {
-        Some(cond) => {
-            match body {
-                Some(block) => {
-                    return Some(IfCompileStmt {
-                        condition: cond,
-                        body: block,
-                        span: parser.merge_spans(start, block.span)
-                    })
-                }
-                None => { return None }
-            }
-        }
-        None => { return None }
+    if body == None {
+        return None
+    }
+    return IfCompileStmt {
+        condition: condition,
+        body: body,
+        span: parser.merge_spans(start, body.span)
     }
 }
 
 fn parse_gc_config_stmt(parser) {
     let start = parser.token_span()
     parser.expect(AtGcConfig, "@gc_config")
-    parser.push_deprecated_warning(
-        "@gc_config has no effect",
-        "Draton uses Inferred Ownership and has no GC runtime",
-        start
-    )
+    parser.push_deprecated_warning("@gc_config has no effect", "Draton uses Inferred Ownership and has no GC runtime", start)
     if !parser.expect(LBrace, "{") {
         return None
     }
-
     let mut entries = []
     while !parser.is_eof() && !parser.check(RBrace) {
         let entry_start = parser.token_span()
-        let token = parser.consume_ident("GC config key")
-        let mut key = ""
-        match token {
-            Some(value) => { key = value.lexeme }
-            None => { return None }
+        let key_token = parser.consume_ident("GC config key")
+        if key_token == None {
+            return None
         }
         parser.expect(Eq, "=")
-        let value = parser.parse_expression()
-        match value {
-            Some(expr) => {
-                entries.push(GcConfigEntry {
-                    key: key,
-                    value: expr,
-                    span: parser.merge_spans(entry_start, expr.span)
-                })
-            }
-            None => { return None }
+        let value = parse_expr(parser)
+        if value == None {
+            return None
         }
+        entries.push(GcConfigEntry {
+            key: key_token.lexeme,
+            value: value,
+            span: parser.merge_spans(entry_start, value.span)
+        })
         parser.match_kind(Comma)
     }
-
     let end = parser.token_span()
     parser.expect(RBrace, "}")
-    return Some(GcConfigStmt {
+    return GcConfigStmt {
         entries: entries,
         span: parser.merge_spans(start, end)
-    })
+    }
 }
 
 fn parse_let_stmt(parser) {
@@ -258,65 +193,38 @@ fn parse_let_stmt(parser) {
     parser.expect(Let, "let")
     let is_mut = parser.match_kind(Mut)
     if parser.check(LParen) {
-        return parse_let_destructure_stmt(parser, start, is_mut)
+        return parse_let_destructure(parser, start, is_mut)
     }
-
-    let token = parser.consume_ident("binding name")
-    let mut name = ""
-    match token {
-        Some(value) => { name = value.lexeme }
-        None => { return None }
+    let name_token = parser.consume_ident("binding name")
+    if name_token == None {
+        return None
     }
-
     let mut type_hint = None
     if parser.match_kind(Colon) {
-        type_hint = parser.parse_type_expr()
+        type_hint = parse_type_expr(parser)
     }
-
     let mut value = None
     if parser.match_kind(Eq) {
-        value = parser.parse_expression()
+        value = parse_expr(parser)
     }
-
     parser.optional_semicolon()
     let mut end = start
-    match value {
-        Some(expr) => {
-            end = expr.span
-            return Some(LetStmtNode {
-                kind: Let,
-                span: parser.merge_spans(start, end),
-                value: LetStmt {
-                    is_mut: is_mut,
-                    name: name,
-                    type_hint: type_hint,
-                    value: Some(expr),
-                    span: parser.merge_spans(start, end)
-                }
-            })
-        }
-        None => {
-            match type_hint {
-                Some(ty) => { end = ty.span }
-                None => { }
-            }
-        }
+    if value != None {
+        end = value.span
+    } elif type_hint != None {
+        end = type_hint.span
     }
-
-    return Some(LetStmtNode {
-        kind: Let,
-        span: parser.merge_spans(start, end),
-        value: LetStmt {
-            is_mut: is_mut,
-            name: name,
-            type_hint: type_hint,
-            value: None,
-            span: parser.merge_spans(start, end)
-        }
-    })
+    let stmt = LetStmt {
+        is_mut: is_mut,
+        name: name_token.lexeme,
+        type_hint: type_hint,
+        value: value,
+        span: parser.merge_spans(start, end)
+    }
+    return LetStmtNode { kind: Let, span: stmt.span, value: stmt }
 }
 
-fn parse_let_destructure_stmt(parser, start, is_mut) {
+fn parse_let_destructure(parser, start, is_mut) {
     if !parser.expect(LParen, "(") {
         return None
     }
@@ -326,16 +234,11 @@ fn parse_let_destructure_stmt(parser, start, is_mut) {
             parser.advance()
             names.push(DestructureBinding { kind: Wildcard, name: None })
         } else {
-            let token = parser.consume_ident("binding name")
-            match token {
-                Some(value) => {
-                    names.push(DestructureBinding {
-                        kind: Name,
-                        name: Some(value.lexeme)
-                    })
-                }
-                None => { return None }
+            let name_token = parser.consume_ident("binding name")
+            if name_token == None {
+                return None
             }
+            names.push(DestructureBinding { kind: Name, name: Some(name_token.lexeme) })
         }
         if !parser.check(RParen) {
             parser.expect(Comma, ",")
@@ -343,28 +246,18 @@ fn parse_let_destructure_stmt(parser, start, is_mut) {
     }
     parser.expect(RParen, ")")
     parser.expect(Eq, "=")
-    let value = parser.parse_expression()
-    match value {
-        Some(expr) => {
-            let span = parser.merge_spans(start, expr.span)
-            parser.optional_semicolon()
-            return Some(LetDestructureStmtNode {
-                kind: LetDestructure,
-                span: span,
-                value: LetDestructureStmt {
-                    is_mut: is_mut,
-                    names: names,
-                    value: expr,
-                    span: span
-                }
-            })
-        }
-        None => { return None }
+    let value = parse_expr(parser)
+    if value == None {
+        return None
     }
-}
-
-fn parse_assign_stmt(parser, target) {
-    return parse_expr_stmt_or_assignment_with_target(parser, target)
+    parser.optional_semicolon()
+    let stmt = LetDestructureStmt {
+        is_mut: is_mut,
+        names: names,
+        value: value,
+        span: parser.merge_spans(start, value.span)
+    }
+    return LetDestructureStmtNode { kind: LetDestructure, span: stmt.span, value: stmt }
 }
 
 fn parse_return_stmt(parser) {
@@ -372,19 +265,17 @@ fn parse_return_stmt(parser) {
     parser.expect(Return, "return")
     let mut value = None
     if parser.current_kind() != Semicolon && parser.current_kind() != RBrace && parser.current_kind() != Eof {
-        value = parser.parse_expression()
+        value = parse_expr(parser)
     }
     parser.optional_semicolon()
-
     let mut end = start
-    match value {
-        Some(expr) => { end = expr.span }
-        None => { }
+    if value != None {
+        end = value.span
     }
-    return Some(ReturnStmt {
+    return ReturnStmt {
         value: value,
         span: parser.merge_spans(start, end)
-    })
+    }
 }
 
 fn parse_if_stmt(parser) {
@@ -402,131 +293,83 @@ fn parse_elif_stmt(parser) {
 fn parse_if_stmt_tail(parser, start) {
     let mut condition = None
     if parser.match_kind(LParen) {
-        condition = parser.parse_expression()
+        condition = parse_expr(parser)
         parser.expect(RParen, ")")
     } else {
-        condition = parser.parse_expression()
+        condition = parse_expr(parser)
     }
-
+    if condition == None {
+        return None
+    }
     let then_branch = parse_block(parser)
-    let mut cond_value = None
-    let mut then_value = None
-    match condition {
-        Some(value) => { cond_value = value }
-        None => { return None }
+    if then_branch == None {
+        return None
     }
-    match then_branch {
-        Some(value) => { then_value = value }
-        None => { return None }
-    }
-
     let mut else_branch = None
     if parser.match_kind(Else) {
         if parser.check(If) {
             let nested = parse_if_stmt(parser)
-            match nested {
-                Some(value) => {
-                    else_branch = Some(ElseBranch {
-                        kind: If,
-                        if_branch: Some(value),
-                        block: None
-                    })
-                }
-                None => { return None }
+            if nested != None {
+                else_branch = ElseBranch { kind: If, if_branch: Some(nested), block: None }
             }
         } elif parser.check(Elif) {
             let nested = parse_elif_stmt(parser)
-            match nested {
-                Some(value) => {
-                    else_branch = Some(ElseBranch {
-                        kind: If,
-                        if_branch: Some(value),
-                        block: None
-                    })
-                }
-                None => { return None }
+            if nested != None {
+                else_branch = ElseBranch { kind: If, if_branch: Some(nested), block: None }
             }
         } else {
             let block = parse_block(parser)
-            match block {
-                Some(value) => {
-                    else_branch = Some(ElseBranch {
-                        kind: Block,
-                        if_branch: None,
-                        block: Some(value)
-                    })
-                }
-                None => { return None }
+            if block != None {
+                else_branch = ElseBranch { kind: Block, if_branch: None, block: Some(block) }
             }
         }
     } elif parser.check(Elif) {
         let elif_start = parser.token_span()
         parser.expect(Elif, "elif")
         let nested = parse_if_stmt_tail(parser, elif_start)
-        match nested {
-            Some(value) => {
-                else_branch = Some(ElseBranch {
-                    kind: If,
-                    if_branch: Some(value),
-                    block: None
-                })
-            }
-            None => { return None }
+        if nested != None {
+            else_branch = ElseBranch { kind: If, if_branch: Some(nested), block: None }
         }
     }
 
-    let mut end = then_value.span
-    match else_branch {
-        Some(branch) => {
-            if branch.kind == If {
-                match branch.if_branch {
-                    Some(value) => { end = value.span }
-                    None => { }
-                }
-            } else {
-                match branch.block {
-                    Some(value) => { end = value.span }
-                    None => { }
-                }
-            }
+    let mut end = then_branch.span
+    if else_branch != None {
+        if else_branch.kind == If {
+            end = else_branch.if_branch.span
+        } else {
+            end = else_branch.block.span
         }
-        None => { }
     }
-    return Some(IfStmt {
-        condition: cond_value,
-        then_branch: then_value,
+
+    return IfStmt {
+        condition: condition,
+        then_branch: then_branch,
         else_branch: else_branch,
         span: parser.merge_spans(start, end)
-    })
+    }
 }
 
 fn parse_for_stmt(parser) {
     let start = parser.token_span()
     parser.expect(For, "for")
-    let token = parser.consume_ident("loop variable")
-    let mut name = ""
-    match token {
-        Some(value) => { name = value.lexeme }
-        None => { return None }
+    let name_token = parser.consume_ident("loop variable")
+    if name_token == None {
+        return None
     }
     parser.expect(In, "in")
-    let iter = parser.parse_expression()
+    let iter = parse_expr(parser)
+    if iter == None {
+        return None
+    }
     let body = parse_block(parser)
-    match iter {
-        Some(iter_expr) => {
-            match body {
-                Some(block) => {
-                    return Some(ForStmt {
-                        name: name,
-                        iter: iter_expr,
-                        body: block,
-                        span: parser.merge_spans(start, block.span)
-                    })
-                }
-                None => { return None }
-            }
-        }
-        None => { return None }
+    if body == None {
+        return None
+    }
+    return ForStmt {
+        name: name_token.lexeme,
+        iter: iter,
+        body: body,
+        span: parser.merge_spans(start, body.span)
     }
 }
 
@@ -535,26 +378,22 @@ fn parse_while_stmt(parser) {
     parser.expect(While, "while")
     let mut condition = None
     if parser.match_kind(LParen) {
-        condition = parser.parse_expression()
+        condition = parse_expr(parser)
         parser.expect(RParen, ")")
     } else {
-        condition = parser.parse_expression()
+        condition = parse_expr(parser)
+    }
+    if condition == None {
+        return None
     }
     let body = parse_block(parser)
-    match condition {
-        Some(expr) => {
-            match body {
-                Some(block) => {
-                    return Some(WhileStmt {
-                        condition: expr,
-                        body: block,
-                        span: parser.merge_spans(start, block.span)
-                    })
-                }
-                None => { return None }
-            }
-        }
-        None => { return None }
+    if body == None {
+        return None
+    }
+    return WhileStmt {
+        condition: condition,
+        body: body,
+        span: parser.merge_spans(start, body.span)
     }
 }
 
@@ -562,154 +401,99 @@ fn parse_spawn_stmt(parser) {
     let start = parser.token_span()
     parser.expect(Spawn, "spawn")
     let mut body = None
+    let mut end = start
     if parser.check(LBrace) {
         let block = parse_block(parser)
-        match block {
-            Some(value) => {
-                body = Some(SpawnBody {
-                    kind: Block,
-                    expr: None,
-                    block: Some(value)
-                })
-            }
-            None => { return None }
+        if block == None {
+            return None
         }
+        body = SpawnBody { kind: Block, expr: None, block: Some(block) }
+        end = block.span
     } else {
-        let expr = parser.parse_expression()
-        match expr {
-            Some(value) => {
-                body = Some(SpawnBody {
-                    kind: Expr,
-                    expr: Some(value),
-                    block: None
-                })
-            }
-            None => { return None }
+        let expr = parse_expr(parser)
+        if expr == None {
+            return None
         }
+        body = SpawnBody { kind: Expr, expr: Some(expr), block: None }
+        end = expr.span
     }
-
-    let body_value = body
-    let mut end = start
-    match body_value {
-        Some(value) => {
-            if value.kind == Block {
-                match value.block {
-                    Some(block_value) => { end = block_value.span }
-                    None => { }
-                }
-            } else {
-                match value.expr {
-                    Some(expr_value) => { end = expr_value.span }
-                    None => { }
-                }
-            }
-            return Some(SpawnStmt {
-                body: value,
-                span: parser.merge_spans(start, end)
-            })
-        }
-        None => { return None }
-    }
-}
-
-fn parse_unsafe_block(parser) {
-    let block = parse_special_block(parser, AtUnsafe, UnsafeBlock)
-    match block {
-        Some(value) => { return Some(value.value) }
-        None => { return None }
-    }
-}
-
-fn parse_comptime_block(parser) {
-    let block = parse_special_block(parser, AtComptime, ComptimeBlock)
-    match block {
-        Some(value) => { return Some(value.value) }
-        None => { return None }
+    return SpawnStmt {
+        body: body,
+        span: parser.merge_spans(start, end)
     }
 }
 
 fn parse_expr_stmt_or_assignment(parser) {
-    let expr = parser.parse_expression()
-    match expr {
-        Some(value) => {
-            return parse_expr_stmt_or_assignment_with_target(parser, value)
-        }
-        None => { return None }
+    let start = parser.token_span()
+    let expr = parse_expr(parser)
+    if expr == None {
+        return None
     }
-}
 
-fn parse_expr_stmt_or_assignment_with_target(parser, expr) {
-    let start = expr.span
-    if parser.current_kind() == Eq ||
-       parser.current_kind() == PlusEq ||
-       parser.current_kind() == MinusEq ||
-       parser.current_kind() == StarEq ||
-       parser.current_kind() == SlashEq ||
-       parser.current_kind() == PercentEq ||
-       parser.current_kind() == PlusPlus ||
-       parser.current_kind() == MinusMinus {
-        let token_kind = parser.current_kind()
-        if token_kind == PlusPlus || token_kind == MinusMinus {
-            let end = parser.token_span()
-            parser.advance()
-            let mut op = Inc
-            if token_kind == MinusMinus {
-                op = Dec
-            }
-            parser.optional_semicolon()
-            return Some(AssignStmtNode {
-                kind: Assign,
-                span: parser.merge_spans(start, end),
-                value: AssignStmt {
-                    target: expr,
-                    op: op,
-                    value: None,
-                    span: parser.merge_spans(start, end)
-                }
-            })
-        }
-
+    let mut stmt = None
+    if parser.current_kind() == Eq {
         parser.advance()
-        let value = parser.parse_expression()
-        match value {
-            Some(rhs) => {
-                let end = rhs.span
-                let mut op = Assign
-                if token_kind == PlusEq { op = AddAssign }
-                elif token_kind == MinusEq { op = SubAssign }
-                elif token_kind == StarEq { op = MulAssign }
-                elif token_kind == SlashEq { op = DivAssign }
-                elif token_kind == PercentEq { op = ModAssign }
-                parser.optional_semicolon()
-                return Some(AssignStmtNode {
-                    kind: Assign,
-                    span: parser.merge_spans(start, end),
-                    value: AssignStmt {
-                        target: expr,
-                        op: op,
-                        value: Some(rhs),
-                        span: parser.merge_spans(start, end)
-                    }
-                })
-            }
-            None => { return None }
-        }
+        let value = parse_expr(parser)
+        if value == None { return None }
+        let assign = AssignStmt { target: expr, op: Assign, value: Some(value), span: parser.merge_spans(start, value.span) }
+        stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
+    } elif parser.current_kind() == PlusEq {
+        parser.advance()
+        let value = parse_expr(parser)
+        if value == None { return None }
+        let assign = AssignStmt { target: expr, op: AddAssign, value: Some(value), span: parser.merge_spans(start, value.span) }
+        stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
+    } elif parser.current_kind() == MinusEq {
+        parser.advance()
+        let value = parse_expr(parser)
+        if value == None { return None }
+        let assign = AssignStmt { target: expr, op: SubAssign, value: Some(value), span: parser.merge_spans(start, value.span) }
+        stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
+    } elif parser.current_kind() == StarEq {
+        parser.advance()
+        let value = parse_expr(parser)
+        if value == None { return None }
+        let assign = AssignStmt { target: expr, op: MulAssign, value: Some(value), span: parser.merge_spans(start, value.span) }
+        stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
+    } elif parser.current_kind() == SlashEq {
+        parser.advance()
+        let value = parse_expr(parser)
+        if value == None { return None }
+        let assign = AssignStmt { target: expr, op: DivAssign, value: Some(value), span: parser.merge_spans(start, value.span) }
+        stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
+    } elif parser.current_kind() == PercentEq {
+        parser.advance()
+        let value = parse_expr(parser)
+        if value == None { return None }
+        let assign = AssignStmt { target: expr, op: ModAssign, value: Some(value), span: parser.merge_spans(start, value.span) }
+        stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
+    } elif parser.current_kind() == PlusPlus {
+        let end = parser.token_span()
+        parser.advance()
+        let assign = AssignStmt { target: expr, op: Inc, value: None, span: parser.merge_spans(start, end) }
+        stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
+    } elif parser.current_kind() == MinusMinus {
+        let end = parser.token_span()
+        parser.advance()
+        let assign = AssignStmt { target: expr, op: Dec, value: None, span: parser.merge_spans(start, end) }
+        stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
+    } else {
+        stmt = ExprStmtNode { kind: Expr, span: expr.span, value: expr }
     }
 
     parser.optional_semicolon()
-    return Some(ExprStmtNode {
-        kind: Expr,
-        span: expr.span,
-        value: expr
-    })
+    return stmt
 }
 
-class AsmBlockParseResult {
-    let text
-    let span
-
-    @type {
-        text: String
-        span: Span
+fn join_with_space(parts) {
+    let mut text = ""
+    let mut index = 0
+    while index < parts.len() {
+        if index > 0 {
+            text = text + " "
+        }
+        text = text + parts[index]
+        index = index + 1
     }
+    return text
 }

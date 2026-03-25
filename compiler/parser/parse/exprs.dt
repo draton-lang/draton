@@ -1,429 +1,305 @@
 import { Expr, IntLitExpr, FloatLitExpr, StrLitExpr, FStrLitExpr, BoolLitExpr, NoneLitExpr, IdentExpr, ArrayExpr, MapExpr, MapEntry, SetExpr, TupleExpr, BinOpExpr, UnOpExpr, CallExpr, MethodCallExpr, FieldExpr, IndexExpr, LambdaExpr, CastExpr, MatchExpr, OkExpr, ErrExpr, NullishExpr, ChanExpr } from ast.expr.expr
+import { BinOp, UnOp } from ast.expr.ops
 import { LiteralFStrPart, InterpFStrPart } from ast.expr.fstr
 import { MatchArm, ExprMatchArmBody, BlockMatchArmBody } from ast.expr.match
-import { BinOp, UnOp } from ast.expr.ops
+import { ParseError } from parser.error
 import { Lexer } from lexer.lexer
 import { Parser } from parser.parser
+import { parse_block } from parser.parse.stmts
+import { parse_type_expr } from parser.parse.types
 
 fn parse_expr(parser) {
     return parse_nullish(parser)
 }
 
-fn parse_expr_bp(parser, min_bp) {
-    let _ = min_bp
-    return parse_expr(parser)
-}
-
-fn parse_primary(parser) {
-    parser.skip_doc_comments()
-    let token = parser.current_token()
-
-    if token.kind == IntLit {
-        return parse_int_literal(parser, token)
-    }
-    if token.kind == HexLit {
-        return parse_radix_int_literal(parser, token, 16, 2)
-    }
-    if token.kind == BinLit {
-        return parse_radix_int_literal(parser, token, 2, 2)
-    }
-    if token.kind == FloatLit {
-        return parse_float_literal(parser, token)
-    }
-    if token.kind == StrLit {
-        return parse_string_literal(parser, token)
-    }
-    if token.kind == FStrLit {
-        return parse_fstring_literal(parser, token)
-    }
-    if token.kind == BoolLit {
-        return parse_bool_literal(parser, token)
-    }
-    if token.kind == NoneLit {
-        parser.advance()
-        return Some(NoneLitExpr { kind: NoneLit, span: parser.convert_span(token.span) })
-    }
-    if token.kind == Ident {
-        parser.advance()
-        return Some(IdentExpr {
-            kind: Ident,
-            span: parser.convert_span(token.span),
-            name: token.lexeme
-        })
-    }
-    if token.kind == LBracket {
-        return parse_array_literal(parser)
-    }
-    if token.kind == LBrace {
-        return parse_brace_literal(parser)
-    }
-    if token.kind == LParen {
-        return parse_paren_expr_or_tuple(parser)
-    }
-    if token.kind == Lambda {
-        return parse_lambda(parser)
-    }
-    if token.kind == Match {
-        return parse_match_expr(parser)
-    }
-    if token.kind == Chan {
-        return parse_chan_expr(parser)
-    }
-
-    parser.error_unexpected(token, "expression")
-    return None
-}
-
-fn parse_call_or_index(parser, callee) {
-    let mut expr = callee
-    loop {
-        if expr.kind == Ident && starts_with_upper(expr.name) && parser.check(LBracket) && looks_like_type_arg_list(parser) {
-            expr = attach_type_arg_suffix(parser, expr)
-            continue
-        }
-        if expr.kind == Ident && looks_like_class_literal(parser) {
-            let class_lit = parse_class_literal(parser, expr)
-            match class_lit {
-                Some(value) => {
-                    expr = value
-                    continue
-                }
-                None => { return None }
-            }
-        }
-        if parser.match_kind(LParen) {
-            let args = parse_argument_list(parser)
-            match args {
-                Some(arg_values) => {
-                    let end = parser.convert_span(parser.previous_token().span)
-                    let span = parser.merge_spans(expr.span, end)
-                    if expr.kind == Field {
-                        expr = MethodCallExpr {
-                            kind: MethodCall,
-                            span: span,
-                            target: expr.target,
-                            name: expr.name,
-                            args: arg_values
-                        }
-                    } elif expr.kind == Ident && expr.name == "Ok" && arg_values.len() == 1 {
-                        expr = OkExpr { kind: Ok, span: span, value: arg_values[0] }
-                    } elif expr.kind == Ident && expr.name == "Err" && arg_values.len() == 1 {
-                        expr = ErrExpr { kind: Err, span: span, value: arg_values[0] }
-                    } else {
-                        expr = CallExpr {
-                            kind: Call,
-                            span: span,
-                            callee: expr,
-                            args: arg_values
-                        }
-                    }
-                    continue
-                }
-                None => { return None }
-            }
-        }
-        if parser.match_kind(Dot) {
-            let field = parse_field_access(parser, expr)
-            match field {
-                Some(value) => {
-                    expr = value
-                    continue
-                }
-                None => { return None }
-            }
-        }
-        if parser.match_kind(LBracket) {
-            let index = parser.parse_expression()
-            match index {
-                Some(value) => {
-                    let end = parser.token_span()
-                    parser.expect(RBracket, "]")
-                    expr = IndexExpr {
-                        kind: Index,
-                        span: parser.merge_spans(expr.span, end),
-                        target: expr,
-                        index: value
-                    }
-                    continue
-                }
-                None => { return None }
-            }
-        }
-        break
-    }
-    return Some(expr)
-}
-
-fn parse_method_chain(parser, recv) {
-    return parse_call_or_index(parser, recv)
-}
-
-fn parse_field_access(parser, recv) {
-    let token = parser.consume_ident("field or method name")
-    match token {
-        Some(value) => {
-            let end = parser.convert_span(value.span)
-            return Some(FieldExpr {
-                kind: Field,
-                span: parser.merge_spans(recv.span, end),
-                target: recv,
-                name: value.lexeme
-            })
-        }
-        None => { return None }
-    }
-}
-
-fn parse_lambda(parser) {
-    let start = parser.token_span()
-    parser.expect(Lambda, "lambda")
-    let mut params = []
-    while !parser.is_eof() && !parser.check(FatArrow) {
-        let token = parser.consume_ident("lambda parameter")
-        match token {
-            Some(value) => { params.push(value.lexeme) }
-            None => { return None }
-        }
-        if !parser.match_kind(Comma) {
-            break
-        }
-    }
-    parser.expect(FatArrow, "=>")
-    let body = parser.parse_expression()
-    match body {
-        Some(value) => {
-            return Some(LambdaExpr {
-                kind: Lambda,
-                span: parser.merge_spans(start, value.span),
-                params: params,
-                body: value
-            })
-        }
-        None => { return None }
-    }
-}
-
-fn parse_match_expr(parser) {
-    let start = parser.token_span()
-    parser.expect(Match, "match")
-    let subject = parser.parse_expression()
-    match subject {
-        Some(subject_value) => {
-            if !parser.expect(LBrace, "{") {
-                return None
-            }
-            let mut arms = []
-            while !parser.is_eof() && !parser.check(RBrace) {
-                let arm = parse_match_arm(parser)
-                match arm {
-                    Some(value) => {
-                        arms.push(value)
-                        parser.match_kind(Comma)
-                    }
-                    None => { return None }
-                }
-            }
-            let end = parser.token_span()
-            parser.expect(RBrace, "}")
-            return Some(MatchExpr {
-                kind: Match,
-                span: parser.merge_spans(start, end),
-                subject: subject_value,
-                arms: arms
-            })
-        }
-        None => { return None }
-    }
-}
-
-fn parse_match_arm(parser) {
-    let arm_start = parser.token_span()
-    let pattern = parser.parse_expression()
-    match pattern {
-        Some(pattern_value) => {
-            parser.expect(FatArrow, "=>")
-            if parser.check(LBrace) {
-                let block = parser.parse_block()
-                match block {
-                    Some(value) => {
-                        return Some(MatchArm {
-                            pattern: pattern_value,
-                            body: BlockMatchArmBody { kind: Block, block: value },
-                            span: parser.merge_spans(arm_start, value.span)
-                        })
-                    }
-                    None => { return None }
-                }
-            }
-            let expr = parser.parse_expression()
-            match expr {
-                Some(value) => {
-                    return Some(MatchArm {
-                        pattern: pattern_value,
-                        body: ExprMatchArmBody { kind: Expr, expr: value },
-                        span: parser.merge_spans(arm_start, value.span)
-                    })
-                }
-                None => { return None }
-            }
-        }
-        None => { return None }
-    }
-}
-
-fn parse_fstring(parser, raw) {
-    let mut parts = []
-    let mut buffer = ""
-    let mut index = 0
-    while index < raw.len() {
-        let ch = raw.slice(index, index + 1)
-        if ch == "{" {
-            if buffer != "" {
-                parts.push(LiteralFStrPart { kind: Literal, value: buffer })
-                buffer = ""
-            }
-            index = index + 1
-            let start = index
-            let mut depth = 1
-            while index < raw.len() && depth > 0 {
-                let inner = raw.slice(index, index + 1)
-                if inner == "{" {
-                    depth = depth + 1
-                } elif inner == "}" {
-                    depth = depth - 1
-                }
-                index = index + 1
-            }
-            let expr_src = raw.slice(start, index - 1)
-            let lexer = Lexer { source: expr_src, position: 0, line: 1, col: 1 }
-            let lexed = lexer.tokenize()
-            let nested = Parser { tokens: lexed.tokens, pos: 0, errors: [], warnings: [] }
-            let parsed = nested.parse_expression_only()
-            let mut j = 0
-            while j < parsed.errors.len() {
-                parser.errors.push(parsed.errors[j])
-                j = j + 1
-            }
-            let mut k = 0
-            while k < parsed.warnings.len() {
-                parser.warnings.push(parsed.warnings[k])
-                k = k + 1
-            }
-            match parsed.expr {
-                Some(value) => {
-                    parts.push(InterpFStrPart { kind: Interp, expr: value })
-                }
-                None => { }
-            }
-            continue
-        }
-        buffer = buffer + ch
-        index = index + 1
-    }
-    if buffer != "" {
-        parts.push(LiteralFStrPart { kind: Literal, value: buffer })
-    }
-    return parts
-}
-
 fn parse_nullish(parser) {
-    let expr = parse_or(parser)
-    match expr {
-        Some(mut_value) => {
-            let mut current = mut_value
-            while parser.match_kind(QuestionQuestion) {
-                let rhs = parse_or(parser)
-                match rhs {
-                    Some(value) => {
-                        current = NullishExpr {
-                            kind: Nullish,
-                            span: parser.merge_spans(current.span, value.span),
-                            left: current,
-                            right: value
-                        }
-                    }
-                    None => { return None }
-                }
-            }
-            return Some(current)
-        }
-        None => { return None }
+    let mut expr = parse_or(parser)
+    if expr == None {
+        return None
     }
-}
-
-fn infix_bp(op) {
-    let _ = op
-    return (0, 0)
-}
-
-fn prefix_bp(op) {
-    let _ = op
-    return 0
+    while parser.match_kind(QuestionQuestion) {
+        let rhs = parse_or(parser)
+        if rhs == None {
+            return None
+        }
+        expr = NullishExpr {
+            kind: Nullish,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_or(parser) {
-    return parse_left_assoc(parser, parse_and, [PipePipe], [Or])
+    let mut expr = parse_and(parser)
+    if expr == None {
+        return None
+    }
+    while parser.current_kind() == PipePipe {
+        parser.advance()
+        let rhs = parse_and(parser)
+        if rhs == None {
+            return None
+        }
+        expr = BinOpExpr {
+            kind: BinOp,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            op: Or,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_and(parser) {
-    return parse_left_assoc(parser, parse_equality, [AmpAmp], [And])
+    let mut expr = parse_equality(parser)
+    if expr == None {
+        return None
+    }
+    while parser.current_kind() == AmpAmp {
+        parser.advance()
+        let rhs = parse_equality(parser)
+        if rhs == None {
+            return None
+        }
+        expr = BinOpExpr {
+            kind: BinOp,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            op: And,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_equality(parser) {
-    return parse_left_assoc(parser, parse_comparison, [EqEq, BangEq], [Eq, Ne])
+    let mut expr = parse_comparison(parser)
+    if expr == None {
+        return None
+    }
+    while parser.current_kind() == EqEq || parser.current_kind() == BangEq {
+        let mut op = Eq
+        if parser.current_kind() == BangEq {
+            op = Ne
+        }
+        parser.advance()
+        let rhs = parse_comparison(parser)
+        if rhs == None {
+            return None
+        }
+        expr = BinOpExpr {
+            kind: BinOp,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            op: op,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_comparison(parser) {
-    return parse_left_assoc(parser, parse_range, [Lt, LtEq, Gt, GtEq], [Lt, Le, Gt, Ge])
+    let mut expr = parse_range(parser)
+    if expr == None {
+        return None
+    }
+    while parser.current_kind() == Lt || parser.current_kind() == LtEq || parser.current_kind() == Gt || parser.current_kind() == GtEq {
+        let mut op = Lt
+        if parser.current_kind() == LtEq {
+            op = Le
+        } elif parser.current_kind() == Gt {
+            op = Gt
+        } elif parser.current_kind() == GtEq {
+            op = Ge
+        }
+        parser.advance()
+        let rhs = parse_range(parser)
+        if rhs == None {
+            return None
+        }
+        expr = BinOpExpr {
+            kind: BinOp,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            op: op,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_range(parser) {
-    return parse_left_assoc(parser, parse_bit_or_xor, [DotDot], [Range])
+    let mut expr = parse_bit_or_xor(parser)
+    if expr == None {
+        return None
+    }
+    while parser.current_kind() == DotDot {
+        parser.advance()
+        let rhs = parse_bit_or_xor(parser)
+        if rhs == None {
+            return None
+        }
+        expr = BinOpExpr {
+            kind: BinOp,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            op: Range,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_bit_or_xor(parser) {
-    return parse_left_assoc(parser, parse_bit_and, [Pipe, Caret], [BitOr, BitXor])
+    let mut expr = parse_bit_and(parser)
+    if expr == None {
+        return None
+    }
+    while parser.current_kind() == Pipe || parser.current_kind() == Caret {
+        let mut op = BitOr
+        if parser.current_kind() == Caret {
+            op = BitXor
+        }
+        parser.advance()
+        let rhs = parse_bit_and(parser)
+        if rhs == None {
+            return None
+        }
+        expr = BinOpExpr {
+            kind: BinOp,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            op: op,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_bit_and(parser) {
-    return parse_left_assoc(parser, parse_shift, [Amp], [BitAnd])
+    let mut expr = parse_shift(parser)
+    if expr == None {
+        return None
+    }
+    while parser.current_kind() == Amp {
+        parser.advance()
+        let rhs = parse_shift(parser)
+        if rhs == None {
+            return None
+        }
+        expr = BinOpExpr {
+            kind: BinOp,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            op: BitAnd,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_shift(parser) {
-    return parse_left_assoc(parser, parse_additive, [LtLt, GtGt], [Shl, Shr])
+    let mut expr = parse_additive(parser)
+    if expr == None {
+        return None
+    }
+    while parser.current_kind() == LtLt || parser.current_kind() == GtGt {
+        let mut op = Shl
+        if parser.current_kind() == GtGt {
+            op = Shr
+        }
+        parser.advance()
+        let rhs = parse_additive(parser)
+        if rhs == None {
+            return None
+        }
+        expr = BinOpExpr {
+            kind: BinOp,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            op: op,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_additive(parser) {
-    return parse_left_assoc(parser, parse_multiplicative, [Plus, Minus], [Add, Sub])
+    let mut expr = parse_multiplicative(parser)
+    if expr == None {
+        return None
+    }
+    while parser.current_kind() == Plus || parser.current_kind() == Minus {
+        let mut op = Add
+        if parser.current_kind() == Minus {
+            op = Sub
+        }
+        parser.advance()
+        let rhs = parse_multiplicative(parser)
+        if rhs == None {
+            return None
+        }
+        expr = BinOpExpr {
+            kind: BinOp,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            op: op,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_multiplicative(parser) {
-    return parse_left_assoc(parser, parse_cast, [Star, Slash, Percent], [Mul, Div, Mod])
+    let mut expr = parse_cast(parser)
+    if expr == None {
+        return None
+    }
+    while parser.current_kind() == Star || parser.current_kind() == Slash || parser.current_kind() == Percent {
+        let mut op = Mul
+        if parser.current_kind() == Slash {
+            op = Div
+        } elif parser.current_kind() == Percent {
+            op = Mod
+        }
+        parser.advance()
+        let rhs = parse_cast(parser)
+        if rhs == None {
+            return None
+        }
+        expr = BinOpExpr {
+            kind: BinOp,
+            span: parser.merge_spans(expr.span, rhs.span),
+            left: expr,
+            op: op,
+            right: rhs
+        }
+    }
+    return expr
 }
 
 fn parse_cast(parser) {
-    let expr = parse_unary(parser)
-    match expr {
-        Some(mut_value) => {
-            let mut current = mut_value
-            while parser.match_kind(As) {
-                let ty = parser.parse_type_expr()
-                match ty {
-                    Some(value) => {
-                        current = CastExpr {
-                            kind: Cast,
-                            span: parser.merge_spans(current.span, value.span),
-                            expr: current,
-                            ty: value
-                        }
-                    }
-                    None => { return None }
-                }
-            }
-            return Some(current)
-        }
-        None => { return None }
+    let mut expr = parse_unary(parser)
+    if expr == None {
+        return None
     }
+    while parser.match_kind(As) {
+        let ty = parse_type_expr(parser)
+        if ty == None {
+            return None
+        }
+        expr = CastExpr {
+            kind: Cast,
+            span: parser.merge_spans(expr.span, ty.span),
+            expr: expr,
+            ty: ty
+        }
+    }
+    return expr
 }
 
 fn parse_unary(parser) {
@@ -431,32 +307,116 @@ fn parse_unary(parser) {
     if token.kind == Minus || token.kind == Bang || token.kind == Tilde || token.kind == Amp || token.kind == Star {
         parser.advance()
         let expr = parse_unary(parser)
-        match expr {
-            Some(value) => {
-                let mut op = Neg
-                if token.kind == Bang { op = Not }
-                elif token.kind == Tilde { op = BitNot }
-                elif token.kind == Amp { op = Ref }
-                elif token.kind == Star { op = Deref }
-                return Some(UnOpExpr {
-                    kind: UnOp,
-                    span: parser.merge_spans(parser.convert_span(token.span), value.span),
-                    op: op,
-                    expr: value
-                })
-            }
-            None => { return None }
+        if expr == None {
+            return None
+        }
+        let mut op = Neg
+        if token.kind == Bang {
+            op = Not
+        } elif token.kind == Tilde {
+            op = BitNot
+        } elif token.kind == Amp {
+            op = Ref
+        } elif token.kind == Star {
+            op = Deref
+        }
+        return UnOpExpr {
+            kind: UnOp,
+            span: parser.merge_spans(parser.convert_span(token.span), expr.span),
+            op: op,
+            expr: expr
         }
     }
     return parse_postfix(parser)
 }
 
 fn parse_postfix(parser) {
-    let primary = parse_primary(parser)
-    match primary {
-        Some(value) => { return parse_call_or_index(parser, value) }
-        None => { return None }
+    let mut expr = parse_primary(parser)
+    if expr == None {
+        return None
     }
+
+    while true {
+        if expr.kind == Ident && is_uppercase_ident(expr.name) && parser.check(LBracket) && looks_like_type_arg_list(parser) {
+            expr = attach_type_arg_suffix(parser, expr)
+            if expr == None {
+                return None
+            }
+            continue
+        }
+
+        if expr.kind == Ident && looks_like_class_literal(parser) {
+            expr = parse_class_literal(parser, expr)
+            if expr == None {
+                return None
+            }
+            continue
+        }
+
+        if parser.match_kind(LParen) {
+            let args = parse_argument_list(parser)
+            if args == None {
+                return None
+            }
+            let mut end = expr.span
+            let prev = parser.previous_token()
+            if prev != None {
+                end = parser.convert_span(prev.span)
+            }
+            let span = parser.merge_spans(expr.span, end)
+
+            if expr.kind == Field {
+                expr = MethodCallExpr {
+                    kind: MethodCall,
+                    span: span,
+                    target: expr.target,
+                    name: expr.name,
+                    args: args
+                }
+            } elif expr.kind == Ident && expr.name == "Ok" && args.len() == 1 {
+                expr = OkExpr { kind: Ok, span: span, value: args[0] }
+            } elif expr.kind == Ident && expr.name == "Err" && args.len() == 1 {
+                expr = ErrExpr { kind: Err, span: span, value: args[0] }
+            } else {
+                expr = CallExpr { kind: Call, span: span, callee: expr, args: args }
+            }
+            continue
+        }
+
+        if parser.match_kind(Dot) {
+            let name_token = parser.consume_ident("field or method name")
+            if name_token == None {
+                return None
+            }
+            expr = FieldExpr {
+                kind: Field,
+                span: parser.merge_spans(expr.span, name_token.span),
+                target: expr,
+                name: name_token.lexeme
+            }
+            continue
+        }
+
+        if parser.match_kind(LBracket) {
+            let index = parse_expr(parser)
+            if index == None {
+                return None
+            }
+            let end = parser.token_span()
+            parser.expect(RBracket, "]")
+            expr = IndexExpr {
+                kind: Index,
+                span: parser.merge_spans(expr.span, end),
+                target: expr,
+                index: index
+            }
+            continue
+        }
+
+        break
+    }
+
+    return expr
 }
 
 fn looks_like_class_literal(parser) {
@@ -470,10 +430,10 @@ fn looks_like_class_literal(parser) {
     if next.kind == RBrace {
         return true
     }
-    if parser.pos + 2 >= parser.tokens.len() {
-        return false
+    if next.kind == Ident && parser.pos + 2 < parser.tokens.len() {
+        return parser.tokens[parser.pos + 2].kind == Colon
     }
-    return next.kind == Ident && parser.tokens[parser.pos + 2].kind == Colon
+    return false
 }
 
 fn looks_like_type_arg_list(parser) {
@@ -533,90 +493,133 @@ fn parse_class_literal(parser, ident) {
     parser.expect(LBrace, "{")
     let mut entries = []
     while !parser.is_eof() && !parser.check(RBrace) {
-        let token = parser.consume_ident("field name")
-        let mut name = ""
-        match token {
-            Some(value) => { name = value.lexeme }
-            None => { return None }
+        let name_token = parser.consume_ident("field name")
+        if name_token == None {
+            return None
         }
         parser.expect(Colon, ":")
-        let value = parser.parse_expression()
-        match value {
-            Some(expr) => {
-                entries.push(MapEntry {
-                    key: StrLitExpr { kind: StrLit, span: parser.convert_span(token.span), value: name },
-                    value: expr
-                })
-            }
-            None => { return None }
+        let value = parse_expr(parser)
+        if value == None {
+            return None
         }
+        let key = StrLitExpr {
+            kind: StrLit,
+            span: name_token.span,
+            value: name_token.lexeme
+        }
+        entries.push(MapEntry { key: key, value: value })
         if !parser.match_kind(Comma) {
             break
         }
     }
     let end = parser.token_span()
     parser.expect(RBrace, "}")
-    let map = MapExpr { kind: Map, span: parser.merge_spans(start, end), entries: entries }
-    return Some(CallExpr {
+    let map = MapExpr {
+        kind: Map,
+        span: parser.merge_spans(start, end),
+        entries: entries
+    }
+    return CallExpr {
         kind: Call,
         span: parser.merge_spans(start, end),
         callee: ident,
         args: [map]
-    })
+    }
 }
 
 fn parse_argument_list(parser) {
     let mut args = []
     while !parser.is_eof() && !parser.check(RParen) {
-        let expr = parser.parse_expression()
-        match expr {
-            Some(value) => { args.push(value) }
-            None => { return None }
+        let arg = parse_expr(parser)
+        if arg == None {
+            return None
         }
+        args.push(arg)
         if !parser.match_kind(Comma) {
             break
         }
     }
     parser.expect(RParen, ")")
-    return Some(args)
+    return args
+}
+
+fn parse_primary(parser) {
+    parser.skip_doc_comments()
+    let token = parser.current_token()
+
+    if token.kind == IntLit {
+        return parse_int_literal(parser, token)
+    } elif token.kind == HexLit {
+        return parse_radix_int_literal(parser, token, 16, 2)
+    } elif token.kind == BinLit {
+        return parse_radix_int_literal(parser, token, 2, 2)
+    } elif token.kind == FloatLit {
+        return parse_float_literal(parser, token)
+    } elif token.kind == StrLit {
+        return parse_string_literal(parser, token)
+    } elif token.kind == FStrLit {
+        return parse_fstring_literal(parser, token)
+    } elif token.kind == BoolLit {
+        return parse_bool_literal(parser, token)
+    } elif token.kind == NoneLit {
+        parser.advance()
+        return NoneLitExpr { kind: NoneLit, span: parser.convert_span(token.span) }
+    } elif token.kind == Ident {
+        parser.advance()
+        return IdentExpr { kind: Ident, span: parser.convert_span(token.span), name: token.lexeme }
+    } elif token.kind == LBracket {
+        return parse_array_literal(parser)
+    } elif token.kind == LBrace {
+        return parse_brace_literal(parser)
+    } elif token.kind == LParen {
+        return parse_paren_expr_or_tuple(parser)
+    } elif token.kind == Lambda {
+        return parse_lambda_expr(parser)
+    } elif token.kind == Match {
+        return parse_match_expr(parser)
+    } elif token.kind == Chan {
+        return parse_chan_expr(parser)
+    }
+
+    parser.error_unexpected(token, "expression")
+    return None
 }
 
 fn parse_int_literal(parser, token) {
     parser.advance()
-    return Some(IntLitExpr {
-        kind: IntLit,
-        span: parser.convert_span(token.span),
-        value: parse_decimal_int(token.lexeme)
-    })
+    let value = parse_int_base(token.lexeme, 10, 0)
+    if value == None {
+        push_invalid_expr(parser, token.span.line, token.span.col)
+        return None
+    }
+    return IntLitExpr { kind: IntLit, span: parser.convert_span(token.span), value: value }
 }
 
 fn parse_radix_int_literal(parser, token, radix, prefix_len) {
     parser.advance()
-    return Some(IntLitExpr {
-        kind: IntLit,
-        span: parser.convert_span(token.span),
-        value: parse_radix_int(token.lexeme.slice(prefix_len, token.lexeme.len()), radix)
-    })
+    let value = parse_int_base(token.lexeme, radix, prefix_len)
+    if value == None {
+        push_invalid_expr(parser, token.span.line, token.span.col)
+        return None
+    }
+    return IntLitExpr { kind: IntLit, span: parser.convert_span(token.span), value: value }
 }
 
 fn parse_float_literal(parser, token) {
     parser.advance()
-    return Some(FloatLitExpr {
-        kind: FloatLit,
-        span: parser.convert_span(token.span),
-        value: parse_decimal_float(token.lexeme)
-    })
+    let value = parse_decimal_float(token.lexeme)
+    if value == None {
+        push_invalid_expr(parser, token.span.line, token.span.col)
+        return None
+    }
+    return FloatLitExpr { kind: FloatLit, span: parser.convert_span(token.span), value: value }
 }
 
 fn parse_string_literal(parser, token) {
     parser.advance()
     let raw = token.lexeme
     let text = raw.slice(1, raw.len() - 1)
-    return Some(StrLitExpr {
-        kind: StrLit,
-        span: parser.convert_span(token.span),
-        value: text
-    })
+    return StrLitExpr { kind: StrLit, span: parser.convert_span(token.span), value: text }
 }
 
 fn parse_fstring_literal(parser, token) {
@@ -624,21 +627,73 @@ fn parse_fstring_literal(parser, token) {
     let span = parser.convert_span(token.span)
     let raw = token.lexeme
     let inner = raw.slice(2, raw.len() - 1)
-    let parts = parse_fstring(parser, inner)
-    return Some(FStrLitExpr {
-        kind: FStrLit,
-        span: span,
-        parts: parts
-    })
+    let mut parts = []
+    let mut buffer = ""
+    let mut index = 0
+
+    while index < inner.len() {
+        let ch = string_char_at(inner, index)
+        if ch == "{" {
+            if buffer != "" {
+                parts.push(LiteralFStrPart { kind: Literal, value: buffer })
+                buffer = ""
+            }
+
+            index = index + 1
+            let mut depth = 1
+            let start = index
+            while index < inner.len() && depth > 0 {
+                let current = string_char_at(inner, index)
+                if current == "{" {
+                    depth = depth + 1
+                } elif current == "}" {
+                    depth = depth - 1
+                }
+                index = index + 1
+            }
+
+            if depth != 0 {
+                push_invalid_expr(parser, span.line, span.col)
+                return FStrLitExpr { kind: FStrLit, span: span, parts: parts }
+            }
+
+            let expr_src = inner.slice(start, index - 1)
+            let inner_lexer = Lexer { source: expr_src, position: 0, line: 1, col: 1 }
+            let lexed = inner_lexer.tokenize()
+            let inner_parser = Parser { tokens: lexed.tokens, pos: 0, errors: [], warnings: [] }
+            let expr = parse_expr(inner_parser)
+            inner_parser.skip_doc_comments()
+            if !inner_parser.is_eof() {
+                let extra = inner_parser.current_token()
+                inner_parser.error_unexpected(extra, "end of expression")
+            }
+            for err in inner_parser.errors {
+                parser.errors.push(err)
+            }
+            if expr != None {
+                parts.push(InterpFStrPart { kind: Interp, expr: expr })
+            }
+            continue
+        }
+
+        buffer = buffer + ch
+        index = index + 1
+    }
+
+    if buffer != "" {
+        parts.push(LiteralFStrPart { kind: Literal, value: buffer })
+    }
+
+    return FStrLitExpr { kind: FStrLit, span: span, parts: parts }
 }
 
 fn parse_bool_literal(parser, token) {
     parser.advance()
-    return Some(BoolLitExpr {
+    return BoolLitExpr {
         kind: BoolLit,
         span: parser.convert_span(token.span),
         value: token.lexeme == "true"
-    })
+    }
 }
 
 fn parse_array_literal(parser) {
@@ -646,89 +701,84 @@ fn parse_array_literal(parser) {
     parser.expect(LBracket, "[")
     let mut items = []
     while !parser.is_eof() && !parser.check(RBracket) {
-        let expr = parser.parse_expression()
-        match expr {
-            Some(value) => { items.push(value) }
-            None => { return None }
+        let item = parse_expr(parser)
+        if item == None {
+            return None
         }
+        items.push(item)
         if !parser.match_kind(Comma) {
             break
         }
     }
     let end = parser.token_span()
     parser.expect(RBracket, "]")
-    return Some(ArrayExpr {
+    return ArrayExpr {
         kind: Array,
         span: parser.merge_spans(start, end),
         items: items
-    })
+    }
 }
 
 fn parse_brace_literal(parser) {
     let start = parser.token_span()
     parser.expect(LBrace, "{")
     if parser.match_kind(RBrace) {
-        return Some(MapExpr { kind: Map, span: start, entries: [] })
+        return MapExpr { kind: Map, span: start, entries: [] }
     }
 
-    let first = parser.parse_expression()
-    match first {
-        Some(first_value) => {
-            if parser.match_kind(Colon) {
-                let mut entries = []
-                let value = parser.parse_expression()
-                match value {
-                    Some(expr) => { entries.push(MapEntry { key: first_value, value: expr }) }
-                    None => { return None }
-                }
-                while parser.match_kind(Comma) {
-                    if parser.check(RBrace) {
-                        break
-                    }
-                    let key = parser.parse_expression()
-                    match key {
-                        Some(key_expr) => {
-                            parser.expect(Colon, ":")
-                            let value = parser.parse_expression()
-                            match value {
-                                Some(value_expr) => {
-                                    entries.push(MapEntry { key: key_expr, value: value_expr })
-                                }
-                                None => { return None }
-                            }
-                        }
-                        None => { return None }
-                    }
-                }
-                let end = parser.token_span()
-                parser.expect(RBrace, "}")
-                return Some(MapExpr {
-                    kind: Map,
-                    span: parser.merge_spans(start, end),
-                    entries: entries
-                })
-            }
+    let first = parse_expr(parser)
+    if first == None {
+        return None
+    }
 
-            let mut items = [first_value]
-            while parser.match_kind(Comma) {
-                if parser.check(RBrace) {
-                    break
-                }
-                let expr = parser.parse_expression()
-                match expr {
-                    Some(value) => { items.push(value) }
-                    None => { return None }
-                }
-            }
-            let end = parser.token_span()
-            parser.expect(RBrace, "}")
-            return Some(SetExpr {
-                kind: Set,
-                span: parser.merge_spans(start, end),
-                items: items
-            })
+    if parser.match_kind(Colon) {
+        let mut entries = []
+        let value = parse_expr(parser)
+        if value == None {
+            return None
         }
-        None => { return None }
+        entries.push(MapEntry { key: first, value: value })
+        while parser.match_kind(Comma) {
+            if parser.check(RBrace) {
+                break
+            }
+            let key = parse_expr(parser)
+            if key == None {
+                return None
+            }
+            parser.expect(Colon, ":")
+            let value = parse_expr(parser)
+            if value == None {
+                return None
+            }
+            entries.push(MapEntry { key: key, value: value })
+        }
+        let end = parser.token_span()
+        parser.expect(RBrace, "}")
+        return MapExpr {
+            kind: Map,
+            span: parser.merge_spans(start, end),
+            entries: entries
+        }
+    }
+
+    let mut items = [first]
+    while parser.match_kind(Comma) {
+        if parser.check(RBrace) {
+            break
+        }
+        let item = parse_expr(parser)
+        if item == None {
+            return None
+        }
+        items.push(item)
+    }
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return SetExpr {
+        kind: Set,
+        span: parser.merge_spans(start, end),
+        items: items
     }
 }
 
@@ -736,35 +786,115 @@ fn parse_paren_expr_or_tuple(parser) {
     let start = parser.token_span()
     parser.expect(LParen, "(")
     if parser.match_kind(RParen) {
-        return Some(TupleExpr { kind: Tuple, span: start, items: [] })
+        return TupleExpr { kind: Tuple, span: start, items: [] }
     }
-    let first = parser.parse_expression()
-    match first {
-        Some(first_value) => {
-            if parser.match_kind(Comma) {
-                let mut items = [first_value]
-                while !parser.is_eof() && !parser.check(RParen) {
-                    let expr = parser.parse_expression()
-                    match expr {
-                        Some(value) => { items.push(value) }
-                        None => { return None }
-                    }
-                    if !parser.match_kind(Comma) {
-                        break
-                    }
-                }
-                let end = parser.token_span()
-                parser.expect(RParen, ")")
-                return Some(TupleExpr {
-                    kind: Tuple,
-                    span: parser.merge_spans(start, end),
-                    items: items
-                })
+    let first = parse_expr(parser)
+    if first == None {
+        return None
+    }
+    if parser.match_kind(Comma) {
+        let mut items = [first]
+        while !parser.is_eof() && !parser.check(RParen) {
+            let item = parse_expr(parser)
+            if item == None {
+                return None
             }
-            parser.expect(RParen, ")")
-            return Some(first_value)
+            items.push(item)
+            if !parser.match_kind(Comma) {
+                break
+            }
         }
-        None => { return None }
+        let end = parser.token_span()
+        parser.expect(RParen, ")")
+        return TupleExpr {
+            kind: Tuple,
+            span: parser.merge_spans(start, end),
+            items: items
+        }
+    }
+    parser.expect(RParen, ")")
+    return first
+}
+
+fn parse_lambda_expr(parser) {
+    let start = parser.token_span()
+    parser.expect(Lambda, "lambda")
+    let mut params = []
+    while !parser.is_eof() && !parser.check(FatArrow) {
+        let name_token = parser.consume_ident("lambda parameter")
+        if name_token == None {
+            return None
+        }
+        params.push(name_token.lexeme)
+        if !parser.match_kind(Comma) {
+            break
+        }
+    }
+    parser.expect(FatArrow, "=>")
+    let body = parse_expr(parser)
+    if body == None {
+        return None
+    }
+    return LambdaExpr {
+        kind: Lambda,
+        span: parser.merge_spans(start, body.span),
+        params: params,
+        body: body
+    }
+}
+
+fn parse_match_expr(parser) {
+    let start = parser.token_span()
+    parser.expect(Match, "match")
+    let subject = parse_expr(parser)
+    if subject == None {
+        return None
+    }
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+
+    let mut arms = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        let arm_start = parser.token_span()
+        let pattern = parse_expr(parser)
+        if pattern == None {
+            return None
+        }
+        parser.expect(FatArrow, "=>")
+
+        let mut body = None
+        let mut end = arm_start
+        if parser.check(LBrace) {
+            let block = parse_block(parser)
+            if block == None {
+                return None
+            }
+            body = BlockMatchArmBody { kind: Block, block: block }
+            end = block.span
+        } else {
+            let expr = parse_expr(parser)
+            if expr == None {
+                return None
+            }
+            body = ExprMatchArmBody { kind: Expr, expr: expr }
+            end = expr.span
+        }
+        arms.push(MatchArm {
+            pattern: pattern,
+            body: body,
+            span: parser.merge_spans(arm_start, end)
+        })
+        parser.match_kind(Comma)
+    }
+
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return MatchExpr {
+        kind: Match,
+        span: parser.merge_spans(start, end),
+        subject: subject,
+        arms: arms
     }
 }
 
@@ -772,111 +902,73 @@ fn parse_chan_expr(parser) {
     let start = parser.token_span()
     parser.expect(Chan, "chan")
     parser.expect(LBracket, "[")
-    let ty = parser.parse_type_expr()
-    match ty {
-        Some(value) => {
-            let end = parser.token_span()
-            parser.expect(RBracket, "]")
-            return Some(ChanExpr {
-                kind: Chan,
-                span: parser.merge_spans(start, end),
-                ty: value
-            })
-        }
-        None => { return None }
+    let ty = parse_type_expr(parser)
+    if ty == None {
+        return None
+    }
+    let end = parser.token_span()
+    parser.expect(RBracket, "]")
+    return ChanExpr {
+        kind: Chan,
+        span: parser.merge_spans(start, end),
+        ty: ty
     }
 }
 
-fn parse_left_assoc(parser, next_fn, token_kinds, ops) {
-    let expr = next_fn(parser)
-    match expr {
-        Some(mut_value) => {
-            let mut current = mut_value
-            loop {
-                let mut index = -1
-                let mut i = 0
-                while i < token_kinds.len() {
-                    if parser.current_kind() == token_kinds[i] {
-                        index = i
-                        break
-                    }
-                    i = i + 1
-                }
-                if index < 0 {
-                    break
-                }
-                parser.advance()
-                let rhs = next_fn(parser)
-                match rhs {
-                    Some(value) => {
-                        current = BinOpExpr {
-                            kind: BinOp,
-                            span: parser.merge_spans(current.span, value.span),
-                            left: current,
-                            op: ops[index],
-                            right: value
-                        }
-                    }
-                    None => { return None }
-                }
-            }
-            return Some(current)
-        }
-        None => { return None }
-    }
+fn push_invalid_expr(parser, line, col) {
+    parser.errors.push(ParseError {
+        kind: InvalidExpr,
+        found: None,
+        expected: None,
+        line: line,
+        col: col
+    })
 }
 
-fn starts_with_upper(text) {
-    if text.len() == 0 {
-        return false
-    }
-    let ch = text.slice(0, 1)
-    return ch >= "A" && ch <= "Z"
-}
-
-fn parse_decimal_int(text) {
+fn parse_int_base(text, radix, prefix_len) {
     let mut value = 0
-    let mut index = 0
+    let mut index = prefix_len
     while index < text.len() {
-        let ch = text.slice(index, index + 1)
-        if ch >= "0" && ch <= "9" {
-            value = value * 10 + digit_value(ch)
+        let digit = digit_value(string_char_at(text, index))
+        if digit < 0 || digit >= radix {
+            return None
         }
-        index = index + 1
-    }
-    return value
-}
-
-fn parse_radix_int(text, radix) {
-    let mut value = 0
-    let mut index = 0
-    while index < text.len() {
-        value = value * radix + digit_value(text.slice(index, index + 1))
+        value = value * radix + digit
         index = index + 1
     }
     return value
 }
 
 fn parse_decimal_float(text) {
-    let mut value = 0.0
-    let mut fraction = 0.1
-    let mut seen_dot = false
+    let mut whole = 0
+    let mut frac = 0.0
+    let mut divisor = 10.0
     let mut index = 0
+    let mut seen_dot = false
+
     while index < text.len() {
-        let ch = text.slice(index, index + 1)
+        let ch = string_char_at(text, index)
         if ch == "." {
+            if seen_dot {
+                return None
+            }
             seen_dot = true
-        } elif ch >= "0" && ch <= "9" {
-            if !seen_dot {
-                value = value * 10.0 + digit_value(ch)
+        } else {
+            let digit = digit_value(ch)
+            if digit < 0 || digit > 9 {
+                return None
+            }
+            if seen_dot {
+                frac = frac + digit / divisor
+                divisor = divisor * 10.0
             } else {
-                value = value + digit_value(ch) * fraction
-                fraction = fraction / 10.0
+                whole = whole * 10 + digit
             }
         }
         index = index + 1
     }
-    return value
+
+    return whole + frac
 }
 
 fn digit_value(ch) {
@@ -896,5 +988,20 @@ fn digit_value(ch) {
     if ch == "d" || ch == "D" { return 13 }
     if ch == "e" || ch == "E" { return 14 }
     if ch == "f" || ch == "F" { return 15 }
-    return 0
+    return -1
+}
+
+fn is_uppercase_ident(name) {
+    if name == "" {
+        return false
+    }
+    let ch = string_char_at(name, 0)
+    return ch == "A" || ch == "B" || ch == "C" || ch == "D" || ch == "E" || ch == "F" || ch == "G" || ch == "H" || ch == "I" || ch == "J" || ch == "K" || ch == "L" || ch == "M" || ch == "N" || ch == "O" || ch == "P" || ch == "Q" || ch == "R" || ch == "S" || ch == "T" || ch == "U" || ch == "V" || ch == "W" || ch == "X" || ch == "Y" || ch == "Z"
+}
+
+fn string_char_at(text, index) {
+    if index < 0 || index >= text.len() {
+        return ""
+    }
+    return text.slice(index, index + 1)
 }
