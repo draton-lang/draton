@@ -1,6 +1,8 @@
 import { TypedProgram } from typeck.typed.program
 import { TypeError } from typeck.types.error
 import { TypeChecker } from typeck.infer.checker
+import { extract_hints } from typeck.infer.hints
+import { check_program } from typeck.infer.items
 
 enum DeprecatedSyntaxMode {
     Warn,
@@ -20,7 +22,13 @@ class TypeCheckResult {
 }
 
 fn type_check(program, mode) {
-    let checker = TypeChecker.new()
+    let mut checker = TypeChecker.new()
     checker.deprecated_syntax_mode = mode
-    return checker.check(program)
+    extract_hints(checker, program.items)
+    let typed_program = check_program(checker, program)
+    return TypeCheckResult {
+        typed_program: typed_program,
+        errors: checker.errors,
+        warnings: checker.warnings
+    }
 }

@@ -1,18 +1,13 @@
-import { TypeError } from typeck.types.error
+class ExhaustivenessChecker {
+    fn check_match(checker, subject_ty, arms) {
+        return None
+    }
+}
 
 fn classify_subject(ty) {
-    return ty.kind
+    return ty.kind.to_string()
 }
 
 fn extract_pattern(arm) {
-    return arm.pattern.kind
-}
-
-class ExhaustivenessChecker {
-    fn check_match(checker, subject_ty, arms) {
-        let _ = checker
-        let _ = subject_ty
-        let _ = arms
-        return None
-    }
+    return arm.pattern.kind.to_string()
 }

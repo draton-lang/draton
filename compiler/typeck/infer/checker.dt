@@ -1,42 +1,38 @@
-import { Program } from ast.item.item
+import { Item } from ast.item.item
 import { TypeExpr, NamedTypeExpr, GenericTypeExpr, FnTypeExpr, PointerTypeExpr, InferTypeExpr } from ast.types
+import { FnDef } from ast.item.fn
+import { TypeBlock } from ast.item.type_block
+import { Type, VarType, ArrayType, MapType, SetType, TupleType, OptionType, ResultType, ChanType, FnType, NamedType, PointerType } from typeck.types.ty
 import { Scheme } from typeck.types.scheme
 import { TypeEnv } from typeck.types.env
 import { Substitution } from typeck.types.subst
 import { TypeError } from typeck.types.error
-import { unify } from typeck.types.unify
-import { Type, ArrayType, MapType, SetType, TupleType, OptionType, ResultType, ChanType, FnType, NamedType, RowType, PointerType, VarType } from typeck.types.ty
-import { TypedProgram } from typeck.typed.program
-import { TypeCheckResult, DeprecatedSyntaxMode } from typeck.infer.result
-import { extract_hints } from typeck.infer.hints
-import { check_program } from typeck.infer.items
+import { DeprecatedSyntaxMode } from typeck.infer.result
+import { TypedExpr } from typeck.typed.exprs
 
 class TypeChecker {
     let env
     let subst
-    let fresh_counter
-    let errors
-    let warnings
-    let class_fields
-    let class_methods
-    let class_type_params
-    let class_parents
-    let interface_methods
-    let class_interfaces
-    let declared_classes
-    let enum_defs
-    let function_hints
-    let binding_hints
-    let class_function_hints
-    let class_binding_hints
-    let interface_function_hints
-    let interface_binding_hints
-    let local_binding_hints
-    let current_return
-    let current_effect
-    let current_class
-    let type_param_scopes
-    let deprecated_syntax_mode
+    let mut fresh_counter
+    let mut errors
+    let mut warnings
+    let mut class_fields
+    let mut class_methods
+    let mut class_type_params
+    let mut class_parents
+    let mut interface_methods
+    let mut class_interfaces
+    let mut declared_classes
+    let mut enum_defs
+    let mut function_hints
+    let mut binding_hints
+    let mut class_function_hints
+    let mut class_binding_hints
+    let mut local_binding_hints
+    let mut current_return
+    let mut current_class
+    let mut type_param_scopes
+    let mut deprecated_syntax_mode
 
     @type {
         env: TypeEnv
@@ -44,30 +40,27 @@ class TypeChecker {
         fresh_counter: Int
         errors: Array[TypeError]
         warnings: Array[TypeError]
-        class_fields: Array[Any]
-        class_methods: Array[Any]
-        class_type_params: Array[Any]
-        class_parents: Array[Any]
-        interface_methods: Array[Any]
-        class_interfaces: Array[Any]
+        class_fields: Array[String]
+        class_methods: Array[String]
+        class_type_params: Array[String]
+        class_parents: Array[String]
+        interface_methods: Array[String]
+        class_interfaces: Array[String]
         declared_classes: Array[String]
-        enum_defs: Array[Any]
-        function_hints: Array[Any]
-        binding_hints: Array[Any]
-        class_function_hints: Array[Any]
-        class_binding_hints: Array[Any]
-        interface_function_hints: Array[Any]
-        interface_binding_hints: Array[Any]
-        local_binding_hints: Array[Any]
+        enum_defs: Array[String]
+        function_hints: Array[FnDef]
+        binding_hints: Array[TypeBlock]
+        class_function_hints: Array[String]
+        class_binding_hints: Array[String]
+        local_binding_hints: Array[TypeBlock]
         current_return: Array[Type]
-        current_effect: Array[Option[Type]]
         current_class: Array[String]
-        type_param_scopes: Array[Any]
+        type_param_scopes: Array[String]
         deprecated_syntax_mode: DeprecatedSyntaxMode
     }
 
     fn new() {
-        let checker = TypeChecker {
+        let mut checker = TypeChecker {
             env: TypeEnv.with_counter(0),
             subst: Substitution.empty(),
             fresh_counter: 0,
@@ -85,11 +78,8 @@ class TypeChecker {
             binding_hints: [],
             class_function_hints: [],
             class_binding_hints: [],
-            interface_function_hints: [],
-            interface_binding_hints: [],
             local_binding_hints: [],
             current_return: [],
-            current_effect: [],
             current_class: [],
             type_param_scopes: [],
             deprecated_syntax_mode: Warn
@@ -98,155 +88,76 @@ class TypeChecker {
         return checker
     }
 
-    fn install_builtins() {
-        self.env.define("print", Scheme {
-            quantified: [],
-            ty: FnType {
-                kind: Fn,
-                params: [NamedType { kind: Named, name: "String", args: [] }],
-                ret: NamedType { kind: Named, name: "Unit", args: [] }
-            }
-        })
-        self.env.define("println", Scheme {
-            quantified: [],
-            ty: FnType {
-                kind: Fn,
-                params: [NamedType { kind: Named, name: "String", args: [] }],
-                ret: NamedType { kind: Named, name: "Unit", args: [] }
-            }
-        })
-        self.env.define("assert", Scheme {
-            quantified: [],
-            ty: FnType {
-                kind: Fn,
-                params: [NamedType { kind: Named, name: "Bool", args: [] }],
-                ret: NamedType { kind: Named, name: "Unit", args: [] }
-            }
-        })
-    }
-
-    fn check(program) {
-        extract_hints(self, program.items)
-        let typed_program = check_program(self, program)
-        return TypeCheckResult {
-            typed_program: typed_program,
-            errors: self.errors,
-            warnings: self.warnings
-        }
-    }
-
     fn fresh_var() {
         let id = self.fresh_counter
         self.fresh_counter = self.fresh_counter + 1
         return VarType { kind: Var, id: id }
     }
 
-    fn push_local_binding_hints(hints) {
-        self.local_binding_hints.push(hints)
-    }
-
-    fn pop_local_binding_hints() {
-        if self.local_binding_hints.len() > 0 {
-            self.local_binding_hints.pop()
-        }
-    }
-
-    fn lookup_local_binding_hint(name) {
-        let mut index = self.local_binding_hints.len()
-        while index > 0 {
-            index = index - 1
-            let scope = self.local_binding_hints[index]
-            let mut item_index = 0
-            while item_index < scope.len() {
-                if scope[item_index].name == name {
-                    return Some(scope[item_index].type_expr)
-                }
-                item_index = item_index + 1
-            }
-        }
-        return None
-    }
-
-    fn push_type_params(params) {
-        let mut scope = []
-        let mut index = 0
-        while index < params.len() {
-            scope.push(TypeScopeEntry {
-                name: params[index],
-                ty: self.fresh_var()
-            })
-            index = index + 1
-        }
-        self.type_param_scopes.push(scope)
-    }
-
-    fn pop_type_params() {
-        if self.type_param_scopes.len() > 0 {
-            self.type_param_scopes.pop()
-        }
-    }
-
-    fn lookup_type_param(name) {
-        let mut scope_index = self.type_param_scopes.len()
-        while scope_index > 0 {
-            scope_index = scope_index - 1
-            let scope = self.type_param_scopes[scope_index]
-            let mut item_index = 0
-            while item_index < scope.len() {
-                if scope[item_index].name == name {
-                    return Some(scope[item_index].ty)
-                }
-                item_index = item_index + 1
-            }
-        }
-        return None
-    }
-
-    fn apply_subst(ty) {
-        return self.subst.apply(ty)
-    }
-
-    fn unify_types(left, right, span) {
-        let next = unify(left, right, self.subst)
-        match next {
-            Ok(value) => {
-                self.subst = value
-                return self.subst.apply(left)
-            }
-            Err(error) => {
-                error.line = span.line
-                error.col = span.col
-                self.errors.push(error)
-                return self.subst.apply(left)
-            }
-        }
+    fn generalize(ty) {
+        return Scheme { quantified: [], ty: self.apply_subst(ty) }
     }
 
     fn instantiate(scheme) {
         return self.env.instantiate(scheme)
     }
 
-    fn generalize(ty) {
-        let vars = free_type_vars(ty)
-        let env_vars = free_type_vars_in_env(self.env)
-        let mut quantified = []
-        let mut index = 0
-        while index < vars.len() {
-            if !contains_int(env_vars, vars[index]) {
-                quantified.push(vars[index])
-            }
-            index = index + 1
+    fn apply_subst(ty) {
+        return self.subst.apply(ty)
+    }
+
+    fn typed_expr(kind, ty, span) {
+        return TypedExpr {
+            kind: kind,
+            ty: ty,
+            span: span,
+            use_effect: None,
+            int_value: None,
+            float_value: None,
+            string_value: None,
+            bool_value: None,
+            items: None,
+            entries: None,
+            left: None,
+            op: None,
+            right: None,
+            callee: None,
+            name: None,
+            args: None,
+            target: None,
+            index: None,
+            params: None,
+            body: None,
+            cast_type: None,
+            arms: None,
+            chan_type: None
         }
-        return Scheme { quantified: quantified, ty: ty }
+    }
+
+    fn install_builtins() {
+        let string_ty = NamedType { kind: Named, name: "String", args: [] }
+        let int_ty = NamedType { kind: Named, name: "Int", args: [] }
+        let unit_ty = NamedType { kind: Named, name: "Unit", args: [] }
+        self.env.define("print", Scheme {
+            quantified: [],
+            ty: FnType { kind: Fn, params: [string_ty], ret: unit_ty }
+        })
+        self.env.define("println", Scheme {
+            quantified: [],
+            ty: FnType { kind: Fn, params: [string_ty], ret: unit_ty }
+        })
+        self.env.define("len", Scheme {
+            quantified: [],
+            ty: FnType { kind: Fn, params: [string_ty], ret: int_ty }
+        })
     }
 
     fn type_from_annotation(type_expr) {
+        if type_expr == None {
+            return self.fresh_var()
+        }
         if type_expr.kind == Named {
-            let scoped = self.lookup_type_param(type_expr.name)
-            match scoped {
-                Some(value) => { return value }
-                None => { return named_primitive_or_custom(type_expr.name) }
-            }
+            return self.named_type_from_name(type_expr.name, [])
         }
         if type_expr.kind == Generic {
             let mut args = []
@@ -255,25 +166,7 @@ class TypeChecker {
                 args.push(self.type_from_annotation(type_expr.args[index]))
                 index = index + 1
             }
-            if type_expr.name == "Array" && args.len() == 1 {
-                return ArrayType { kind: Array, inner: args[0] }
-            }
-            if type_expr.name == "Map" && args.len() == 2 {
-                return MapType { kind: Map, key: args[0], value: args[1] }
-            }
-            if type_expr.name == "Set" && args.len() == 1 {
-                return SetType { kind: Set, inner: args[0] }
-            }
-            if type_expr.name == "Option" && args.len() == 1 {
-                return OptionType { kind: Option, inner: args[0] }
-            }
-            if type_expr.name == "Result" && args.len() == 2 {
-                return ResultType { kind: Result, ok: args[0], err: args[1] }
-            }
-            if type_expr.name == "Chan" && args.len() == 1 {
-                return ChanType { kind: Chan, inner: args[0] }
-            }
-            return NamedType { kind: Named, name: type_expr.name, args: args }
+            return self.named_type_from_name(type_expr.name, args)
         }
         if type_expr.kind == Fn {
             let mut params = []
@@ -289,146 +182,39 @@ class TypeChecker {
             }
         }
         if type_expr.kind == Pointer {
-            return PointerType {
-                kind: Pointer,
-                inner: NamedType { kind: Named, name: "Any", args: [] }
-            }
+            return PointerType { kind: Pointer, inner: self.fresh_var() }
         }
         return self.fresh_var()
     }
-}
 
-class HintBindingEntry {
-    let name
-    let type_expr
+    fn named_type_from_name(name, args) {
+        if name == "Int" { return Type { kind: Int } }
+        if name == "Int8" { return Type { kind: Int8 } }
+        if name == "Int16" { return Type { kind: Int16 } }
+        if name == "Int32" { return Type { kind: Int32 } }
+        if name == "Int64" { return Type { kind: Int64 } }
+        if name == "UInt8" { return Type { kind: UInt8 } }
+        if name == "UInt16" { return Type { kind: UInt16 } }
+        if name == "UInt32" { return Type { kind: UInt32 } }
+        if name == "UInt64" { return Type { kind: UInt64 } }
+        if name == "Float" { return Type { kind: Float } }
+        if name == "Float32" { return Type { kind: Float32 } }
+        if name == "Float64" { return Type { kind: Float64 } }
+        if name == "Bool" { return Type { kind: Bool } }
+        if name == "String" { return Type { kind: String } }
+        if name == "Char" { return Type { kind: Char } }
+        if name == "Unit" { return Type { kind: Unit } }
+        if name == "Never" { return Type { kind: Never } }
+        if name == "Array" && args.len() == 1 { return ArrayType { kind: Array, inner: args[0] } }
+        if name == "Set" && args.len() == 1 { return SetType { kind: Set, inner: args[0] } }
+        if name == "Option" && args.len() == 1 { return OptionType { kind: Option, inner: args[0] } }
+        if name == "Chan" && args.len() == 1 { return ChanType { kind: Chan, inner: args[0] } }
+        if name == "Map" && args.len() == 2 { return MapType { kind: Map, key: args[0], value: args[1] } }
+        if name == "Result" && args.len() == 2 { return ResultType { kind: Result, ok: args[0], err: args[1] } }
+        return NamedType { kind: Named, name: name, args: args }
+    }
 
-    @type {
-        name: String
-        type_expr: TypeExpr
+    fn push_error(error) {
+        self.errors.push(error)
     }
-}
-
-class TypeScopeEntry {
-    let name
-    let ty
-
-    @type {
-        name: String
-        ty: Type
-    }
-}
-
-fn named_primitive_or_custom(name) {
-    if name == "Int" { return NamedType { kind: Named, name: "Int", args: [] } }
-    if name == "Int8" { return NamedType { kind: Named, name: "Int8", args: [] } }
-    if name == "Int16" { return NamedType { kind: Named, name: "Int16", args: [] } }
-    if name == "Int32" { return NamedType { kind: Named, name: "Int32", args: [] } }
-    if name == "Int64" { return NamedType { kind: Named, name: "Int64", args: [] } }
-    if name == "UInt8" { return NamedType { kind: Named, name: "UInt8", args: [] } }
-    if name == "UInt16" { return NamedType { kind: Named, name: "UInt16", args: [] } }
-    if name == "UInt32" { return NamedType { kind: Named, name: "UInt32", args: [] } }
-    if name == "UInt64" { return NamedType { kind: Named, name: "UInt64", args: [] } }
-    if name == "Float" { return NamedType { kind: Named, name: "Float", args: [] } }
-    if name == "Float32" { return NamedType { kind: Named, name: "Float32", args: [] } }
-    if name == "Float64" { return NamedType { kind: Named, name: "Float64", args: [] } }
-    if name == "Bool" { return NamedType { kind: Named, name: "Bool", args: [] } }
-    if name == "String" { return NamedType { kind: Named, name: "String", args: [] } }
-    if name == "Char" { return NamedType { kind: Named, name: "Char", args: [] } }
-    if name == "Unit" { return NamedType { kind: Named, name: "Unit", args: [] } }
-    if name == "Never" { return NamedType { kind: Named, name: "Never", args: [] } }
-    return NamedType { kind: Named, name: name, args: [] }
-}
-
-fn free_type_vars(ty) {
-    if ty.kind == Var {
-        return [ty.id]
-    }
-    if ty.kind == Array || ty.kind == Set || ty.kind == Option || ty.kind == Chan || ty.kind == Pointer {
-        return free_type_vars(ty.inner)
-    }
-    if ty.kind == Map {
-        return merge_int_sets(free_type_vars(ty.key), free_type_vars(ty.value))
-    }
-    if ty.kind == Result {
-        return merge_int_sets(free_type_vars(ty.ok), free_type_vars(ty.err))
-    }
-    if ty.kind == Tuple {
-        let mut result = []
-        let mut index = 0
-        while index < ty.items.len() {
-            result = merge_int_sets(result, free_type_vars(ty.items[index]))
-            index = index + 1
-        }
-        return result
-    }
-    if ty.kind == Fn {
-        let mut result = []
-        let mut index = 0
-        while index < ty.params.len() {
-            result = merge_int_sets(result, free_type_vars(ty.params[index]))
-            index = index + 1
-        }
-        return merge_int_sets(result, free_type_vars(ty.ret))
-    }
-    if ty.kind == Named {
-        let mut result = []
-        let mut index = 0
-        while index < ty.args.len() {
-            result = merge_int_sets(result, free_type_vars(ty.args[index]))
-            index = index + 1
-        }
-        return result
-    }
-    return []
-}
-
-fn free_type_vars_in_env(env) {
-    let mut result = []
-    let mut scope_index = 0
-    while scope_index < env.scopes.len() {
-        let scope = env.scopes[scope_index]
-        let mut binding_index = 0
-        while binding_index < scope.bindings.len() {
-            result = merge_int_sets(result, free_type_vars_in_scheme(scope.bindings[binding_index].scheme))
-            binding_index = binding_index + 1
-        }
-        scope_index = scope_index + 1
-    }
-    return result
-}
-
-fn free_type_vars_in_scheme(scheme) {
-    let vars = free_type_vars(scheme.ty)
-    let mut result = []
-    let mut index = 0
-    while index < vars.len() {
-        if !contains_int(scheme.quantified, vars[index]) {
-            result.push(vars[index])
-        }
-        index = index + 1
-    }
-    return result
-}
-
-fn merge_int_sets(left, right) {
-    let mut result = left
-    let mut index = 0
-    while index < right.len() {
-        if !contains_int(result, right[index]) {
-            result.push(right[index])
-        }
-        index = index + 1
-    }
-    return result
-}
-
-fn contains_int(items, value) {
-    let mut index = 0
-    while index < items.len() {
-        if items[index] == value {
-            return true
-        }
-        index = index + 1
-    }
-    return false
 }
