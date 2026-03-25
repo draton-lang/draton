@@ -1,0 +1,26 @@
+enum DriverCommandKind {
+    Lex,
+    Parse,
+    Typeck,
+    Build
+}
+
+class DriverCommand {
+    let kind
+    let path
+    let json
+    let strict_syntax
+    let output
+    let emit_object
+    let emit_ir
+
+    @type {
+        kind: DriverCommandKind
+        path: String
+        json: Bool
+        strict_syntax: Bool
+        output: Option[String]
+        emit_object: Bool
+        emit_ir: Bool
+    }
+}

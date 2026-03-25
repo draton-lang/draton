@@ -1,0 +1,30 @@
+import { Span } from ast.span
+
+enum DiagnosticLevel {
+    Error,
+    Warning
+}
+
+class Diagnostic {
+    let level
+    let message
+    let span
+    let line
+    let col
+
+    @type {
+        level: DiagnosticLevel
+        message: String
+        span: Option[Span]
+        line: Int
+        col: Int
+    }
+}
+
+class DiagnosticReport {
+    let diagnostics
+
+    @type {
+        diagnostics: Array[Diagnostic]
+    }
+}

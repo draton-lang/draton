@@ -1,0 +1,31 @@
+import { LexResult } from lexer.result
+import { ParseResult } from parser.parser
+import { DiagnosticReport } from driver.diagnostics
+
+class BuildArtifacts {
+    let binary_path
+    let object_path
+    let ir_path
+
+    @type {
+        binary_path: String
+        object_path: String
+        ir_path: String
+    }
+}
+
+class PipelineResult {
+    let lex_result
+    let parse_result
+    let typecheck_json
+    let build_artifacts
+    let diagnostics
+
+    @type {
+        lex_result: Option[LexResult]
+        parse_result: Option[ParseResult]
+        typecheck_json: Option[String]
+        build_artifacts: Option[BuildArtifacts]
+        diagnostics: DiagnosticReport
+    }
+}
