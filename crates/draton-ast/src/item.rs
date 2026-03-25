@@ -1,15 +1,16 @@
 use crate::stmt::Block;
 use crate::types::TypeExpr;
 use crate::Span;
+use serde::Serialize;
 
 /// A parsed Draton program.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct Program {
     pub items: Vec<Item>,
 }
 
 /// A top-level item.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Item {
     /// A function definition.
     Fn(FnDef),
@@ -36,7 +37,7 @@ pub enum Item {
 }
 
 /// A function definition or declaration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FnDef {
     pub is_pub: bool,
     pub name: String,
@@ -48,7 +49,7 @@ pub struct FnDef {
 }
 
 /// A function parameter.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Param {
     pub name: String,
     pub type_hint: Option<TypeExpr>,
@@ -56,7 +57,7 @@ pub struct Param {
 }
 
 /// A class definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ClassDef {
     pub name: String,
     pub type_params: Vec<String>,
@@ -68,7 +69,7 @@ pub struct ClassDef {
 }
 
 /// A class member.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum ClassMember {
     /// A field definition.
     Field(FieldDef),
@@ -79,7 +80,7 @@ pub enum ClassMember {
 }
 
 /// A named group of methods within a class.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LayerDef {
     pub name: String,
     pub methods: Vec<FnDef>,
@@ -88,7 +89,7 @@ pub struct LayerDef {
 }
 
 /// A class field definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FieldDef {
     pub is_mut: bool,
     pub name: String,
@@ -97,7 +98,7 @@ pub struct FieldDef {
 }
 
 /// An interface definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InterfaceDef {
     pub name: String,
     pub methods: Vec<FnDef>,
@@ -106,7 +107,7 @@ pub struct InterfaceDef {
 }
 
 /// An enum definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EnumDef {
     pub name: String,
     pub variants: Vec<String>,
@@ -114,7 +115,7 @@ pub struct EnumDef {
 }
 
 /// An error definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ErrorDef {
     pub name: String,
     pub fields: Vec<Param>,
@@ -122,7 +123,7 @@ pub struct ErrorDef {
 }
 
 /// A const definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ConstDef {
     pub name: String,
     pub value: crate::expr::Expr,
@@ -130,7 +131,7 @@ pub struct ConstDef {
 }
 
 /// An import declaration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ImportDef {
     pub module: Vec<String>,
     pub items: Vec<ImportItem>,
@@ -138,7 +139,7 @@ pub struct ImportDef {
 }
 
 /// A single import target.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ImportItem {
     pub name: String,
     pub alias: Option<String>,
@@ -146,7 +147,7 @@ pub struct ImportItem {
 }
 
 /// An extern block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ExternBlock {
     pub abi: String,
     pub functions: Vec<FnDef>,
@@ -154,14 +155,14 @@ pub struct ExternBlock {
 }
 
 /// A `@type` block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypeBlock {
     pub members: Vec<TypeMember>,
     pub span: Span,
 }
 
 /// A single member in a `@type` block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypeMember {
     /// A binding type annotation.
     Binding {

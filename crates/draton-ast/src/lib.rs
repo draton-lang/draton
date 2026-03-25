@@ -5,6 +5,8 @@ pub mod item;
 pub mod stmt;
 pub mod types;
 
+use serde::Serialize;
+
 pub use expr::{BinOp, Expr, FStrPart, MatchArm, MatchArmBody, UnOp};
 pub use item::{
     ClassDef, ClassMember, ConstDef, EnumDef, ErrorDef, ExternBlock, FieldDef, FnDef, ImportDef,
@@ -18,7 +20,7 @@ pub use stmt::{
 pub use types::TypeExpr;
 
 /// A byte span pointing into a source file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Span {
     pub start: usize,
     pub end: usize,

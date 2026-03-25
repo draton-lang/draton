@@ -15,6 +15,7 @@ mod commands {
     pub mod remove;
     pub mod repl;
     pub mod run;
+    pub mod selfhost_stage0;
     pub mod task;
     pub mod test;
     pub mod type_dump;
@@ -53,6 +54,8 @@ enum Command {
     Remove { pkg: String },
     Update { subject: Option<String> },
     Publish,
+    #[command(hide = true, name = "selfhost-stage0")]
+    SelfhostStage0(SelfhostStage0Flags),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -110,6 +113,50 @@ struct TaskFlags {
     name: Option<String>,
 }
 
+#[derive(Debug, Clone, Args)]
+struct SelfhostStage0Flags {
+    #[command(subcommand)]
+    command: SelfhostStage0Subcommand,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum SelfhostStage0Subcommand {
+    Lex {
+        path: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    Parse {
+        path: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    Typeck {
+        path: PathBuf,
+        #[arg(long)]
+        json: bool,
+        #[arg(long = "strict-syntax", alias = "deny-deprecated-syntax")]
+        strict_syntax: bool,
+    },
+    Build {
+        path: PathBuf,
+        #[arg(long)]
+        json: bool,
+        #[arg(short = 'o', long = "output")]
+        output: Option<PathBuf>,
+        #[arg(long)]
+        release: bool,
+        #[arg(long)]
+        size: bool,
+        #[arg(long)]
+        fast: bool,
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long = "strict-syntax", alias = "deny-deprecated-syntax")]
+        strict_syntax: bool,
+    },
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
@@ -163,5 +210,44 @@ fn main() -> Result<()> {
         Command::Remove { pkg } => commands::remove::run(&cwd, &pkg),
         Command::Update { subject } => commands::update::run(&cwd, subject.as_deref()),
         Command::Publish => commands::publish::run(&cwd),
+        Command::SelfhostStage0(flags) => {
+            let command = match flags.command {
+                SelfhostStage0Subcommand::Lex { path, json } => {
+                    commands::selfhost_stage0::SelfhostStage0Command::Lex { path, json }
+                }
+                SelfhostStage0Subcommand::Parse { path, json } => {
+                    commands::selfhost_stage0::SelfhostStage0Command::Parse { path, json }
+                }
+                SelfhostStage0Subcommand::Typeck {
+                    path,
+                    json,
+                    strict_syntax,
+                } => commands::selfhost_stage0::SelfhostStage0Command::Typeck {
+                    path,
+                    json,
+                    strict_syntax,
+                },
+                SelfhostStage0Subcommand::Build {
+                    path,
+                    json,
+                    output,
+                    release,
+                    size,
+                    fast,
+                    target,
+                    strict_syntax,
+                } => commands::selfhost_stage0::SelfhostStage0Command::Build {
+                    path,
+                    json,
+                    output,
+                    request: BuildRequest {
+                        profile: Profile::from_flags(release, size, fast)?,
+                        target,
+                        strict_syntax,
+                    },
+                },
+            };
+            commands::selfhost_stage0::run(&cwd, command)
+        }
     }
 }

@@ -1,7 +1,8 @@
 use crate::token::Token;
+use serde::Serialize;
 
 /// Errors that can be produced while lexing Draton source.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq, Serialize)]
 pub enum LexError {
     #[error("unexpected character '{found}' at line {line}, col {col}")]
     UnexpectedChar {
@@ -25,7 +26,7 @@ pub enum LexError {
 }
 
 /// The full result of tokenizing a source file.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq, Serialize)]
 pub struct LexResult {
     pub tokens: Vec<Token>,
     pub errors: Vec<LexError>,

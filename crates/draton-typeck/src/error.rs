@@ -1,7 +1,8 @@
 use draton_ast::Span;
+use serde::Serialize;
 
 /// Ownership-specific errors produced during inferred ownership checking.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq, Serialize)]
 pub enum OwnershipError {
     /// '{name}' was moved here and cannot be used again
     #[error("'{name}' was moved here and cannot be used again\nhint: use '{name}' before the move or assign a new value to it first")]
@@ -73,7 +74,7 @@ pub enum OwnershipError {
 }
 
 /// Errors produced during Draton type inference and checking.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq, Serialize)]
 pub enum TypeError {
     #[error("type mismatch at line {line}, col {col}\n  expected: {expected}\n  found:    {found}\n  hint:     {hint}")]
     Mismatch {

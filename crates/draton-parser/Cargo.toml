@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 draton-lexer = { path = "../draton-lexer" }
 draton-ast = { path = "../draton-ast" }
+serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 
 [dev-dependencies]

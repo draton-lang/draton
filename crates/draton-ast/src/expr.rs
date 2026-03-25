@@ -1,9 +1,10 @@
 use crate::stmt::Block;
 use crate::types::TypeExpr;
 use crate::Span;
+use serde::Serialize;
 
 /// An expression node.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Expr {
     /// An integer literal.
     IntLit(i64, Span),
@@ -88,7 +89,7 @@ impl Expr {
 }
 
 /// A part inside an interpolated string.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum FStrPart {
     /// A plain literal fragment.
     Literal(String),
@@ -97,7 +98,7 @@ pub enum FStrPart {
 }
 
 /// A match arm inside a match expression.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MatchArm {
     pub pattern: Expr,
     pub body: MatchArmBody,
@@ -105,7 +106,7 @@ pub struct MatchArm {
 }
 
 /// The body of a match arm.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum MatchArmBody {
     /// An expression arm body.
     Expr(Expr),
@@ -114,7 +115,7 @@ pub enum MatchArmBody {
 }
 
 /// A binary operator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum BinOp {
     /// `+`
     Add,
@@ -157,7 +158,7 @@ pub enum BinOp {
 }
 
 /// A unary operator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum UnOp {
     /// Unary minus.
     Neg,

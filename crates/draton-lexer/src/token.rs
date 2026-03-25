@@ -1,5 +1,7 @@
+use serde::Serialize;
+
 /// A byte span pointing at a lexeme in the source.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -8,7 +10,7 @@ pub struct Span {
 }
 
 /// A single token produced by the lexer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Token {
     pub kind: TokenKind,
     pub lexeme: String,
@@ -22,7 +24,7 @@ impl Token {
 }
 
 /// All token kinds in the Draton language.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum TokenKind {
     // Literals
     IntLit,

@@ -1,7 +1,8 @@
 use crate::Span;
+use serde::Serialize;
 
 /// A type expression used in annotations.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypeExpr {
     /// A named type such as `Int` or `String`.
     Named(String, Span),

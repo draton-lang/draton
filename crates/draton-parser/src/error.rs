@@ -1,5 +1,7 @@
+use serde::Serialize;
+
 /// Errors that can be produced while parsing Draton tokens.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq, Serialize)]
 pub enum ParseError {
     #[error("unexpected token '{found}' at line {line}, col {col}, expected {expected}")]
     UnexpectedToken {
@@ -27,7 +29,7 @@ pub enum ParseError {
 }
 
 /// Warnings that can be produced while parsing Draton tokens.
-#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq, Serialize)]
 pub enum ParseWarning {
     #[error("deprecated syntax '{syntax}' at line {line}, col {col}\n  use: {replacement}")]
     DeprecatedSyntax {

@@ -2,15 +2,16 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use draton_ast::{AssignOp, BinOp, Span, UnOp};
+use serde::Serialize;
 
 /// A fully typed Draton program.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedProgram {
     pub items: Vec<TypedItem>,
 }
 
 /// A typed top-level item.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypedItem {
     /// A typed function definition.
     Fn(TypedFnDef),
@@ -37,7 +38,7 @@ pub enum TypedItem {
 }
 
 /// Ownership state of a binding at a given program point.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum OwnershipState {
     Owned,
     BorrowedShared,
@@ -47,7 +48,7 @@ pub enum OwnershipState {
 }
 
 /// How a value is used at a specific use site.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum UseEffect {
     Copy,
     BorrowShared,
@@ -56,14 +57,14 @@ pub enum UseEffect {
 }
 
 /// Inferred ownership summary for a single function parameter.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ParamOwnershipSummary {
     pub param_index: usize,
     pub effect: UseEffect,
 }
 
 /// Inferred ownership summary for a whole function.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FnOwnershipSummary {
     pub params: Vec<ParamOwnershipSummary>,
     /// True if the return value transfers ownership to the caller.
@@ -71,7 +72,7 @@ pub struct FnOwnershipSummary {
 }
 
 /// A typed function definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedFnDef {
     pub is_pub: bool,
     pub name: String,
@@ -84,7 +85,7 @@ pub struct TypedFnDef {
 }
 
 /// A typed function parameter.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedParam {
     pub name: String,
     pub ty: Type,
@@ -92,7 +93,7 @@ pub struct TypedParam {
 }
 
 /// A typed class definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedClassDef {
     pub name: String,
     pub extends: Option<String>,
@@ -104,7 +105,7 @@ pub struct TypedClassDef {
 }
 
 /// A typed class field.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedFieldDef {
     pub is_mut: bool,
     pub name: String,
@@ -113,7 +114,7 @@ pub struct TypedFieldDef {
 }
 
 /// A typed interface definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedInterfaceDef {
     pub name: String,
     pub methods: Vec<TypedFnDef>,
@@ -122,7 +123,7 @@ pub struct TypedInterfaceDef {
 }
 
 /// A typed enum definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedEnumDef {
     pub name: String,
     pub variants: Vec<String>,
@@ -130,7 +131,7 @@ pub struct TypedEnumDef {
 }
 
 /// A typed error definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedErrorDef {
     pub name: String,
     pub fields: Vec<TypedParam>,
@@ -138,7 +139,7 @@ pub struct TypedErrorDef {
 }
 
 /// A typed const definition.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedConstDef {
     pub name: String,
     pub value: TypedExpr,
@@ -147,7 +148,7 @@ pub struct TypedConstDef {
 }
 
 /// A typed import declaration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedImportDef {
     pub module: Vec<String>,
     pub items: Vec<TypedImportItem>,
@@ -155,7 +156,7 @@ pub struct TypedImportDef {
 }
 
 /// A typed import item.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedImportItem {
     pub name: String,
     pub alias: Option<String>,
@@ -163,7 +164,7 @@ pub struct TypedImportItem {
 }
 
 /// A typed extern block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedExternBlock {
     pub abi: String,
     pub functions: Vec<TypedFnDef>,
@@ -171,14 +172,14 @@ pub struct TypedExternBlock {
 }
 
 /// A typed `@type` block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedTypeBlock {
     pub members: Vec<TypedTypeMember>,
     pub span: Span,
 }
 
 /// A typed member inside a `@type` block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypedTypeMember {
     /// A typed binding annotation.
     Binding { name: String, ty: Type, span: Span },
@@ -187,21 +188,21 @@ pub enum TypedTypeMember {
 }
 
 /// A typed block of statements.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedBlock {
     pub stmts: Vec<TypedStmt>,
     pub span: Span,
 }
 
 /// A typed statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedStmt {
     pub kind: TypedStmtKind,
     pub span: Span,
 }
 
 /// The kind of a typed statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypedStmtKind {
     /// A typed let statement.
     Let(TypedLetStmt),
@@ -240,7 +241,7 @@ pub enum TypedStmtKind {
 }
 
 /// A typed let statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedLetStmt {
     pub is_mut: bool,
     pub name: String,
@@ -250,7 +251,7 @@ pub struct TypedLetStmt {
 }
 
 /// A typed tuple destructuring let statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedLetDestructureStmt {
     pub is_mut: bool,
     pub bindings: Vec<TypedDestructureBinding>,
@@ -260,7 +261,7 @@ pub struct TypedLetDestructureStmt {
 }
 
 /// A single typed tuple destructuring binding.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypedDestructureBinding {
     /// Bind the slot to a local variable.
     Name { name: String, ty: Type },
@@ -269,7 +270,7 @@ pub enum TypedDestructureBinding {
 }
 
 /// A typed assignment statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedAssignStmt {
     pub target: TypedExpr,
     pub op: AssignOp,
@@ -278,7 +279,7 @@ pub struct TypedAssignStmt {
 }
 
 /// A typed return statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedReturnStmt {
     pub value: Option<TypedExpr>,
     pub ty: Type,
@@ -286,7 +287,7 @@ pub struct TypedReturnStmt {
 }
 
 /// A typed if statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedIfStmt {
     pub condition: TypedExpr,
     pub then_branch: TypedBlock,
@@ -295,7 +296,7 @@ pub struct TypedIfStmt {
 }
 
 /// A typed else branch.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypedElseBranch {
     /// A typed else-if branch.
     If(Box<TypedIfStmt>),
@@ -304,7 +305,7 @@ pub enum TypedElseBranch {
 }
 
 /// A typed for statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedForStmt {
     pub name: String,
     pub iter: TypedExpr,
@@ -314,7 +315,7 @@ pub struct TypedForStmt {
 }
 
 /// A typed while statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedWhileStmt {
     pub condition: TypedExpr,
     pub body: TypedBlock,
@@ -322,14 +323,14 @@ pub struct TypedWhileStmt {
 }
 
 /// A typed spawn statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedSpawnStmt {
     pub body: TypedSpawnBody,
     pub span: Span,
 }
 
 /// The body of a typed spawn statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypedSpawnBody {
     /// A spawned typed expression.
     Expr(TypedExpr),
@@ -338,7 +339,7 @@ pub enum TypedSpawnBody {
 }
 
 /// A typed compile-time if statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedIfCompileStmt {
     pub condition: TypedExpr,
     pub body: TypedBlock,
@@ -346,14 +347,14 @@ pub struct TypedIfCompileStmt {
 }
 
 /// A typed GC config block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedGcConfigStmt {
     pub entries: Vec<TypedGcConfigEntry>,
     pub span: Span,
 }
 
 /// A typed GC config entry.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedGcConfigEntry {
     pub key: String,
     pub value: TypedExpr,
@@ -361,7 +362,7 @@ pub struct TypedGcConfigEntry {
 }
 
 /// A fully typed expression.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedExpr {
     pub kind: TypedExprKind,
     pub ty: Type,
@@ -370,7 +371,7 @@ pub struct TypedExpr {
 }
 
 /// The kind of a typed expression.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypedExprKind {
     /// An integer literal.
     IntLit(i64),
@@ -423,7 +424,7 @@ pub enum TypedExprKind {
 }
 
 /// A typed part inside an interpolated string.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypedFStrPart {
     /// A plain literal fragment.
     Literal(String),
@@ -432,7 +433,7 @@ pub enum TypedFStrPart {
 }
 
 /// A typed match arm.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypedMatchArm {
     pub pattern: TypedExpr,
     pub body: TypedMatchArmBody,
@@ -440,7 +441,7 @@ pub struct TypedMatchArm {
 }
 
 /// The body of a typed match arm.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TypedMatchArmBody {
     /// An expression arm body.
     Expr(TypedExpr),
@@ -449,7 +450,7 @@ pub enum TypedMatchArmBody {
 }
 
 /// A resolved Draton type.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Type {
     /// `Int`
     Int,

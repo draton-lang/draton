@@ -1,10 +1,11 @@
 use draton_ast::{Program, Span};
 use draton_lexer::{Token, TokenKind};
+use serde::Serialize;
 
 use crate::error::{ParseError, ParseWarning};
 
 /// The result of parsing a token stream.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ParseResult {
     pub program: Program,
     pub errors: Vec<ParseError>,

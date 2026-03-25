@@ -2,9 +2,10 @@ use crate::expr::Expr;
 use crate::item::TypeBlock;
 use crate::Span;
 use crate::TypeExpr;
+use serde::Serialize;
 
 /// A statement node.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Stmt {
     /// A local variable declaration.
     Let(LetStmt),
@@ -43,14 +44,14 @@ pub enum Stmt {
 }
 
 /// A block of statements.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Block {
     pub stmts: Vec<Stmt>,
     pub span: Span,
 }
 
 /// A `let` statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LetStmt {
     pub is_mut: bool,
     pub name: String,
@@ -60,7 +61,7 @@ pub struct LetStmt {
 }
 
 /// A tuple destructuring `let` statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LetDestructureStmt {
     pub is_mut: bool,
     pub names: Vec<DestructureBinding>,
@@ -69,7 +70,7 @@ pub struct LetDestructureStmt {
 }
 
 /// A single tuple destructuring binding.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum DestructureBinding {
     /// Bind the slot to a local variable.
     Name(String),
@@ -78,7 +79,7 @@ pub enum DestructureBinding {
 }
 
 /// An assignment statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AssignStmt {
     pub target: Expr,
     pub op: AssignOp,
@@ -87,7 +88,7 @@ pub struct AssignStmt {
 }
 
 /// An assignment operator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum AssignOp {
     /// `=`
     Assign,
@@ -108,14 +109,14 @@ pub enum AssignOp {
 }
 
 /// A return statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnStmt {
     pub value: Option<Expr>,
     pub span: Span,
 }
 
 /// An if statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct IfStmt {
     pub condition: Expr,
     pub then_branch: Block,
@@ -124,7 +125,7 @@ pub struct IfStmt {
 }
 
 /// A trailing else branch.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum ElseBranch {
     /// An `else if`.
     If(Box<IfStmt>),
@@ -133,7 +134,7 @@ pub enum ElseBranch {
 }
 
 /// A for loop statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ForStmt {
     pub name: String,
     pub iter: Expr,
@@ -142,7 +143,7 @@ pub struct ForStmt {
 }
 
 /// A while loop statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WhileStmt {
     pub condition: Expr,
     pub body: Block,
@@ -150,14 +151,14 @@ pub struct WhileStmt {
 }
 
 /// A spawn statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SpawnStmt {
     pub body: SpawnBody,
     pub span: Span,
 }
 
 /// The body of a spawn statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum SpawnBody {
     /// A spawned expression.
     Expr(Expr),
@@ -166,7 +167,7 @@ pub enum SpawnBody {
 }
 
 /// A compile-time if statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct IfCompileStmt {
     pub condition: Expr,
     pub body: Block,
@@ -174,14 +175,14 @@ pub struct IfCompileStmt {
 }
 
 /// A GC configuration block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct GcConfigStmt {
     pub entries: Vec<GcConfigEntry>,
     pub span: Span,
 }
 
 /// A single GC configuration entry.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct GcConfigEntry {
     pub key: String,
     pub value: Expr,

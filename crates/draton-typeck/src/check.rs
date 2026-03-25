@@ -23,16 +23,17 @@ use crate::typed_ast::{
     TypedTypeBlock, TypedTypeMember, TypedWhileStmt,
 };
 use crate::unify::occurs;
+use serde::Serialize;
 
 /// The result of type checking a program.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TypeCheckResult {
     pub typed_program: TypedProgram,
     pub errors: Vec<TypeError>,
     pub warnings: Vec<TypeError>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum DeprecatedSyntaxMode {
     Warn,
     Deny,
