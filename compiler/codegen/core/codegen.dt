@@ -1,0 +1,109 @@
+import { BuildMode } from codegen.mode
+import { ClassLayout } from codegen.layout
+import { MonoCollector, GenericClassDef, GenericFnDef } from codegen.mono.collector
+import { InterfaceRegistry } from codegen.vtable.registry
+import {
+    LlvmContextHandle,
+    LlvmModuleHandle,
+    LlvmBuilderHandle
+} from codegen.llvm.handles
+
+class FunctionSymbol {
+    let name
+    let handle
+
+    @type {
+        name: String
+        handle: Int
+    }
+}
+
+class VariableSlot {
+    let name
+    let handle
+
+    @type {
+        name: String
+        handle: Int
+    }
+}
+
+class ScopeFrame {
+    let slots
+
+    @type {
+        slots: Array[VariableSlot]
+    }
+}
+
+class TypeDescriptorEntry {
+    let name
+    let id
+
+    @type {
+        name: String
+        id: Int
+    }
+}
+
+class CodeGen {
+    let context
+    let module
+    let builder
+    let mode
+    let string_type
+    let closure_record_type
+    let functions
+    let class_layouts
+    let variables
+    let current_function
+    let current_return_type
+    let current_class
+    let type_descriptor_table
+    let next_type_descriptor_id
+    let string_counter
+    let mono
+    let generic_classes
+    let generic_functions
+    let iface_registry
+    let vtable_types
+    let fat_pointer_types
+    let vtable_globals
+    let closure_counter
+    let closure_type_descriptor_id
+    let pending_ctors
+    let free_points
+    let ownership_free_spans
+    let current_function_free_bindings
+
+    @type {
+        context: LlvmContextHandle
+        module: LlvmModuleHandle
+        builder: LlvmBuilderHandle
+        mode: BuildMode
+        string_type: String
+        closure_record_type: String
+        functions: Array[FunctionSymbol]
+        class_layouts: Array[ClassLayout]
+        variables: Array[ScopeFrame]
+        current_function: Option[Int]
+        current_return_type: Option[String]
+        current_class: Option[String]
+        type_descriptor_table: Array[TypeDescriptorEntry]
+        next_type_descriptor_id: Int
+        string_counter: Int
+        mono: MonoCollector
+        generic_classes: Array[GenericClassDef]
+        generic_functions: Array[GenericFnDef]
+        iface_registry: InterfaceRegistry
+        vtable_types: Array[String]
+        fat_pointer_types: Array[String]
+        vtable_globals: Array[String]
+        closure_counter: Int
+        closure_type_descriptor_id: Int
+        pending_ctors: Array[Int]
+        free_points: Array[String]
+        ownership_free_spans: Array[String]
+        current_function_free_bindings: Array[String]
+    }
+}

@@ -1,0 +1,6 @@
+enum BuildMode {
+    Debug,
+    Release,
+    Size,
+    Fast
+}

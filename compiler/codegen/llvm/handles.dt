@@ -1,0 +1,16 @@
+class LlvmHandle {
+    let raw
+
+    @type {
+        raw: Int
+    }
+}
+
+class LlvmContextHandle extends LlvmHandle {}
+class LlvmModuleHandle extends LlvmHandle {}
+class LlvmBuilderHandle extends LlvmHandle {}
+class LlvmTypeHandle extends LlvmHandle {}
+class LlvmValueHandle extends LlvmHandle {}
+class LlvmBlockHandle extends LlvmHandle {}
+class LlvmTargetHandle extends LlvmHandle {}
+class LlvmTargetMachineHandle extends LlvmHandle {}

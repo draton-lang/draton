@@ -1,0 +1,33 @@
+class FieldIndexEntry {
+    let name
+    let index
+
+    @type {
+        name: String
+        index: Int
+    }
+}
+
+class MethodNameEntry {
+    let name
+    let symbol
+
+    @type {
+        name: String
+        symbol: String
+    }
+}
+
+class ClassLayout {
+    let struct_type
+    let field_indices
+    let method_names
+    let parent_class
+
+    @type {
+        struct_type: String
+        field_indices: Array[FieldIndexEntry]
+        method_names: Array[MethodNameEntry]
+        parent_class: Option[String]
+    }
+}

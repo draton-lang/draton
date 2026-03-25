@@ -1,0 +1,31 @@
+class GenericClassDef {
+    let name
+    let type_vars
+
+    @type {
+        name: String
+        type_vars: Array[String]
+    }
+}
+
+class GenericFnDef {
+    let name
+    let type_vars
+    let class_name
+
+    @type {
+        name: String
+        type_vars: Array[String]
+        class_name: Option[String]
+    }
+}
+
+class MonoCollector {
+    let class_defs
+    let fn_defs
+
+    @type {
+        class_defs: Array[GenericClassDef]
+        fn_defs: Array[GenericFnDef]
+    }
+}

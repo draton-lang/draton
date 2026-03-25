@@ -1,0 +1,17 @@
+class InterfaceMethodSet {
+    let interface_name
+    let methods
+
+    @type {
+        interface_name: String
+        methods: Array[String]
+    }
+}
+
+class InterfaceRegistry {
+    let entries
+
+    @type {
+        entries: Array[InterfaceMethodSet]
+    }
+}

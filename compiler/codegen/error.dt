@@ -1,0 +1,19 @@
+enum CodeGenErrorKind {
+    UnsupportedType,
+    UnsupportedExpr,
+    UnsupportedStmt,
+    MissingSymbol,
+    Verify,
+    Llvm,
+    Io
+}
+
+class CodeGenError {
+    let kind
+    let message
+
+    @type {
+        kind: CodeGenErrorKind
+        message: String
+    }
+}
