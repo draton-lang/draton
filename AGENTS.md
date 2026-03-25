@@ -51,6 +51,9 @@ This repository defines and protects the Draton language and its tooling. Treat 
 - Do not treat `src/` as a compiler mirror; it now belongs to the docs site.
 - If self-host code is reintroduced, document its location and boundary first, then keep it aligned with the Rust frontend canonical behavior.
 - When documenting blockers or exclusions, always use full file paths, not ambiguous basenames.
+- `compiler/` is the only allowed location for the current self-host reintroduction work.
+- Any code under `compiler/` remains subordinate to the Rust workspace until parity is proven and the migration status docs say otherwise.
+- Do not move self-host implementation code into `src/`, `crates/`, or any undocumented location.
 
 ## When changing language syntax or tooling
 

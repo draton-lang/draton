@@ -8,6 +8,8 @@ For the language-side architectural model, see [language-architecture.md](langua
 
 The Rust frontend and tooling path is the authoritative implementation.
 
+The in-tree self-host rewrite under `compiler/` is subordinate work for parity and bootstrap preparation. It does not redefine compiler behavior while `crates/` remains active.
+
 That means:
 
 - parser behavior is defined by the Rust crates
@@ -27,6 +29,8 @@ The repository is a Cargo workspace of focused crates under `crates/`:
 - `crates/draton-stdlib`
 - `crates/draton-lsp`
 - `crates/drat`
+
+An in-tree self-host rewrite now also exists under `compiler/`. Its directory layout mirrors the compiler pipeline, but it is intentionally not the source of truth yet.
 
 This layout is intentional. Draton is architected as a toolchain with separable layers, not as one large opaque compiler crate.
 
@@ -207,9 +211,10 @@ The previous self-host compiler mirror under `src/` was intentionally retired to
 
 Current boundary:
 
-- no in-tree self-host compiler source is shipped right now
+- `compiler/` is the new self-host rewrite location as of March 25, 2026
 - `src/` is used by the Docusaurus site source (`src/pages`, `src/css`)
-- the Rust crates remain the only authoritative compiler/tooling implementation until a new self-host tree is introduced
+- the Rust crates remain the only authoritative compiler/tooling implementation until the new self-host tree reaches parity
+- the self-host tree is exercised through Rust stage0 parity and bootstrap scaffolding, not as the public toolchain entrypoint
 
 The reset status is documented in [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
 
