@@ -1,0 +1,43 @@
+enum ParseErrorKind {
+    UnexpectedToken,
+    UnexpectedEof,
+    InvalidExpr,
+    NestedLayerNotAllowed,
+    LayerOutsideClass
+}
+
+class ParseError {
+    let kind
+    let found
+    let expected
+    let line
+    let col
+
+    @type {
+        kind: ParseErrorKind
+        found: Option[String]
+        expected: Option[String]
+        line: Int
+        col: Int
+    }
+}
+
+enum ParseWarningKind {
+    DeprecatedSyntax
+}
+
+class ParseWarning {
+    let kind
+    let syntax
+    let replacement
+    let line
+    let col
+
+    @type {
+        kind: ParseWarningKind
+        syntax: String
+        replacement: String
+        line: Int
+        col: Int
+    }
+}

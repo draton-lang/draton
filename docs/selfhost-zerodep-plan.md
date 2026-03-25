@@ -369,7 +369,7 @@ Không còn: `crates/`, `Cargo.toml`, `Cargo.lock`, bất kỳ file `.rs` nào.
 - [ ] **Parity test:** không cần, AST là data structure — verify qua parser output
 
 **Port `draton-parser` → `compiler/parser/`:**
-- [ ] `compiler/parser/parser.dt` — `class Parser` với fields: `tokens: Array[Token]`, `pos: Int`, error collection
+- [x] `compiler/parser/parser.dt` — `class Parser` với fields: `tokens: Array[Token]`, `pos: Int`, error collection
 - [ ] Implement `fn peek()`, `fn advance()`, `fn expect(kind)`, `fn at(kind)`, `fn sync_to(recovery_set)` (error recovery)
 - [ ] `compiler/parser/item.dt` — parse top-level items: fn, class, layer, interface, enum, error, const, import, `@type`, `@extern`, `@panic_handler`, `@oom_handler`, `@if` compile-time block
 - [ ] `compiler/parser/stmt.dt` — parse statements: `let`/`let mut`, destructure, assign (+=, -=, ...), return, if/elif/else, while, for..in, spawn, `@gc_config`, `@if` block
