@@ -1,0 +1,134 @@
+import { Span } from ast.span
+import { BinOp, UnOp } from ast.expr.ops
+import { Type } from typeck.types.ty
+import { TypedParam } from typeck.typed.items
+import { TypedBlock } from typeck.typed.stmts
+import { UseEffect } from typeck.typed.ownership
+
+enum TypedExprKind {
+    IntLit,
+    FloatLit,
+    StrLit,
+    FStrLit,
+    BoolLit,
+    NoneLit,
+    Ident,
+    Array,
+    Map,
+    Set,
+    Tuple,
+    BinOp,
+    UnOp,
+    Call,
+    MethodCall,
+    Field,
+    Index,
+    Lambda,
+    Cast,
+    Match,
+    Ok,
+    Err,
+    Nullish,
+    Chan
+}
+
+enum TypedFStrPartKind {
+    Literal,
+    Interp
+}
+
+class TypedFStrPart {
+    let kind
+    let literal
+    let interp
+
+    @type {
+        kind: TypedFStrPartKind
+        literal: Option[String]
+        interp: Option[TypedExpr]
+    }
+}
+
+class TypedMatchArmBody {
+    let expr
+    let block
+
+    @type {
+        expr: Option[TypedExpr]
+        block: Option[TypedBlock]
+    }
+}
+
+class TypedMatchArm {
+    let pattern
+    let body
+    let span
+
+    @type {
+        pattern: TypedExpr
+        body: TypedMatchArmBody
+        span: Span
+    }
+}
+
+class TypedMapEntry {
+    let key
+    let value
+
+    @type {
+        key: TypedExpr
+        value: TypedExpr
+    }
+}
+
+class TypedExpr {
+    let kind
+    let ty
+    let span
+    let use_effect
+    let int_value
+    let float_value
+    let string_value
+    let bool_value
+    let items
+    let entries
+    let left
+    let op
+    let right
+    let callee
+    let name
+    let args
+    let target
+    let index
+    let params
+    let body
+    let cast_type
+    let arms
+    let chan_type
+
+    @type {
+        kind: TypedExprKind
+        ty: Type
+        span: Span
+        use_effect: Option[UseEffect]
+        int_value: Option[Int]
+        float_value: Option[Float]
+        string_value: Option[String]
+        bool_value: Option[Bool]
+        items: Option[Array[TypedExpr]]
+        entries: Option[Array[TypedMapEntry]]
+        left: Option[TypedExpr]
+        op: Option[String]
+        right: Option[TypedExpr]
+        callee: Option[TypedExpr]
+        name: Option[String]
+        args: Option[Array[TypedExpr]]
+        target: Option[TypedExpr]
+        index: Option[TypedExpr]
+        params: Option[Array[TypedParam]]
+        body: Option[TypedExpr]
+        cast_type: Option[Type]
+        arms: Option[Array[TypedMatchArm]]
+        chan_type: Option[Type]
+    }
+}

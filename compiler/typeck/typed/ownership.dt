@@ -1,0 +1,34 @@
+enum OwnershipState {
+    Owned,
+    BorrowedShared,
+    BorrowedExclusive,
+    Moved,
+    Escaped
+}
+
+enum UseEffect {
+    Copy,
+    BorrowShared,
+    BorrowExclusive,
+    Move
+}
+
+class ParamOwnershipSummary {
+    let param_index
+    let effect
+
+    @type {
+        param_index: Int
+        effect: UseEffect
+    }
+}
+
+class FnOwnershipSummary {
+    let params
+    let returns_owned
+
+    @type {
+        params: Array[ParamOwnershipSummary]
+        returns_owned: Bool
+    }
+}

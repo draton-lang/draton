@@ -1,0 +1,11 @@
+import { Type } from typeck.types.ty
+
+class Scheme {
+    let quantified
+    let ty
+
+    @type {
+        quantified: Array[Int]
+        ty: Type
+    }
+}

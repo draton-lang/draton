@@ -1,0 +1,247 @@
+import { Span } from ast.span
+import { AssignOp } from ast.stmt.assign
+import { Type } from typeck.types.ty
+import { TypedExpr } from typeck.typed.exprs
+import { TypedTypeBlock } from typeck.typed.items
+
+enum TypedStmtKind {
+    Let,
+    LetDestructure,
+    Assign,
+    Return,
+    Expr,
+    If,
+    For,
+    While,
+    Spawn,
+    Block,
+    UnsafeBlock,
+    PointerBlock,
+    AsmBlock,
+    ComptimeBlock,
+    IfCompile,
+    GcConfig,
+    TypeBlock
+}
+
+class TypedBlock {
+    let stmts
+    let span
+
+    @type {
+        stmts: Array[TypedStmt]
+        span: Span
+    }
+}
+
+class TypedDestructureBinding {
+    let name
+    let ty
+
+    @type {
+        name: Option[String]
+        ty: Option[Type]
+    }
+}
+
+class TypedLetStmt {
+    let is_mut
+    let name
+    let value
+    let ty
+    let span
+
+    @type {
+        is_mut: Bool
+        name: String
+        value: Option[TypedExpr]
+        ty: Type
+        span: Span
+    }
+}
+
+class TypedLetDestructureStmt {
+    let is_mut
+    let bindings
+    let value
+    let tuple_ty
+    let span
+
+    @type {
+        is_mut: Bool
+        bindings: Array[TypedDestructureBinding]
+        value: TypedExpr
+        tuple_ty: Type
+        span: Span
+    }
+}
+
+class TypedAssignStmt {
+    let target
+    let op
+    let value
+    let span
+
+    @type {
+        target: TypedExpr
+        op: AssignOp
+        value: Option[TypedExpr]
+        span: Span
+    }
+}
+
+class TypedReturnStmt {
+    let value
+    let ty
+    let span
+
+    @type {
+        value: Option[TypedExpr]
+        ty: Type
+        span: Span
+    }
+}
+
+class TypedElseBranch {
+    let if_branch
+    let block
+
+    @type {
+        if_branch: Option[TypedIfStmt]
+        block: Option[TypedBlock]
+    }
+}
+
+class TypedIfStmt {
+    let condition
+    let then_branch
+    let else_branch
+    let span
+
+    @type {
+        condition: TypedExpr
+        then_branch: TypedBlock
+        else_branch: Option[TypedElseBranch]
+        span: Span
+    }
+}
+
+class TypedForStmt {
+    let name
+    let iter
+    let item_type
+    let body
+    let span
+
+    @type {
+        name: String
+        iter: TypedExpr
+        item_type: Type
+        body: TypedBlock
+        span: Span
+    }
+}
+
+class TypedWhileStmt {
+    let condition
+    let body
+    let span
+
+    @type {
+        condition: TypedExpr
+        body: TypedBlock
+        span: Span
+    }
+}
+
+class TypedSpawnBody {
+    let expr
+    let block
+
+    @type {
+        expr: Option[TypedExpr]
+        block: Option[TypedBlock]
+    }
+}
+
+class TypedSpawnStmt {
+    let body
+    let span
+
+    @type {
+        body: TypedSpawnBody
+        span: Span
+    }
+}
+
+class TypedIfCompileStmt {
+    let condition
+    let body
+    let span
+
+    @type {
+        condition: TypedExpr
+        body: TypedBlock
+        span: Span
+    }
+}
+
+class TypedGcConfigEntry {
+    let key
+    let value
+    let span
+
+    @type {
+        key: String
+        value: TypedExpr
+        span: Span
+    }
+}
+
+class TypedGcConfigStmt {
+    let entries
+    let span
+
+    @type {
+        entries: Array[TypedGcConfigEntry]
+        span: Span
+    }
+}
+
+class TypedStmt {
+    let kind
+    let let_stmt
+    let let_destructure
+    let assign_stmt
+    let return_stmt
+    let expr
+    let if_stmt
+    let for_stmt
+    let while_stmt
+    let spawn_stmt
+    let block
+    let asm_text
+    let if_compile
+    let gc_config
+    let type_block
+    let span
+
+    @type {
+        kind: TypedStmtKind
+        let_stmt: Option[TypedLetStmt]
+        let_destructure: Option[TypedLetDestructureStmt]
+        assign_stmt: Option[TypedAssignStmt]
+        return_stmt: Option[TypedReturnStmt]
+        expr: Option[TypedExpr]
+        if_stmt: Option[TypedIfStmt]
+        for_stmt: Option[TypedForStmt]
+        while_stmt: Option[TypedWhileStmt]
+        spawn_stmt: Option[TypedSpawnStmt]
+        block: Option[TypedBlock]
+        asm_text: Option[String]
+        if_compile: Option[TypedIfCompileStmt]
+        gc_config: Option[TypedGcConfigStmt]
+        type_block: Option[TypedTypeBlock]
+        span: Span
+    }
+}

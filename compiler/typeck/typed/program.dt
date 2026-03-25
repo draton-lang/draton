@@ -1,0 +1,9 @@
+import { TypedItem } from typeck.typed.items
+
+class TypedProgram {
+    let items
+
+    @type {
+        items: Array[TypedItem]
+    }
+}

@@ -1,0 +1,62 @@
+enum TypeKind {
+    Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    Float,
+    Float32,
+    Float64,
+    Bool,
+    String,
+    Char,
+    Unit,
+    Never,
+    Array,
+    Map,
+    Set,
+    Tuple,
+    Option,
+    Result,
+    Chan,
+    Fn,
+    Named,
+    Row,
+    Pointer,
+    Var
+}
+
+class RowField {
+    let name
+    let ty
+
+    @type {
+        name: String
+        ty: Type
+    }
+}
+
+class Type {
+    let kind
+
+    @type {
+        kind: TypeKind
+    }
+}
+
+class ArrayType extends Type { let inner @type { inner: Type } }
+class MapType extends Type { let key let value @type { key: Type value: Type } }
+class SetType extends Type { let inner @type { inner: Type } }
+class TupleType extends Type { let items @type { items: Array[Type] } }
+class OptionType extends Type { let inner @type { inner: Type } }
+class ResultType extends Type { let ok let err @type { ok: Type err: Type } }
+class ChanType extends Type { let inner @type { inner: Type } }
+class FnType extends Type { let params let ret @type { params: Array[Type] ret: Type } }
+class NamedType extends Type { let name let args @type { name: String args: Array[Type] } }
+class RowType extends Type { let fields let rest @type { fields: Array[RowField] rest: Option[Type] } }
+class PointerType extends Type { let inner @type { inner: Type } }
+class VarType extends Type { let id @type { id: Int } }

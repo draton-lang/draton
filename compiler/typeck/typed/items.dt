@@ -1,0 +1,225 @@
+import { Span } from ast.span
+import { Type } from typeck.types.ty
+import { TypedBlock } from typeck.typed.stmts
+import { TypedExpr } from typeck.typed.exprs
+import { FnOwnershipSummary } from typeck.typed.ownership
+
+enum TypedItemKind {
+    Fn,
+    Class,
+    Interface,
+    Enum,
+    Error,
+    Const,
+    Import,
+    Extern,
+    TypeBlock,
+    PanicHandler,
+    OomHandler
+}
+
+class TypedParam {
+    let name
+    let ty
+    let span
+
+    @type {
+        name: String
+        ty: Type
+        span: Span
+    }
+}
+
+class TypedFnDef {
+    let is_pub
+    let name
+    let params
+    let ret_type
+    let body
+    let ty
+    let span
+    let ownership_summary
+
+    @type {
+        is_pub: Bool
+        name: String
+        params: Array[TypedParam]
+        ret_type: Type
+        body: Option[TypedBlock]
+        ty: Type
+        span: Span
+        ownership_summary: Option[FnOwnershipSummary]
+    }
+}
+
+class TypedFieldDef {
+    let is_mut
+    let name
+    let ty
+    let span
+
+    @type {
+        is_mut: Bool
+        name: String
+        ty: Type
+        span: Span
+    }
+}
+
+class TypedTypeMember {
+    let name
+    let ty
+    let function
+    let span
+
+    @type {
+        name: Option[String]
+        ty: Option[Type]
+        function: Option[TypedFnDef]
+        span: Span
+    }
+}
+
+class TypedTypeBlock {
+    let members
+    let span
+
+    @type {
+        members: Array[TypedTypeMember]
+        span: Span
+    }
+}
+
+class TypedClassDef {
+    let name
+    let extends
+    let implements
+    let fields
+    let methods
+    let type_blocks
+    let span
+
+    @type {
+        name: String
+        extends: Option[String]
+        implements: Array[String]
+        fields: Array[TypedFieldDef]
+        methods: Array[TypedFnDef]
+        type_blocks: Array[TypedTypeBlock]
+        span: Span
+    }
+}
+
+class TypedInterfaceDef {
+    let name
+    let methods
+    let type_blocks
+    let span
+
+    @type {
+        name: String
+        methods: Array[TypedFnDef]
+        type_blocks: Array[TypedTypeBlock]
+        span: Span
+    }
+}
+
+class TypedEnumDef {
+    let name
+    let variants
+    let span
+
+    @type {
+        name: String
+        variants: Array[String]
+        span: Span
+    }
+}
+
+class TypedErrorDef {
+    let name
+    let fields
+    let span
+
+    @type {
+        name: String
+        fields: Array[TypedParam]
+        span: Span
+    }
+}
+
+class TypedConstDef {
+    let name
+    let value
+    let ty
+    let span
+
+    @type {
+        name: String
+        value: TypedExpr
+        ty: Type
+        span: Span
+    }
+}
+
+class TypedImportItem {
+    let name
+    let alias
+    let span
+
+    @type {
+        name: String
+        alias: Option[String]
+        span: Span
+    }
+}
+
+class TypedImportDef {
+    let module
+    let items
+    let span
+
+    @type {
+        module: Array[String]
+        items: Array[TypedImportItem]
+        span: Span
+    }
+}
+
+class TypedExternBlock {
+    let abi
+    let functions
+    let span
+
+    @type {
+        abi: String
+        functions: Array[TypedFnDef]
+        span: Span
+    }
+}
+
+class TypedItem {
+    let kind
+    let fn_def
+    let class_def
+    let interface_def
+    let enum_def
+    let error_def
+    let const_def
+    let import_def
+    let extern_block
+    let type_block
+
+    @type {
+        kind: TypedItemKind
+        fn_def: Option[TypedFnDef]
+        class_def: Option[TypedClassDef]
+        interface_def: Option[TypedInterfaceDef]
+        enum_def: Option[TypedEnumDef]
+        error_def: Option[TypedErrorDef]
+        const_def: Option[TypedConstDef]
+        import_def: Option[TypedImportDef]
+        extern_block: Option[TypedExternBlock]
+        type_block: Option[TypedTypeBlock]
+    }
+}

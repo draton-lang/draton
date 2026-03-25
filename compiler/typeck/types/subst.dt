@@ -1,0 +1,19 @@
+import { Type } from typeck.types.ty
+
+class SubstEntry {
+    let id
+    let ty
+
+    @type {
+        id: Int
+        ty: Type
+    }
+}
+
+class Substitution {
+    let entries
+
+    @type {
+        entries: Array[SubstEntry]
+    }
+}
