@@ -13,6 +13,8 @@ The historical self-host compiler mirror under `src/` was intentionally removed 
 - `compiler/` is the only approved self-host location for the current rewrite
 - `src/` now belongs to the Docusaurus docs site source (`src/pages`, `src/css`)
 - the Rust workspace under `crates/` remains the only authoritative compiler/tooling implementation until parity is proven
+- self-host source foundations now exist for `compiler/lexer/`, `compiler/ast/`, `compiler/parser/`, `compiler/driver/`, `compiler/typeck/{types,typed}/`, and `compiler/codegen/{core,llvm,mono,vtable}/`
+- the in-tree Draton sources are still contract/data-model focused; executable parser, typechecker, codegen, and parity verification remain incomplete
 
 ## Current boundary
 
@@ -20,6 +22,8 @@ The historical self-host compiler mirror under `src/` was intentionally removed 
 - `crates/` remains the source of truth for syntax, parser, typechecker, codegen, CLI, and runtime behavior
 - any mismatch between `compiler/` and `crates/` is resolved by aligning `compiler/` to Rust, not by redesigning the language
 - ownership inference for the self-host compiler remains deferred beyond the initial Phase 1 rewrite scope
+- `drat selfhost-stage0` is still the only executable parity oracle, and this repository state has not yet re-established a freshly built local binary with that command available in `target/debug/drat`
+- Phase 1 LLVM vendoring and bundled LLD remain blocked on a Rust toolchain host with `cargo` and `rustc`
 
 ## Why this changed
 
