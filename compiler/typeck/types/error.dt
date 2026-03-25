@@ -1,0 +1,63 @@
+enum TypeErrorKind {
+    Mismatch,
+    UndefinedVar,
+    UndefinedFn,
+    NoField,
+    BadBinOp,
+    ArgCount,
+    DestructureArity,
+    CannotInfer,
+    InfiniteType,
+    BadCast,
+    IncompatibleErrors,
+    MissingInterfaceMethod,
+    CircularInheritance,
+    UndefinedParent,
+    NonExhaustiveMatch,
+    RedundantPattern,
+    DeprecatedSyntax
+}
+
+class TypeError {
+    let kind
+    let name
+    let expected
+    let found
+    let hint
+    let field
+    let interface_name
+    let class_name
+    let method
+    let pattern
+    let missing
+    let syntax
+    let replacement
+    let expected_count
+    let got_count
+    let tuple_len
+    let pattern_len
+    let line
+    let col
+
+    @type {
+        kind: TypeErrorKind
+        name: Option[String]
+        expected: Option[String]
+        found: Option[String]
+        hint: Option[String]
+        field: Option[String]
+        interface_name: Option[String]
+        class_name: Option[String]
+        method: Option[String]
+        pattern: Option[String]
+        missing: Option[String]
+        syntax: Option[String]
+        replacement: Option[String]
+        expected_count: Option[Int]
+        got_count: Option[Int]
+        tuple_len: Option[Int]
+        pattern_len: Option[Int]
+        line: Int
+        col: Int
+    }
+}

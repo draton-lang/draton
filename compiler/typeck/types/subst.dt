@@ -1,4 +1,8 @@
-import { Type } from typeck.types.ty
+import { Type, ArrayType, MapType, SetType, TupleType, OptionType, ResultType, ChanType, FnType, NamedType, RowType, RowField, PointerType } from typeck.types.ty
+import { TypeError } from typeck.types.error
+import { occurs } from typeck.types.unify
+import { TypeEnv, EnvScope, EnvBinding } from typeck.types.env
+import { Scheme } from typeck.types.scheme
 
 class SubstEntry {
     let id
@@ -16,4 +20,172 @@ class Substitution {
     @type {
         entries: Array[SubstEntry]
     }
+
+    fn empty() {
+        return Substitution { entries: [] }
+    }
+
+    fn bind(var, ty) {
+        let applied = self.apply(ty)
+        if applied.kind == Var && applied.id == var {
+            return Ok(self)
+        }
+        if occurs(var, applied) {
+            return Err(TypeError {
+                kind: InfiniteType,
+                name: Some("t" + var.to_string()),
+                expected: None,
+                found: None,
+                hint: None,
+                field: None,
+                interface_name: None,
+                class_name: None,
+                method: None,
+                pattern: None,
+                missing: None,
+                syntax: None,
+                replacement: None,
+                expected_count: None,
+                got_count: None,
+                tuple_len: None,
+                pattern_len: None,
+                line: 0,
+                col: 0
+            })
+        }
+
+        let mut next_entries = []
+        let mut index = 0
+        while index < self.entries.len() {
+            let entry = self.entries[index]
+            next_entries.push(SubstEntry {
+                id: entry.id,
+                ty: single_binding(var, applied).apply(entry.ty)
+            })
+            index = index + 1
+        }
+        next_entries.push(SubstEntry { id: var, ty: applied })
+        return Ok(Substitution { entries: next_entries })
+    }
+
+    fn apply(ty) {
+        if ty.kind == Var {
+            let mut index = 0
+            while index < self.entries.len() {
+                if self.entries[index].id == ty.id {
+                    return self.apply(self.entries[index].ty)
+                }
+                index = index + 1
+            }
+            return ty
+        }
+        if ty.kind == Array {
+            return ArrayType { kind: Array, inner: self.apply(ty.inner) }
+        }
+        if ty.kind == Map {
+            return MapType { kind: Map, key: self.apply(ty.key), value: self.apply(ty.value) }
+        }
+        if ty.kind == Set {
+            return SetType { kind: Set, inner: self.apply(ty.inner) }
+        }
+        if ty.kind == Tuple {
+            let mut items = []
+            let mut index = 0
+            while index < ty.items.len() {
+                items.push(self.apply(ty.items[index]))
+                index = index + 1
+            }
+            return TupleType { kind: Tuple, items: items }
+        }
+        if ty.kind == Option {
+            return OptionType { kind: Option, inner: self.apply(ty.inner) }
+        }
+        if ty.kind == Result {
+            return ResultType { kind: Result, ok: self.apply(ty.ok), err: self.apply(ty.err) }
+        }
+        if ty.kind == Chan {
+            return ChanType { kind: Chan, inner: self.apply(ty.inner) }
+        }
+        if ty.kind == Fn {
+            let mut params = []
+            let mut index = 0
+            while index < ty.params.len() {
+                params.push(self.apply(ty.params[index]))
+                index = index + 1
+            }
+            return FnType { kind: Fn, params: params, ret: self.apply(ty.ret) }
+        }
+        if ty.kind == Named {
+            let mut args = []
+            let mut index = 0
+            while index < ty.args.len() {
+                args.push(self.apply(ty.args[index]))
+                index = index + 1
+            }
+            return NamedType { kind: Named, name: ty.name, args: args }
+        }
+        if ty.kind == Row {
+            let mut fields = []
+            let mut index = 0
+            while index < ty.fields.len() {
+                let field = ty.fields[index]
+                fields.push(RowField { name: field.name, ty: self.apply(field.ty) })
+                index = index + 1
+            }
+            let mut rest = None
+            match ty.rest {
+                Some(value) => { rest = Some(self.apply(value)) }
+                None => { }
+            }
+            return RowType { kind: Row, fields: fields, rest: rest }
+        }
+        if ty.kind == Pointer {
+            return PointerType { kind: Pointer, inner: self.apply(ty.inner) }
+        }
+        return ty
+    }
+
+    fn apply_env(env) {
+        let mut next_scopes = []
+        let mut scope_index = 0
+        while scope_index < env.scopes.len() {
+            let scope = env.scopes[scope_index]
+            let mut next_bindings = []
+            let mut binding_index = 0
+            while binding_index < scope.bindings.len() {
+                let binding = scope.bindings[binding_index]
+                next_bindings.push(EnvBinding {
+                    name: binding.name,
+                    scheme: Scheme {
+                        quantified: binding.scheme.quantified,
+                        ty: self.apply(binding.scheme.ty)
+                    }
+                })
+                binding_index = binding_index + 1
+            }
+            next_scopes.push(EnvScope { bindings: next_bindings })
+            scope_index = scope_index + 1
+        }
+        return TypeEnv { scopes: next_scopes, fresh_counter: env.fresh_counter }
+    }
+
+    fn compose(other) {
+        let mut next_entries = []
+        let mut index = 0
+        while index < other.entries.len() {
+            let entry = other.entries[index]
+            next_entries.push(SubstEntry { id: entry.id, ty: self.apply(entry.ty) })
+            index = index + 1
+        }
+        let mut self_index = 0
+        while self_index < self.entries.len() {
+            next_entries.push(self.entries[self_index])
+            self_index = self_index + 1
+        }
+        return Substitution { entries: next_entries }
+    }
+}
+
+fn single_binding(var, ty) {
+    return Substitution { entries: [SubstEntry { id: var, ty: ty }] }
 }

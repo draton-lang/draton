@@ -1,0 +1,223 @@
+import { ArrayType, MapType, SetType, TupleType, OptionType, ResultType, ChanType, FnType, NamedType, PointerType, RowType, RowField, VarType } from typeck.types.ty
+
+fn occurs(var, ty) {
+    if ty.kind == Var {
+        return ty.id == var
+    }
+    if ty.kind == Array || ty.kind == Set || ty.kind == Option || ty.kind == Chan || ty.kind == Pointer {
+        return occurs(var, ty.inner)
+    }
+    if ty.kind == Map {
+        return occurs(var, ty.key) || occurs(var, ty.value)
+    }
+    if ty.kind == Result {
+        return occurs(var, ty.ok) || occurs(var, ty.err)
+    }
+    if ty.kind == Tuple {
+        let mut index = 0
+        while index < ty.items.len() {
+            if occurs(var, ty.items[index]) {
+                return true
+            }
+            index = index + 1
+        }
+        return false
+    }
+    if ty.kind == Fn {
+        let mut index = 0
+        while index < ty.params.len() {
+            if occurs(var, ty.params[index]) {
+                return true
+            }
+            index = index + 1
+        }
+        return occurs(var, ty.ret)
+    }
+    if ty.kind == Named {
+        let mut index = 0
+        while index < ty.args.len() {
+            if occurs(var, ty.args[index]) {
+                return true
+            }
+            index = index + 1
+        }
+        return false
+    }
+    if ty.kind == Row {
+        let mut index = 0
+        while index < ty.fields.len() {
+            if occurs(var, ty.fields[index].ty) {
+                return true
+            }
+            index = index + 1
+        }
+        match ty.rest {
+            Some(value) => { return occurs(var, value) }
+            None => { return false }
+        }
+    }
+    return false
+}
+
+fn unify(a, b, subst) {
+    let left = subst.apply(a)
+    let right = subst.apply(b)
+
+    if left.kind == Var {
+        return subst.bind(left.id, right)
+    }
+    if right.kind == Var {
+        return subst.bind(right.id, left)
+    }
+    if left.kind == right.kind && (
+        left.kind == Int || left.kind == Int8 || left.kind == Int16 || left.kind == Int32 ||
+        left.kind == Int64 || left.kind == UInt8 || left.kind == UInt16 || left.kind == UInt32 ||
+        left.kind == UInt64 || left.kind == Float || left.kind == Float32 || left.kind == Float64 ||
+        left.kind == Bool || left.kind == String || left.kind == Char || left.kind == Unit ||
+        left.kind == Never
+    ) {
+        return Ok(subst)
+    }
+    if left.kind == Array && right.kind == Array {
+        return unify(left.inner, right.inner, subst)
+    }
+    if left.kind == Set && right.kind == Set {
+        return unify(left.inner, right.inner, subst)
+    }
+    if left.kind == Option && right.kind == Option {
+        return unify(left.inner, right.inner, subst)
+    }
+    if left.kind == Chan && right.kind == Chan {
+        return unify(left.inner, right.inner, subst)
+    }
+    if left.kind == Pointer && right.kind == Pointer {
+        return unify(left.inner, right.inner, subst)
+    }
+    if left.kind == Map && right.kind == Map {
+        let first = unify(left.key, right.key, subst)
+        match first {
+            Ok(next_subst) => { return unify(left.value, right.value, next_subst) }
+            Err(error) => { return Err(error) }
+        }
+    }
+    if left.kind == Result && right.kind == Result {
+        let first = unify(left.ok, right.ok, subst)
+        match first {
+            Ok(next_subst) => { return unify(left.err, right.err, next_subst) }
+            Err(error) => { return Err(error) }
+        }
+    }
+    if left.kind == Tuple && right.kind == Tuple {
+        if left.items.len() != right.items.len() {
+            return Err(TypeError {
+                kind: ArgCount,
+                name: None,
+                expected: None,
+                found: None,
+                hint: None,
+                field: None,
+                interface_name: None,
+                class_name: None,
+                method: None,
+                pattern: None,
+                missing: None,
+                syntax: None,
+                replacement: None,
+                expected_count: Some(left.items.len()),
+                got_count: Some(right.items.len()),
+                tuple_len: None,
+                pattern_len: None,
+                line: 0,
+                col: 0
+            })
+        }
+        let mut current = subst
+        let mut index = 0
+        while index < left.items.len() {
+            let next = unify(left.items[index], right.items[index], current)
+            match next {
+                Ok(next_subst) => { current = next_subst }
+                Err(error) => { return Err(error) }
+            }
+            index = index + 1
+        }
+        return Ok(current)
+    }
+    if left.kind == Fn && right.kind == Fn {
+        if left.params.len() != right.params.len() {
+            return Err(TypeError {
+                kind: ArgCount,
+                name: None,
+                expected: None,
+                found: None,
+                hint: None,
+                field: None,
+                interface_name: None,
+                class_name: None,
+                method: None,
+                pattern: None,
+                missing: None,
+                syntax: None,
+                replacement: None,
+                expected_count: Some(left.params.len()),
+                got_count: Some(right.params.len()),
+                tuple_len: None,
+                pattern_len: None,
+                line: 0,
+                col: 0
+            })
+        }
+        let mut current = subst
+        let mut index = 0
+        while index < left.params.len() {
+            let next = unify(left.params[index], right.params[index], current)
+            match next {
+                Ok(next_subst) => { current = next_subst }
+                Err(error) => { return Err(error) }
+            }
+            index = index + 1
+        }
+        return unify(left.ret, right.ret, current)
+    }
+    if left.kind == Named && right.kind == Named && left.name == right.name && left.args.len() == right.args.len() {
+        let mut current = subst
+        let mut index = 0
+        while index < left.args.len() {
+            let next = unify(left.args[index], right.args[index], current)
+            match next {
+                Ok(next_subst) => { current = next_subst }
+                Err(error) => { return Err(error) }
+            }
+            index = index + 1
+        }
+        return Ok(current)
+    }
+    return Err(TypeError {
+        kind: Mismatch,
+        name: None,
+        expected: Some(type_name(left)),
+        found: Some(type_name(right)),
+        hint: Some("align the operand or annotation types"),
+        field: None,
+        interface_name: None,
+        class_name: None,
+        method: None,
+        pattern: None,
+        missing: None,
+        syntax: None,
+        replacement: None,
+        expected_count: None,
+        got_count: None,
+        tuple_len: None,
+        pattern_len: None,
+        line: 0,
+        col: 0
+    })
+}
+
+fn type_name(ty) {
+    if ty.kind == Named {
+        return ty.name
+    }
+    return ty.kind.to_string()
+}
