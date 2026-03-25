@@ -11,9 +11,6 @@ import { ExternBlock } from ast.item.extern
 import { TypeBlock, TypeMember } from ast.item.type_block
 import { NamedTypeExpr } from ast.types
 import { ParseError } from parser.error
-import { parse_block } from parser.parse.stmts
-import { parse_expr } from parser.parse.exprs
-import { parse_type_expr } from parser.parse.types
 
 fn parse_program(parser) {
     let mut program = Program { items: [] }
@@ -151,12 +148,12 @@ fn parse_fn_def(parser, is_pub, allow_body) {
 
     let mut ret_type = None
     if parser.match_kind(Arrow) {
-        ret_type = parse_type_expr(parser)
+        ret_type = parser.parse_type_expr()
     }
 
     let mut body = None
     if allow_body && parser.check(LBrace) {
-        body = parse_block(parser)
+        body = parser.parse_block()
     }
 
     let mut end = start
@@ -192,7 +189,7 @@ fn parse_param_list(parser) {
         }
         let mut type_hint = None
         if parser.match_kind(Colon) {
-            type_hint = parse_type_expr(parser)
+            type_hint = parser.parse_type_expr()
         }
         let mut end = start
         if type_hint != None {
@@ -373,7 +370,7 @@ fn parse_class_field(parser) {
     }
     let mut type_hint = None
     if parser.match_kind(Colon) {
-        type_hint = parse_type_expr(parser)
+        type_hint = parser.parse_type_expr()
     }
     parser.optional_semicolon()
     let mut end = start
@@ -608,7 +605,7 @@ fn parse_const_def(parser, is_pub) {
         return None
     }
     parser.expect(Eq, "=")
-    let value = parse_expr(parser)
+    let value = parser.parse_expression()
     if value == None {
         return None
     }
@@ -672,7 +669,7 @@ fn parse_extern_block(parser) {
     if !parser.expect(AtExtern, "@extern") {
         return None
     }
-    let abi_expr = parse_expr(parser)
+    let abi_expr = parser.parse_expression()
     if abi_expr == None {
         return None
     }
@@ -736,7 +733,7 @@ fn parse_type_block(parser) {
             let name_token = parser.consume_ident("type binding name")
             if name_token != None {
                 parser.expect(Colon, ":")
-                let type_expr = parse_type_expr(parser)
+                let type_expr = parser.parse_type_expr()
                 if type_expr != None {
                     members.push(TypeMember {
                         kind: Binding,

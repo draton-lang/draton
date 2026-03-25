@@ -5,8 +5,6 @@ import { MatchArm, ExprMatchArmBody, BlockMatchArmBody } from ast.expr.match
 import { ParseError } from parser.error
 import { Lexer } from lexer.lexer
 import { Parser } from parser.parser
-import { parse_block } from parser.parse.stmts
-import { parse_type_expr } from parser.parse.types
 
 fn parse_expr(parser) {
     return parse_nullish(parser)
@@ -288,7 +286,7 @@ fn parse_cast(parser) {
         return None
     }
     while parser.match_kind(As) {
-        let ty = parse_type_expr(parser)
+        let ty = parser.parse_type_expr()
         if ty == None {
             return None
         }
@@ -661,7 +659,7 @@ fn parse_fstring_literal(parser, token) {
             let inner_lexer = Lexer { source: expr_src, position: 0, line: 1, col: 1 }
             let lexed = inner_lexer.tokenize()
             let inner_parser = Parser { tokens: lexed.tokens, pos: 0, errors: [], warnings: [] }
-            let expr = parse_expr(inner_parser)
+            let expr = inner_parser.parse_expression()
             inner_parser.skip_doc_comments()
             if !inner_parser.is_eof() {
                 let extra = inner_parser.current_token()
@@ -866,7 +864,7 @@ fn parse_match_expr(parser) {
         let mut body = None
         let mut end = arm_start
         if parser.check(LBrace) {
-            let block = parse_block(parser)
+            let block = parser.parse_block()
             if block == None {
                 return None
             }
@@ -902,7 +900,7 @@ fn parse_chan_expr(parser) {
     let start = parser.token_span()
     parser.expect(Chan, "chan")
     parser.expect(LBracket, "[")
-    let ty = parse_type_expr(parser)
+    let ty = parser.parse_type_expr()
     if ty == None {
         return None
     }

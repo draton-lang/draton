@@ -1,7 +1,5 @@
-import { parse_expr } from parser.parse.exprs
-
 fn parse_pattern(parser) {
-    return parse_expr(parser)
+    return parser.parse_expression()
 }
 
 fn parse_match_guard(parser) {

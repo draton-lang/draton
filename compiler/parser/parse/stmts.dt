@@ -4,9 +4,6 @@ import { AssignStmt } from ast.stmt.assign
 import { IfStmt, ElseBranch, ForStmt, WhileStmt } from ast.stmt.control
 import { SpawnStmt, SpawnBody } from ast.stmt.spawn
 import { ReturnStmt, IfCompileStmt, GcConfigStmt, GcConfigEntry } from ast.stmt.misc
-import { parse_expr } from parser.parse.exprs
-import { parse_type_expr } from parser.parse.types
-import { parse_type_block } from parser.parse.items
 
 fn parse_block(parser) {
     let start = parser.token_span()
@@ -85,7 +82,7 @@ fn parse_stmt(parser) {
             return GcConfigStmtNode { kind: GcConfig, span: stmt.span, value: stmt }
         }
     } elif parser.current_kind() == AtType {
-        let type_block = parse_type_block(parser)
+        let type_block = parser.parse_type_block()
         if type_block != None {
             return TypeBlockStmtNode { kind: TypeBlock, span: type_block.span, value: type_block }
         }
@@ -139,7 +136,7 @@ fn parse_asm_block(parser) {
 fn parse_if_compile_stmt(parser) {
     let start = parser.token_span()
     parser.expect(AtIf, "@if")
-    let condition = parse_expr(parser)
+    let condition = parser.parse_expression()
     if condition == None {
         return None
     }
@@ -169,7 +166,7 @@ fn parse_gc_config_stmt(parser) {
             return None
         }
         parser.expect(Eq, "=")
-        let value = parse_expr(parser)
+        let value = parser.parse_expression()
         if value == None {
             return None
         }
@@ -201,11 +198,11 @@ fn parse_let_stmt(parser) {
     }
     let mut type_hint = None
     if parser.match_kind(Colon) {
-        type_hint = parse_type_expr(parser)
+        type_hint = parser.parse_type_expr()
     }
     let mut value = None
     if parser.match_kind(Eq) {
-        value = parse_expr(parser)
+        value = parser.parse_expression()
     }
     parser.optional_semicolon()
     let mut end = start
@@ -246,7 +243,7 @@ fn parse_let_destructure(parser, start, is_mut) {
     }
     parser.expect(RParen, ")")
     parser.expect(Eq, "=")
-    let value = parse_expr(parser)
+    let value = parser.parse_expression()
     if value == None {
         return None
     }
@@ -265,7 +262,7 @@ fn parse_return_stmt(parser) {
     parser.expect(Return, "return")
     let mut value = None
     if parser.current_kind() != Semicolon && parser.current_kind() != RBrace && parser.current_kind() != Eof {
-        value = parse_expr(parser)
+        value = parser.parse_expression()
     }
     parser.optional_semicolon()
     let mut end = start
@@ -293,10 +290,10 @@ fn parse_elif_stmt(parser) {
 fn parse_if_stmt_tail(parser, start) {
     let mut condition = None
     if parser.match_kind(LParen) {
-        condition = parse_expr(parser)
+        condition = parser.parse_expression()
         parser.expect(RParen, ")")
     } else {
-        condition = parse_expr(parser)
+        condition = parser.parse_expression()
     }
     if condition == None {
         return None
@@ -357,7 +354,7 @@ fn parse_for_stmt(parser) {
         return None
     }
     parser.expect(In, "in")
-    let iter = parse_expr(parser)
+    let iter = parser.parse_expression()
     if iter == None {
         return None
     }
@@ -378,10 +375,10 @@ fn parse_while_stmt(parser) {
     parser.expect(While, "while")
     let mut condition = None
     if parser.match_kind(LParen) {
-        condition = parse_expr(parser)
+        condition = parser.parse_expression()
         parser.expect(RParen, ")")
     } else {
-        condition = parse_expr(parser)
+        condition = parser.parse_expression()
     }
     if condition == None {
         return None
@@ -410,7 +407,7 @@ fn parse_spawn_stmt(parser) {
         body = SpawnBody { kind: Block, expr: None, block: Some(block) }
         end = block.span
     } else {
-        let expr = parse_expr(parser)
+        let expr = parser.parse_expression()
         if expr == None {
             return None
         }
@@ -425,7 +422,7 @@ fn parse_spawn_stmt(parser) {
 
 fn parse_expr_stmt_or_assignment(parser) {
     let start = parser.token_span()
-    let expr = parse_expr(parser)
+    let expr = parser.parse_expression()
     if expr == None {
         return None
     }
@@ -433,37 +430,37 @@ fn parse_expr_stmt_or_assignment(parser) {
     let mut stmt = None
     if parser.current_kind() == Eq {
         parser.advance()
-        let value = parse_expr(parser)
+        let value = parser.parse_expression()
         if value == None { return None }
         let assign = AssignStmt { target: expr, op: Assign, value: Some(value), span: parser.merge_spans(start, value.span) }
         stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
     } elif parser.current_kind() == PlusEq {
         parser.advance()
-        let value = parse_expr(parser)
+        let value = parser.parse_expression()
         if value == None { return None }
         let assign = AssignStmt { target: expr, op: AddAssign, value: Some(value), span: parser.merge_spans(start, value.span) }
         stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
     } elif parser.current_kind() == MinusEq {
         parser.advance()
-        let value = parse_expr(parser)
+        let value = parser.parse_expression()
         if value == None { return None }
         let assign = AssignStmt { target: expr, op: SubAssign, value: Some(value), span: parser.merge_spans(start, value.span) }
         stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
     } elif parser.current_kind() == StarEq {
         parser.advance()
-        let value = parse_expr(parser)
+        let value = parser.parse_expression()
         if value == None { return None }
         let assign = AssignStmt { target: expr, op: MulAssign, value: Some(value), span: parser.merge_spans(start, value.span) }
         stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
     } elif parser.current_kind() == SlashEq {
         parser.advance()
-        let value = parse_expr(parser)
+        let value = parser.parse_expression()
         if value == None { return None }
         let assign = AssignStmt { target: expr, op: DivAssign, value: Some(value), span: parser.merge_spans(start, value.span) }
         stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
     } elif parser.current_kind() == PercentEq {
         parser.advance()
-        let value = parse_expr(parser)
+        let value = parser.parse_expression()
         if value == None { return None }
         let assign = AssignStmt { target: expr, op: ModAssign, value: Some(value), span: parser.merge_spans(start, value.span) }
         stmt = AssignStmtNode { kind: Assign, span: assign.span, value: assign }
