@@ -1,7 +1,13 @@
 import { Program } from ast.item.item
 import { Span } from ast.span
+import { Expr } from ast.expr.expr
 import { Token } from lexer.token
 import { ParseError, ParseWarning } from parser.error
+import { parse_program, parse_item, parse_type_block } from parser.parse.items
+import { parse_block, parse_stmt } from parser.parse.stmts
+import { parse_expr } from parser.parse.exprs
+import { parse_type_expr } from parser.parse.types
+import { parse_pattern } from parser.parse.patterns
 
 class ParseResult {
     let program
@@ -10,6 +16,18 @@ class ParseResult {
 
     @type {
         program: Program
+        errors: Array[ParseError]
+        warnings: Array[ParseWarning]
+    }
+}
+
+class ParseExpressionOnlyResult {
+    let expr
+    let errors
+    let warnings
+
+    @type {
+        expr: Option[Expr]
         errors: Array[ParseError]
         warnings: Array[ParseWarning]
     }
@@ -84,11 +102,12 @@ class Parser {
     fn expect(kind, expected) {
         self.skip_doc_comments()
         if self.current_kind() == kind {
-            return self.advance()
+            self.advance()
+            return true
         }
         let token = self.current_token()
         self.error_unexpected(token, expected)
-        return token
+        return false
     }
 
     fn consume_ident(expected) {
@@ -99,7 +118,7 @@ class Parser {
             return token
         }
         self.error_unexpected(token, expected)
-        return token
+        return None
     }
 
     fn error_unexpected(token, expected) {
@@ -146,6 +165,58 @@ class Parser {
 
     fn optional_semicolon() {
         self.match_kind(Semicolon)
+    }
+
+    fn parse() {
+        let program = parse_program(self)
+        return ParseResult {
+            program: program,
+            errors: self.errors,
+            warnings: self.warnings
+        }
+    }
+
+    fn parse_expression_only() {
+        self.skip_doc_comments()
+        let expr = self.parse_expression()
+        self.skip_doc_comments()
+        if !self.is_eof() {
+            let token = self.current_token()
+            self.error_unexpected(token, "end of expression")
+        }
+        return ParseExpressionOnlyResult {
+            expr: expr,
+            errors: self.errors,
+            warnings: self.warnings
+        }
+    }
+
+    fn parse_item() {
+        return parse_item(self)
+    }
+
+    fn parse_type_block() {
+        return parse_type_block(self)
+    }
+
+    fn parse_block() {
+        return parse_block(self)
+    }
+
+    fn parse_stmt() {
+        return parse_stmt(self)
+    }
+
+    fn parse_expression() {
+        return parse_expr(self)
+    }
+
+    fn parse_type_expr() {
+        return parse_type_expr(self)
+    }
+
+    fn parse_pattern() {
+        return parse_pattern(self)
     }
 
     fn synchronize_top_level() {

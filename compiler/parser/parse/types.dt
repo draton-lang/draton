@@ -1,0 +1,119 @@
+import { NamedTypeExpr, GenericTypeExpr, FnTypeExpr, PointerTypeExpr, InferTypeExpr } from ast.types
+
+fn parse_type_expr(parser) {
+    parser.skip_doc_comments()
+    let token = parser.current_token()
+    let mut ty = None
+
+    if token.kind == Fn {
+        parser.advance()
+        ty = parse_fn_type_expr(parser, parser.convert_span(token.span))
+    } elif token.kind == LParen {
+        ty = parse_paren_type_expr(parser, parser.convert_span(token.span))
+    } elif token.kind == AtPointer {
+        parser.advance()
+        ty = PointerTypeExpr { kind: Pointer, span: parser.convert_span(token.span) }
+    } elif token.kind == Ident {
+        parser.advance()
+        let name = token.lexeme
+        let start = parser.convert_span(token.span)
+        if parser.match_kind(LBracket) {
+            let mut args = []
+            while !parser.is_eof() && !parser.check(RBracket) {
+                let arg = parse_type_expr(parser)
+                if arg != None {
+                    args.push(arg)
+                }
+                if !parser.match_kind(Comma) {
+                    break
+                }
+            }
+            let end = parser.token_span()
+            parser.expect(RBracket, "]")
+            ty = GenericTypeExpr {
+                kind: Generic,
+                span: parser.merge_spans(start, end),
+                name: name,
+                args: args
+            }
+        } elif name == "_" {
+            ty = InferTypeExpr { kind: Infer, span: start }
+        } else {
+            ty = NamedTypeExpr { kind: Named, span: start, name: name }
+        }
+    } else {
+        parser.error_unexpected(token, "type expression")
+        return None
+    }
+
+    while parser.match_kind(QuestionQuestion) {
+        let span = parser.merge_spans(ty.span, parser.token_span())
+        ty = GenericTypeExpr {
+            kind: Generic,
+            span: span,
+            name: "Option",
+            args: [ty]
+        }
+    }
+
+    return ty
+}
+
+fn parse_fn_type_expr(parser, start) {
+    parser.expect(LParen, "(")
+    let mut params = []
+    while !parser.is_eof() && !parser.check(RParen) {
+        let param = parse_type_expr(parser)
+        if param != None {
+            params.push(param)
+        }
+        if !parser.match_kind(Comma) {
+            break
+        }
+    }
+    parser.expect(RParen, ")")
+    parser.expect(Arrow, "->")
+    let ret = parse_type_expr(parser)
+    if ret == None {
+        return None
+    }
+    return FnTypeExpr {
+        kind: Fn,
+        span: parser.merge_spans(start, ret.span),
+        params: params,
+        ret: ret
+    }
+}
+
+fn parse_paren_type_expr(parser, start) {
+    parser.expect(LParen, "(")
+    let mut params = []
+    while !parser.is_eof() && !parser.check(RParen) {
+        let param = parse_type_expr(parser)
+        if param != None {
+            params.push(param)
+        }
+        if !parser.match_kind(Comma) {
+            break
+        }
+    }
+    parser.expect(RParen, ")")
+    if parser.match_kind(Arrow) {
+        let ret = parse_type_expr(parser)
+        if ret == None {
+            return None
+        }
+        return FnTypeExpr {
+            kind: Fn,
+            span: parser.merge_spans(start, ret.span),
+            params: params,
+            ret: ret
+        }
+    }
+    if params.len() == 1 {
+        return params[0]
+    }
+    let token = parser.current_token()
+    parser.error_unexpected(token, "-> after parenthesized parameter types")
+    return None
+}

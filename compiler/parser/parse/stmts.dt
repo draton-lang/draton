@@ -1,0 +1,715 @@
+import { Block, LetStmtNode, LetDestructureStmtNode, AssignStmtNode, ReturnStmtNode, ExprStmtNode, IfStmtNode, ForStmtNode, WhileStmtNode, SpawnStmtNode, BlockStmtNode, UnsafeBlockStmtNode, PointerBlockStmtNode, AsmBlockStmtNode, ComptimeBlockStmtNode, IfCompileStmtNode, GcConfigStmtNode, TypeBlockStmtNode } from ast.stmt.stmt
+import { LetStmt, LetDestructureStmt, DestructureBinding } from ast.stmt.let
+import { AssignStmt } from ast.stmt.assign
+import { IfStmt, ElseBranch, ForStmt, WhileStmt } from ast.stmt.control
+import { SpawnBody, SpawnStmt } from ast.stmt.spawn
+import { ReturnStmt, IfCompileStmt, GcConfigEntry, GcConfigStmt } from ast.stmt.misc
+import { Span } from ast.span
+
+fn parse_block(parser) {
+    let start = parser.token_span()
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+
+    let mut stmts = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        parser.skip_doc_comments()
+        if parser.is_eof() || parser.check(RBrace) {
+            break
+        }
+        let before = parser.pos
+        let stmt = parse_stmt(parser)
+        match stmt {
+            Some(value) => {
+                stmts.push(value)
+            }
+            None => {
+                if parser.pos == before {
+                    parser.synchronize_stmt()
+                }
+            }
+        }
+    }
+
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return Some(Block {
+        stmts: stmts,
+        span: parser.merge_spans(start, end)
+    })
+}
+
+fn parse_stmt(parser) {
+    parser.skip_doc_comments()
+    if parser.current_kind() == Let {
+        return parse_let_stmt(parser)
+    }
+    if parser.current_kind() == Return {
+        let stmt = parse_return_stmt(parser)
+        match stmt {
+            Some(value) => {
+                return Some(ReturnStmtNode { kind: Return, span: value.span, value: value })
+            }
+            None => { return None }
+        }
+    }
+    if parser.current_kind() == If {
+        let stmt = parse_if_stmt(parser)
+        match stmt {
+            Some(value) => {
+                return Some(IfStmtNode { kind: If, span: value.span, value: value })
+            }
+            None => { return None }
+        }
+    }
+    if parser.current_kind() == For {
+        let stmt = parse_for_stmt(parser)
+        match stmt {
+            Some(value) => {
+                return Some(ForStmtNode { kind: For, span: value.span, value: value })
+            }
+            None => { return None }
+        }
+    }
+    if parser.current_kind() == While {
+        let stmt = parse_while_stmt(parser)
+        match stmt {
+            Some(value) => {
+                return Some(WhileStmtNode { kind: While, span: value.span, value: value })
+            }
+            None => { return None }
+        }
+    }
+    if parser.current_kind() == Spawn {
+        let stmt = parse_spawn_stmt(parser)
+        match stmt {
+            Some(value) => {
+                return Some(SpawnStmtNode { kind: Spawn, span: value.span, value: value })
+            }
+            None => { return None }
+        }
+    }
+    if parser.current_kind() == AtUnsafe {
+        return parse_special_block(parser, AtUnsafe, UnsafeBlock)
+    }
+    if parser.current_kind() == AtPointer {
+        return parse_special_block(parser, AtPointer, PointerBlock)
+    }
+    if parser.current_kind() == AtComptime {
+        return parse_special_block(parser, AtComptime, ComptimeBlock)
+    }
+    if parser.current_kind() == AtAsm {
+        let result = parse_asm_block(parser)
+        match result {
+            Some(value) => {
+                return Some(AsmBlockStmtNode { kind: AsmBlock, span: value.span, value: value.text })
+            }
+            None => { return None }
+        }
+    }
+    if parser.current_kind() == AtIf {
+        let stmt = parse_if_compile_stmt(parser)
+        match stmt {
+            Some(value) => {
+                return Some(IfCompileStmtNode { kind: IfCompile, span: value.span, value: value })
+            }
+            None => { return None }
+        }
+    }
+    if parser.current_kind() == AtGcConfig {
+        let stmt = parse_gc_config_stmt(parser)
+        match stmt {
+            Some(value) => {
+                return Some(GcConfigStmtNode { kind: GcConfig, span: value.span, value: value })
+            }
+            None => { return None }
+        }
+    }
+    if parser.current_kind() == AtType {
+        let type_block = parser.parse_type_block()
+        match type_block {
+            Some(value) => {
+                return Some(TypeBlockStmtNode { kind: TypeBlock, span: value.span, value: value })
+            }
+            None => { return None }
+        }
+    }
+    if parser.current_kind() == LBrace {
+        let block = parse_block(parser)
+        match block {
+            Some(value) => {
+                return Some(BlockStmtNode { kind: Block, span: value.span, value: value })
+            }
+            None => { return None }
+        }
+    }
+    return parse_expr_stmt_or_assignment(parser)
+}
+
+fn parse_special_block(parser, token_kind, stmt_kind) {
+    parser.expect(token_kind, "attribute block")
+    let block = parse_block(parser)
+    match block {
+        Some(value) => {
+            if stmt_kind == UnsafeBlock {
+                return Some(UnsafeBlockStmtNode { kind: UnsafeBlock, span: value.span, value: value })
+            }
+            if stmt_kind == PointerBlock {
+                return Some(PointerBlockStmtNode { kind: PointerBlock, span: value.span, value: value })
+            }
+            return Some(ComptimeBlockStmtNode { kind: ComptimeBlock, span: value.span, value: value })
+        }
+        None => { return None }
+    }
+}
+
+fn parse_asm_block(parser) {
+    let start = parser.token_span()
+    if !parser.expect(AtAsm, "@asm") {
+        return None
+    }
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+
+    let mut parts = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        parts.push(parser.current_token().lexeme)
+        parser.advance()
+    }
+
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return Some(AsmBlockParseResult {
+        text: parts.join(" "),
+        span: parser.merge_spans(start, end)
+    })
+}
+
+fn parse_if_compile_stmt(parser) {
+    let start = parser.token_span()
+    parser.expect(AtIf, "@if")
+    let condition = parser.parse_expression()
+    let body = parse_block(parser)
+    match condition {
+        Some(cond) => {
+            match body {
+                Some(block) => {
+                    return Some(IfCompileStmt {
+                        condition: cond,
+                        body: block,
+                        span: parser.merge_spans(start, block.span)
+                    })
+                }
+                None => { return None }
+            }
+        }
+        None => { return None }
+    }
+}
+
+fn parse_gc_config_stmt(parser) {
+    let start = parser.token_span()
+    parser.expect(AtGcConfig, "@gc_config")
+    parser.push_deprecated_warning(
+        "@gc_config has no effect",
+        "Draton uses Inferred Ownership and has no GC runtime",
+        start
+    )
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+
+    let mut entries = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        let entry_start = parser.token_span()
+        let token = parser.consume_ident("GC config key")
+        let mut key = ""
+        match token {
+            Some(value) => { key = value.lexeme }
+            None => { return None }
+        }
+        parser.expect(Eq, "=")
+        let value = parser.parse_expression()
+        match value {
+            Some(expr) => {
+                entries.push(GcConfigEntry {
+                    key: key,
+                    value: expr,
+                    span: parser.merge_spans(entry_start, expr.span)
+                })
+            }
+            None => { return None }
+        }
+        parser.match_kind(Comma)
+    }
+
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return Some(GcConfigStmt {
+        entries: entries,
+        span: parser.merge_spans(start, end)
+    })
+}
+
+fn parse_let_stmt(parser) {
+    let start = parser.token_span()
+    parser.expect(Let, "let")
+    let is_mut = parser.match_kind(Mut)
+    if parser.check(LParen) {
+        return parse_let_destructure_stmt(parser, start, is_mut)
+    }
+
+    let token = parser.consume_ident("binding name")
+    let mut name = ""
+    match token {
+        Some(value) => { name = value.lexeme }
+        None => { return None }
+    }
+
+    let mut type_hint = None
+    if parser.match_kind(Colon) {
+        type_hint = parser.parse_type_expr()
+    }
+
+    let mut value = None
+    if parser.match_kind(Eq) {
+        value = parser.parse_expression()
+    }
+
+    parser.optional_semicolon()
+    let mut end = start
+    match value {
+        Some(expr) => {
+            end = expr.span
+            return Some(LetStmtNode {
+                kind: Let,
+                span: parser.merge_spans(start, end),
+                value: LetStmt {
+                    is_mut: is_mut,
+                    name: name,
+                    type_hint: type_hint,
+                    value: Some(expr),
+                    span: parser.merge_spans(start, end)
+                }
+            })
+        }
+        None => {
+            match type_hint {
+                Some(ty) => { end = ty.span }
+                None => { }
+            }
+        }
+    }
+
+    return Some(LetStmtNode {
+        kind: Let,
+        span: parser.merge_spans(start, end),
+        value: LetStmt {
+            is_mut: is_mut,
+            name: name,
+            type_hint: type_hint,
+            value: None,
+            span: parser.merge_spans(start, end)
+        }
+    })
+}
+
+fn parse_let_destructure_stmt(parser, start, is_mut) {
+    if !parser.expect(LParen, "(") {
+        return None
+    }
+    let mut names = []
+    while !parser.is_eof() && !parser.check(RParen) {
+        if parser.check(Ident) && parser.current_token().lexeme == "_" {
+            parser.advance()
+            names.push(DestructureBinding { kind: Wildcard, name: None })
+        } else {
+            let token = parser.consume_ident("binding name")
+            match token {
+                Some(value) => {
+                    names.push(DestructureBinding {
+                        kind: Name,
+                        name: Some(value.lexeme)
+                    })
+                }
+                None => { return None }
+            }
+        }
+        if !parser.check(RParen) {
+            parser.expect(Comma, ",")
+        }
+    }
+    parser.expect(RParen, ")")
+    parser.expect(Eq, "=")
+    let value = parser.parse_expression()
+    match value {
+        Some(expr) => {
+            let span = parser.merge_spans(start, expr.span)
+            parser.optional_semicolon()
+            return Some(LetDestructureStmtNode {
+                kind: LetDestructure,
+                span: span,
+                value: LetDestructureStmt {
+                    is_mut: is_mut,
+                    names: names,
+                    value: expr,
+                    span: span
+                }
+            })
+        }
+        None => { return None }
+    }
+}
+
+fn parse_assign_stmt(parser, target) {
+    return parse_expr_stmt_or_assignment_with_target(parser, target)
+}
+
+fn parse_return_stmt(parser) {
+    let start = parser.token_span()
+    parser.expect(Return, "return")
+    let mut value = None
+    if parser.current_kind() != Semicolon && parser.current_kind() != RBrace && parser.current_kind() != Eof {
+        value = parser.parse_expression()
+    }
+    parser.optional_semicolon()
+
+    let mut end = start
+    match value {
+        Some(expr) => { end = expr.span }
+        None => { }
+    }
+    return Some(ReturnStmt {
+        value: value,
+        span: parser.merge_spans(start, end)
+    })
+}
+
+fn parse_if_stmt(parser) {
+    let start = parser.token_span()
+    parser.expect(If, "if")
+    return parse_if_stmt_tail(parser, start)
+}
+
+fn parse_elif_stmt(parser) {
+    let start = parser.token_span()
+    parser.expect(Elif, "elif")
+    return parse_if_stmt_tail(parser, start)
+}
+
+fn parse_if_stmt_tail(parser, start) {
+    let mut condition = None
+    if parser.match_kind(LParen) {
+        condition = parser.parse_expression()
+        parser.expect(RParen, ")")
+    } else {
+        condition = parser.parse_expression()
+    }
+
+    let then_branch = parse_block(parser)
+    let mut cond_value = None
+    let mut then_value = None
+    match condition {
+        Some(value) => { cond_value = value }
+        None => { return None }
+    }
+    match then_branch {
+        Some(value) => { then_value = value }
+        None => { return None }
+    }
+
+    let mut else_branch = None
+    if parser.match_kind(Else) {
+        if parser.check(If) {
+            let nested = parse_if_stmt(parser)
+            match nested {
+                Some(value) => {
+                    else_branch = Some(ElseBranch {
+                        kind: If,
+                        if_branch: Some(value),
+                        block: None
+                    })
+                }
+                None => { return None }
+            }
+        } elif parser.check(Elif) {
+            let nested = parse_elif_stmt(parser)
+            match nested {
+                Some(value) => {
+                    else_branch = Some(ElseBranch {
+                        kind: If,
+                        if_branch: Some(value),
+                        block: None
+                    })
+                }
+                None => { return None }
+            }
+        } else {
+            let block = parse_block(parser)
+            match block {
+                Some(value) => {
+                    else_branch = Some(ElseBranch {
+                        kind: Block,
+                        if_branch: None,
+                        block: Some(value)
+                    })
+                }
+                None => { return None }
+            }
+        }
+    } elif parser.check(Elif) {
+        let elif_start = parser.token_span()
+        parser.expect(Elif, "elif")
+        let nested = parse_if_stmt_tail(parser, elif_start)
+        match nested {
+            Some(value) => {
+                else_branch = Some(ElseBranch {
+                    kind: If,
+                    if_branch: Some(value),
+                    block: None
+                })
+            }
+            None => { return None }
+        }
+    }
+
+    let mut end = then_value.span
+    match else_branch {
+        Some(branch) => {
+            if branch.kind == If {
+                match branch.if_branch {
+                    Some(value) => { end = value.span }
+                    None => { }
+                }
+            } else {
+                match branch.block {
+                    Some(value) => { end = value.span }
+                    None => { }
+                }
+            }
+        }
+        None => { }
+    }
+    return Some(IfStmt {
+        condition: cond_value,
+        then_branch: then_value,
+        else_branch: else_branch,
+        span: parser.merge_spans(start, end)
+    })
+}
+
+fn parse_for_stmt(parser) {
+    let start = parser.token_span()
+    parser.expect(For, "for")
+    let token = parser.consume_ident("loop variable")
+    let mut name = ""
+    match token {
+        Some(value) => { name = value.lexeme }
+        None => { return None }
+    }
+    parser.expect(In, "in")
+    let iter = parser.parse_expression()
+    let body = parse_block(parser)
+    match iter {
+        Some(iter_expr) => {
+            match body {
+                Some(block) => {
+                    return Some(ForStmt {
+                        name: name,
+                        iter: iter_expr,
+                        body: block,
+                        span: parser.merge_spans(start, block.span)
+                    })
+                }
+                None => { return None }
+            }
+        }
+        None => { return None }
+    }
+}
+
+fn parse_while_stmt(parser) {
+    let start = parser.token_span()
+    parser.expect(While, "while")
+    let mut condition = None
+    if parser.match_kind(LParen) {
+        condition = parser.parse_expression()
+        parser.expect(RParen, ")")
+    } else {
+        condition = parser.parse_expression()
+    }
+    let body = parse_block(parser)
+    match condition {
+        Some(expr) => {
+            match body {
+                Some(block) => {
+                    return Some(WhileStmt {
+                        condition: expr,
+                        body: block,
+                        span: parser.merge_spans(start, block.span)
+                    })
+                }
+                None => { return None }
+            }
+        }
+        None => { return None }
+    }
+}
+
+fn parse_spawn_stmt(parser) {
+    let start = parser.token_span()
+    parser.expect(Spawn, "spawn")
+    let mut body = None
+    if parser.check(LBrace) {
+        let block = parse_block(parser)
+        match block {
+            Some(value) => {
+                body = Some(SpawnBody {
+                    kind: Block,
+                    expr: None,
+                    block: Some(value)
+                })
+            }
+            None => { return None }
+        }
+    } else {
+        let expr = parser.parse_expression()
+        match expr {
+            Some(value) => {
+                body = Some(SpawnBody {
+                    kind: Expr,
+                    expr: Some(value),
+                    block: None
+                })
+            }
+            None => { return None }
+        }
+    }
+
+    let body_value = body
+    let mut end = start
+    match body_value {
+        Some(value) => {
+            if value.kind == Block {
+                match value.block {
+                    Some(block_value) => { end = block_value.span }
+                    None => { }
+                }
+            } else {
+                match value.expr {
+                    Some(expr_value) => { end = expr_value.span }
+                    None => { }
+                }
+            }
+            return Some(SpawnStmt {
+                body: value,
+                span: parser.merge_spans(start, end)
+            })
+        }
+        None => { return None }
+    }
+}
+
+fn parse_unsafe_block(parser) {
+    let block = parse_special_block(parser, AtUnsafe, UnsafeBlock)
+    match block {
+        Some(value) => { return Some(value.value) }
+        None => { return None }
+    }
+}
+
+fn parse_comptime_block(parser) {
+    let block = parse_special_block(parser, AtComptime, ComptimeBlock)
+    match block {
+        Some(value) => { return Some(value.value) }
+        None => { return None }
+    }
+}
+
+fn parse_expr_stmt_or_assignment(parser) {
+    let expr = parser.parse_expression()
+    match expr {
+        Some(value) => {
+            return parse_expr_stmt_or_assignment_with_target(parser, value)
+        }
+        None => { return None }
+    }
+}
+
+fn parse_expr_stmt_or_assignment_with_target(parser, expr) {
+    let start = expr.span
+    if parser.current_kind() == Eq ||
+       parser.current_kind() == PlusEq ||
+       parser.current_kind() == MinusEq ||
+       parser.current_kind() == StarEq ||
+       parser.current_kind() == SlashEq ||
+       parser.current_kind() == PercentEq ||
+       parser.current_kind() == PlusPlus ||
+       parser.current_kind() == MinusMinus {
+        let token_kind = parser.current_kind()
+        if token_kind == PlusPlus || token_kind == MinusMinus {
+            let end = parser.token_span()
+            parser.advance()
+            let mut op = Inc
+            if token_kind == MinusMinus {
+                op = Dec
+            }
+            parser.optional_semicolon()
+            return Some(AssignStmtNode {
+                kind: Assign,
+                span: parser.merge_spans(start, end),
+                value: AssignStmt {
+                    target: expr,
+                    op: op,
+                    value: None,
+                    span: parser.merge_spans(start, end)
+                }
+            })
+        }
+
+        parser.advance()
+        let value = parser.parse_expression()
+        match value {
+            Some(rhs) => {
+                let end = rhs.span
+                let mut op = Assign
+                if token_kind == PlusEq { op = AddAssign }
+                elif token_kind == MinusEq { op = SubAssign }
+                elif token_kind == StarEq { op = MulAssign }
+                elif token_kind == SlashEq { op = DivAssign }
+                elif token_kind == PercentEq { op = ModAssign }
+                parser.optional_semicolon()
+                return Some(AssignStmtNode {
+                    kind: Assign,
+                    span: parser.merge_spans(start, end),
+                    value: AssignStmt {
+                        target: expr,
+                        op: op,
+                        value: Some(rhs),
+                        span: parser.merge_spans(start, end)
+                    }
+                })
+            }
+            None => { return None }
+        }
+    }
+
+    parser.optional_semicolon()
+    return Some(ExprStmtNode {
+        kind: Expr,
+        span: expr.span,
+        value: expr
+    })
+}
+
+class AsmBlockParseResult {
+    let text
+    let span
+
+    @type {
+        text: String
+        span: Span
+    }
+}

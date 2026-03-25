@@ -1,0 +1,9 @@
+import { parse_expr } from parser.parse.exprs
+
+fn parse_pattern(parser) {
+    return parse_expr(parser)
+}
+
+fn parse_match_guard(parser) {
+    return None
+}

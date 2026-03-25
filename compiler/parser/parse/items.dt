@@ -1,0 +1,935 @@
+import { Item, Program } from ast.item.item
+import { FnDef, Param } from ast.item.fn
+import { ClassDef, ClassMember, FieldDef } from ast.item.class
+import { LayerDef } from ast.item.layer
+import { InterfaceDef } from ast.item.interface
+import { EnumDef } from ast.item.enum
+import { ErrorDef } from ast.item.error
+import { ConstDef } from ast.item.const
+import { ImportDef, ImportItem } from ast.item.import
+import { ExternBlock } from ast.item.extern
+import { TypeBlock, TypeMember } from ast.item.type_block
+import { NamedTypeExpr } from ast.types
+import { ParseError } from parser.error
+import { parse_block } from parser.parse.stmts
+import { parse_expr } from parser.parse.exprs
+import { parse_type_expr } from parser.parse.types
+
+fn parse_program(parser) {
+    let mut program = Program { items: [] }
+    while !parser.is_eof() {
+        parser.skip_doc_comments()
+        if parser.is_eof() {
+            break
+        }
+        let before = parser.pos
+        let item = parse_item(parser)
+        if item != None {
+            program.items.push(item)
+            continue
+        }
+        if parser.pos == before {
+            parser.synchronize_top_level()
+        }
+    }
+    return program
+}
+
+fn parse_item(parser) {
+    parser.skip_doc_comments()
+    let is_pub = parser.match_kind(Pub)
+
+    if parser.current_kind() == Fn {
+        let fn_def = parse_fn_def(parser, is_pub, true)
+        if fn_def != None {
+            return make_fn_item(fn_def, Fn)
+        }
+    } elif parser.current_kind() == Class {
+        let class_def = parse_class_def(parser)
+        if class_def != None {
+            return make_class_item(class_def)
+        }
+    } elif parser.current_kind() == AtAcyclic {
+        let class_def = parse_acyclic_class_def(parser)
+        if class_def != None {
+            return make_class_item(class_def)
+        }
+    } elif parser.current_kind() == Layer {
+        let token = parser.current_token()
+        parser.errors.push(ParseError {
+            kind: LayerOutsideClass,
+            found: None,
+            expected: None,
+            line: token.span.line,
+            col: token.span.col
+        })
+        skip_layer_block(parser)
+        return None
+    } elif parser.current_kind() == Interface {
+        let iface = parse_interface_def(parser, is_pub)
+        if iface != None {
+            return make_interface_item(iface)
+        }
+    } elif parser.current_kind() == Enum {
+        let enum_def = parse_enum_def(parser, is_pub)
+        if enum_def != None {
+            return make_enum_item(enum_def)
+        }
+    } elif parser.current_kind() == Error {
+        let error_def = parse_error_def(parser, is_pub)
+        if error_def != None {
+            return make_error_item(error_def)
+        }
+    } elif parser.current_kind() == Const {
+        let const_def = parse_const_def(parser, is_pub)
+        if const_def != None {
+            return make_const_item(const_def)
+        }
+    } elif parser.current_kind() == Import {
+        let import_def = parse_import_def(parser)
+        if import_def != None {
+            return make_import_item(import_def)
+        }
+    } elif parser.current_kind() == AtType {
+        let type_block = parse_type_block(parser)
+        if type_block != None {
+            return make_type_block_item(type_block)
+        }
+    } elif parser.current_kind() == AtExtern {
+        let extern_block = parse_extern_block(parser)
+        if extern_block != None {
+            return make_extern_item(extern_block)
+        }
+    } elif parser.current_kind() == AtPanicHandler {
+        let fn_def = parse_panic_handler(parser)
+        if fn_def != None {
+            return make_fn_item(fn_def, PanicHandler)
+        }
+    } elif parser.current_kind() == AtOomHandler {
+        let fn_def = parse_oom_handler(parser)
+        if fn_def != None {
+            return make_fn_item(fn_def, OomHandler)
+        }
+    } else {
+        let token = parser.current_token()
+        parser.error_unexpected(token, "top-level item")
+    }
+
+    if is_pub {
+        parser.synchronize_top_level()
+    }
+    return None
+}
+
+fn parse_panic_handler(parser) {
+    parser.advance()
+    return parse_fn_def(parser, false, true)
+}
+
+fn parse_oom_handler(parser) {
+    parser.advance()
+    return parse_fn_def(parser, false, true)
+}
+
+fn parse_fn_def(parser, is_pub, allow_body) {
+    let start = parser.token_span()
+    if !parser.expect(Fn, "fn") {
+        return None
+    }
+    let name_token = parser.consume_ident("function name")
+    if name_token == None {
+        return None
+    }
+    let type_params = parse_type_param_list(parser)
+    if type_params == None {
+        return None
+    }
+    let params = parse_param_list(parser)
+    if params == None {
+        return None
+    }
+
+    let mut ret_type = None
+    if parser.match_kind(Arrow) {
+        ret_type = parse_type_expr(parser)
+    }
+
+    let mut body = None
+    if allow_body && parser.check(LBrace) {
+        body = parse_block(parser)
+    }
+
+    let mut end = start
+    if body != None {
+        end = body.span
+    } elif ret_type != None {
+        end = ret_type.span
+    } elif params.len() > 0 {
+        end = params[params.len() - 1].span
+    }
+
+    return FnDef {
+        is_pub: is_pub,
+        name: name_token.lexeme,
+        type_params: type_params,
+        params: params,
+        ret_type: ret_type,
+        body: body,
+        span: parser.merge_spans(start, end)
+    }
+}
+
+fn parse_param_list(parser) {
+    if !parser.expect(LParen, "(") {
+        return None
+    }
+    let mut params = []
+    while !parser.is_eof() && !parser.check(RParen) {
+        let start = parser.token_span()
+        let name_token = parser.consume_ident("parameter name")
+        if name_token == None {
+            return None
+        }
+        let mut type_hint = None
+        if parser.match_kind(Colon) {
+            type_hint = parse_type_expr(parser)
+        }
+        let mut end = start
+        if type_hint != None {
+            end = type_hint.span
+        }
+        params.push(Param {
+            name: name_token.lexeme,
+            type_hint: type_hint,
+            span: parser.merge_spans(start, end)
+        })
+        if !parser.match_kind(Comma) {
+            break
+        }
+    }
+    parser.expect(RParen, ")")
+    return params
+}
+
+fn parse_class_def(parser) {
+    let start = parser.token_span()
+    if !parser.expect(Class, "class") {
+        return None
+    }
+    let name_token = parser.consume_ident("class name")
+    if name_token == None {
+        return None
+    }
+    let type_params = parse_type_param_list(parser)
+
+    let mut extends = None
+    if parser.match_kind(Extends) {
+        let base = parser.consume_ident("base class")
+        if base != None {
+            extends = base.lexeme
+        }
+    }
+
+    let mut implements = []
+    if parser.match_kind(Implements) {
+        while !parser.is_eof() {
+            let iface = parser.consume_ident("interface name")
+            if iface != None {
+                implements.push(iface.lexeme)
+            }
+            if !parser.match_kind(Comma) {
+                break
+            }
+        }
+    }
+
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+
+    let mut members = []
+    let mut type_blocks = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        parser.skip_doc_comments()
+        if parser.current_kind() == Let {
+            let field = parse_class_field(parser)
+            if field != None {
+                members.push(make_field_member(field))
+            } else {
+                parser.synchronize_stmt()
+            }
+        } elif parser.current_kind() == Fn {
+            let method = parse_fn_def(parser, false, true)
+            if method != None {
+                members.push(make_method_member(method))
+            } else {
+                parser.synchronize_stmt()
+            }
+        } elif parser.current_kind() == Pub {
+            parser.advance()
+            if parser.current_kind() == Fn {
+                let method = parse_fn_def(parser, true, true)
+                if method != None {
+                    members.push(make_method_member(method))
+                } else {
+                    parser.synchronize_stmt()
+                }
+            } elif parser.current_kind() == Let {
+                let field = parse_class_field(parser)
+                if field != None {
+                    members.push(make_field_member(field))
+                } else {
+                    parser.synchronize_stmt()
+                }
+            } else {
+                let token = parser.current_token()
+                parser.error_unexpected(token, "fn or let")
+                parser.synchronize_stmt()
+            }
+        } elif parser.current_kind() == Layer {
+            let layer = parse_layer_def(parser)
+            if layer != None {
+                members.push(make_layer_member(layer))
+            } else {
+                parser.synchronize_stmt()
+            }
+        } elif parser.current_kind() == AtType {
+            let type_block = parse_type_block(parser)
+            if type_block != None {
+                type_blocks.push(type_block)
+            } else {
+                parser.synchronize_stmt()
+            }
+        } else {
+            let token = parser.current_token()
+            parser.error_unexpected(token, "class member")
+            parser.synchronize_stmt()
+        }
+    }
+
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return ClassDef {
+        name: name_token.lexeme,
+        type_params: type_params,
+        extends: extends,
+        implements: implements,
+        members: members,
+        type_blocks: type_blocks,
+        span: parser.merge_spans(start, end)
+    }
+}
+
+fn parse_acyclic_class_def(parser) {
+    let annotation_span = parser.token_span()
+    if !parser.expect(AtAcyclic, "@acyclic") {
+        return None
+    }
+    let class_def = parse_class_def(parser)
+    if class_def == None {
+        return None
+    }
+
+    let synthetic = TypeBlock {
+        members: [
+            TypeMember {
+                kind: Binding,
+                name: Some("@acyclic"),
+                type_expr: Some(NamedTypeExpr {
+                    kind: Named,
+                    span: annotation_span,
+                    name: "Unit"
+                }),
+                function: None,
+                span: annotation_span
+            }
+        ],
+        span: annotation_span
+    }
+
+    let mut type_blocks = [synthetic]
+    for block in class_def.type_blocks {
+        type_blocks.push(block)
+    }
+
+    return ClassDef {
+        name: class_def.name,
+        type_params: class_def.type_params,
+        extends: class_def.extends,
+        implements: class_def.implements,
+        members: class_def.members,
+        type_blocks: type_blocks,
+        span: class_def.span
+    }
+}
+
+fn parse_class_field(parser) {
+    let start = parser.token_span()
+    parser.expect(Let, "let")
+    let is_mut = parser.match_kind(Mut)
+    let name_token = parser.consume_ident("field name")
+    if name_token == None {
+        return None
+    }
+    let mut type_hint = None
+    if parser.match_kind(Colon) {
+        type_hint = parse_type_expr(parser)
+    }
+    parser.optional_semicolon()
+    let mut end = start
+    if type_hint != None {
+        end = type_hint.span
+    }
+    return FieldDef {
+        is_mut: is_mut,
+        name: name_token.lexeme,
+        type_hint: type_hint,
+        span: parser.merge_spans(start, end)
+    }
+}
+
+fn parse_type_param_list(parser) {
+    if !parser.check(LBracket) {
+        return []
+    }
+    parser.expect(LBracket, "[")
+    let mut params = []
+    while !parser.is_eof() && !parser.check(RBracket) {
+        let name_token = parser.consume_ident("type parameter")
+        if name_token == None {
+            return None
+        }
+        params.push(name_token.lexeme)
+        if !parser.match_kind(Comma) {
+            break
+        }
+    }
+    parser.expect(RBracket, "]")
+    return params
+}
+
+fn parse_layer_def(parser) {
+    let start = parser.token_span()
+    if !parser.expect(Layer, "layer") {
+        return None
+    }
+    let name_token = parser.consume_ident("layer name")
+    if name_token == None {
+        return None
+    }
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+    let mut methods = []
+    let mut type_blocks = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        parser.skip_doc_comments()
+        if parser.current_kind() == Fn {
+            let method = parse_fn_def(parser, false, true)
+            if method != None {
+                methods.push(method)
+            } else {
+                parser.synchronize_stmt()
+            }
+        } elif parser.current_kind() == Pub {
+            parser.advance()
+            let method = parse_fn_def(parser, true, true)
+            if method != None {
+                methods.push(method)
+            } else {
+                parser.synchronize_stmt()
+            }
+        } elif parser.current_kind() == Layer {
+            let token = parser.current_token()
+            parser.errors.push(ParseError {
+                kind: NestedLayerNotAllowed,
+                found: None,
+                expected: None,
+                line: token.span.line,
+                col: token.span.col
+            })
+            skip_layer_block(parser)
+        } elif parser.current_kind() == AtType {
+            let type_block = parse_type_block(parser)
+            if type_block != None {
+                type_blocks.push(type_block)
+            } else {
+                parser.synchronize_stmt()
+            }
+        } else {
+            let token = parser.current_token()
+            parser.error_unexpected(token, "layer method")
+            parser.synchronize_stmt()
+        }
+    }
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return LayerDef {
+        name: name_token.lexeme,
+        methods: methods,
+        type_blocks: type_blocks,
+        span: parser.merge_spans(start, end)
+    }
+}
+
+fn skip_layer_block(parser) {
+    if !parser.match_kind(Layer) {
+        return
+    }
+    if parser.current_kind() == Ident {
+        parser.advance()
+    }
+    if !parser.match_kind(LBrace) {
+        return
+    }
+    let mut depth = 1
+    while depth > 0 && !parser.is_eof() {
+        if parser.current_kind() == LBrace {
+            depth = depth + 1
+            parser.advance()
+        } elif parser.current_kind() == RBrace {
+            depth = depth - 1
+            parser.advance()
+        } else {
+            parser.advance()
+        }
+    }
+}
+
+fn parse_interface_def(parser, is_pub) {
+    let start = parser.token_span()
+    if !parser.expect(Interface, "interface") {
+        return None
+    }
+    let name_token = parser.consume_ident("interface name")
+    if name_token == None {
+        return None
+    }
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+    let mut methods = []
+    let mut type_blocks = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        parser.skip_doc_comments()
+        if parser.current_kind() == Fn {
+            let method = parse_fn_def(parser, false, false)
+            if method != None {
+                methods.push(method)
+                parser.optional_semicolon()
+            } else {
+                parser.synchronize_stmt()
+            }
+        } elif parser.current_kind() == AtType {
+            let type_block = parse_type_block(parser)
+            if type_block != None {
+                type_blocks.push(type_block)
+            } else {
+                parser.synchronize_stmt()
+            }
+        } else {
+            let token = parser.current_token()
+            parser.error_unexpected(token, "interface member")
+            parser.synchronize_stmt()
+        }
+    }
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return InterfaceDef {
+        name: name_token.lexeme,
+        methods: methods,
+        type_blocks: type_blocks,
+        span: parser.merge_spans(start, end)
+    }
+}
+
+fn parse_enum_def(parser, is_pub) {
+    let start = parser.token_span()
+    if !parser.expect(Enum, "enum") {
+        return None
+    }
+    let name_token = parser.consume_ident("enum name")
+    if name_token == None {
+        return None
+    }
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+    let mut variants = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        let variant = parser.consume_ident("enum variant")
+        if variant != None {
+            variants.push(variant.lexeme)
+        }
+        if !parser.match_kind(Comma) {
+            break
+        }
+    }
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return EnumDef {
+        name: name_token.lexeme,
+        variants: variants,
+        span: parser.merge_spans(start, end)
+    }
+}
+
+fn parse_error_def(parser, is_pub) {
+    let start = parser.token_span()
+    if !parser.expect(Error, "error") {
+        return None
+    }
+    let name_token = parser.consume_ident("error name")
+    if name_token == None {
+        return None
+    }
+    let fields = parse_param_list(parser)
+    if fields == None {
+        return None
+    }
+    let mut end = start
+    if fields.len() > 0 {
+        end = fields[fields.len() - 1].span
+    }
+    return ErrorDef {
+        name: name_token.lexeme,
+        fields: fields,
+        span: parser.merge_spans(start, end)
+    }
+}
+
+fn parse_const_def(parser, is_pub) {
+    let start = parser.token_span()
+    if !parser.expect(Const, "const") {
+        return None
+    }
+    let name_token = parser.consume_ident("const name")
+    if name_token == None {
+        return None
+    }
+    parser.expect(Eq, "=")
+    let value = parse_expr(parser)
+    if value == None {
+        return None
+    }
+    parser.optional_semicolon()
+    return ConstDef {
+        name: name_token.lexeme,
+        value: value,
+        span: parser.merge_spans(start, value.span)
+    }
+}
+
+fn parse_import_def(parser) {
+    let start = parser.token_span()
+    if !parser.expect(Import, "import") {
+        return None
+    }
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+    let mut items = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        let item_start = parser.token_span()
+        let name_token = parser.consume_ident("import name")
+        if name_token == None {
+            return None
+        }
+        let mut alias = None
+        if parser.match_kind(As) {
+            let alias_token = parser.consume_ident("import alias")
+            if alias_token != None {
+                alias = alias_token.lexeme
+            }
+        }
+        let mut item_end = item_start
+        let prev = parser.previous_token()
+        if prev != None {
+            item_end = parser.convert_span(prev.span)
+        }
+        items.push(ImportItem {
+            name: name_token.lexeme,
+            alias: alias,
+            span: parser.merge_spans(item_start, item_end)
+        })
+        parser.match_kind(Comma)
+    }
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    let mut module = []
+    if parser.match_kind(From) {
+        module = parse_module_path(parser)
+    }
+    return ImportDef {
+        module: module,
+        items: items,
+        span: parser.merge_spans(start, end)
+    }
+}
+
+fn parse_extern_block(parser) {
+    let start = parser.token_span()
+    if !parser.expect(AtExtern, "@extern") {
+        return None
+    }
+    let abi_expr = parse_expr(parser)
+    if abi_expr == None {
+        return None
+    }
+    if abi_expr.kind != StrLit {
+        parser.errors.push(ParseError {
+            kind: InvalidExpr,
+            found: None,
+            expected: None,
+            line: abi_expr.span.line,
+            col: abi_expr.span.col
+        })
+        return None
+    }
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+    let mut functions = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        let function = parse_fn_def(parser, false, false)
+        if function != None {
+            functions.push(function)
+            parser.optional_semicolon()
+        } else {
+            parser.synchronize_stmt()
+        }
+    }
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return ExternBlock {
+        abi: abi_expr.value,
+        functions: functions,
+        span: parser.merge_spans(start, end)
+    }
+}
+
+fn parse_type_block(parser) {
+    let start = parser.token_span()
+    if !parser.expect(AtType, "@type") {
+        return None
+    }
+    if !parser.expect(LBrace, "{") {
+        return None
+    }
+    let mut members = []
+    while !parser.is_eof() && !parser.check(RBrace) {
+        if parser.current_kind() == Fn {
+            let signature = parse_fn_def(parser, false, false)
+            if signature != None {
+                members.push(TypeMember {
+                    kind: Function,
+                    name: None,
+                    type_expr: None,
+                    function: Some(signature),
+                    span: signature.span
+                })
+            } else {
+                parser.synchronize_stmt()
+            }
+        } elif parser.current_kind() == Ident {
+            let member_start = parser.token_span()
+            let name_token = parser.consume_ident("type binding name")
+            if name_token != None {
+                parser.expect(Colon, ":")
+                let type_expr = parse_type_expr(parser)
+                if type_expr != None {
+                    members.push(TypeMember {
+                        kind: Binding,
+                        name: Some(name_token.lexeme),
+                        type_expr: Some(type_expr),
+                        function: None,
+                        span: parser.merge_spans(member_start, type_expr.span)
+                    })
+                }
+            }
+        } else {
+            let token = parser.current_token()
+            parser.error_unexpected(token, "type block member")
+            parser.synchronize_stmt()
+        }
+        parser.match_kind(Comma)
+    }
+    let end = parser.token_span()
+    parser.expect(RBrace, "}")
+    return TypeBlock {
+        members: members,
+        span: parser.merge_spans(start, end)
+    }
+}
+
+fn parse_module_path(parser) {
+    let first = parser.consume_ident("module path")
+    if first == None {
+        return None
+    }
+    let mut module = [first.lexeme]
+    while parser.match_kind(Dot) {
+        let segment = parser.consume_ident("module path segment")
+        if segment == None {
+            return None
+        }
+        module.push(segment.lexeme)
+    }
+    return module
+}
+
+fn make_fn_item(fn_def, kind) {
+    return Item {
+        kind: kind,
+        fn_def: Some(fn_def),
+        class_def: None,
+        interface_def: None,
+        enum_def: None,
+        error_def: None,
+        const_def: None,
+        import_def: None,
+        extern_block: None,
+        type_block: None,
+        span: fn_def.span
+    }
+}
+
+fn make_class_item(class_def) {
+    return Item {
+        kind: Class,
+        fn_def: None,
+        class_def: Some(class_def),
+        interface_def: None,
+        enum_def: None,
+        error_def: None,
+        const_def: None,
+        import_def: None,
+        extern_block: None,
+        type_block: None,
+        span: class_def.span
+    }
+}
+
+fn make_interface_item(interface_def) {
+    return Item {
+        kind: Interface,
+        fn_def: None,
+        class_def: None,
+        interface_def: Some(interface_def),
+        enum_def: None,
+        error_def: None,
+        const_def: None,
+        import_def: None,
+        extern_block: None,
+        type_block: None,
+        span: interface_def.span
+    }
+}
+
+fn make_enum_item(enum_def) {
+    return Item {
+        kind: Enum,
+        fn_def: None,
+        class_def: None,
+        interface_def: None,
+        enum_def: Some(enum_def),
+        error_def: None,
+        const_def: None,
+        import_def: None,
+        extern_block: None,
+        type_block: None,
+        span: enum_def.span
+    }
+}
+
+fn make_error_item(error_def) {
+    return Item {
+        kind: Error,
+        fn_def: None,
+        class_def: None,
+        interface_def: None,
+        enum_def: None,
+        error_def: Some(error_def),
+        const_def: None,
+        import_def: None,
+        extern_block: None,
+        type_block: None,
+        span: error_def.span
+    }
+}
+
+fn make_const_item(const_def) {
+    return Item {
+        kind: Const,
+        fn_def: None,
+        class_def: None,
+        interface_def: None,
+        enum_def: None,
+        error_def: None,
+        const_def: Some(const_def),
+        import_def: None,
+        extern_block: None,
+        type_block: None,
+        span: const_def.span
+    }
+}
+
+fn make_import_item(import_def) {
+    return Item {
+        kind: Import,
+        fn_def: None,
+        class_def: None,
+        interface_def: None,
+        enum_def: None,
+        error_def: None,
+        const_def: None,
+        import_def: Some(import_def),
+        extern_block: None,
+        type_block: None,
+        span: import_def.span
+    }
+}
+
+fn make_extern_item(extern_block) {
+    return Item {
+        kind: Extern,
+        fn_def: None,
+        class_def: None,
+        interface_def: None,
+        enum_def: None,
+        error_def: None,
+        const_def: None,
+        import_def: None,
+        extern_block: Some(extern_block),
+        type_block: None,
+        span: extern_block.span
+    }
+}
+
+fn make_type_block_item(type_block) {
+    return Item {
+        kind: TypeBlock,
+        fn_def: None,
+        class_def: None,
+        interface_def: None,
+        enum_def: None,
+        error_def: None,
+        const_def: None,
+        import_def: None,
+        extern_block: None,
+        type_block: Some(type_block),
+        span: type_block.span
+    }
+}
+
+fn make_field_member(field) {
+    return ClassMember { kind: Field, field: Some(field), method: None, layer: None }
+}
+
+fn make_method_member(method) {
+    return ClassMember { kind: Method, field: None, method: Some(method), layer: None }
+}
+
+fn make_layer_member(layer) {
+    return ClassMember { kind: Layer, field: None, method: None, layer: Some(layer) }
+}
