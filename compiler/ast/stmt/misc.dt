@@ -1,0 +1,47 @@
+import { Span } from ast.span
+import { Expr } from ast.expr.expr
+import { Block } from ast.stmt.stmt
+
+class ReturnStmt {
+    let value
+    let span
+
+    @type {
+        value: Option[Expr]
+        span: Span
+    }
+}
+
+class IfCompileStmt {
+    let condition
+    let body
+    let span
+
+    @type {
+        condition: Expr
+        body: Block
+        span: Span
+    }
+}
+
+class GcConfigEntry {
+    let key
+    let value
+    let span
+
+    @type {
+        key: String
+        value: Expr
+        span: Span
+    }
+}
+
+class GcConfigStmt {
+    let entries
+    let span
+
+    @type {
+        entries: Array[GcConfigEntry]
+        span: Span
+    }
+}

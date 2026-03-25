@@ -1,0 +1,14 @@
+import { Span } from ast.span
+import { FnDef } from ast.item.fn
+
+class ExternBlock {
+    let abi
+    let functions
+    let span
+
+    @type {
+        abi: String
+        functions: Array[FnDef]
+        span: Span
+    }
+}

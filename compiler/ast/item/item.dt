@@ -1,0 +1,61 @@
+import { Span } from ast.span
+import { FnDef } from ast.item.fn
+import { ClassDef } from ast.item.class
+import { LayerDef } from ast.item.layer
+import { InterfaceDef } from ast.item.interface
+import { EnumDef } from ast.item.enum
+import { ErrorDef } from ast.item.error
+import { ConstDef } from ast.item.const
+import { ImportDef } from ast.item.import
+import { ExternBlock } from ast.item.extern
+import { TypeBlock } from ast.item.type_block
+
+enum ItemKind {
+    Fn,
+    Class,
+    Interface,
+    Enum,
+    Error,
+    Const,
+    Import,
+    Extern,
+    TypeBlock,
+    PanicHandler,
+    OomHandler
+}
+
+class Item {
+    let kind
+    let fn_def
+    let class_def
+    let interface_def
+    let enum_def
+    let error_def
+    let const_def
+    let import_def
+    let extern_block
+    let type_block
+    let span
+
+    @type {
+        kind: ItemKind
+        fn_def: Option[FnDef]
+        class_def: Option[ClassDef]
+        interface_def: Option[InterfaceDef]
+        enum_def: Option[EnumDef]
+        error_def: Option[ErrorDef]
+        const_def: Option[ConstDef]
+        import_def: Option[ImportDef]
+        extern_block: Option[ExternBlock]
+        type_block: Option[TypeBlock]
+        span: Span
+    }
+}
+
+class Program {
+    let items
+
+    @type {
+        items: Array[Item]
+    }
+}

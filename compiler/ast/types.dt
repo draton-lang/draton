@@ -1,0 +1,51 @@
+import { Span } from ast.span
+
+enum TypeExprKind {
+    Named,
+    Generic,
+    Fn,
+    Pointer,
+    Infer
+}
+
+class TypeExpr {
+    let kind
+    let span
+
+    @type {
+        kind: TypeExprKind
+        span: Span
+    }
+}
+
+class NamedTypeExpr extends TypeExpr {
+    let name
+
+    @type {
+        name: String
+    }
+}
+
+class GenericTypeExpr extends TypeExpr {
+    let name
+    let args
+
+    @type {
+        name: String
+        args: Array[TypeExpr]
+    }
+}
+
+class FnTypeExpr extends TypeExpr {
+    let params
+    let ret
+
+    @type {
+        params: Array[TypeExpr]
+        ret: TypeExpr
+    }
+}
+
+class PointerTypeExpr extends TypeExpr {}
+
+class InferTypeExpr extends TypeExpr {}

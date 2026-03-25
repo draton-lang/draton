@@ -1,0 +1,25 @@
+import { Span } from ast.span
+
+class ImportItem {
+    let name
+    let alias
+    let span
+
+    @type {
+        name: String
+        alias: Option[String]
+        span: Span
+    }
+}
+
+class ImportDef {
+    let module
+    let items
+    let span
+
+    @type {
+        module: Array[String]
+        items: Array[ImportItem]
+        span: Span
+    }
+}

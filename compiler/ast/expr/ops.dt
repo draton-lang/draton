@@ -1,0 +1,29 @@
+enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+    Range
+}
+
+enum UnOp {
+    Neg,
+    Not,
+    BitNot,
+    Ref,
+    Deref
+}

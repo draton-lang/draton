@@ -1,0 +1,34 @@
+import { Span } from ast.span
+import { TypeExpr } from ast.types
+import { FnDef } from ast.item.fn
+
+enum TypeMemberKind {
+    Binding,
+    Function
+}
+
+class TypeMember {
+    let kind
+    let name
+    let type_expr
+    let function
+    let span
+
+    @type {
+        kind: TypeMemberKind
+        name: Option[String]
+        type_expr: Option[TypeExpr]
+        function: Option[FnDef]
+        span: Span
+    }
+}
+
+class TypeBlock {
+    let members
+    let span
+
+    @type {
+        members: Array[TypeMember]
+        span: Span
+    }
+}

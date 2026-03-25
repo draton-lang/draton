@@ -1,0 +1,13 @@
+import { Span } from ast.span
+
+class EnumDef {
+    let name
+    let variants
+    let span
+
+    @type {
+        name: String
+        variants: Array[String]
+        span: Span
+    }
+}

@@ -1,0 +1,66 @@
+import { Span } from ast.span
+import { Expr } from ast.expr.expr
+import { TypeBlock } from ast.item.type_block
+import { LetStmt, LetDestructureStmt } from ast.stmt.let
+import { AssignStmt } from ast.stmt.assign
+import { IfStmt, ForStmt, WhileStmt } from ast.stmt.control
+import { SpawnStmt } from ast.stmt.spawn
+import { ReturnStmt, IfCompileStmt, GcConfigStmt } from ast.stmt.misc
+
+enum StmtKind {
+    Let,
+    LetDestructure,
+    Assign,
+    Return,
+    Expr,
+    If,
+    For,
+    While,
+    Spawn,
+    Block,
+    UnsafeBlock,
+    PointerBlock,
+    AsmBlock,
+    ComptimeBlock,
+    IfCompile,
+    GcConfig,
+    TypeBlock
+}
+
+class Block {
+    let stmts
+    let span
+
+    @type {
+        stmts: Array[Stmt]
+        span: Span
+    }
+}
+
+class Stmt {
+    let kind
+    let span
+
+    @type {
+        kind: StmtKind
+        span: Span
+    }
+}
+
+class LetStmtNode extends Stmt { let value @type { value: LetStmt } }
+class LetDestructureStmtNode extends Stmt { let value @type { value: LetDestructureStmt } }
+class AssignStmtNode extends Stmt { let value @type { value: AssignStmt } }
+class ReturnStmtNode extends Stmt { let value @type { value: ReturnStmt } }
+class ExprStmtNode extends Stmt { let value @type { value: Expr } }
+class IfStmtNode extends Stmt { let value @type { value: IfStmt } }
+class ForStmtNode extends Stmt { let value @type { value: ForStmt } }
+class WhileStmtNode extends Stmt { let value @type { value: WhileStmt } }
+class SpawnStmtNode extends Stmt { let value @type { value: SpawnStmt } }
+class BlockStmtNode extends Stmt { let value @type { value: Block } }
+class UnsafeBlockStmtNode extends Stmt { let value @type { value: Block } }
+class PointerBlockStmtNode extends Stmt { let value @type { value: Block } }
+class AsmBlockStmtNode extends Stmt { let value @type { value: String } }
+class ComptimeBlockStmtNode extends Stmt { let value @type { value: Block } }
+class IfCompileStmtNode extends Stmt { let value @type { value: IfCompileStmt } }
+class GcConfigStmtNode extends Stmt { let value @type { value: GcConfigStmt } }
+class TypeBlockStmtNode extends Stmt { let value @type { value: TypeBlock } }

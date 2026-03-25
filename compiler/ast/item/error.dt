@@ -1,0 +1,14 @@
+import { Span } from ast.span
+import { Param } from ast.item.fn
+
+class ErrorDef {
+    let name
+    let fields
+    let span
+
+    @type {
+        name: String
+        fields: Array[Param]
+        span: Span
+    }
+}

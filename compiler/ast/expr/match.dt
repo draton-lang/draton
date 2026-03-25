@@ -1,0 +1,44 @@
+import { Span } from ast.span
+import { Expr } from ast.expr.expr
+import { Block } from ast.stmt.stmt
+
+enum MatchArmBodyKind {
+    Expr,
+    Block
+}
+
+class MatchArmBody {
+    let kind
+
+    @type {
+        kind: MatchArmBodyKind
+    }
+}
+
+class ExprMatchArmBody extends MatchArmBody {
+    let expr
+
+    @type {
+        expr: Expr
+    }
+}
+
+class BlockMatchArmBody extends MatchArmBody {
+    let block
+
+    @type {
+        block: Block
+    }
+}
+
+class MatchArm {
+    let pattern
+    let body
+    let span
+
+    @type {
+        pattern: Expr
+        body: MatchArmBody
+        span: Span
+    }
+}

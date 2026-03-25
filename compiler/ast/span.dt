@@ -1,0 +1,13 @@
+class Span {
+    let start
+    let end
+    let line
+    let col
+
+    @type {
+        start: Int
+        end: Int
+        line: Int
+        col: Int
+    }
+}

@@ -1,0 +1,14 @@
+import { Span } from ast.span
+import { Expr } from ast.expr.expr
+
+class ConstDef {
+    let name
+    let value
+    let span
+
+    @type {
+        name: String
+        value: Expr
+        span: Span
+    }
+}

@@ -1,0 +1,30 @@
+import { Span } from ast.span
+import { Expr } from ast.expr.expr
+import { Block } from ast.stmt.stmt
+
+enum SpawnBodyKind {
+    Expr,
+    Block
+}
+
+class SpawnBody {
+    let kind
+    let expr
+    let block
+
+    @type {
+        kind: SpawnBodyKind
+        expr: Option[Expr]
+        block: Option[Block]
+    }
+}
+
+class SpawnStmt {
+    let body
+    let span
+
+    @type {
+        body: SpawnBody
+        span: Span
+    }
+}

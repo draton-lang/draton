@@ -1,0 +1,59 @@
+import { Span } from ast.span
+import { TypeExpr } from ast.types
+import { FnDef } from ast.item.fn
+import { LayerDef } from ast.item.layer
+import { TypeBlock } from ast.item.type_block
+
+class FieldDef {
+    let is_mut
+    let name
+    let type_hint
+    let span
+
+    @type {
+        is_mut: Bool
+        name: String
+        type_hint: Option[TypeExpr]
+        span: Span
+    }
+}
+
+enum ClassMemberKind {
+    Field,
+    Method,
+    Layer
+}
+
+class ClassMember {
+    let kind
+    let field
+    let method
+    let layer
+
+    @type {
+        kind: ClassMemberKind
+        field: Option[FieldDef]
+        method: Option[FnDef]
+        layer: Option[LayerDef]
+    }
+}
+
+class ClassDef {
+    let name
+    let type_params
+    let extends
+    let implements
+    let members
+    let type_blocks
+    let span
+
+    @type {
+        name: String
+        type_params: Array[String]
+        extends: Option[String]
+        implements: Array[String]
+        members: Array[ClassMember]
+        type_blocks: Array[TypeBlock]
+        span: Span
+    }
+}

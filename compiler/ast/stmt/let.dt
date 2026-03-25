@@ -1,0 +1,48 @@
+import { Span } from ast.span
+import { Expr } from ast.expr.expr
+import { TypeExpr } from ast.types
+
+class LetStmt {
+    let is_mut
+    let name
+    let type_hint
+    let value
+    let span
+
+    @type {
+        is_mut: Bool
+        name: String
+        type_hint: Option[TypeExpr]
+        value: Option[Expr]
+        span: Span
+    }
+}
+
+enum DestructureBindingKind {
+    Name,
+    Wildcard
+}
+
+class DestructureBinding {
+    let kind
+    let name
+
+    @type {
+        kind: DestructureBindingKind
+        name: Option[String]
+    }
+}
+
+class LetDestructureStmt {
+    let is_mut
+    let names
+    let value
+    let span
+
+    @type {
+        is_mut: Bool
+        names: Array[DestructureBinding]
+        value: Expr
+        span: Span
+    }
+}

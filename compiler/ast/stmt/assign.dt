@@ -1,0 +1,27 @@
+import { Span } from ast.span
+import { Expr } from ast.expr.expr
+
+enum AssignOp {
+    Assign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    Inc,
+    Dec
+}
+
+class AssignStmt {
+    let target
+    let op
+    let value
+    let span
+
+    @type {
+        target: Expr
+        op: AssignOp
+        value: Option[Expr]
+        span: Span
+    }
+}

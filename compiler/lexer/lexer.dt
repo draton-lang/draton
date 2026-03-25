@@ -1,0 +1,13 @@
+class Lexer {
+    let source
+    let mut position
+    let mut line
+    let mut col
+
+    @type {
+        source: String
+        position: Int
+        line: Int
+        col: Int
+    }
+}

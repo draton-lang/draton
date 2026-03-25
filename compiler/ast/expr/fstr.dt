@@ -1,0 +1,30 @@
+import { Expr } from ast.expr.expr
+
+enum FStrPartKind {
+    Literal,
+    Interp
+}
+
+class FStrPart {
+    let kind
+
+    @type {
+        kind: FStrPartKind
+    }
+}
+
+class LiteralFStrPart extends FStrPart {
+    let value
+
+    @type {
+        value: String
+    }
+}
+
+class InterpFStrPart extends FStrPart {
+    let expr
+
+    @type {
+        expr: Expr
+    }
+}

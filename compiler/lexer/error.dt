@@ -1,0 +1,22 @@
+enum LexErrorKind {
+    UnexpectedChar,
+    UnterminatedString,
+    UnterminatedBlockComment,
+    InvalidNumericLiteral
+}
+
+class LexError {
+    let kind
+    let found
+    let lexeme
+    let line
+    let col
+
+    @type {
+        kind: LexErrorKind
+        found: Option[String]
+        lexeme: Option[String]
+        line: Int
+        col: Int
+    }
+}

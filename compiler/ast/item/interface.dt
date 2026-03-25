@@ -1,0 +1,17 @@
+import { Span } from ast.span
+import { FnDef } from ast.item.fn
+import { TypeBlock } from ast.item.type_block
+
+class InterfaceDef {
+    let name
+    let methods
+    let type_blocks
+    let span
+
+    @type {
+        name: String
+        methods: Array[FnDef]
+        type_blocks: Array[TypeBlock]
+        span: Span
+    }
+}

@@ -1,0 +1,35 @@
+import { Span } from ast.span
+import { TypeExpr } from ast.types
+import { Block } from ast.stmt.stmt
+
+class Param {
+    let name
+    let type_hint
+    let span
+
+    @type {
+        name: String
+        type_hint: Option[TypeExpr]
+        span: Span
+    }
+}
+
+class FnDef {
+    let is_pub
+    let name
+    let type_params
+    let params
+    let ret_type
+    let body
+    let span
+
+    @type {
+        is_pub: Bool
+        name: String
+        type_params: Array[String]
+        params: Array[Param]
+        ret_type: Option[TypeExpr]
+        body: Option[Block]
+        span: Span
+    }
+}

@@ -1,0 +1,12 @@
+import { LexError } from lexer.error
+import { Token } from lexer.token
+
+class LexResult {
+    let tokens
+    let errors
+
+    @type {
+        tokens: Array[Token]
+        errors: Array[LexError]
+    }
+}

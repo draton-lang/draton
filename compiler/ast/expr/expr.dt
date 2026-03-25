@@ -1,0 +1,99 @@
+import { Span } from ast.span
+import { MatchArm } from ast.expr.match
+import { FStrPart } from ast.expr.fstr
+import { BinOp, UnOp } from ast.expr.ops
+import { TypeExpr } from ast.types
+
+enum ExprKind {
+    IntLit,
+    FloatLit,
+    StrLit,
+    FStrLit,
+    BoolLit,
+    NoneLit,
+    Ident,
+    Array,
+    Map,
+    Set,
+    Tuple,
+    BinOp,
+    UnOp,
+    Call,
+    MethodCall,
+    Field,
+    Index,
+    Lambda,
+    Cast,
+    Match,
+    Ok,
+    Err,
+    Nullish,
+    Chan
+}
+
+class Expr {
+    let kind
+    let span
+
+    @type {
+        kind: ExprKind
+        span: Span
+    }
+}
+
+class IntLitExpr extends Expr { let value @type { value: Int } }
+class FloatLitExpr extends Expr { let value @type { value: Float } }
+class StrLitExpr extends Expr { let value @type { value: String } }
+class FStrLitExpr extends Expr { let parts @type { parts: Array[FStrPart] } }
+class BoolLitExpr extends Expr { let value @type { value: Bool } }
+class NoneLitExpr extends Expr {}
+class IdentExpr extends Expr { let name @type { name: String } }
+class ArrayExpr extends Expr { let items @type { items: Array[Expr] } }
+
+class MapEntry {
+    let key
+    let value
+
+    @type {
+        key: Expr
+        value: Expr
+    }
+}
+
+class MapExpr extends Expr { let entries @type { entries: Array[MapEntry] } }
+class SetExpr extends Expr { let items @type { items: Array[Expr] } }
+class TupleExpr extends Expr { let items @type { items: Array[Expr] } }
+
+class BinOpExpr extends Expr {
+    let left
+    let op
+    let right
+
+    @type {
+        left: Expr
+        op: BinOp
+        right: Expr
+    }
+}
+
+class UnOpExpr extends Expr {
+    let op
+    let expr
+
+    @type {
+        op: UnOp
+        expr: Expr
+    }
+}
+
+class CallExpr extends Expr { let callee let args @type { callee: Expr args: Array[Expr] } }
+class MethodCallExpr extends Expr { let target let name let args @type { target: Expr name: String args: Array[Expr] } }
+class FieldExpr extends Expr { let target let name @type { target: Expr name: String } }
+class IndexExpr extends Expr { let target let index @type { target: Expr index: Expr } }
+class LambdaExpr extends Expr { let params let body @type { params: Array[String] body: Expr } }
+class CastExpr extends Expr { let expr let ty @type { expr: Expr ty: TypeExpr } }
+class MatchExpr extends Expr { let subject let arms @type { subject: Expr arms: Array[MatchArm] } }
+class OkExpr extends Expr { let value @type { value: Expr } }
+class ErrExpr extends Expr { let value @type { value: Expr } }
+class NullishExpr extends Expr { let left let right @type { left: Expr right: Expr } }
+class ChanExpr extends Expr { let ty @type { ty: TypeExpr } }

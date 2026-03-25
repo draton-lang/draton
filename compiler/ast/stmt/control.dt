@@ -1,0 +1,60 @@
+import { Span } from ast.span
+import { Expr } from ast.expr.expr
+import { Block } from ast.stmt.stmt
+
+class IfStmt {
+    let condition
+    let then_branch
+    let else_branch
+    let span
+
+    @type {
+        condition: Expr
+        then_branch: Block
+        else_branch: Option[ElseBranch]
+        span: Span
+    }
+}
+
+enum ElseBranchKind {
+    If,
+    Block
+}
+
+class ElseBranch {
+    let kind
+    let if_branch
+    let block
+
+    @type {
+        kind: ElseBranchKind
+        if_branch: Option[IfStmt]
+        block: Option[Block]
+    }
+}
+
+class ForStmt {
+    let name
+    let iter
+    let body
+    let span
+
+    @type {
+        name: String
+        iter: Expr
+        body: Block
+        span: Span
+    }
+}
+
+class WhileStmt {
+    let condition
+    let body
+    let span
+
+    @type {
+        condition: Expr
+        body: Block
+        span: Span
+    }
+}
