@@ -23,6 +23,7 @@ New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
 function Download-File {
     param([string]$Uri, [string]$OutFile)
+    Add-Type -AssemblyName System.Net.Http
     $client = [System.Net.Http.HttpClient]::new()
     $client.DefaultRequestHeaders.Add("User-Agent", "Draton-Installer")
     try {
