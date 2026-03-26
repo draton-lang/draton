@@ -20,11 +20,26 @@ if ($Version) {
 $checksumUrl = "$url.sha256"
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("draton-install-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+
+function Download-File {
+    param([string]$Uri, [string]$OutFile)
+    $client = [System.Net.Http.HttpClient]::new()
+    $client.DefaultRequestHeaders.Add("User-Agent", "Draton-Installer")
+    try {
+        $response = $client.GetAsync($Uri, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+        $response.EnsureSuccessStatusCode()
+        $stream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $fs = [System.IO.FileStream]::new($OutFile, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None, 81920)
+        try { $stream.CopyTo($fs) }
+        finally { $fs.Dispose(); $stream.Dispose() }
+    } finally { $client.Dispose() }
+}
+
 try {
     $archive = Join-Path $tmp $artifact
     $checksumFile = "$archive.sha256"
-    Invoke-WebRequest -Uri $url -OutFile $archive
-    Invoke-WebRequest -Uri $checksumUrl -OutFile $checksumFile
+    Download-File -Uri $url -OutFile $archive
+    Download-File -Uri $checksumUrl -OutFile $checksumFile
     $expectedHashLine = Get-Content -Path $checksumFile | Select-Object -First 1
     $expectedHash = ($expectedHashLine -split "\s+")[0]
     if (-not $expectedHash) {
