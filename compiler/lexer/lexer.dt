@@ -1,7 +1,18 @@
 import { Span } from ast.span
-import { LexError } from lexer.error
+import { LexError } from lexer.errors
 import { LexResult } from lexer.result
-import { Token } from lexer.token
+import { Token, TokenKind } from lexer.token
+
+@type {
+    is_ascii_digit: (String) -> Bool
+    is_ascii_alpha: (String) -> Bool
+    is_ascii_alphanumeric: (String) -> Bool
+    is_hex_digit: (String) -> Bool
+    is_ident_start: (String) -> Bool
+    is_ident_continue: (String) -> Bool
+    keyword_token: (String) -> TokenKind
+    at_token_kind: (String) -> TokenKind
+}
 
 class Lexer {
     let source
@@ -16,35 +27,284 @@ class Lexer {
         col: Int
     }
 
-    fn tokenize() {
-        let mut result = LexResult { tokens: [], errors: [] }
+    @type {
+        tokenize: (Lexer) -> LexResult
+        skip_whitespace: (Lexer) -> Bool
+        scan_identifier: (Lexer, Int, Int, Int) -> Token
+        scan_at_token: (Lexer, Int, Int, Int) -> Token
+        make_token: (Lexer, TokenKind, Int, Int, Int) -> Token
+        peek_char: (Lexer) -> String
+        peek_next_char: (Lexer) -> String
+        char_at: (Lexer, Int) -> String
+        advance_char: (Lexer) -> String
+        advance_newline: (Lexer, Int) -> Unit
+        consume_char: (Lexer, String) -> Bool
+        consume_ascii_digits: (Lexer) -> Unit
+        consume_ident_tail: (Lexer) -> Unit
+    }
 
+    fn tokenize(self) {
+        @type {
+            result: LexResult
+            ch: String
+            next: String
+            kind: TokenKind
+        }
+
+        let mut result = LexResult { tokens: [], errors: [] }
         while self.peek_char() != "" {
+            let ch = self.peek_char()
+
             if self.skip_whitespace() {
-            } elif self.skip_comment_or_emit_doc(result) {
             } else {
-                let ch = self.peek_char()
                 let start = self.position
                 let line = self.line
                 let col = self.col
 
-                if ch == "\"" {
-                    self.lex_string(result, false, start, line, col)
-                } elif ch == "f" && self.peek_next_char() == "\"" {
-                    self.lex_string(result, true, start, line, col)
-                } elif is_ascii_digit(ch) {
-                    self.lex_number(result, start, line, col)
-                } elif is_ident_start(ch) {
-                    self.lex_identifier(result.tokens, start, line, col)
-                } elif ch == "@" {
-                    self.lex_at_token(result.tokens, start, line, col)
-                } elif ch == "/" {
-                    self.advance_char()
-                    let mut kind = Slash
-                    if self.consume_char("=") {
-                        kind = SlashEq
+                if ch == "/" {
+                    let next = self.peek_next_char()
+                    if next == "/" {
+                        self.advance_char()
+                        self.advance_char()
+
+                        if self.consume_char("/") {
+                            let content_start = self.position
+                            let mut doc_ch = self.peek_char()
+                            while doc_ch != "" && doc_ch != "\n" && doc_ch != "\r" {
+                                self.advance_char()
+                                doc_ch = self.peek_char()
+                            }
+                            result.tokens.push(Token {
+                                kind: DocComment,
+                                lexeme: self.source.slice(content_start, self.position),
+                                span: Span { start: start, end: self.position, line: line, col: col }
+                            })
+                        } else {
+                            let mut line_ch = self.peek_char()
+                            while line_ch != "" && line_ch != "\n" && line_ch != "\r" {
+                                self.advance_char()
+                                line_ch = self.peek_char()
+                            }
+                        }
+                    } elif next == "*" {
+                        self.advance_char()
+                        self.advance_char()
+
+                        let mut block_closed = false
+                        let mut block_ch = self.peek_char()
+                        while block_ch != "" {
+                            if block_ch == "*" && self.peek_next_char() == "/" {
+                                self.advance_char()
+                                self.advance_char()
+                                block_closed = true
+                                block_ch = ""
+                            } else {
+                                if block_ch == "\n" {
+                                    self.advance_newline(1)
+                                } elif block_ch == "\r" {
+                                    if self.peek_next_char() == "\n" {
+                                        self.advance_newline(2)
+                                    } else {
+                                        self.advance_newline(1)
+                                    }
+                                } else {
+                                    self.advance_char()
+                                }
+                                block_ch = self.peek_char()
+                            }
+                        }
+
+                        if !block_closed {
+                            result.errors.push(LexError {
+                                kind: UnterminatedBlockComment,
+                                found: None,
+                                lexeme: None,
+                                line: line,
+                                col: col
+                            })
+                        }
+                    } else {
+                        self.advance_char()
+                        let mut kind = Slash
+                        if self.consume_char("=") {
+                            kind = SlashEq
+                        }
+                        result.tokens.push(self.make_token(kind, start, line, col))
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                } elif ch == "\"" {
+                    self.advance_char()
+                    let mut string_done = false
+                    let mut string_error = false
+                    let mut string_ch = self.peek_char()
+                    while string_ch != "" {
+                        if string_ch == "\"" {
+                            self.advance_char()
+                            result.tokens.push(self.make_token(StrLit, start, line, col))
+                            string_done = true
+                            string_ch = ""
+                        } elif string_ch == "\n" || string_ch == "\r" {
+                            result.errors.push(LexError {
+                                kind: UnterminatedString,
+                                found: None,
+                                lexeme: None,
+                                line: line,
+                                col: col
+                            })
+                            string_error = true
+                            string_ch = ""
+                        } elif string_ch == "\\" {
+                            self.advance_char()
+                            if self.peek_char() != "" {
+                                self.advance_char()
+                            }
+                            string_ch = self.peek_char()
+                        } else {
+                            self.advance_char()
+                            string_ch = self.peek_char()
+                        }
+                    }
+                    if !string_done && !string_error {
+                        result.errors.push(LexError {
+                            kind: UnterminatedString,
+                            found: None,
+                            lexeme: None,
+                            line: line,
+                            col: col
+                        })
+                    }
+                } elif ch == "f" {
+                    let next = self.peek_next_char()
+                    if next == "\"" {
+                        self.advance_char()
+                        self.advance_char()
+                        let mut string_done = false
+                        let mut string_error = false
+                        let mut string_ch = self.peek_char()
+                        while string_ch != "" {
+                            if string_ch == "\"" {
+                                self.advance_char()
+                                result.tokens.push(self.make_token(FStrLit, start, line, col))
+                                string_done = true
+                                string_ch = ""
+                            } elif string_ch == "\n" || string_ch == "\r" {
+                                result.errors.push(LexError {
+                                    kind: UnterminatedString,
+                                    found: None,
+                                    lexeme: None,
+                                    line: line,
+                                    col: col
+                                })
+                                string_error = true
+                                string_ch = ""
+                            } elif string_ch == "\\" {
+                                self.advance_char()
+                                if self.peek_char() != "" {
+                                    self.advance_char()
+                                }
+                                string_ch = self.peek_char()
+                            } else {
+                                self.advance_char()
+                                string_ch = self.peek_char()
+                            }
+                        }
+                        if !string_done && !string_error {
+                            result.errors.push(LexError {
+                                kind: UnterminatedString,
+                                found: None,
+                                lexeme: None,
+                                line: line,
+                                col: col
+                            })
+                        }
+                    } else {
+                        result.tokens.push(self.scan_identifier(start, line, col))
+                    }
+                } elif is_ascii_digit(ch) {
+                    let mut kind = IntLit
+                    let mut invalid = false
+
+                    if ch == "0" {
+                        let next = self.peek_next_char()
+                        if next == "x" || next == "X" {
+                            kind = HexLit
+                            self.advance_char()
+                            self.advance_char()
+                            let digits_start = self.position
+                            let mut digit = self.peek_char()
+                            while is_ascii_alphanumeric(digit) {
+                                if !is_hex_digit(digit) {
+                                    invalid = true
+                                }
+                                self.advance_char()
+                                digit = self.peek_char()
+                            }
+                            let after = self.peek_char()
+                            if self.position == digits_start || is_ident_continue(after) {
+                                invalid = true
+                            }
+                            if is_ident_continue(after) {
+                                self.consume_ident_tail()
+                            }
+                        } elif next == "b" || next == "B" {
+                            kind = BinLit
+                            self.advance_char()
+                            self.advance_char()
+                            let digits_start = self.position
+                            let mut digit = self.peek_char()
+                            while is_ascii_alphanumeric(digit) {
+                                if digit != "0" && digit != "1" {
+                                    invalid = true
+                                }
+                                self.advance_char()
+                                digit = self.peek_char()
+                            }
+                            let after = self.peek_char()
+                            if self.position == digits_start || is_ident_continue(after) {
+                                invalid = true
+                            }
+                            if is_ident_continue(after) {
+                                self.consume_ident_tail()
+                            }
+                        } else {
+                            self.consume_ascii_digits()
+                            if self.peek_char() == "." && is_ascii_digit(self.peek_next_char()) {
+                                kind = FloatLit
+                                self.advance_char()
+                                self.consume_ascii_digits()
+                            }
+                            if is_ident_continue(self.peek_char()) {
+                                invalid = true
+                                self.consume_ident_tail()
+                            }
+                        }
+                    } else {
+                        self.consume_ascii_digits()
+                        if self.peek_char() == "." && is_ascii_digit(self.peek_next_char()) {
+                            kind = FloatLit
+                            self.advance_char()
+                            self.consume_ascii_digits()
+                        }
+                        if is_ident_continue(self.peek_char()) {
+                            invalid = true
+                            self.consume_ident_tail()
+                        }
+                    }
+
+                    if invalid {
+                        result.errors.push(LexError {
+                            kind: InvalidNumericLiteral,
+                            found: None,
+                            lexeme: Some(self.source.slice(start, self.position)),
+                            line: line,
+                            col: col
+                        })
+                    } else {
+                        result.tokens.push(self.make_token(kind, start, line, col))
+                    }
+                } elif is_ident_start(ch) {
+                    result.tokens.push(self.scan_identifier(start, line, col))
+                } elif ch == "@" {
+                    result.tokens.push(self.scan_at_token(start, line, col))
                 } elif ch == "+" {
                     self.advance_char()
                     let mut kind = Plus
@@ -53,7 +313,7 @@ class Lexer {
                     } elif self.consume_char("+") {
                         kind = PlusPlus
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "-" {
                     self.advance_char()
                     let mut kind = Minus
@@ -64,21 +324,21 @@ class Lexer {
                     } elif self.consume_char(">") {
                         kind = Arrow
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "*" {
                     self.advance_char()
                     let mut kind = Star
                     if self.consume_char("=") {
                         kind = StarEq
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "%" {
                     self.advance_char()
                     let mut kind = Percent
                     if self.consume_char("=") {
                         kind = PercentEq
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "=" {
                     self.advance_char()
                     let mut kind = Eq
@@ -87,14 +347,14 @@ class Lexer {
                     } elif self.consume_char(">") {
                         kind = FatArrow
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "!" {
                     self.advance_char()
                     let mut kind = Bang
                     if self.consume_char("=") {
                         kind = BangEq
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "<" {
                     self.advance_char()
                     let mut kind = Lt
@@ -103,7 +363,7 @@ class Lexer {
                     } elif self.consume_char("<") {
                         kind = LtLt
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == ">" {
                     self.advance_char()
                     let mut kind = Gt
@@ -112,70 +372,76 @@ class Lexer {
                     } elif self.consume_char(">") {
                         kind = GtGt
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "&" {
                     self.advance_char()
                     let mut kind = Amp
                     if self.consume_char("&") {
                         kind = AmpAmp
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "|" {
                     self.advance_char()
                     let mut kind = Pipe
                     if self.consume_char("|") {
                         kind = PipePipe
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "^" {
                     self.advance_char()
-                    self.push_token(result.tokens, Caret, start, line, col)
+                    result.tokens.push(self.make_token(Caret, start, line, col))
                 } elif ch == "~" {
                     self.advance_char()
-                    self.push_token(result.tokens, Tilde, start, line, col)
+                    result.tokens.push(self.make_token(Tilde, start, line, col))
                 } elif ch == "?" {
                     self.advance_char()
                     let mut kind = Question
                     if self.consume_char("?") {
                         kind = QuestionQuestion
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "." {
                     self.advance_char()
                     let mut kind = Dot
                     if self.consume_char(".") {
                         kind = DotDot
                     }
-                    self.push_token(result.tokens, kind, start, line, col)
+                    result.tokens.push(self.make_token(kind, start, line, col))
                 } elif ch == "(" {
                     self.advance_char()
-                    self.push_token(result.tokens, LParen, start, line, col)
+                    result.tokens.push(self.make_token(LParen, start, line, col))
                 } elif ch == ")" {
                     self.advance_char()
-                    self.push_token(result.tokens, RParen, start, line, col)
+                    result.tokens.push(self.make_token(RParen, start, line, col))
                 } elif ch == "[" {
                     self.advance_char()
-                    self.push_token(result.tokens, LBracket, start, line, col)
+                    result.tokens.push(self.make_token(LBracket, start, line, col))
                 } elif ch == "]" {
                     self.advance_char()
-                    self.push_token(result.tokens, RBracket, start, line, col)
+                    result.tokens.push(self.make_token(RBracket, start, line, col))
                 } elif ch == "{" {
                     self.advance_char()
-                    self.push_token(result.tokens, LBrace, start, line, col)
+                    result.tokens.push(self.make_token(LBrace, start, line, col))
                 } elif ch == "}" {
                     self.advance_char()
-                    self.push_token(result.tokens, RBrace, start, line, col)
+                    result.tokens.push(self.make_token(RBrace, start, line, col))
                 } elif ch == "," {
                     self.advance_char()
-                    self.push_token(result.tokens, Comma, start, line, col)
+                    result.tokens.push(self.make_token(Comma, start, line, col))
                 } elif ch == ";" {
                     self.advance_char()
-                    self.push_token(result.tokens, Semicolon, start, line, col)
+                    result.tokens.push(self.make_token(Semicolon, start, line, col))
                 } elif ch == ":" {
                     self.advance_char()
-                    self.push_token(result.tokens, Colon, start, line, col)
+                    result.tokens.push(self.make_token(Colon, start, line, col))
                 } else {
-                    result.errors.push(LexError { kind: UnexpectedChar, found: Some(ch), lexeme: None, line: line, col: col })
+                    result.errors.push(LexError {
+                        kind: UnexpectedChar,
+                        found: Some(self.peek_char()),
+                        lexeme: None,
+                        line: line,
+                        col: col
+                    })
                     self.advance_char()
                 }
             }
@@ -189,7 +455,7 @@ class Lexer {
         return result
     }
 
-    fn skip_whitespace() {
+    fn skip_whitespace(self) {
         let ch = self.peek_char()
         if ch == " " || ch == "\t" {
             self.advance_char()
@@ -210,257 +476,93 @@ class Lexer {
         return false
     }
 
-    fn skip_comment_or_emit_doc(result) {
-        if self.peek_char() != "/" {
-            return false
-        }
-
-        if self.peek_next_char() == "/" {
-            let start = self.position
-            let line = self.line
-            let col = self.col
-            self.advance_char()
-            self.advance_char()
-
-            if self.consume_char("/") {
-                let content_start = self.position
-                while self.peek_char() != "" && self.peek_char() != "\n" && self.peek_char() != "\r" {
-                    self.advance_char()
-                }
-                result.tokens.push(Token {
-                    kind: DocComment,
-                    lexeme: self.source.slice(content_start, self.position),
-                    span: Span { start: start, end: self.position, line: line, col: col }
-                })
-            } else {
-                while self.peek_char() != "" && self.peek_char() != "\n" && self.peek_char() != "\r" {
-                    self.advance_char()
-                }
-            }
-            return true
-        }
-
-        if self.peek_next_char() == "*" {
-            let start_line = self.line
-            let start_col = self.col
-            self.advance_char()
-            self.advance_char()
-
-            while self.peek_char() != "" {
-                if self.peek_char() == "*" && self.peek_next_char() == "/" {
-                    self.advance_char()
-                    self.advance_char()
-                    return true
-                } elif self.peek_char() == "\n" {
-                    self.advance_newline(1)
-                } elif self.peek_char() == "\r" {
-                    if self.peek_next_char() == "\n" {
-                        self.advance_newline(2)
-                    } else {
-                        self.advance_newline(1)
-                    }
-                } else {
-                    self.advance_char()
-                }
-            }
-
-            result.errors.push(LexError {
-                kind: UnterminatedBlockComment,
-                found: None,
-                lexeme: None,
-                line: start_line,
-                col: start_col
-            })
-            return true
-        }
-
-        return false
-    }
-
-    fn lex_string(result, is_fstring, start, line, col) {
-        if is_fstring {
-            self.advance_char()
-        }
+    fn scan_identifier(self, start, line, col) {
         self.advance_char()
-
-        while self.peek_char() != "" {
-            let ch = self.peek_char()
-            if ch == "\"" {
-                self.advance_char()
-                let mut kind = StrLit
-                if is_fstring {
-                    kind = FStrLit
-                }
-                self.push_token(result.tokens, kind, start, line, col)
-                return
-            } elif ch == "\n" || ch == "\r" {
-                result.errors.push(LexError { kind: UnterminatedString, found: None, lexeme: None, line: line, col: col })
-                return
-            } elif ch == "\\" {
-                self.advance_char()
-                if self.peek_char() != "" {
-                    self.advance_char()
-                }
-            } else {
-                self.advance_char()
-            }
-        }
-
-        result.errors.push(LexError { kind: UnterminatedString, found: None, lexeme: None, line: line, col: col })
-    }
-
-    fn lex_number(result, start, line, col) {
-        let mut kind = IntLit
-        let mut invalid = false
-
-        if self.peek_char() == "0" {
-            let next = self.peek_next_char()
-            if next == "x" || next == "X" {
-                kind = HexLit
-                self.advance_char()
-                self.advance_char()
-                let digits_start = self.position
-                while is_ascii_alphanumeric(self.peek_char()) {
-                    if !is_hex_digit(self.peek_char()) {
-                        invalid = true
-                    }
-                    self.advance_char()
-                }
-                if self.position == digits_start || is_ident_continue(self.peek_char()) {
-                    invalid = true
-                    self.consume_ident_tail()
-                }
-                self.finish_number(result, kind, invalid, start, line, col)
-                return
-            } elif next == "b" || next == "B" {
-                kind = BinLit
-                self.advance_char()
-                self.advance_char()
-                let digits_start = self.position
-                while is_ascii_alphanumeric(self.peek_char()) {
-                    if self.peek_char() != "0" && self.peek_char() != "1" {
-                        invalid = true
-                    }
-                    self.advance_char()
-                }
-                if self.position == digits_start || is_ident_continue(self.peek_char()) {
-                    invalid = true
-                    self.consume_ident_tail()
-                }
-                self.finish_number(result, kind, invalid, start, line, col)
-                return
-            }
-        }
-
-        self.consume_ascii_digits()
-        if self.peek_char() == "." && is_ascii_digit(self.peek_next_char()) {
-            kind = FloatLit
+        let mut ch = self.peek_char()
+        while is_ident_continue(ch) {
             self.advance_char()
-            self.consume_ascii_digits()
+            ch = self.peek_char()
         }
-        if is_ident_continue(self.peek_char()) {
-            invalid = true
-            self.consume_ident_tail()
-        }
-        self.finish_number(result, kind, invalid, start, line, col)
-    }
-
-    fn finish_number(result, kind, invalid, start, line, col) {
-        let lexeme = self.source.slice(start, self.position)
-        if invalid {
-            result.errors.push(LexError {
-                kind: InvalidNumericLiteral,
-                found: None,
-                lexeme: Some(lexeme),
-                line: line,
-                col: col
-            })
-            return
-        }
-        result.tokens.push(Token {
-            kind: kind,
-            lexeme: lexeme,
+        return Token {
+            kind: keyword_token(self.source.slice(start, self.position)),
+            lexeme: self.source.slice(start, self.position),
             span: Span { start: start, end: self.position, line: line, col: col }
-        })
-    }
-
-    fn lex_identifier(tokens, start, line, col) {
-        self.advance_char()
-        while is_ident_continue(self.peek_char()) {
-            self.advance_char()
         }
-        let lexeme = self.source.slice(start, self.position)
-        self.push_token(tokens, keyword_token(lexeme), start, line, col)
     }
 
-    fn lex_at_token(tokens, start, line, col) {
+    fn scan_at_token(self, start, line, col) {
         if is_ident_start(self.peek_next_char()) {
             let mut end = start + 1
-            if self.peek_next_char() != "" {
+            let next = self.peek_next_char()
+            if next != "" {
                 end += 1
             }
-            while is_ident_continue(self.char_at(end)) {
+            let mut current = self.char_at(end)
+            while is_ident_continue(current) {
                 end += 1
+                current = self.char_at(end)
             }
-            let lexeme = self.source.slice(start, end)
-            let kind = at_token_kind(lexeme)
+            let kind = at_token_kind(self.source.slice(start, end))
             if kind != At {
                 while self.position < end {
                     self.advance_char()
                 }
-                tokens.push(Token {
+                return Token {
                     kind: kind,
-                    lexeme: lexeme,
+                    lexeme: self.source.slice(start, end),
                     span: Span { start: start, end: self.position, line: line, col: col }
-                })
-                return
+                }
             }
         }
 
         self.advance_char()
-        self.push_token(tokens, At, start, line, col)
+        return self.make_token(At, start, line, col)
     }
 
-    fn push_token(tokens, kind, start, line, col) {
-        tokens.push(Token {
+    fn make_token(self, kind, start, line, col) {
+        return Token {
             kind: kind,
             lexeme: self.source.slice(start, self.position),
             span: Span { start: start, end: self.position, line: line, col: col }
-        })
+        }
     }
 
-    fn peek_char() {
+    fn peek_char(self) {
         return self.char_at(self.position)
     }
 
-    fn peek_next_char() {
+    fn peek_next_char(self) {
         return self.char_at(self.position + 1)
     }
 
-    fn char_at(index) {
+    fn char_at(self, index) {
         if index < 0 || index >= self.source.len() {
             return ""
         }
         return self.source.slice(index, index + 1)
     }
 
-    fn advance_char() {
+    fn advance_char(self) {
         let ch = self.peek_char()
         if ch == "" {
             return ""
         }
-        self.position = self.position + 1
-        self.col = self.col + 1
+        let next_position = self.position + 1
+        let next_col = self.col + 1
+        self.position = next_position
+        self.col = next_col
         return ch
     }
 
-    fn advance_newline(bytes) {
-        self.position = self.position + bytes
-        self.line = self.line + 1
+    fn advance_newline(self, bytes) {
+        let next_position = self.position + bytes
+        let next_line = self.line + 1
+        self.position = next_position
+        self.line = next_line
         self.col = 1
     }
 
-    fn consume_char(expected) {
+    fn consume_char(self, expected) {
         if self.peek_char() == expected {
             self.advance_char()
             return true
@@ -468,15 +570,19 @@ class Lexer {
         return false
     }
 
-    fn consume_ascii_digits() {
-        while is_ascii_digit(self.peek_char()) {
+    fn consume_ascii_digits(self) {
+        let mut ch = self.peek_char()
+        while is_ascii_digit(ch) {
             self.advance_char()
+            ch = self.peek_char()
         }
     }
 
-    fn consume_ident_tail() {
-        while is_ident_continue(self.peek_char()) {
+    fn consume_ident_tail(self) {
+        let mut ch = self.peek_char()
+        while is_ident_continue(ch) {
             self.advance_char()
+            ch = self.peek_char()
         }
     }
 }
