@@ -698,7 +698,42 @@ fn linker_command() -> Command {
             }
         }
     }
+    if let Some((driver, root)) = bundled_llvm_driver() {
+        let mut command = Command::new(driver);
+        prepend_path(&mut command, &root.join("bin"));
+        prepend_library_search_path(&mut command, &root.join("lib"));
+        return command;
+    }
     Command::new("cc")
+}
+
+fn bundled_llvm_driver() -> Option<(PathBuf, PathBuf)> {
+    let root = packaged_llvm_root()?;
+    let bin = root.join("bin");
+    let candidates = if cfg!(windows) {
+        ["clang++.exe", "clang.exe", "clang-cl.exe"]
+    } else {
+        ["clang++", "clang"]
+    };
+    candidates
+        .into_iter()
+        .map(|name| bin.join(name))
+        .find(|path| path.exists())
+        .map(|driver| (driver, root))
+}
+
+fn packaged_llvm_root() -> Option<PathBuf> {
+    if let Some(root) = env::var_os("DRATON_LLVM_BUNDLE_PREFIX").or_else(|| env::var_os("LLVM_PATH"))
+    {
+        let path = PathBuf::from(root);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    let exe = env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let path = dir.join("llvm");
+    path.exists().then_some(path)
 }
 
 fn packaged_windows_gnu_root() -> Option<PathBuf> {
@@ -718,6 +753,26 @@ fn prepend_path(command: &mut Command, entry: &Path) {
     }
     if let Ok(path) = env::join_paths(path_entries) {
         command.env("PATH", path);
+    }
+}
+
+fn prepend_library_search_path(command: &mut Command, entry: &Path) {
+    if !entry.exists() {
+        return;
+    }
+    let key = if cfg!(target_os = "macos") {
+        "DYLD_LIBRARY_PATH"
+    } else if cfg!(windows) {
+        "PATH"
+    } else {
+        "LD_LIBRARY_PATH"
+    };
+    let mut entries = vec![entry.to_path_buf()];
+    if let Some(existing) = env::var_os(key) {
+        entries.extend(env::split_paths(&existing));
+    }
+    if let Ok(path) = env::join_paths(entries) {
+        command.env(key, path);
     }
 }
 

@@ -12,6 +12,23 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+SCRUBBED_TOOLCHAIN_ENV_KEYS = (
+    "AR",
+    "CC",
+    "CPP",
+    "CXX",
+    "LD",
+    "LIB",
+    "LIBRARY_PATH",
+    "LINK",
+    "LLVM_CONFIG_PATH",
+    "LLVM_PATH",
+    "LLVM_SYS_140_PREFIX",
+    "LLVM_SYS_181_PREFIX",
+    "NM",
+    "RANLIB",
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Smoke test a packaged Draton release archive.")
@@ -63,16 +80,23 @@ def sanitized_runtime_env(root: Path) -> dict[str, str]:
         if "llvm" in entry_lower:
             continue
         filtered.append(entry)
-    env["PATH"] = os.pathsep.join([str(root), *filtered])
-    for key in [
-        "LLVM_PATH",
-        "LLVM_SYS_140_PREFIX",
-        "LLVM_CONFIG_PATH",
-        "LD_LIBRARY_PATH",
-        "DYLD_LIBRARY_PATH",
-        "LIBRARY_PATH",
-    ]:
+    path_entries = [str(root)]
+    packaged_llvm_bin = root / "llvm" / "bin"
+    if packaged_llvm_bin.exists():
+        path_entries.append(str(packaged_llvm_bin))
+        env["DRATON_LLVM_BUNDLE_PREFIX"] = str(root / "llvm")
+    env["PATH"] = os.pathsep.join([*path_entries, *filtered])
+    for key in SCRUBBED_TOOLCHAIN_ENV_KEYS:
         env.pop(key, None)
+    packaged_llvm_lib = root / "llvm" / "lib"
+    if packaged_llvm_lib.exists():
+        if sys.platform.startswith("linux"):
+            env["LD_LIBRARY_PATH"] = str(packaged_llvm_lib)
+        elif sys.platform == "darwin":
+            env["DYLD_LIBRARY_PATH"] = str(packaged_llvm_lib)
+    else:
+        env.pop("LD_LIBRARY_PATH", None)
+        env.pop("DYLD_LIBRARY_PATH", None)
     return env
 
 

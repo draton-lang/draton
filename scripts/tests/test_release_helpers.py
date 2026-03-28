@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+import importlib.util
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def load_module(name: str, relative_path: str):
+    path = REPO_ROOT / relative_path
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"failed to load module from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+package_release = load_module("package_release", "scripts/package_release.py")
+smoke_release = load_module("smoke_release", "scripts/smoke_release.py")
+
+
+class PackageReleaseTests(unittest.TestCase):
+    def test_resolve_llvm_bundle_root_prefers_bundle_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            preferred = temp_root / "bundle"
+            fallback = temp_root / "llvm-path"
+            preferred.mkdir()
+            fallback.mkdir()
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "DRATON_LLVM_BUNDLE_PREFIX": str(preferred),
+                    "LLVM_PATH": str(fallback),
+                },
+                clear=False,
+            ):
+                resolved = package_release.resolve_llvm_bundle_root()
+            self.assertEqual(resolved, preferred.resolve())
+
+    def test_bundle_llvm_toolchain_copies_bin_and_lib(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            llvm_root = temp_root / "llvm-src"
+            staging_root = temp_root / "staging"
+            (llvm_root / "bin").mkdir(parents=True)
+            (llvm_root / "lib").mkdir(parents=True)
+            (llvm_root / "bin" / "clang").write_text("clang", encoding="utf-8")
+            (llvm_root / "lib" / "libLLVM.so").write_text("llvm", encoding="utf-8")
+            with mock.patch.dict(
+                os.environ,
+                {"DRATON_LLVM_BUNDLE_PREFIX": str(llvm_root)},
+                clear=False,
+            ):
+                package_release.bundle_llvm_toolchain(staging_root)
+            self.assertTrue((staging_root / "llvm" / "bin" / "clang").exists())
+            self.assertTrue((staging_root / "llvm" / "lib" / "libLLVM.so").exists())
+
+
+class SmokeReleaseTests(unittest.TestCase):
+    def test_sanitized_runtime_env_prefers_packaged_llvm_and_scrubs_toolchain_vars(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            root = temp_root / "archive"
+            packaged_llvm = root / "llvm"
+            (packaged_llvm / "bin").mkdir(parents=True)
+            (packaged_llvm / "lib").mkdir(parents=True)
+
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "PATH": os.pathsep.join(
+                        [
+                            "/usr/bin",
+                            "/opt/llvm/bin",
+                            "/toolchains/clang/bin",
+                        ]
+                    ),
+                    "LLVM_PATH": "/opt/llvm",
+                    "LLVM_SYS_140_PREFIX": "/opt/llvm",
+                    "LLVM_SYS_181_PREFIX": "/opt/llvm-18",
+                    "LLVM_CONFIG_PATH": "/opt/llvm/bin/llvm-config",
+                    "CC": "clang",
+                    "CXX": "clang++",
+                    "LD": "ld.lld",
+                    "LIBRARY_PATH": "/opt/llvm/lib",
+                },
+                clear=False,
+            ):
+                env = smoke_release.sanitized_runtime_env(root)
+
+            path_entries = env["PATH"].split(os.pathsep)
+            self.assertEqual(path_entries[0], str(root))
+            self.assertEqual(path_entries[1], str(packaged_llvm / "bin"))
+            self.assertNotIn("/opt/llvm/bin", path_entries)
+            self.assertEqual(env["DRATON_LLVM_BUNDLE_PREFIX"], str(packaged_llvm))
+            for key in ("CC", "CXX", "LD", "LLVM_PATH", "LLVM_CONFIG_PATH", "LLVM_SYS_140_PREFIX", "LLVM_SYS_181_PREFIX"):
+                self.assertNotIn(key, env)
+            if sys.platform.startswith("linux"):
+                self.assertEqual(env["LD_LIBRARY_PATH"], str(packaged_llvm / "lib"))
+            elif sys.platform == "darwin":
+                self.assertEqual(env["DYLD_LIBRARY_PATH"], str(packaged_llvm / "lib"))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -89,8 +89,9 @@ def cmd_fetch(target: str) -> int:
 
 def cmd_print_env(target: str) -> int:
     prefix = ROOT / "vendor" / "llvm" / target
+    llvm_config = prefix / "bin" / ("llvm-config.exe" if target.startswith("windows-") else "llvm-config")
     print(f"export LLVM_SYS_181_PREFIX='{prefix}'")
-    print(f"export LLVM_CONFIG_PATH='{prefix / 'bin' / 'llvm-config'}'")
+    print(f"export LLVM_CONFIG_PATH='{llvm_config}'")
     print(f"export DRATON_LLVM_BUNDLE_PREFIX='{prefix}'")
     return 0
 

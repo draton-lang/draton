@@ -233,6 +233,7 @@ On Windows x86_64, verify that you are on a normal desktop/runtime image and not
 Check that:
 
 - the runtime static library still sits beside `drat`
+- the packaged `llvm/` directory still sits beside `drat` when the archive shipped with a bundled linker toolchain
 - you did not move only the executable out of the extracted directory
 - `drat --version` works first
 

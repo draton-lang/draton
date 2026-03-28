@@ -50,6 +50,16 @@ def resolve_runtime_lib(binary: Path, runtime_lib: str | None) -> Path:
     return path
 
 
+def resolve_llvm_bundle_root() -> Path | None:
+    for key in ("DRATON_LLVM_BUNDLE_PREFIX", "LLVM_PATH"):
+        value = os.environ.get(key)
+        if value:
+            path = Path(value).resolve()
+            if path.exists():
+                return path
+    return None
+
+
 def copy_release_files(staging_root: Path, binary: Path, runtime_lib: Path) -> None:
     repo_root = Path(__file__).resolve().parent.parent
     staging_root.mkdir(parents=True, exist_ok=True)
@@ -82,9 +92,23 @@ def copy_release_files(staging_root: Path, binary: Path, runtime_lib: Path) -> N
             examples_dir / "early-preview",
             dirs_exist_ok=True,
         )
+    bundle_llvm_toolchain(staging_root)
     bundle_windows_gnu_toolchain(staging_root)
     bundle_windows_runtime_libs(staging_root, staged_binary)
     bundle_macos_runtime_libs(staging_root, staged_binary)
+
+
+def bundle_llvm_toolchain(staging_root: Path) -> None:
+    llvm_root = resolve_llvm_bundle_root()
+    if llvm_root is None:
+        return
+
+    target_root = staging_root / "llvm"
+    for relative in ("bin", "lib"):
+        source = llvm_root / relative
+        if not source.exists():
+            continue
+        shutil.copytree(source, target_root / relative, dirs_exist_ok=True)
 
 
 def bundle_windows_gnu_toolchain(staging_root: Path) -> None:
@@ -115,11 +139,11 @@ def bundle_windows_runtime_libs(staging_root: Path, staged_binary: Path) -> None
     if staged_binary.suffix.lower() != ".exe":
         return
 
-    llvm_path = os.environ.get("LLVM_PATH")
-    if not llvm_path:
+    llvm_root = resolve_llvm_bundle_root()
+    if llvm_root is None:
         return
 
-    llvm_bin_dir = Path(llvm_path) / "bin"
+    llvm_bin_dir = llvm_root / "bin"
     if not llvm_bin_dir.exists():
         return
 
@@ -131,11 +155,11 @@ def bundle_macos_runtime_libs(staging_root: Path, staged_binary: Path) -> None:
     if sys.platform != "darwin" or not shutil.which("otool") or not shutil.which("install_name_tool"):
         return
 
-    llvm_path = os.environ.get("LLVM_PATH")
-    if not llvm_path:
+    llvm_root = resolve_llvm_bundle_root()
+    if llvm_root is None:
         return
 
-    llvm_lib_dir = Path(llvm_path) / "lib"
+    llvm_lib_dir = llvm_root / "lib"
     if not llvm_lib_dir.exists():
         return
 

@@ -35,6 +35,7 @@ Each shipped Early Preview archive contains:
 
 - `drat` or `drat.exe`
 - the packaged Draton runtime static library
+- an optional bundled `llvm/` toolchain directory when `scripts/package_release.py` is given a local LLVM bundle path
 - `LICENSE`
 - `QUICKSTART.md`
 - `examples/hello.dt`
@@ -47,6 +48,8 @@ Each shipped Early Preview archive contains:
 ## Native Dependency Strategy
 
 Releases are built against LLVM 14, but the shipped `drat` binaries on verified preview targets do not currently depend on an external LLVM shared library at runtime. The smoke test strips LLVM-specific environment variables from the packaged-artifact run and checks the packaged binary for accidental `libLLVM` / `clang-cpp` dynamic dependencies on Linux and macOS.
+
+When the archive includes a bundled `llvm/` directory, the smoke test also points `DRATON_LLVM_BUNDLE_PREFIX` at that packaged toolchain and scrubs common compiler/linker environment overrides before running `drat build`.
 
 The remaining runtime expectation is limited to normal OS libraries:
 

@@ -38,6 +38,7 @@ jobs:
         run: |
           echo "LLVM_SYS_140_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
           echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
+          echo "DRATON_LLVM_BUNDLE_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
           echo "$LLVM_PATH/bin" >> "$GITHUB_PATH"
 
       - name: Cache Rust artifacts
@@ -180,6 +181,7 @@ jobs:
         shell: bash
         run: |
           echo "LLVM_SYS_140_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
+          echo "DRATON_LLVM_BUNDLE_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
           if [ "${{ runner.os }}" = "Windows" ]; then
             echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config.exe" >> "$GITHUB_ENV"
           elif [ "${{ runner.os }}" = "macOS" ]; then
