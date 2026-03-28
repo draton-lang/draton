@@ -567,7 +567,7 @@ fn link_binary(
     if let Some(target) = target {
         ensure_supported_target(target)?;
     }
-    let mut command = linker_command();
+    let mut command = linker_command()?;
     command.arg(object_path);
     if env::var_os("DRATON_SKIP_RUNTIME_LINK").is_none() {
         let runtime_lib = ensure_runtime_staticlib(profile)?;
@@ -602,7 +602,7 @@ fn link_binary(
     }
     let output = command
         .output()
-        .with_context(|| "failed to run linker cc".to_string())?;
+        .with_context(|| "failed to run linker driver".to_string())?;
     if !output.status.success() {
         bail!("link failed:\n{}", String::from_utf8_lossy(&output.stderr));
     }
@@ -687,7 +687,7 @@ fn packaged_runtime_staticlib() -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
-fn linker_command() -> Command {
+fn linker_command() -> Result<Command> {
     if cfg!(windows) {
         if let Some(root) = packaged_windows_gnu_root() {
             let driver = ["g++.exe", "gcc.exe", "cc.exe"]
@@ -697,7 +697,7 @@ fn linker_command() -> Command {
             if let Some(driver) = driver {
                 let mut command = Command::new(driver);
                 prepend_path(&mut command, &root.join("bin"));
-                return command;
+                return Ok(command);
             }
         }
     }
@@ -705,9 +705,14 @@ fn linker_command() -> Command {
         let mut command = Command::new(driver);
         prepend_path(&mut command, &root.join("bin"));
         prepend_library_search_path(&mut command, &root.join("lib"));
-        return command;
+        return Ok(command);
     }
-    Command::new("cc")
+    if requires_bundled_linker() {
+        bail!(
+            "bundled LLVM toolchain is required for linking, but no bundled clang driver was found"
+        );
+    }
+    Ok(Command::new("cc"))
 }
 
 fn bundled_llvm_driver() -> Option<(PathBuf, PathBuf)> {
@@ -737,6 +742,13 @@ fn packaged_llvm_root() -> Option<PathBuf> {
     let dir = exe.parent()?;
     let path = dir.join("llvm");
     path.exists().then_some(path)
+}
+
+fn requires_bundled_linker() -> bool {
+    if env::var_os("DRATON_REQUIRE_BUNDLED_TOOLCHAIN").is_some() {
+        return true;
+    }
+    packaged_llvm_root().is_some()
 }
 
 fn packaged_windows_gnu_root() -> Option<PathBuf> {

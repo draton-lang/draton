@@ -84,6 +84,7 @@ def sanitized_runtime_env(root: Path) -> dict[str, str]:
     if packaged_llvm_bin.exists():
         path_entries.append(str(packaged_llvm_bin))
         env["DRATON_LLVM_BUNDLE_PREFIX"] = str(root / "llvm")
+        env["DRATON_REQUIRE_BUNDLED_TOOLCHAIN"] = "1"
     env["PATH"] = os.pathsep.join([*path_entries, *filtered])
     for key in SCRUBBED_TOOLCHAIN_ENV_KEYS:
         env.pop(key, None)

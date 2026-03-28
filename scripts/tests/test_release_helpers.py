@@ -120,6 +120,7 @@ class SmokeReleaseTests(unittest.TestCase):
             self.assertEqual(path_entries[1], str(packaged_llvm / "bin"))
             self.assertNotIn("/opt/llvm/bin", path_entries)
             self.assertEqual(env["DRATON_LLVM_BUNDLE_PREFIX"], str(packaged_llvm))
+            self.assertEqual(env["DRATON_REQUIRE_BUNDLED_TOOLCHAIN"], "1")
             for key in ("CC", "CXX", "LD", "LLVM_PATH", "LLVM_CONFIG_PATH", "LLVM_SYS_181_PREFIX"):
                 self.assertNotIn(key, env)
             if sys.platform.startswith("linux"):
