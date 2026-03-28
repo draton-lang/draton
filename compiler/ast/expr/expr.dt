@@ -1,5 +1,5 @@
 import { Span } from ast.span
-import { MatchArm } from ast.expr.match
+import { MatchArm } from ast.expr.matching
 import { FStrPart } from ast.expr.fstr
 import { BinOp, UnOp } from ast.expr.ops
 import { TypeExpr } from ast.types

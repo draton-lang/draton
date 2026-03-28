@@ -1,12 +1,12 @@
 import { Item } from ast.item.item
 import { TypeExpr, NamedTypeExpr, GenericTypeExpr, FnTypeExpr, PointerTypeExpr, InferTypeExpr } from ast.types
-import { FnDef } from ast.item.fn
+import { FnDef } from ast.item.func
 import { TypeBlock } from ast.item.type_block
 import { Type, VarType, ArrayType, MapType, SetType, TupleType, OptionType, ResultType, ChanType, FnType, NamedType, PointerType } from typeck.types.ty
 import { Scheme } from typeck.types.scheme
 import { TypeEnv } from typeck.types.env
 import { Substitution } from typeck.types.subst
-import { TypeError } from typeck.types.error
+import { TypeError } from typeck.types.errors
 import { DeprecatedSyntaxMode } from typeck.infer.result
 import { TypedExpr } from typeck.typed.exprs
 

@@ -2,7 +2,7 @@ import { Program } from ast.item.item
 import { Span } from ast.span
 import { Expr } from ast.expr.expr
 import { Token } from lexer.token
-import { ParseError, ParseWarning } from parser.error
+import { ParseError, ParseWarning } from parser.errors
 import { parse_program, parse_item, parse_type_block } from parser.parse.items
 import { parse_block, parse_stmt } from parser.parse.stmts
 import { parse_expr } from parser.parse.exprs

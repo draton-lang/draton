@@ -1,8 +1,8 @@
 import { Expr, IntLitExpr, FloatLitExpr, StrLitExpr, FStrLitExpr, BoolLitExpr, NoneLitExpr, IdentExpr, ArrayExpr, MapExpr, MapEntry, SetExpr, TupleExpr, BinOpExpr, UnOpExpr, CallExpr, MethodCallExpr, FieldExpr, IndexExpr, LambdaExpr, CastExpr, MatchExpr, OkExpr, ErrExpr, NullishExpr, ChanExpr } from ast.expr.expr
 import { BinOp, UnOp } from ast.expr.ops
 import { LiteralFStrPart, InterpFStrPart } from ast.expr.fstr
-import { MatchArm, ExprMatchArmBody, BlockMatchArmBody } from ast.expr.match
-import { ParseError } from parser.error
+import { MatchArm, ExprMatchArmBody, BlockMatchArmBody } from ast.expr.matching
+import { ParseError } from parser.errors
 import { Lexer } from lexer.lexer
 import { Parser } from parser.parser
 

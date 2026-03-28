@@ -346,9 +346,9 @@ Không còn: `crates/`, `Cargo.toml`, `Cargo.lock`, bất kỳ file `.rs` nào.
 - [x] Định nghĩa `enum TokenKind` — toàn bộ 60+ variants từ Rust (keywords, operators, literals, `@`-tokens, `Eof`)
 - [x] Định nghĩa `class Span { start, end, line, col }` và `class Token { kind, lexeme, span }`
 - [x] Định nghĩa `class LexResult { tokens: Array[Token], errors: Array[LexError] }`
-- [ ] Định nghĩa `enum LexError` — `UnexpectedChar`, `UnterminatedString`, `UnterminatedBlockComment`, `InvalidNumericLiteral`
+- [x] Định nghĩa `enum LexError` — `UnexpectedChar`, `UnterminatedString`, `UnterminatedBlockComment`, `InvalidNumericLiteral`
 - [x] Implement `class Lexer` với fields: `source: String`, `position: Int`, `line: Int`, `col: Int`
-- [ ] Implement `fn tokenize()` — main loop với `peek_char`/`advance_char`/`advance_newline`
+- [x] Implement `fn tokenize()` — main loop với `peek_char`/`advance_char`/`advance_newline`
 - [ ] Implement whitespace skip (`space`, `tab`, `\n`, `\r\n`)
 - [ ] Implement comment skip: `//` line comment, `/* */` block comment, `///` doc comment → emit `DocComment` token
 - [ ] Implement string literal lexer: `"..."` và `f"..."` (FStrLit), escape sequences, unterminated error

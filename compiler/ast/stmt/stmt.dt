@@ -1,10 +1,10 @@
 import { Span } from ast.span
 import { Expr } from ast.expr.expr
 import { TypeBlock } from ast.item.type_block
-import { LetStmt, LetDestructureStmt } from ast.stmt.let
+import { LetStmt, LetDestructureStmt } from ast.stmt.binding
 import { AssignStmt } from ast.stmt.assign
 import { IfStmt, ForStmt, WhileStmt } from ast.stmt.control
-import { SpawnStmt } from ast.stmt.spawn
+import { SpawnStmt } from ast.stmt.spawning
 import { ReturnStmt, IfCompileStmt, GcConfigStmt } from ast.stmt.misc
 
 enum StmtKind {

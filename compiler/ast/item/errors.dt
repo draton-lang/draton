@@ -1,5 +1,5 @@
 import { Span } from ast.span
-import { Param } from ast.item.fn
+import { Param } from ast.item.func
 
 class ErrorDef {
     let name

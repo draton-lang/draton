@@ -1,4 +1,4 @@
-import { LexError } from lexer.error
+import { LexError } from lexer.errors
 import { Token } from lexer.token
 
 class LexResult {

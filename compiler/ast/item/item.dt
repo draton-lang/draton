@@ -1,12 +1,12 @@
 import { Span } from ast.span
-import { FnDef } from ast.item.fn
-import { ClassDef } from ast.item.class
-import { LayerDef } from ast.item.layer
-import { InterfaceDef } from ast.item.interface
-import { EnumDef } from ast.item.enum
-import { ErrorDef } from ast.item.error
-import { ConstDef } from ast.item.const
-import { ImportDef } from ast.item.import
+import { FnDef } from ast.item.func
+import { ClassDef } from ast.item.klass
+import { LayerDef } from ast.item.layers
+import { InterfaceDef } from ast.item.iface
+import { EnumDef } from ast.item.variants
+import { ErrorDef } from ast.item.errors
+import { ConstDef } from ast.item.constant
+import { ImportDef } from ast.item.imports
 import { ExternBlock } from ast.item.extern
 import { TypeBlock } from ast.item.type_block
 

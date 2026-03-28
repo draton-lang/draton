@@ -1,5 +1,5 @@
 import { TypedProgram } from typeck.typed.program
-import { TypeError } from typeck.types.error
+import { TypeError } from typeck.types.errors
 import { TypeChecker } from typeck.infer.checker
 import { extract_hints } from typeck.infer.hints
 import { check_program } from typeck.infer.items

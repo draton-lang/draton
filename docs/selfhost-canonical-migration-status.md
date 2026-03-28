@@ -15,6 +15,8 @@ The historical self-host compiler mirror under `src/` was intentionally removed 
 - the Rust workspace under `crates/` remains the only authoritative compiler/tooling implementation until parity is proven
 - self-host source foundations now exist for `compiler/lexer/`, `compiler/ast/`, `compiler/parser/`, `compiler/driver/`, `compiler/typeck/{types,typed}/`, and `compiler/codegen/{core,llvm,mono,vtable}/`
 - `drat selfhost-stage0` now rebuilds a minimal self-host binary from [`compiler/main.dt`](compiler/main.dt) and [`compiler/driver/pipeline.dt`](compiler/driver/pipeline.dt) for `lex`, `parse`, `typeck`, and `build`
+- the current split self-host module graph is normalized around `ast.expr.matching`, `ast.item.func`, `ast.stmt.binding`, `ast.stmt.spawning`, `lexer.errors`, `parser.errors`, and `typeck.types.errors`
+- the current stage0 smoke path has been verified on `examples/hello.dt` for `lex`, `parse`, `typeck`, and `build`; the produced binary runs and prints `hello, draton!`
 - the wider in-tree Draton sources are still incomplete; full parser/typechecker/codegen parity for the whole `compiler/` tree remains subordinate to the Rust implementation
 
 ## Current boundary

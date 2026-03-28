@@ -1,5 +1,5 @@
 import { Type, ArrayType, MapType, SetType, TupleType, OptionType, ResultType, ChanType, FnType, NamedType, RowType, RowField, PointerType } from typeck.types.ty
-import { TypeError } from typeck.types.error
+import { TypeError } from typeck.types.errors
 import { occurs } from typeck.types.unify
 import { TypeEnv, EnvScope, EnvBinding } from typeck.types.env
 import { Scheme } from typeck.types.scheme

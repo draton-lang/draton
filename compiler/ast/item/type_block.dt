@@ -1,6 +1,6 @@
 import { Span } from ast.span
 import { TypeExpr } from ast.types
-import { FnDef } from ast.item.fn
+import { FnDef } from ast.item.func
 
 enum TypeMemberKind {
     Binding,

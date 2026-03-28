@@ -1,5 +1,5 @@
 import { Span } from ast.span
-import { FnDef } from ast.item.fn
+import { FnDef } from ast.item.func
 
 class ExternBlock {
     let abi

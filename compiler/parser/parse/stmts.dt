@@ -1,8 +1,8 @@
 import { Block, LetStmtNode, LetDestructureStmtNode, AssignStmtNode, ReturnStmtNode, ExprStmtNode, IfStmtNode, ForStmtNode, WhileStmtNode, SpawnStmtNode, BlockStmtNode, UnsafeBlockStmtNode, PointerBlockStmtNode, AsmBlockStmtNode, ComptimeBlockStmtNode, IfCompileStmtNode, GcConfigStmtNode, TypeBlockStmtNode } from ast.stmt.stmt
-import { LetStmt, LetDestructureStmt, DestructureBinding } from ast.stmt.let
+import { LetStmt, LetDestructureStmt, DestructureBinding } from ast.stmt.binding
 import { AssignStmt } from ast.stmt.assign
 import { IfStmt, ElseBranch, ForStmt, WhileStmt } from ast.stmt.control
-import { SpawnStmt, SpawnBody } from ast.stmt.spawn
+import { SpawnStmt, SpawnBody } from ast.stmt.spawning
 import { ReturnStmt, IfCompileStmt, GcConfigStmt, GcConfigEntry } from ast.stmt.misc
 
 fn parse_block(parser) {
