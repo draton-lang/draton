@@ -17,6 +17,7 @@ The historical self-host compiler mirror under `src/` was intentionally removed 
 - `drat selfhost-stage0` now rebuilds a minimal self-host binary from [`compiler/main.dt`](compiler/main.dt) and [`compiler/driver/pipeline.dt`](compiler/driver/pipeline.dt) for `lex`, `parse`, `typeck`, and `build`
 - the current split self-host module graph is normalized around `ast.expr.matching`, `ast.item.func`, `ast.stmt.binding`, `ast.stmt.spawning`, `lexer.errors`, `parser.errors`, and `typeck.types.errors`
 - the current stage0 smoke path has been verified on `examples/hello.dt` for `lex`, `parse`, `typeck`, and `build`; the produced binary runs and prints `hello, draton!`
+- `drat selfhost-stage0 lex` now tokenizes through a byte-level self-host lexer in [`compiler/driver/pipeline.dt`](compiler/driver/pipeline.dt) and emits valid JSON without Rust lexer fallback
 - the wider in-tree Draton sources are still incomplete; full parser/typechecker/codegen parity for the whole `compiler/` tree remains subordinate to the Rust implementation
 
 ## Current boundary
@@ -26,6 +27,7 @@ The historical self-host compiler mirror under `src/` was intentionally removed 
 - any mismatch between `compiler/` and `crates/` is resolved by aligning `compiler/` to Rust, not by redesigning the language
 - ownership inference for the self-host compiler remains deferred beyond the initial Phase 1 rewrite scope
 - `drat selfhost-stage0` remains the executable parity oracle, but it now routes through a rebuilt self-host binary instead of direct Rust lexer/parser/typechecker calls
+- inside that stage0 boundary, `parse`, `typeck`, and `build` still depend on Rust host JSON bridge functions after the self-host command dispatch point
 - Phase 1 LLVM 18 vendoring is active in the Rust path and release packaging; bundled LLD and full self-host parity are still pending
 
 ## Why this changed

@@ -44,6 +44,17 @@ fn main() {
     let json: Value = serde_json::from_slice(&output.stdout).expect("parse json");
     assert!(json["tokens"].is_array(), "expected tokens array");
     assert!(json["errors"].is_array(), "expected errors array");
+    assert_eq!(json["errors"], Value::Array(Vec::new()), "expected no lex errors");
+    assert_eq!(json["tokens"][0]["kind"], Value::String("Fn".to_string()));
+    assert_eq!(
+        json["tokens"]
+            .as_array()
+            .expect("tokens array")
+            .iter()
+            .any(|token| token["kind"] == Value::String("Return".to_string())),
+        true,
+        "expected return token"
+    );
 }
 
 #[test]

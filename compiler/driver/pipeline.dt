@@ -4,6 +4,7 @@
     parse_json: (String) -> String
     typeck_json: (String, Bool) -> String
     build_json: (String, String, String, Bool, String) -> String
+    json_field: (String, String) -> String
     json_quote: (String) -> String
     json_escape: (String) -> String
     json_optional_string: (Bool, String) -> String
@@ -11,6 +12,7 @@
     json_token: (String, String, Int, Int, Int, Int) -> String
     json_lex_error: (String, Bool, String, Bool, String, Int, Int) -> String
     join_json_array: (Array[String]) -> String
+    byte_at: (String, Int) -> Int
     char_at: (String, Int) -> String
     is_ascii_digit: (String) -> Bool
     is_ascii_alpha: (String) -> Bool
@@ -45,23 +47,24 @@ fn lex_json(path) {
     let mut tokens = []
     let mut errors = []
 
-    while char_at(source, position) != "" {
+    while byte_at(source, position) >= 0 {
         let ch = char_at(source, position)
+        let byte = byte_at(source, position)
 
-        if ch == " " || ch == "\t" {
+        if byte == 32 || byte == 9 {
             let next_position = position + 1
             let next_col = col + 1
             position = next_position
             col = next_col
-        } elif ch == "\n" {
+        } elif byte == 10 {
             let next_position = position + 1
             let next_line = line + 1
             position = next_position
             line = next_line
             col = 1
-        } elif ch == "\r" {
-            let next = char_at(source, position + 1)
-            if next == "\n" {
+        } elif byte == 13 {
+            let next = byte_at(source, position + 1)
+            if next == 10 {
                 let next_position = position + 2
                 let next_line = line + 1
                 position = next_position
@@ -79,27 +82,27 @@ fn lex_json(path) {
             let start_line = line
             let start_col = col
 
-            if ch == "/" {
-                let next = char_at(source, position + 1)
-                if next == "/" {
+            if byte == 47 {
+                let next = byte_at(source, position + 1)
+                if next == 47 {
                     let slash_position = position + 2
                     let slash_col = col + 2
                     position = slash_position
                     col = slash_col
 
-                    if char_at(source, position) == "/" {
+                    if byte_at(source, position) == 47 {
                         let content_start = position + 1
                         let content_col = col + 1
                         position = content_start
                         col = content_col
 
-                        let mut doc_ch = char_at(source, position)
-                        while doc_ch != "" && doc_ch != "\n" && doc_ch != "\r" {
+                        let mut doc_ch = byte_at(source, position)
+                        while doc_ch >= 0 && doc_ch != 10 && doc_ch != 13 {
                             let next_position = position + 1
                             let next_col = col + 1
                             position = next_position
                             col = next_col
-                            doc_ch = char_at(source, position)
+                            doc_ch = byte_at(source, position)
                         }
                         let token_json = json_token(
                             "DocComment",
@@ -111,40 +114,40 @@ fn lex_json(path) {
                         )
                         tokens.push(token_json)
                     } else {
-                        let mut line_ch = char_at(source, position)
-                        while line_ch != "" && line_ch != "\n" && line_ch != "\r" {
+                        let mut line_ch = byte_at(source, position)
+                        while line_ch >= 0 && line_ch != 10 && line_ch != 13 {
                             let next_position = position + 1
                             let next_col = col + 1
                             position = next_position
                             col = next_col
-                            line_ch = char_at(source, position)
+                            line_ch = byte_at(source, position)
                         }
                     }
-                } elif next == "*" {
+                } elif next == 42 {
                     let comment_position = position + 2
                     let comment_col = col + 2
                     position = comment_position
                     col = comment_col
 
                     let mut block_closed = false
-                    let mut block_ch = char_at(source, position)
-                    while block_ch != "" {
-                        if block_ch == "*" && char_at(source, position + 1) == "/" {
+                    let mut block_ch = byte_at(source, position)
+                    while block_ch >= 0 {
+                        if block_ch == 42 && byte_at(source, position + 1) == 47 {
                             let next_position = position + 2
                             let next_col = col + 2
                             position = next_position
                             col = next_col
                             block_closed = true
-                            block_ch = ""
+                            block_ch = -1
                         } else {
-                            if block_ch == "\n" {
+                            if block_ch == 10 {
                                 let next_position = position + 1
                                 let next_line = line + 1
                                 position = next_position
                                 line = next_line
                                 col = 1
-                            } elif block_ch == "\r" {
-                                if char_at(source, position + 1) == "\n" {
+                            } elif block_ch == 13 {
+                                if byte_at(source, position + 1) == 10 {
                                     let next_position = position + 2
                                     let next_line = line + 1
                                     position = next_position
@@ -163,7 +166,7 @@ fn lex_json(path) {
                                 position = next_position
                                 col = next_col
                             }
-                            block_ch = char_at(source, position)
+                            block_ch = byte_at(source, position)
                         }
                     }
 
@@ -185,7 +188,7 @@ fn lex_json(path) {
                     let next_col = col + 1
                     position = next_position
                     col = next_col
-                    if char_at(source, position) == "=" {
+                    if byte_at(source, position) == 61 {
                         kind = "SlashEq"
                         let eq_position = position + 1
                         let eq_col = col + 1
@@ -202,16 +205,16 @@ fn lex_json(path) {
                     )
                     tokens.push(token_json)
                 }
-            } elif ch == "\"" {
+            } elif byte == 34 {
                 let open_position = position + 1
                 let open_col = col + 1
                 position = open_position
                 col = open_col
                 let mut string_done = false
                 let mut string_error = false
-                let mut string_ch = char_at(source, position)
-                while string_ch != "" {
-                    if string_ch == "\"" {
+                let mut string_ch = byte_at(source, position)
+                while string_ch >= 0 {
+                    if string_ch == 34 {
                         let close_position = position + 1
                         let close_col = col + 1
                         position = close_position
@@ -226,8 +229,8 @@ fn lex_json(path) {
                         )
                         tokens.push(token_json)
                         string_done = true
-                        string_ch = ""
-                    } elif string_ch == "\n" || string_ch == "\r" {
+                        string_ch = -1
+                    } elif string_ch == 10 || string_ch == 13 {
                         let error_json = json_lex_error(
                             "UnterminatedString",
                             false,
@@ -239,25 +242,25 @@ fn lex_json(path) {
                         )
                         errors.push(error_json)
                         string_error = true
-                        string_ch = ""
-                    } elif string_ch == "\\" {
+                        string_ch = -1
+                    } elif string_ch == 92 {
                         let slash_position = position + 1
                         let slash_col = col + 1
                         position = slash_position
                         col = slash_col
-                        if char_at(source, position) != "" {
+                        if byte_at(source, position) >= 0 {
                             let escape_position = position + 1
                             let escape_col = col + 1
                             position = escape_position
                             col = escape_col
                         }
-                        string_ch = char_at(source, position)
+                        string_ch = byte_at(source, position)
                     } else {
                         let next_position = position + 1
                         let next_col = col + 1
                         position = next_position
                         col = next_col
-                        string_ch = char_at(source, position)
+                        string_ch = byte_at(source, position)
                     }
                 }
                 if !string_done && !string_error {
@@ -270,18 +273,18 @@ fn lex_json(path) {
                         start_line,
                         start_col
                     )
-                    errors.push(error_json)
+                        errors.push(error_json)
                 }
-            } elif ch == "f" && char_at(source, position + 1) == "\"" {
+            } elif byte == 102 && byte_at(source, position + 1) == 34 {
                 let open_position = position + 2
                 let open_col = col + 2
                 position = open_position
                 col = open_col
                 let mut string_done = false
                 let mut string_error = false
-                let mut string_ch = char_at(source, position)
-                while string_ch != "" {
-                    if string_ch == "\"" {
+                let mut string_ch = byte_at(source, position)
+                while string_ch >= 0 {
+                    if string_ch == 34 {
                         let close_position = position + 1
                         let close_col = col + 1
                         position = close_position
@@ -296,8 +299,8 @@ fn lex_json(path) {
                         )
                         tokens.push(token_json)
                         string_done = true
-                        string_ch = ""
-                    } elif string_ch == "\n" || string_ch == "\r" {
+                        string_ch = -1
+                    } elif string_ch == 10 || string_ch == 13 {
                         let error_json = json_lex_error(
                             "UnterminatedString",
                             false,
@@ -309,25 +312,25 @@ fn lex_json(path) {
                         )
                         errors.push(error_json)
                         string_error = true
-                        string_ch = ""
-                    } elif string_ch == "\\" {
+                        string_ch = -1
+                    } elif string_ch == 92 {
                         let slash_position = position + 1
                         let slash_col = col + 1
                         position = slash_position
                         col = slash_col
-                        if char_at(source, position) != "" {
+                        if byte_at(source, position) >= 0 {
                             let escape_position = position + 1
                             let escape_col = col + 1
                             position = escape_position
                             col = escape_col
                         }
-                        string_ch = char_at(source, position)
+                        string_ch = byte_at(source, position)
                     } else {
                         let next_position = position + 1
                         let next_col = col + 1
                         position = next_position
                         col = next_col
-                        string_ch = char_at(source, position)
+                        string_ch = byte_at(source, position)
                     }
                 }
                 if !string_done && !string_error {
@@ -846,8 +849,11 @@ fn lex_json(path) {
     let eof_json = json_token("Eof", "", position, position, line, col)
     tokens.push(eof_json)
     return str_concat(
-        str_concat("{\"errors\":", join_json_array(errors)),
-        str_concat(",\"tokens\":", str_concat(join_json_array(tokens), "}"))
+        "{",
+        str_concat(
+            json_field("errors", join_json_array(errors)),
+            str_concat(",", str_concat(json_field("tokens", join_json_array(tokens)), "}"))
+        )
     )
 }
 
@@ -863,27 +869,32 @@ fn build_json(path, output, mode, strict_syntax, target) {
     return host_build_json(path, output, mode, strict_flag(strict_syntax), target)
 }
 
+fn json_field(name, value) {
+    return str_concat(json_quote(name), str_concat(":", value))
+}
+
 fn json_quote(value) {
-    return str_concat("\"", str_concat(json_escape(value), "\""))
+    let quote = ascii_char(34)
+    return str_concat(quote, str_concat(json_escape(value), quote))
 }
 
 fn json_escape(value) {
     let mut out = ""
     let mut index = 0
     while index < value.len() {
-        let ch = value.slice(index, index + 1)
-        if ch == "\\" {
-            out = str_concat(out, "\\\\")
-        } elif ch == "\"" {
-            out = str_concat(out, "\\\"")
-        } elif ch == "\n" {
-            out = str_concat(out, "\\n")
-        } elif ch == "\r" {
-            out = str_concat(out, "\\r")
-        } elif ch == "\t" {
-            out = str_concat(out, "\\t")
+        let byte = byte_at(value, index)
+        if byte == 92 {
+            out = str_concat(out, str_concat(ascii_char(92), ascii_char(92)))
+        } elif byte == 34 {
+            out = str_concat(out, str_concat(ascii_char(92), ascii_char(34)))
+        } elif byte == 10 {
+            out = str_concat(out, str_concat(ascii_char(92), "n"))
+        } elif byte == 13 {
+            out = str_concat(out, str_concat(ascii_char(92), "r"))
+        } elif byte == 9 {
+            out = str_concat(out, str_concat(ascii_char(92), "t"))
         } else {
-            out = str_concat(out, ch)
+            out = str_concat(out, ascii_char(byte))
         }
         index = index + 1
     }
@@ -899,14 +910,14 @@ fn json_optional_string(has_value, value) {
 
 fn json_span(start, end, line, col) {
     return str_concat(
-        str_concat("{\"col\":", int_to_string(col)),
+        str_concat("{", json_field("col", int_to_string(col))),
         str_concat(
-            ",\"end\":",
+            ",",
             str_concat(
-                int_to_string(end),
+                json_field("end", int_to_string(end)),
                 str_concat(
-                    ",\"line\":",
-                    str_concat(int_to_string(line), str_concat(",\"start\":", str_concat(int_to_string(start), "}")))
+                    ",",
+                    str_concat(json_field("line", int_to_string(line)), str_concat(",", str_concat(json_field("start", int_to_string(start)), "}")))
                 )
             )
         )
@@ -915,12 +926,12 @@ fn json_span(start, end, line, col) {
 
 fn json_token(kind, lexeme, start, end, line, col) {
     return str_concat(
-        str_concat("{\"kind\":", json_quote(kind)),
+        str_concat("{", json_field("kind", json_quote(kind))),
         str_concat(
-            ",\"lexeme\":",
+            ",",
             str_concat(
-                json_quote(lexeme),
-                str_concat(",\"span\":", str_concat(json_span(start, end, line, col), "}"))
+                json_field("lexeme", json_quote(lexeme)),
+                str_concat(",", str_concat(json_field("span", json_span(start, end, line, col)), "}"))
             )
         )
     )
@@ -928,18 +939,18 @@ fn json_token(kind, lexeme, start, end, line, col) {
 
 fn json_lex_error(kind, has_found, found, has_lexeme, lexeme, line, col) {
     return str_concat(
-        str_concat("{\"kind\":", json_quote(kind)),
+        str_concat("{", json_field("kind", json_quote(kind))),
         str_concat(
-            ",\"found\":",
+            ",",
             str_concat(
-                json_optional_string(has_found, found),
+                json_field("found", json_optional_string(has_found, found)),
                 str_concat(
-                    ",\"lexeme\":",
+                    ",",
                     str_concat(
-                        json_optional_string(has_lexeme, lexeme),
+                        json_field("lexeme", json_optional_string(has_lexeme, lexeme)),
                         str_concat(
-                            ",\"line\":",
-                            str_concat(int_to_string(line), str_concat(",\"col\":", str_concat(int_to_string(col), "}")))
+                            ",",
+                            str_concat(json_field("line", int_to_string(line)), str_concat(",", str_concat(json_field("col", int_to_string(col)), "}")))
                         )
                     )
                 )
@@ -959,6 +970,13 @@ fn join_json_array(items) {
         index = index + 1
     }
     return str_concat(out, "]")
+}
+
+fn byte_at(value, index) {
+    if index < 0 || index >= value.len() {
+        return -1
+    }
+    return str_byte_at(value, index)
 }
 
 fn char_at(value, index) {
@@ -993,53 +1011,48 @@ fn is_ident_continue(ch) {
 }
 
 fn keyword_token_name(lexeme) {
-    return match lexeme {
-        "let" => "Let",
-        "mut" => "Mut",
-        "fn" => "Fn",
-        "return" => "Return",
-        "if" => "If",
-        "elif" => "Elif",
-        "else" => "Else",
-        "for" => "For",
-        "while" => "While",
-        "in" => "In",
-        "match" => "Match",
-        "class" => "Class",
-        "layer" => "Layer",
-        "extends" => "Extends",
-        "implements" => "Implements",
-        "interface" => "Interface",
-        "enum" => "Enum",
-        "error" => "Error",
-        "pub" => "Pub",
-        "import" => "Import",
-        "from" => "From",
-        "as" => "As",
-        "spawn" => "Spawn",
-        "chan" => "Chan",
-        "const" => "Const",
-        "lambda" => "Lambda",
-        "true" => "BoolLit",
-        "false" => "BoolLit",
-        "None" => "NoneLit",
-        _ => "Ident",
-    }
+    if lexeme == "let" { return "Let" }
+    elif lexeme == "mut" { return "Mut" }
+    elif lexeme == "fn" { return "Fn" }
+    elif lexeme == "return" { return "Return" }
+    elif lexeme == "if" { return "If" }
+    elif lexeme == "elif" { return "Elif" }
+    elif lexeme == "else" { return "Else" }
+    elif lexeme == "for" { return "For" }
+    elif lexeme == "while" { return "While" }
+    elif lexeme == "in" { return "In" }
+    elif lexeme == "match" { return "Match" }
+    elif lexeme == "class" { return "Class" }
+    elif lexeme == "layer" { return "Layer" }
+    elif lexeme == "extends" { return "Extends" }
+    elif lexeme == "implements" { return "Implements" }
+    elif lexeme == "interface" { return "Interface" }
+    elif lexeme == "enum" { return "Enum" }
+    elif lexeme == "error" { return "Error" }
+    elif lexeme == "pub" { return "Pub" }
+    elif lexeme == "import" { return "Import" }
+    elif lexeme == "from" { return "From" }
+    elif lexeme == "as" { return "As" }
+    elif lexeme == "spawn" { return "Spawn" }
+    elif lexeme == "chan" { return "Chan" }
+    elif lexeme == "const" { return "Const" }
+    elif lexeme == "lambda" { return "Lambda" }
+    elif lexeme == "true" || lexeme == "false" { return "BoolLit" }
+    elif lexeme == "None" { return "NoneLit" }
+    return "Ident"
 }
 
 fn at_token_kind_name(lexeme) {
-    return match lexeme {
-        "@type" => "AtType",
-        "@unsafe" => "AtUnsafe",
-        "@pointer" => "AtPointer",
-        "@asm" => "AtAsm",
-        "@comptime" => "AtComptime",
-        "@if" => "AtIf",
-        "@acyclic" => "AtAcyclic",
-        "@gc_config" => "AtGcConfig",
-        "@panic_handler" => "AtPanicHandler",
-        "@oom_handler" => "AtOomHandler",
-        "@extern" => "AtExtern",
-        _ => "At",
-    }
+    if lexeme == "@type" { return "AtType" }
+    elif lexeme == "@unsafe" { return "AtUnsafe" }
+    elif lexeme == "@pointer" { return "AtPointer" }
+    elif lexeme == "@asm" { return "AtAsm" }
+    elif lexeme == "@comptime" { return "AtComptime" }
+    elif lexeme == "@if" { return "AtIf" }
+    elif lexeme == "@acyclic" { return "AtAcyclic" }
+    elif lexeme == "@gc_config" { return "AtGcConfig" }
+    elif lexeme == "@panic_handler" { return "AtPanicHandler" }
+    elif lexeme == "@oom_handler" { return "AtOomHandler" }
+    elif lexeme == "@extern" { return "AtExtern" }
+    return "At"
 }

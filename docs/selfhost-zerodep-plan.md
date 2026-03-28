@@ -343,19 +343,22 @@ Không còn: `crates/`, `Cargo.toml`, `Cargo.lock`, bất kỳ file `.rs` nào.
 - [x] Hidden `drat selfhost-stage0` build và chạy binary tối thiểu từ `compiler/main.dt` + `compiler/driver/pipeline.dt`
 
 **Port `draton-lexer` → `compiler/lexer/lexer.dt`:**
+> Trạng thái thực thi hiện tại: stage0 lexer đang chạy trong `compiler/driver/pipeline.dt`.
+> `compiler/lexer/` vẫn là split-tree foundation đang được đồng bộ dần, chưa là parity path chính.
+
 - [x] Định nghĩa `enum TokenKind` — toàn bộ 60+ variants từ Rust (keywords, operators, literals, `@`-tokens, `Eof`)
 - [x] Định nghĩa `class Span { start, end, line, col }` và `class Token { kind, lexeme, span }`
 - [x] Định nghĩa `class LexResult { tokens: Array[Token], errors: Array[LexError] }`
 - [x] Định nghĩa `enum LexError` — `UnexpectedChar`, `UnterminatedString`, `UnterminatedBlockComment`, `InvalidNumericLiteral`
 - [x] Implement `class Lexer` với fields: `source: String`, `position: Int`, `line: Int`, `col: Int`
 - [x] Implement `fn tokenize()` — main loop với `peek_char`/`advance_char`/`advance_newline`
-- [ ] Implement whitespace skip (`space`, `tab`, `\n`, `\r\n`)
-- [ ] Implement comment skip: `//` line comment, `/* */` block comment, `///` doc comment → emit `DocComment` token
-- [ ] Implement string literal lexer: `"..."` và `f"..."` (FStrLit), escape sequences, unterminated error
-- [ ] Implement number lexer: integer, float, hex (`0x`), binary (`0b`), invalid literal detection
-- [ ] Implement identifier + keyword dispatch — toàn bộ 25 keywords (`let`, `mut`, `fn`, `return`, ..., `lambda`, `const`)
-- [ ] Implement `@`-token lexer: `@type`, `@unsafe`, `@pointer`, `@asm`, `@comptime`, `@if`, `@acyclic`, `@gc_config`, `@panic_handler`, `@oom_handler`, `@extern`
-- [ ] Implement tất cả operator tokens bao gồm multi-char: `==`, `!=`, `<=`, `>=`, `=>`, `->`, `??`, `..`, `++`, `--`, `+=`, `-=`, `*=`, `/=`, `%=`, `<<`, `>>`
+- [x] Implement whitespace skip (`space`, `tab`, `\n`, `\r\n`)
+- [x] Implement comment skip: `//` line comment, `/* */` block comment, `///` doc comment → emit `DocComment` token
+- [x] Implement string literal lexer: `"..."` và `f"..."` (FStrLit), escape sequences, unterminated error
+- [x] Implement number lexer: integer, float, hex (`0x`), binary (`0b`), invalid literal detection
+- [x] Implement identifier + keyword dispatch — toàn bộ 25 keywords (`let`, `mut`, `fn`, `return`, ..., `lambda`, `const`)
+- [x] Implement `@`-token lexer: `@type`, `@unsafe`, `@pointer`, `@asm`, `@comptime`, `@if`, `@acyclic`, `@gc_config`, `@panic_handler`, `@oom_handler`, `@extern`
+- [x] Implement tất cả operator tokens bao gồm multi-char: `==`, `!=`, `<=`, `>=`, `=>`, `->`, `??`, `..`, `++`, `--`, `+=`, `-=`, `*=`, `/=`, `%=`, `<<`, `>>`
 - [ ] **Parity test:** chạy Rust lexer và self-host lexer trên toàn bộ `examples/` — token stream phải khớp 100%
 
 **Port `draton-ast` → `compiler/ast/`:**
