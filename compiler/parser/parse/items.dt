@@ -1,16 +1,16 @@
 import { Item, Program } from ast.item.item
-import { FnDef, Param } from ast.item.fn
-import { ClassDef, ClassMember, FieldDef } from ast.item.class
-import { LayerDef } from ast.item.layer
-import { InterfaceDef } from ast.item.interface
-import { EnumDef } from ast.item.enum
-import { ErrorDef } from ast.item.error
-import { ConstDef } from ast.item.const
-import { ImportDef, ImportItem } from ast.item.import
+import { FnDef, Param } from ast.item.func
+import { ClassDef, ClassMember, FieldDef } from ast.item.klass
+import { LayerDef } from ast.item.layers
+import { InterfaceDef } from ast.item.iface
+import { EnumDef } from ast.item.variants
+import { ErrorDef } from ast.item.errors
+import { ConstDef } from ast.item.constant
+import { ImportDef, ImportItem } from ast.item.imports
 import { ExternBlock } from ast.item.extern
 import { TypeBlock, TypeMember } from ast.item.type_block
 import { NamedTypeExpr } from ast.types
-import { ParseError } from parser.error
+import { ParseError } from parser.errors
 
 fn parse_program(parser) {
     let mut program = Program { items: [] }
@@ -309,8 +309,8 @@ fn parse_class_def(parser) {
     return ClassDef {
         name: name_token.lexeme,
         type_params: type_params,
-        extends: extends,
-        implements: implements,
+        base_class: extends,
+        interfaces: implements,
         members: members,
         type_blocks: type_blocks,
         span: parser.merge_spans(start, end)
@@ -352,8 +352,8 @@ fn parse_acyclic_class_def(parser) {
     return ClassDef {
         name: class_def.name,
         type_params: class_def.type_params,
-        extends: class_def.extends,
-        implements: class_def.implements,
+        base_class: class_def.base_class,
+        interfaces: class_def.interfaces,
         members: class_def.members,
         type_blocks: type_blocks,
         span: class_def.span
@@ -920,13 +920,13 @@ fn make_type_block_item(type_block) {
 }
 
 fn make_field_member(field) {
-    return ClassMember { kind: Field, field: Some(field), method: None, layer: None }
+    return ClassMember { kind: Field, field: Some(field), method: None, layer_def: None }
 }
 
 fn make_method_member(method) {
-    return ClassMember { kind: Method, field: None, method: Some(method), layer: None }
+    return ClassMember { kind: Method, field: None, method: Some(method), layer_def: None }
 }
 
 fn make_layer_member(layer) {
-    return ClassMember { kind: Layer, field: None, method: None, layer: Some(layer) }
+    return ClassMember { kind: Layer, field: None, method: None, layer_def: Some(layer) }
 }

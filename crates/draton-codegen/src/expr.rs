@@ -1226,6 +1226,96 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
                 Ok(Some(call.try_as_basic_value().basic()))
             }
+            "host_lex_json" => {
+                let function = self
+                    .module
+                    .get_function("draton_host_lex_json")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_host_lex_json".to_string()))?;
+                let value = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("host_lex_json requires one argument".to_string())
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("host_lex_json arg missing value".to_string())
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[value.into()], "host.lex_json")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(call.try_as_basic_value().basic()))
+            }
+            "host_parse_json" => {
+                let function = self
+                    .module
+                    .get_function("draton_host_parse_json")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_host_parse_json".to_string()))?;
+                let value = self
+                    .emit_expr(args.first().ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("host_parse_json requires one argument".to_string())
+                    })?)?
+                    .ok_or_else(|| {
+                        CodeGenError::UnsupportedExpr("host_parse_json arg missing value".to_string())
+                    })?;
+                let call = self
+                    .builder
+                    .build_call(function, &[value.into()], "host.parse_json")
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(call.try_as_basic_value().basic()))
+            }
+            "host_type_json" => {
+                let function = self
+                    .module
+                    .get_function("draton_host_type_json")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_host_type_json".to_string()))?;
+                let values = args
+                    .iter()
+                    .map(|arg| {
+                        self.emit_expr(arg)?.ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr("host_type_json arg missing value".to_string())
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let call = self
+                    .builder
+                    .build_call(
+                        function,
+                        &values
+                            .iter()
+                            .copied()
+                            .map(BasicMetadataValueEnum::from)
+                            .collect::<Vec<_>>(),
+                        "host.type_json",
+                    )
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(call.try_as_basic_value().basic()))
+            }
+            "host_build_json" => {
+                let function = self
+                    .module
+                    .get_function("draton_host_build_json")
+                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_host_build_json".to_string()))?;
+                let values = args
+                    .iter()
+                    .map(|arg| {
+                        self.emit_expr(arg)?.ok_or_else(|| {
+                            CodeGenError::UnsupportedExpr("host_build_json arg missing value".to_string())
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let call = self
+                    .builder
+                    .build_call(
+                        function,
+                        &values
+                            .iter()
+                            .copied()
+                            .map(BasicMetadataValueEnum::from)
+                            .collect::<Vec<_>>(),
+                        "host.build_json",
+                    )
+                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                Ok(Some(call.try_as_basic_value().basic()))
+            }
             _ => Ok(None),
         }
     }

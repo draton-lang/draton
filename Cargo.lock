@@ -431,6 +431,7 @@ dependencies = [
  "io-uring",
  "libc",
  "pretty_assertions",
+ "serde_json",
 ]
 
 [[package]]

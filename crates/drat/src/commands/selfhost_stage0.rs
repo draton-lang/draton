@@ -1,13 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result};
-use draton_lexer::{LexError, LexResult, Lexer};
-use draton_parser::{ParseError, ParseResult, Parser};
-use draton_typeck::{DeprecatedSyntaxMode, TypeCheckResult, TypeChecker};
-use serde::Serialize;
+use anyhow::{anyhow, bail, Context, Result};
+use serde_json::Value;
 
-use crate::commands::build::{self, BuildOutput, BuildRequest};
+use crate::commands::build::{self, BuildRequest, Profile};
 
 #[derive(Debug, Clone)]
 pub(crate) enum SelfhostStage0Command {
@@ -26,145 +25,179 @@ pub(crate) enum SelfhostStage0Command {
     },
 }
 
-#[derive(Debug, Serialize)]
-struct ParseEnvelope {
-    lex_errors: Vec<LexError>,
-    parse_result: Option<ParseResult>,
-}
-
-#[derive(Debug, Serialize)]
-struct TypecheckEnvelope {
-    lex_errors: Vec<LexError>,
-    parse_errors: Vec<ParseError>,
-    parse_warnings: Vec<draton_parser::ParseWarning>,
-    typecheck_result: Option<TypeCheckResult>,
-}
-
-#[derive(Debug, Serialize)]
-struct BuildEnvelope {
-    ok: bool,
-    output: Option<SerializableBuildOutput>,
-    error: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct SerializableBuildOutput {
-    binary_path: String,
-    object_path: String,
-    ir_path: String,
-}
-
 pub(crate) fn run(cwd: &Path, command: SelfhostStage0Command) -> Result<()> {
+    let stage0_binary = build_stage0_binary()?;
+    let pretty = wants_pretty_json(&command);
+    let args = stage0_args(cwd, &command);
+    let output = Command::new(&stage0_binary)
+        .current_dir(cwd)
+        .args(&args)
+        .output()
+        .with_context(|| format!("failed to run {}", stage0_binary.display()))?;
+
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let mut message = format!(
+            "selfhost stage0 binary exited with {}",
+            output
+                .status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "signal".to_string())
+        );
+        if !stderr.trim().is_empty() {
+            message.push_str("\nstderr:\n");
+            message.push_str(&stderr);
+        }
+        if !stdout.trim().is_empty() {
+            message.push_str("\nstdout:\n");
+            message.push_str(&stdout);
+        }
+        bail!(message);
+    }
+
+    let json: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|error| anyhow!("selfhost stage0 returned invalid JSON: {error}"))?;
+    if pretty {
+        println!("{}", serde_json::to_string_pretty(&json)?);
+    } else {
+        println!("{}", serde_json::to_string(&json)?);
+    }
+    Ok(())
+}
+
+fn wants_pretty_json(command: &SelfhostStage0Command) -> bool {
     match command {
-        SelfhostStage0Command::Lex { path, json } => {
-            let lexed = lex_path(&path)?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&lexed)?);
-            } else {
-                println!("{}", serde_json::to_string(&lexed)?);
-            }
-            Ok(())
-        }
-        SelfhostStage0Command::Parse { path, json } => {
-            let source = read_source(&path)?;
-            let lexed = Lexer::new(&source).tokenize();
-            let parse_result = if lexed.errors.is_empty() {
-                Some(Parser::new(lexed.tokens.clone()).parse())
-            } else {
-                None
-            };
-            let envelope = ParseEnvelope {
-                lex_errors: lexed.errors,
-                parse_result,
-            };
-            if json {
-                println!("{}", serde_json::to_string_pretty(&envelope)?);
-            } else {
-                println!("{}", serde_json::to_string(&envelope)?);
-            }
-            Ok(())
-        }
-        SelfhostStage0Command::Typeck {
-            path,
-            json,
-            strict_syntax,
-        } => {
-            let source = read_source(&path)?;
-            let lexed = Lexer::new(&source).tokenize();
-            let mut parse_errors = Vec::new();
-            let mut parse_warnings = Vec::new();
-            let mut typecheck_result = None;
-            if lexed.errors.is_empty() {
-                let parsed = Parser::new(lexed.tokens.clone()).parse();
-                parse_errors = parsed.errors.clone();
-                parse_warnings = parsed.warnings.clone();
-                if parse_errors.is_empty() {
-                    typecheck_result = Some(
-                        TypeChecker::new()
-                            .with_deprecated_syntax_mode(if strict_syntax {
-                                DeprecatedSyntaxMode::Deny
-                            } else {
-                                DeprecatedSyntaxMode::Warn
-                            })
-                            .check(parsed.program),
-                    );
-                }
-            }
-            let envelope = TypecheckEnvelope {
-                lex_errors: lexed.errors,
-                parse_errors,
-                parse_warnings,
-                typecheck_result,
-            };
-            if json {
-                println!("{}", serde_json::to_string_pretty(&envelope)?);
-            } else {
-                println!("{}", serde_json::to_string(&envelope)?);
-            }
-            Ok(())
-        }
-        SelfhostStage0Command::Build {
-            path,
-            json,
-            output,
-            request,
-        } => {
-            let result = build::run_file(cwd, &path, output.as_deref(), &request);
-            let envelope = match result {
-                Ok(output) => BuildEnvelope {
-                    ok: true,
-                    output: Some(serialize_build_output(output)),
-                    error: None,
-                },
-                Err(error) => BuildEnvelope {
-                    ok: false,
-                    output: None,
-                    error: Some(error.to_string()),
-                },
-            };
-            if json {
-                println!("{}", serde_json::to_string_pretty(&envelope)?);
-            } else {
-                println!("{}", serde_json::to_string(&envelope)?);
-            }
-            Ok(())
-        }
+        SelfhostStage0Command::Lex { json, .. }
+        | SelfhostStage0Command::Parse { json, .. }
+        | SelfhostStage0Command::Typeck { json, .. }
+        | SelfhostStage0Command::Build { json, .. } => *json,
     }
 }
 
-fn read_source(path: &Path) -> Result<String> {
-    fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))
+fn stage0_args(cwd: &Path, command: &SelfhostStage0Command) -> Vec<String> {
+    match command {
+        SelfhostStage0Command::Lex { path, .. } => {
+            vec!["lex".to_string(), resolve_path(cwd, path).display().to_string()]
+        }
+        SelfhostStage0Command::Parse { path, .. } => {
+            vec!["parse".to_string(), resolve_path(cwd, path).display().to_string()]
+        }
+        SelfhostStage0Command::Typeck {
+            path,
+            strict_syntax,
+            ..
+        } => vec![
+            "typeck".to_string(),
+            resolve_path(cwd, path).display().to_string(),
+            bool_flag(*strict_syntax),
+        ],
+        SelfhostStage0Command::Build {
+            path,
+            output,
+            request,
+            ..
+        } => vec![
+            "build".to_string(),
+            resolve_path(cwd, path).display().to_string(),
+            output
+                .as_ref()
+                .map(|value| resolve_path(cwd, value).display().to_string())
+                .unwrap_or_default(),
+            build_mode_name(request.profile).to_string(),
+            bool_flag(request.strict_syntax),
+            request.target.clone().unwrap_or_default(),
+        ],
+    }
 }
 
-fn lex_path(path: &Path) -> Result<LexResult> {
-    let source = read_source(path)?;
-    Ok(Lexer::new(&source).tokenize())
+fn build_stage0_binary() -> Result<PathBuf> {
+    let repo_root = repo_root();
+    let compiler_root = repo_root.join("compiler");
+    let compiler_entry = compiler_root.join("main.dt");
+    let pipeline_src = compiler_root.join("driver").join("pipeline.dt");
+    if !compiler_entry.exists() {
+        bail!("selfhost entrypoint not found at {}", compiler_entry.display());
+    }
+    if !pipeline_src.exists() {
+        bail!("selfhost pipeline not found at {}", pipeline_src.display());
+    }
+
+    let temp_root = std::env::temp_dir()
+        .join("draton")
+        .join("selfhost_stage0")
+        .join(format!(
+            "{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|value| value.as_nanos())
+                .unwrap_or(0)
+        ));
+    let temp_driver = temp_root.join("driver");
+    fs::create_dir_all(&temp_driver)
+        .with_context(|| format!("failed to create {}", temp_driver.display()))?;
+    fs::copy(&compiler_entry, temp_root.join("main.dt")).with_context(|| {
+        format!(
+            "failed to copy {} into {}",
+            compiler_entry.display(),
+            temp_root.display()
+        )
+    })?;
+    fs::copy(&pipeline_src, temp_driver.join("pipeline.dt")).with_context(|| {
+        format!(
+            "failed to copy {} into {}",
+            pipeline_src.display(),
+            temp_driver.display()
+        )
+    })?;
+    let config_path = temp_root.join("draton.toml");
+    fs::write(
+        &config_path,
+        "[project]\nname = \"draton-selfhost-stage0\"\nversion = \"0.1.0\"\nentry = \"main.dt\"\n",
+    )
+    .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+    let built = build::run(
+        &temp_root,
+        &BuildRequest {
+            profile: Profile::Debug,
+            target: None,
+            strict_syntax: false,
+        },
+    )?;
+    Ok(built.binary_path)
 }
 
-fn serialize_build_output(output: BuildOutput) -> SerializableBuildOutput {
-    SerializableBuildOutput {
-        binary_path: output.binary_path.display().to_string(),
-        object_path: output.object_path.display().to_string(),
-        ir_path: output.ir_path.display().to_string(),
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+}
+
+fn resolve_path(cwd: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    }
+}
+
+fn bool_flag(value: bool) -> String {
+    if value {
+        return "1".to_string();
+    }
+    "0".to_string()
+}
+
+fn build_mode_name(profile: Profile) -> &'static str {
+    match profile {
+        Profile::Debug => "debug",
+        Profile::Release => "release",
+        Profile::Size => "size",
+        Profile::Fast => "fast",
     }
 }

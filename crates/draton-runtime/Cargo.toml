@@ -10,7 +10,7 @@ crate-type = ["staticlib", "rlib"]
 default = ["scheduler", "std-io", "host-compiler"]
 scheduler = ["dep:crossbeam", "dep:io-uring"]
 std-io = []
-host-compiler = ["dep:draton-lexer", "dep:draton-parser", "dep:draton-typeck"]
+host-compiler = ["dep:draton-lexer", "dep:draton-parser", "dep:draton-typeck", "dep:serde_json"]
 coop-scheduler = []
 
 [dependencies]
@@ -20,6 +20,7 @@ draton-lexer = { path = "../draton-lexer", optional = true }
 draton-parser = { path = "../draton-parser", optional = true }
 draton-stdlib = { path = "../draton-stdlib" }
 draton-typeck = { path = "../draton-typeck", optional = true }
+serde_json = { version = "1", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = { version = "0.6", optional = true }

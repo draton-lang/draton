@@ -1,7 +1,7 @@
 import { Span } from ast.span
 import { TypeExpr } from ast.types
-import { FnDef } from ast.item.fn
-import { LayerDef } from ast.item.layer
+import { FnDef } from ast.item.func
+import { LayerDef } from ast.item.layers
 import { TypeBlock } from ast.item.type_block
 
 class FieldDef {
@@ -28,21 +28,21 @@ class ClassMember {
     let kind
     let field
     let method
-    let layer
+    let layer_def
 
     @type {
         kind: ClassMemberKind
         field: Option[FieldDef]
         method: Option[FnDef]
-        layer: Option[LayerDef]
+        layer_def: Option[LayerDef]
     }
 }
 
 class ClassDef {
     let name
     let type_params
-    let extends
-    let implements
+    let base_class
+    let interfaces
     let members
     let type_blocks
     let span
@@ -50,8 +50,8 @@ class ClassDef {
     @type {
         name: String
         type_params: Array[String]
-        extends: Option[String]
-        implements: Array[String]
+        base_class: Option[String]
+        interfaces: Array[String]
         members: Array[ClassMember]
         type_blocks: Array[TypeBlock]
         span: Span

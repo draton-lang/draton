@@ -14,7 +14,8 @@ The historical self-host compiler mirror under `src/` was intentionally removed 
 - `src/` now belongs to the Docusaurus docs site source (`src/pages`, `src/css`)
 - the Rust workspace under `crates/` remains the only authoritative compiler/tooling implementation until parity is proven
 - self-host source foundations now exist for `compiler/lexer/`, `compiler/ast/`, `compiler/parser/`, `compiler/driver/`, `compiler/typeck/{types,typed}/`, and `compiler/codegen/{core,llvm,mono,vtable}/`
-- the in-tree Draton sources are still contract/data-model focused; executable parser, typechecker, codegen, and parity verification remain incomplete
+- `drat selfhost-stage0` now rebuilds a minimal self-host binary from [`compiler/main.dt`](compiler/main.dt) and [`compiler/driver/pipeline.dt`](compiler/driver/pipeline.dt) for `lex`, `parse`, `typeck`, and `build`
+- the wider in-tree Draton sources are still incomplete; full parser/typechecker/codegen parity for the whole `compiler/` tree remains subordinate to the Rust implementation
 
 ## Current boundary
 
@@ -22,8 +23,8 @@ The historical self-host compiler mirror under `src/` was intentionally removed 
 - `crates/` remains the source of truth for syntax, parser, typechecker, codegen, CLI, and runtime behavior
 - any mismatch between `compiler/` and `crates/` is resolved by aligning `compiler/` to Rust, not by redesigning the language
 - ownership inference for the self-host compiler remains deferred beyond the initial Phase 1 rewrite scope
-- `drat selfhost-stage0` is still the only executable parity oracle, and this repository state has not yet re-established a freshly built local binary with that command available in `target/debug/drat`
-- Phase 1 LLVM vendoring and bundled LLD remain blocked on a Rust toolchain host with `cargo` and `rustc`
+- `drat selfhost-stage0` remains the executable parity oracle, but it now routes through a rebuilt self-host binary instead of direct Rust lexer/parser/typechecker calls
+- Phase 1 LLVM 18 vendoring is active in the Rust path and release packaging; bundled LLD and full self-host parity are still pending
 
 ## Why this changed
 

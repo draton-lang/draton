@@ -364,6 +364,24 @@ impl OwnershipChecker {
         self.insert_builtin("read_file", vec![UseEffect::BorrowShared], true);
         self.insert_builtin("host_ast_dump", vec![UseEffect::BorrowShared], true);
         self.insert_builtin("host_type_dump", vec![UseEffect::BorrowShared], true);
+        self.insert_builtin("host_lex_json", vec![UseEffect::BorrowShared], true);
+        self.insert_builtin("host_parse_json", vec![UseEffect::BorrowShared], true);
+        self.insert_builtin(
+            "host_type_json",
+            vec![UseEffect::BorrowShared, UseEffect::Copy],
+            true,
+        );
+        self.insert_builtin(
+            "host_build_json",
+            vec![
+                UseEffect::BorrowShared,
+                UseEffect::BorrowShared,
+                UseEffect::BorrowShared,
+                UseEffect::Copy,
+                UseEffect::BorrowShared,
+            ],
+            true,
+        );
         self.insert_builtin("string_parse_int", vec![UseEffect::BorrowShared], false);
         self.insert_builtin(
             "string_parse_int_radix",

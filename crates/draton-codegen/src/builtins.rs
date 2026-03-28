@@ -391,6 +391,46 @@ impl<'ctx> CodeGen<'ctx> {
                 None,
             );
         }
+        if self.module.get_function("draton_host_lex_json").is_none() {
+            self.module.add_function(
+                "draton_host_lex_json",
+                self.string_type.fn_type(&[self.string_type.into()], false),
+                None,
+            );
+        }
+        if self.module.get_function("draton_host_parse_json").is_none() {
+            self.module.add_function(
+                "draton_host_parse_json",
+                self.string_type.fn_type(&[self.string_type.into()], false),
+                None,
+            );
+        }
+        if self.module.get_function("draton_host_type_json").is_none() {
+            self.module.add_function(
+                "draton_host_type_json",
+                self.string_type.fn_type(
+                    &[self.string_type.into(), self.context.i64_type().into()],
+                    false,
+                ),
+                None,
+            );
+        }
+        if self.module.get_function("draton_host_build_json").is_none() {
+            self.module.add_function(
+                "draton_host_build_json",
+                self.string_type.fn_type(
+                    &[
+                        self.string_type.into(),
+                        self.string_type.into(),
+                        self.string_type.into(),
+                        self.context.i64_type().into(),
+                        self.string_type.into(),
+                    ],
+                    false,
+                ),
+                None,
+            );
+        }
         Ok(())
     }
 

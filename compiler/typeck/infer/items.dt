@@ -129,8 +129,8 @@ fn check_class_def(checker, class_def) {
             methods.push(check_fn_def(checker, member.method))
         } elif member.kind == Layer {
             let mut method_index = 0
-            while method_index < member.layer.methods.len() {
-                methods.push(check_fn_def(checker, member.layer.methods[method_index]))
+            while method_index < member.layer_def.methods.len() {
+                methods.push(check_fn_def(checker, member.layer_def.methods[method_index]))
                 method_index = method_index + 1
             }
         }
@@ -142,7 +142,7 @@ fn check_class_def(checker, class_def) {
         type_blocks.push(check_type_block(checker, class_def.type_blocks[index]))
         index = index + 1
     }
-    return TypedClassDef { name: class_def.name, extends: class_def.extends, implements: class_def.implements, fields: fields, methods: methods, type_blocks: type_blocks, span: class_def.span }
+    return TypedClassDef { name: class_def.name, base_class: class_def.base_class, interfaces: class_def.interfaces, fields: fields, methods: methods, type_blocks: type_blocks, span: class_def.span }
 }
 
 fn check_interface_def(checker, iface) {

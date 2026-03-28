@@ -672,6 +672,9 @@ fn ensure_runtime_staticlib(profile: Profile) -> Result<PathBuf> {
 fn packaged_runtime_staticlib() -> Option<PathBuf> {
     let exe = env::current_exe().ok()?;
     let dir = exe.parent()?;
+    if dir.starts_with(target_dir()) {
+        return None;
+    }
     if cfg!(windows) {
         let gnu_path = dir.join("libdraton_runtime.a");
         if packaged_windows_gnu_root().is_some() && gnu_path.exists() {

@@ -1,0 +1,63 @@
+import { lex_json, parse_json, typeck_json, build_json } from driver.pipeline
+
+@type {
+    arg_or_empty: (Int) -> String
+    bool_arg: (Int) -> Bool
+    emit_payload: (String) -> Int
+    emit_error: (String) -> Int
+    main: () -> Int
+}
+
+fn arg_or_empty(index) {
+    if index < cli_argc() {
+        return cli_arg(index)
+    }
+    return ""
+}
+
+fn bool_arg(index) {
+    return arg_or_empty(index) == "1"
+}
+
+fn emit_payload(payload) {
+    println(payload)
+    return 0
+}
+
+fn emit_error(message) {
+    let prefix = "{\"ok\":false,\"error\":\""
+    let body = str_concat(prefix, message)
+    println(str_concat(body, "\"}"))
+    return 1
+}
+
+fn main() {
+    let command = arg_or_empty(1)
+    let path = arg_or_empty(2)
+
+    if command == "" {
+        return emit_error("missing selfhost-stage0 command")
+    }
+
+    if path == "" {
+        return emit_error("missing input path")
+    }
+
+    if command == "lex" {
+        return emit_payload(lex_json(path))
+    }
+
+    if command == "parse" {
+        return emit_payload(parse_json(path))
+    }
+
+    if command == "typeck" {
+        return emit_payload(typeck_json(path, bool_arg(3)))
+    }
+
+    if command == "build" {
+        return emit_payload(build_json(path, arg_or_empty(3), arg_or_empty(4), bool_arg(5), arg_or_empty(6)))
+    }
+
+    return emit_error("unknown selfhost-stage0 command")
+}

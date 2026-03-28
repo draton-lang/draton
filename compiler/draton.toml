@@ -1,0 +1,4 @@
+[project]
+name = "draton-selfhost-stage0"
+version = "0.1.0"
+entry = "main.dt"

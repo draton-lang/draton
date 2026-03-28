@@ -27,12 +27,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(all(feature = "coop-scheduler", not(feature = "scheduler")))]
 use coop_scheduler::RawChan;
 #[cfg(feature = "host-compiler")]
-use draton_lexer::Lexer;
+use draton_lexer::{LexResult, Lexer};
 #[cfg(feature = "host-compiler")]
-use draton_parser::Parser;
+use draton_parser::{ParseResult, ParseWarning, Parser};
+#[cfg(feature = "host-compiler")]
+use serde_json::json;
 use draton_stdlib as stdlib;
 #[cfg(feature = "host-compiler")]
-use draton_typeck::TypeChecker;
+use draton_typeck::{DeprecatedSyntaxMode, TypeCheckResult, TypeChecker};
 use platform::DratonPlatform;
 #[cfg(feature = "scheduler")]
 use scheduler::channel::RawChan;
@@ -271,6 +273,65 @@ pub fn host_type_dump_path(path: &Path) -> Result<String, String> {
 }
 
 #[cfg(feature = "host-compiler")]
+fn host_lex_result(path: &Path) -> Result<LexResult, String> {
+    let source = fs::read_to_string(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    Ok(Lexer::new(&source).tokenize())
+}
+
+#[cfg(feature = "host-compiler")]
+pub fn host_lex_json_path(path: &Path) -> Result<String, String> {
+    let lexed = host_lex_result(path)?;
+    serde_json::to_string(&lexed).map_err(|error| format!("failed to serialize lex result: {error}"))
+}
+
+#[cfg(feature = "host-compiler")]
+pub fn host_parse_json_path(path: &Path) -> Result<String, String> {
+    let lexed = host_lex_result(path)?;
+    let parse_result: Option<ParseResult> = if lexed.errors.is_empty() {
+        Some(Parser::new(lexed.tokens.clone()).parse())
+    } else {
+        None
+    };
+    serde_json::to_string(&json!({
+        "lex_errors": lexed.errors,
+        "parse_result": parse_result,
+    }))
+    .map_err(|error| format!("failed to serialize parse result: {error}"))
+}
+
+#[cfg(feature = "host-compiler")]
+pub fn host_type_json_path(path: &Path, strict_syntax: bool) -> Result<String, String> {
+    let lexed = host_lex_result(path)?;
+    let mut parse_errors = Vec::new();
+    let mut parse_warnings: Vec<ParseWarning> = Vec::new();
+    let mut typecheck_result: Option<TypeCheckResult> = None;
+    if lexed.errors.is_empty() {
+        let parsed = Parser::new(lexed.tokens.clone()).parse();
+        parse_errors = parsed.errors.clone();
+        parse_warnings = parsed.warnings.clone();
+        if parse_errors.is_empty() {
+            typecheck_result = Some(
+                TypeChecker::new()
+                    .with_deprecated_syntax_mode(if strict_syntax {
+                        DeprecatedSyntaxMode::Deny
+                    } else {
+                        DeprecatedSyntaxMode::Warn
+                    })
+                    .check(parsed.program),
+            );
+        }
+    }
+    serde_json::to_string(&json!({
+        "lex_errors": lexed.errors,
+        "parse_errors": parse_errors,
+        "parse_warnings": parse_warnings,
+        "typecheck_result": typecheck_result,
+    }))
+    .map_err(|error| format!("failed to serialize typecheck result: {error}"))
+}
+
+#[cfg(feature = "host-compiler")]
 fn runtime_workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -437,6 +498,8 @@ fn host_build_source_impl(
     object_path: &Path,
     binary_path: &Path,
     mode: &str,
+    strict_syntax: bool,
+    target: Option<&str>,
     emit_ir: bool,
 ) -> Result<(), String> {
     let host_drat = runtime_ensure_host_drat()?;
@@ -454,6 +517,12 @@ fn host_build_source_impl(
     command.env("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", "1");
     if let Some(flag) = runtime_build_mode_flag(mode) {
         command.arg(flag);
+    }
+    if strict_syntax {
+        command.arg("--strict-syntax");
+    }
+    if let Some(target) = target.filter(|value| !value.is_empty()) {
+        command.arg("--target").arg(target);
     }
     let output = command
         .output()
@@ -495,6 +564,60 @@ fn host_build_source_impl(
 }
 
 #[cfg(feature = "host-compiler")]
+pub fn host_build_json_path(
+    source_path: &Path,
+    output_path: Option<&Path>,
+    mode: &str,
+    strict_syntax: bool,
+    target: Option<&str>,
+) -> Result<String, String> {
+    let final_binary = match output_path {
+        Some(path) => path.to_path_buf(),
+        None => {
+            let cwd = env::current_dir().map_err(|error| format!("failed to read cwd: {error}"))?;
+            let stem = source_path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("output");
+            if cfg!(windows) {
+                cwd.join(format!("{stem}.exe"))
+            } else {
+                cwd.join(stem)
+            }
+        }
+    };
+    let final_object = final_binary.with_extension("o");
+    let final_ir = final_binary.with_extension("ll");
+    let result = host_build_source_impl(
+        source_path,
+        &final_ir,
+        &final_object,
+        &final_binary,
+        mode,
+        strict_syntax,
+        target,
+        true,
+    );
+    let envelope = match result {
+        Ok(()) => json!({
+            "ok": true,
+            "output": {
+                "binary_path": final_binary.display().to_string(),
+                "object_path": final_object.display().to_string(),
+                "ir_path": final_ir.display().to_string(),
+            },
+            "error": null,
+        }),
+        Err(error) => json!({
+            "ok": false,
+            "output": null,
+            "error": error,
+        }),
+    };
+    serde_json::to_string(&envelope).map_err(|error| format!("failed to serialize build result: {error}"))
+}
+
+#[cfg(feature = "host-compiler")]
 #[no_mangle]
 pub extern "C" fn draton_host_type_dump(path: DratonString) -> DratonString {
     let path_string = draton_string_to_owned(path);
@@ -523,11 +646,70 @@ pub extern "C" fn draton_host_build_source(
         Path::new(&object_path),
         Path::new(&binary_path),
         &mode,
+        false,
+        None,
         emit_ir != 0,
     ) {
         Ok(()) => String::new(),
         Err(message) => message,
     };
+    owned_string(output.into_bytes())
+}
+
+#[cfg(feature = "host-compiler")]
+#[no_mangle]
+pub extern "C" fn draton_host_lex_json(path: DratonString) -> DratonString {
+    let path = draton_string_to_owned(path);
+    let output = host_lex_json_path(Path::new(&path)).unwrap_or_else(|message| message);
+    owned_string(output.into_bytes())
+}
+
+#[cfg(feature = "host-compiler")]
+#[no_mangle]
+pub extern "C" fn draton_host_parse_json(path: DratonString) -> DratonString {
+    let path = draton_string_to_owned(path);
+    let output = host_parse_json_path(Path::new(&path)).unwrap_or_else(|message| message);
+    owned_string(output.into_bytes())
+}
+
+#[cfg(feature = "host-compiler")]
+#[no_mangle]
+pub extern "C" fn draton_host_type_json(path: DratonString, strict_syntax: i64) -> DratonString {
+    let path = draton_string_to_owned(path);
+    let output =
+        host_type_json_path(Path::new(&path), strict_syntax != 0).unwrap_or_else(|message| message);
+    owned_string(output.into_bytes())
+}
+
+#[cfg(feature = "host-compiler")]
+#[no_mangle]
+pub extern "C" fn draton_host_build_json(
+    source_path: DratonString,
+    output_path: DratonString,
+    mode: DratonString,
+    strict_syntax: i64,
+    target: DratonString,
+) -> DratonString {
+    let source_path = draton_string_to_owned(source_path);
+    let output_path = draton_string_to_owned(output_path);
+    let mode = draton_string_to_owned(mode);
+    let target = draton_string_to_owned(target);
+    let output = host_build_json_path(
+        Path::new(&source_path),
+        if output_path.is_empty() {
+            None
+        } else {
+            Some(Path::new(&output_path))
+        },
+        &mode,
+        strict_syntax != 0,
+        if target.is_empty() {
+            None
+        } else {
+            Some(target.as_str())
+        },
+    )
+    .unwrap_or_else(|message| message);
     owned_string(output.into_bytes())
 }
 

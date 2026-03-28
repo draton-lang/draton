@@ -26,7 +26,7 @@ compiler/
 │   ├── token.dt          TokenKind enum + Token class + Span class
 │   ├── lexer.dt          Lexer class — fn tokenize()
 │   ├── result.dt         LexResult class — tokens + errors
-│   └── error.dt          LexError enum
+│   └── errors.dt         LexError enum
 │
 ├── ast/
 │   ├── span.dt           Span { start, end, line, col }
@@ -36,32 +36,32 @@ compiler/
 │   │   ├── expr.dt       Expr enum — tất cả expression nodes
 │   │   ├── ops.dt        BinOp enum + UnOp enum
 │   │   ├── fstr.dt       FStrPart enum
-│   │   └── match.dt      MatchArm class + MatchArmBody enum
+│   │   └── matching.dt   MatchArm class + MatchArmBody enum
 │   │
 │   ├── stmt/
 │   │   ├── stmt.dt       Stmt enum + Block class
-│   │   ├── let.dt        LetStmt + LetDestructureStmt + DestructureBinding
+│   │   ├── binding.dt    LetStmt + LetDestructureStmt + DestructureBinding
 │   │   ├── assign.dt     AssignStmt + AssignOp enum
 │   │   ├── control.dt    IfStmt + ElseBranch + ForStmt + WhileStmt
-│   │   ├── spawn.dt      SpawnStmt + SpawnBody enum
+│   │   ├── spawning.dt   SpawnStmt + SpawnBody enum
 │   │   └── misc.dt       ReturnStmt + IfCompileStmt + GcConfigStmt + GcConfigEntry
 │   │
 │   └── item/
 │       ├── item.dt       Item enum + Program class
-│       ├── fn.dt         FnDef + Param
-│       ├── class.dt      ClassDef + ClassMember enum + FieldDef
-│       ├── layer.dt      LayerDef
-│       ├── interface.dt  InterfaceDef
-│       ├── enum.dt       EnumDef
-│       ├── error.dt      ErrorDef
-│       ├── const.dt      ConstDef
-│       ├── import.dt     ImportDef + ImportItem
+│       ├── func.dt       FnDef + Param
+│       ├── klass.dt      ClassDef + ClassMember enum + FieldDef
+│       ├── layers.dt     LayerDef
+│       ├── iface.dt      InterfaceDef
+│       ├── variants.dt   EnumDef
+│       ├── errors.dt     ErrorDef
+│       ├── constant.dt   ConstDef
+│       ├── imports.dt    ImportDef + ImportItem
 │       ├── extern.dt     ExternBlock
 │       └── type_block.dt TypeBlock + TypeMember enum
 │
 ├── parser/
 │   ├── parser.dt         Parser class — state, peek/advance/expect/sync
-│   ├── error.dt          ParseError enum + recovery helpers
+│   ├── errors.dt         ParseError enum + recovery helpers
 │   │
 │   ├── parse/
 │   │   ├── items.dt      parse_program() + tất cả top-level items
@@ -79,7 +79,7 @@ compiler/
 │   │   ├── env.dt        TypeEnv class — scope stack
 │   │   ├── subst.dt      Substitution class — immutable type var map
 │   │   ├── unify.dt      fn unify() — Algorithm W unification
-│   │   └── error.dt      TypeError enum
+│   │   └── errors.dt     TypeError enum
 │   │
 │   ├── — typed ast ————————————————————————————————————
 │   ├── typed/
@@ -119,7 +119,7 @@ compiler/
 │       ├── exprs.dt      fn check_expr() — ownership effect per expression
 │       ├── stmts.dt      fn check_stmt() — ownership effect per statement
 │       ├── free.dt       free() insertion — last-use span tracking
-│       └── error.dt      OwnershipError enum
+│       └── errors.dt     OwnershipError enum
 │
 ├── codegen/
 │   │
@@ -136,7 +136,7 @@ compiler/
 │   │
 │   ├── — support ——————————————————————————————————————
 │   ├── mode.dt           BuildMode enum — Debug, Release, Size, Fast
-│   ├── error.dt          CodeGenError enum
+│   ├── errors.dt         CodeGenError enum
 │   ├── mangle.dt         fn mangle_fn() — name mangling
 │   ├── layout.dt         ClassLayout class — struct field index map
 │   │
@@ -314,15 +314,15 @@ Không còn: `crates/`, `Cargo.toml`, `Cargo.lock`, bất kỳ file `.rs` nào.
 
 ### 1.1 Vendor LLVM (v0.1.43–.46)
 
-- [ ] Chọn LLVM version để vendor (target: LLVM 18 stable)
-- [ ] Download LLVM 18 prebuilt static libs cho linux-x86_64
-- [ ] Download LLVM 18 prebuilt static libs cho linux-aarch64
-- [ ] Download LLVM 18 prebuilt static libs cho macos-x86_64
-- [ ] Download LLVM 18 prebuilt static libs cho macos-aarch64
-- [ ] Download LLVM 18 prebuilt static libs cho windows-x86_64
-- [ ] Tổ chức vào `vendor/llvm/<target>/` với include headers
-- [ ] Viết build script chọn đúng target dựa trên host platform
-- [ ] Verify: `drat` link được với vendored LLVM, không cần system LLVM
+- [x] Chọn LLVM version để vendor (pin hiện tại: LLVM 18.1.8)
+- [x] Khai báo bundle LLVM 18 cho linux-x86_64 trong `vendor/llvm/manifest.json`
+- [x] Khai báo bundle LLVM 18 cho linux-aarch64 trong `vendor/llvm/manifest.json`
+- [x] Khai báo bundle LLVM 18 cho macos-x86_64 trong `vendor/llvm/manifest.json`
+- [x] Khai báo bundle LLVM 18 cho macos-aarch64 trong `vendor/llvm/manifest.json`
+- [x] Khai báo bundle LLVM 18 cho windows-x86_64 trong `vendor/llvm/manifest.json`
+- [x] Chuẩn hoá source of truth qua `vendor/llvm/manifest.json` + `scripts/vendor_llvm.py`
+- [x] Viết build/release path chọn đúng LLVM bundle dựa trên host platform
+- [x] Verify: `drat` build được với vendored LLVM 18, không cần system LLVM trên Linux host
 
 ### 1.2 Bundle LLD (v0.1.47–.49)
 
@@ -340,6 +340,7 @@ Không còn: `crates/`, `Cargo.toml`, `Cargo.lock`, bất kỳ file `.rs` nào.
 - [x] Tạo `compiler/README.md` mô tả location và boundary
 - [x] Cập nhật `docs/selfhost-canonical-migration-status.md`: ghi nhận location, date bắt đầu
 - [x] Cập nhật `AGENTS.md`: thêm rule về self-host reintroduction boundary
+- [x] Hidden `drat selfhost-stage0` build và chạy binary tối thiểu từ `compiler/main.dt` + `compiler/driver/pipeline.dt`
 
 **Port `draton-lexer` → `compiler/lexer/lexer.dt`:**
 - [x] Định nghĩa `enum TokenKind` — toàn bộ 60+ variants từ Rust (keywords, operators, literals, `@`-tokens, `Eof`)
@@ -877,7 +878,7 @@ Draton IR  →  DraGen  →  x86_64 machine code
 
 | Phase | Version Range | Gate | Status |
 |---|---|---|---|
-| Phase 1: LLVM Bundle + Self-Host Foundation | v0.1.43–.58 | `drat build` chạy không cần LLVM installed | ⬜ Chưa bắt đầu |
+| Phase 1: LLVM Bundle + Self-Host Foundation | v0.1.43–.58 | `drat build` chạy không cần LLVM installed | 🟨 Đang làm |
 | Phase 2: Kill libc trong Runtime | v0.1.59–.72 | `ldd drat` → not dynamic | ⬜ Chưa bắt đầu |
 | Phase 3: Bootstrap + Xoá Rust | v0.1.73–.90 | Không còn `.rs` trong repo | ⬜ Chưa bắt đầu |
 | Phase 4: Hardening + Release | v0.1.91–.103 | Install từ scratch hoạt động | ⬜ Chưa bắt đầu |
