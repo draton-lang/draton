@@ -6,10 +6,8 @@ use draton_typeck::{
     Type, TypedBlock, TypedDestructureBinding, TypedExpr, TypedExprKind, TypedFStrPart,
     TypedMatchArmBody, TypedParam, TypedStmt, TypedStmtKind,
 };
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, StructType};
-use inkwell::values::{
-    BasicMetadataValueEnum, BasicValueEnum, CallableValue, FunctionValue, PointerValue,
-};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
+use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue};
 use inkwell::AddressSpace;
 
 use crate::codegen::CodeGen;
@@ -75,12 +73,9 @@ impl<'ctx> CodeGen<'ctx> {
             let field_types = captures
                 .iter()
                 .map(|capture| {
-                    inkwell::types::BasicTypeEnum::try_from(
-                        capture.storage.get_type().get_element_type(),
-                    )
-                    .map_err(|_| {
+                    self.pointer_pointee(capture.storage).map_err(|_| {
                         CodeGenError::UnsupportedExpr(format!(
-                            "capture {} has non-basic storage type",
+                            "capture {} has unknown storage type",
                             capture.name
                         ))
                     })
@@ -125,11 +120,7 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_ty = self.llvm_closure_body_function_type(params, ret_ty)?;
         let fn_ptr = self
             .builder
-            .build_bitcast(
-                fn_ptr_raw,
-                fn_ty.ptr_type(AddressSpace::default()),
-                "closure.fn.typed",
-            )
+            .build_bit_cast(fn_ptr_raw, self.context.ptr_type(AddressSpace::default()), "closure.fn.typed")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .into_pointer_value();
 
@@ -144,15 +135,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         let call = self
             .builder
-            .build_call(
-                CallableValue::try_from(fn_ptr).map_err(|_| {
-                    CodeGenError::Llvm("invalid closure function pointer".to_string())
-                })?,
-                &call_args,
-                "closure.call",
-            )
+            .build_indirect_call(fn_ty, fn_ptr, &call_args, "closure.call")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        let ret_val = call.try_as_basic_value().left();
+        let ret_val = call.try_as_basic_value().basic();
         Ok(ret_val)
     }
 
@@ -169,7 +154,7 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| CodeGenError::MissingSymbol(symbol.to_string()))?;
         let fn_ptr = self
             .builder
-            .build_bitcast(
+            .build_bit_cast(
                 function.as_global_value().as_pointer_value(),
                 self.context.i8_type().ptr_type(AddressSpace::default()),
                 "closure.fn.raw",
@@ -234,23 +219,13 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .try_as_basic_value()
-            .left()
+            .basic()
             .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
             .into_pointer_value();
-        let env_ptr = self
-            .builder
-            .build_bitcast(
-                raw,
-                env_type.ptr_type(AddressSpace::default()),
-                "closure.env",
-            )
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-            .into_pointer_value();
+        let env_ptr = self.build_bit_cast_to(raw, BasicTypeEnum::StructType(env_type), "closure.env")?;
         for (index, capture) in captures.iter().enumerate() {
-            let field_ptr = self
-                .builder
-                .build_struct_gep(env_ptr, index as u32, &format!("env.{}", capture.name))
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            let field_ptr =
+                self.build_struct_gep(env_type, env_ptr, index as u32, &format!("env.{}", capture.name))?;
             let captured_value =
                 self.build_load(capture.storage, &format!("capture.{}", capture.name))?;
             self.build_store(field_ptr, captured_value)?;
@@ -291,20 +266,18 @@ impl<'ctx> CodeGen<'ctx> {
             let env_raw = function
                 .get_first_param()
                 .ok_or_else(|| CodeGenError::MissingSymbol(format!("{fn_name}:env")))?;
-            let env_ptr = self
-                .builder
-                .build_bitcast(
-                    env_raw.into_pointer_value(),
-                    env_type.ptr_type(AddressSpace::default()),
-                    "closure.env.typed",
-                )
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-                .into_pointer_value();
+            let env_ptr = self.build_bit_cast_to(
+                env_raw.into_pointer_value(),
+                BasicTypeEnum::StructType(env_type),
+                "closure.env.typed",
+            )?;
             for (index, capture) in captures.iter().enumerate() {
-                let field_ptr = self
-                    .builder
-                    .build_struct_gep(env_ptr, index as u32, &format!("env.load.{}", capture.name))
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                let field_ptr = self.build_struct_gep(
+                    env_type,
+                    env_ptr,
+                    index as u32,
+                    &format!("env.load.{}", capture.name),
+                )?;
                 let captured_value =
                     self.build_load(field_ptr, &format!("capture.{}", capture.name))?;
                 let storage = self.create_entry_alloca(
@@ -356,7 +329,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<PointerValue<'ctx>, CodeGenError> {
         let fn_ptr = self
             .builder
-            .build_bitcast(
+            .build_bit_cast(
                 function.as_global_value().as_pointer_value(),
                 self.context.i8_type().ptr_type(AddressSpace::default()),
                 "closure.fn.raw",
@@ -391,31 +364,19 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .try_as_basic_value()
-            .left()
+            .basic()
             .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
             .into_pointer_value();
-        let closure_ptr = self
-            .builder
-            .build_bitcast(
-                raw,
-                self.closure_record_type.ptr_type(AddressSpace::default()),
-                "closure.ptr",
-            )
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-            .into_pointer_value();
-        let fn_slot = self
-            .builder
-            .build_struct_gep(closure_ptr, 0, "closure.fn.slot")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let closure_ptr =
+            self.build_bit_cast_to(raw, self.closure_record_type.into(), "closure.ptr")?;
+        let fn_slot = self.build_struct_gep(self.closure_record_type, closure_ptr, 0, "closure.fn.slot")?;
         self.build_store(fn_slot, fn_ptr.into())?;
-        let env_slot = self
-            .builder
-            .build_struct_gep(closure_ptr, 1, "closure.env.slot")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let env_slot =
+            self.build_struct_gep(self.closure_record_type, closure_ptr, 1, "closure.env.slot")?;
         let erased_env = env_ptr
             .map(|env_ptr| {
                 self.builder
-                    .build_bitcast(
+                    .build_bit_cast(
                         env_ptr,
                         self.context.i8_type().ptr_type(AddressSpace::default()),
                         "closure.env.raw",

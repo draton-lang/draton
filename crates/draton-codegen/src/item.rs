@@ -422,9 +422,7 @@ impl<'ctx> CodeGen<'ctx> {
                     CodeGenError::MissingSymbol(format!("{}.{}", class_def.name, field.name))
                 })?;
             let field_ptr = self
-                .builder
-                .build_struct_gep(object_ptr, index, &field.name)
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                .build_struct_gep(layout.struct_type, object_ptr, index, &field.name)?;
             let zero = self.zero_value(&field.ty)?;
             self.build_store(field_ptr, zero)?;
             if Self::is_gc_pointer_type(&field.ty) {

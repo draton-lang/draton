@@ -70,14 +70,12 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(alloc, &[size.into()], name)
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .try_as_basic_value()
-            .left()
+            .basic()
             .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
             .into_pointer_value();
         let typed_ptr = match self.llvm_basic_type(ty)? {
             BasicTypeEnum::PointerType(ptr_ty) => self
-                .builder
-                .build_pointer_cast(raw, ptr_ty, &format!("{name}.typed"))
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?,
+                .build_pointer_cast_to(raw, ptr_ty.into(), &format!("{name}.typed"))?,
             other => {
                 return Err(CodeGenError::UnsupportedType(format!(
                     "owned allocation requires pointer-backed type, got {other:?}"

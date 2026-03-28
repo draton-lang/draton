@@ -1,12 +1,10 @@
 use std::collections::HashMap;
-use std::convert::TryFrom;
-
 use draton_typeck::{
     typed_ast::{TypedClassDef, TypedInterfaceDef},
     Type, TypedFnDef, TypedItem, TypedProgram,
 };
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
-use inkwell::values::{BasicMetadataValueEnum, CallableValue, FunctionValue, PointerValue};
+use inkwell::values::{BasicMetadataValueEnum, FunctionValue, PointerValue};
 use inkwell::AddressSpace;
 
 use crate::codegen::CodeGen;
@@ -233,7 +231,7 @@ impl<'ctx> CodeGen<'ctx> {
         let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
         let data_ptr = self
             .builder
-            .build_bitcast(value, i8_ptr, "iface.data")
+            .build_bit_cast(value, i8_ptr, "iface.data")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .into_pointer_value();
         self.build_struct_value(
@@ -265,10 +263,12 @@ impl<'ctx> CodeGen<'ctx> {
                 .ok_or_else(|| {
                     CodeGenError::MissingSymbol(format!("{class_name}_{iface_name}_vtable"))
                 })?;
-            current_ptr = self
-                .builder
-                .build_struct_gep(current_ptr, 0, "iface.parent")
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            let current_layout = self
+                .class_layouts
+                .get(&current_class)
+                .ok_or_else(|| CodeGenError::MissingSymbol(current_class.clone()))?;
+            current_ptr =
+                self.build_struct_gep(current_layout.struct_type, current_ptr, 0, "iface.parent")?;
             current_class = parent_class;
         }
     }
@@ -300,13 +300,20 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(fat_ptr, 1, "iface.vtable")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .into_pointer_value();
-        let fn_slot = self
-            .builder
-            .build_struct_gep(vtable_ptr, method_index as u32, "iface.fn.slot")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let vtable_type = *self
+            .vtable_types
+            .get(iface_name)
+            .ok_or_else(|| CodeGenError::MissingSymbol(format!("{iface_name}_vtable")))?;
+        let fn_slot =
+            self.build_struct_gep(vtable_type, vtable_ptr, method_index as u32, "iface.fn.slot")?;
+        let fn_ty = self.interface_dispatch_function_type(&methods[method_index])?;
         let fn_ptr = self
             .builder
-            .build_load(fn_slot, "iface.fn")
+            .build_load(
+                fn_ty.ptr_type(AddressSpace::default()),
+                fn_slot,
+                "iface.fn",
+            )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .into_pointer_value();
         let mut call_args = vec![BasicMetadataValueEnum::from(data_ptr)];
@@ -316,16 +323,11 @@ impl<'ctx> CodeGen<'ctx> {
             })?;
             call_args.push(value.into());
         }
-        let callable = CallableValue::try_from(fn_ptr).map_err(|_| {
-            CodeGenError::Llvm(format!(
-                "interface method slot {iface_name}.{method_name} is not callable"
-            ))
-        })?;
         let call = self
             .builder
-            .build_call(callable, &call_args, "iface.call")
+            .build_indirect_call(fn_ty, fn_ptr, &call_args, "iface.call")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        Ok(call.try_as_basic_value().left())
+        Ok(call.try_as_basic_value().basic())
     }
 
     pub(crate) fn interface_dispatch_function_type(
@@ -396,7 +398,7 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| CodeGenError::MissingSymbol(class_name.to_string()))?;
         let typed_self = self
             .builder
-            .build_bitcast(
+            .build_bit_cast(
                 raw_self,
                 class_layout.struct_type.ptr_type(AddressSpace::default()),
                 "self.typed",
@@ -427,7 +429,7 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             let value = call
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .ok_or_else(|| CodeGenError::Llvm("thunk expected return value".to_string()))?;
             self.builder
                 .build_return(Some(&value))

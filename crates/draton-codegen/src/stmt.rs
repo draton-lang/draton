@@ -6,7 +6,7 @@ use draton_typeck::typed_ast::{
     TypedForStmt, TypedIfStmt, TypedLetDestructureStmt, TypedLetStmt, TypedReturnStmt,
     TypedMatchArmBody, TypedSpawnBody, TypedWhileStmt,
 };
-use draton_typeck::{TypedBlock, TypedStmt, TypedStmtKind};
+use draton_typeck::{Type, TypedBlock, TypedStmt, TypedStmtKind};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
 
@@ -729,14 +729,14 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(body);
         self.push_scope();
+        let Type::Array(inner) = &stmt.iter.ty else {
+            return Err(CodeGenError::UnsupportedStmt(
+                "pointer loop requires array iterator".to_string(),
+            ));
+        };
+        let elem_ty = self.llvm_basic_type(inner)?;
         let gep = unsafe {
-            self.builder
-                .build_gep(
-                    ptr,
-                    &[phi.as_basic_value().into_int_value()],
-                    "for.elem.ptr",
-                )
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+            self.build_gep(elem_ty, ptr, &[phi.as_basic_value().into_int_value()], "for.elem.ptr")?
         };
         let elem = self.build_load(gep, "for.elem")?;
         let alloca = self.create_entry_alloca(function, elem.get_type(), &stmt.name)?;

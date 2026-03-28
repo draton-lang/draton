@@ -3,15 +3,6 @@
 version = 4
 
 [[package]]
-name = "aho-corasick"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddd31a130427c27518df266943a5308ed92d4b226cc639f5a8f1002816174301"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -377,6 +368,9 @@ dependencies = [
 [[package]]
 name = "draton-ast"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "draton-codegen"
@@ -396,6 +390,7 @@ name = "draton-lexer"
 version = "0.1.0"
 dependencies = [
  "pretty_assertions",
+ "serde",
  "thiserror 1.0.69",
 ]
 
@@ -420,6 +415,7 @@ dependencies = [
  "draton-ast",
  "draton-lexer",
  "pretty_assertions",
+ "serde",
  "thiserror 1.0.69",
 ]
 
@@ -464,14 +460,9 @@ dependencies = [
  "draton-parser",
  "im",
  "pretty_assertions",
+ "serde",
  "thiserror 1.0.69",
 ]
-
-[[package]]
-name = "either"
-version = "1.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "equivalent"
@@ -897,23 +888,22 @@ dependencies = [
 
 [[package]]
 name = "inkwell"
-version = "0.4.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b597a7b2cdf279aeef6d7149071e35e4bc87c2cf05a5b7f2d731300bffe587ea"
+checksum = "39457e8611219cf690f862a470575f5c06862910d03ea3c3b187ad7abc44b4e2"
 dependencies = [
- "either",
  "inkwell_internals",
  "libc",
  "llvm-sys",
  "once_cell",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "inkwell_internals"
-version = "0.9.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fa4d8d74483041a882adaa9a29f633253a66dde85055f0495c121620ac484b2"
+checksum = "ad9a7dd586b00f2b20e0b9ae3c6faa351fbfd56d15d63bbce35b13bece682eda"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1006,14 +996,15 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
 name = "llvm-sys"
-version = "140.1.3"
+version = "181.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3dc78e9857c0231ec11e3bdccf63870493fdc7d0570b0ea7d50bf5df0cb1a0c"
+checksum = "e24aad69cbdb0c6ebe777262e9e6314dceba0d6e6a2a63e47563ccd293a2eda8"
 dependencies = [
+ "anyhow",
  "cc",
  "lazy_static",
  "libc",
- "regex",
+ "regex-lite",
  "semver",
 ]
 
@@ -1289,33 +1280,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "regex"
-version = "1.12.3"
+name = "regex-lite"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
-dependencies = [
- "aho-corasick",
- "memchr",
- "regex-automata",
- "regex-syntax",
-]
-
-[[package]]
-name = "regex-automata"
-version = "0.4.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e1dd4122fc1595e8162618945476892eefca7b88c52820e74af6262213cae8f"
-dependencies = [
- "aho-corasick",
- "memchr",
- "regex-syntax",
-]
-
-[[package]]
-name = "regex-syntax"
-version = "0.8.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
+checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
 
 [[package]]
 name = "reqwest"

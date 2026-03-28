@@ -1,6 +1,5 @@
 use draton_ast::{BinOp, UnOp};
 use draton_typeck::{Type, TypedExpr, TypedExprKind, TypedFStrPart, TypedMatchArmBody};
-use inkwell::types::BasicType;
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, PointerValue};
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 
@@ -54,13 +53,19 @@ impl<'ctx> CodeGen<'ctx> {
             }
             TypedExprKind::Ident(name) => {
                 if let Some(ptr) = self.lookup_local(name) {
-                    self.build_load(ptr, name).map(Some)
+                    self.build_typed_load(ptr, self.llvm_basic_type(&expr.ty)?, name)
+                        .map(Some)
                 } else if matches!(expr.ty, Type::Fn(_, _)) {
                     let symbol = self.resolve_function_value_symbol(name, &expr.ty)?;
                     self.emit_named_function_closure(&symbol, &expr.ty, expr.span)
                         .map(Some)
                 } else if let Some(global) = self.module.get_global(name) {
-                    self.build_load(global.as_pointer_value(), name).map(Some)
+                    self.build_typed_load(
+                        global.as_pointer_value(),
+                        self.llvm_basic_type(&expr.ty)?,
+                        name,
+                    )
+                    .map(Some)
                 } else {
                     Err(CodeGenError::MissingSymbol(name.clone()))
                 }
@@ -73,8 +78,10 @@ impl<'ctx> CodeGen<'ctx> {
             TypedExprKind::MethodCall(target, method, args) => {
                 self.emit_method_call(target, method, args)
             }
-            TypedExprKind::Field(target, field) => self.emit_field_load(target, field).map(Some),
-            TypedExprKind::Index(target, index) => self.emit_index(target, index).map(Some),
+            TypedExprKind::Field(target, field) => {
+                self.emit_field_load(target, field, &expr.ty).map(Some)
+            }
+            TypedExprKind::Index(target, index) => self.emit_index(target, index, &expr.ty).map(Some),
             TypedExprKind::Cast(value, to_ty) => self.emit_cast(value, to_ty).map(Some),
             TypedExprKind::Match(subject, arms) => self.emit_match(subject, arms, &expr.ty),
             TypedExprKind::Ok(value) => self.emit_result(value, &expr.ty, true),
@@ -125,11 +132,12 @@ impl<'ctx> CodeGen<'ctx> {
                         CodeGenError::UnsupportedExpr("index operand missing value".to_string())
                     })?
                     .into_int_value();
-                unsafe {
-                    self.builder
-                        .build_gep(ptr, &[idx], "index.gep")
-                        .map_err(|err| CodeGenError::Llvm(err.to_string()))
-                }
+                let Type::Array(inner) = &target.ty else {
+                    return Err(CodeGenError::UnsupportedExpr(
+                        "index lvalue on non-array value".to_string(),
+                    ));
+                };
+                unsafe { self.build_gep(self.llvm_basic_type(inner)?, ptr, &[idx], "index.gep") }
             }
             _ => Err(CodeGenError::UnsupportedExpr(format!(
                 "non-assignable lvalue {:?}",
@@ -181,7 +189,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_call(concat, &[rendered.into(), piece.into()], "fstr.concat")
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-            rendered = call.try_as_basic_value().left().ok_or_else(|| {
+            rendered = call.try_as_basic_value().basic().ok_or_else(|| {
                 CodeGenError::UnsupportedExpr("str_concat returned no value".to_string())
             })?;
         }
@@ -229,14 +237,13 @@ impl<'ctx> CodeGen<'ctx> {
                 CodeGenError::UnsupportedExpr("array item missing value".to_string())
             })?;
             let slot = unsafe {
-                self.builder
-                    .build_gep(
+                    self.build_gep(
+                        item_ty,
                         data_ptr,
                         &[self.context.i64_type().const_int(index as u64, false)],
                         "array.slot",
-                    )
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-            };
+                    )?
+                };
             self.build_store(slot, value)?;
         }
         let array_ty = self.llvm_basic_type(ty)?.into_struct_type();
@@ -299,7 +306,7 @@ impl<'ctx> CodeGen<'ctx> {
                 )
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .ok_or_else(|| CodeGenError::Llvm("draton_str_eq returned void".to_string()))?
                 .into_int_value();
             let value = if op == BinOp::Eq {
@@ -580,9 +587,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?
                 .into(),
             UnOp::Ref => self.emit_lvalue_ptr(value_expr)?.into(),
-            UnOp::Deref => self
-                .build_load(value.into_pointer_value(), "deref")
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?,
+            UnOp::Deref => {
+                self.build_typed_load(value.into_pointer_value(), self.llvm_basic_type(ty)?, "deref")?
+            }
         };
         Ok(Some(result))
     }
@@ -696,7 +703,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "call",
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        let ret_val = call.try_as_basic_value().left();
+        let ret_val = call.try_as_basic_value().basic();
         Ok(ret_val)
     }
 
@@ -740,7 +747,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(fn_int_to_str, &[i64_val.into()], "int.to_string")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?
                     .try_as_basic_value()
-                    .left()
+                    .basic()
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("int_to_string returned void".to_string())
                     })
@@ -784,7 +791,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(fn_float_to_str, &[val.into()], "float.to_string")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?
                     .try_as_basic_value()
-                    .left()
+                    .basic()
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("float_to_string returned void".to_string())
                     })
@@ -822,7 +829,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(fn_float_to_str, &[f64_val.into()], "float32.to_string")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?
                     .try_as_basic_value()
-                    .left()
+                    .basic()
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("float32_to_string returned void".to_string())
                     })
@@ -850,7 +857,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
         let object_ptr = call
             .try_as_basic_value()
-            .left()
+            .basic()
             .ok_or_else(|| CodeGenError::UnsupportedExpr("constructor returned void".to_string()))?
             .into_pointer_value();
         let TypedExprKind::Map(entries) = &field_map.kind else {
@@ -938,14 +945,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?
                     .into_pointer_value();
                 let byte_ptr = unsafe {
-                    self.builder
-                        .build_gep(ptr, &[index], "str.byte.ptr")
-                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                    self.build_gep(self.context.i8_type().into(), ptr, &[index], "str.byte.ptr")?
                 };
                 let byte = self
-                    .builder
-                    .build_load(byte_ptr, "str.byte")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+                    .build_typed_load(byte_ptr, self.context.i8_type().into(), "str.byte")?
                     .into_int_value();
                 let widened = self
                     .builder
@@ -978,7 +981,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.slice",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "str_concat" => {
                 let function = self
@@ -1007,7 +1010,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.concat",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "int_to_string" => {
                 let function = self
@@ -1029,7 +1032,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "int.to_string")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "ascii_char" => {
                 let function = self
@@ -1049,7 +1052,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "ascii.char")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "read_file" => {
                 let function = self
@@ -1067,7 +1070,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "read.file")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "string_parse_int" => {
                 let function = self
@@ -1091,7 +1094,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "string.parse_int")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "string_parse_int_radix" => {
                 let function = self
@@ -1122,7 +1125,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "string.parse_int_radix",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "string_parse_float" => {
                 let function = self
@@ -1146,7 +1149,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "string.parse_float")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "cli_argc" => {
                 let function = self
@@ -1157,7 +1160,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[], "cli.argc")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "cli_arg" => {
                 let function = self
@@ -1175,7 +1178,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "cli.arg")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "host_ast_dump" => {
                 let function = self
@@ -1197,7 +1200,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "host.ast_dump")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             "host_type_dump" => {
                 let function = self
@@ -1221,7 +1224,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_call(function, &[value.into()], "host.type_dump")
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().left()))
+                Ok(Some(call.try_as_basic_value().basic()))
             }
             _ => Ok(None),
         }
@@ -1315,7 +1318,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "method.call",
             )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-        Ok(call.try_as_basic_value().left())
+        Ok(call.try_as_basic_value().basic())
     }
 
     fn emit_string_method_call(
@@ -1369,7 +1372,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.slice",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(call.try_as_basic_value().left())
+                Ok(call.try_as_basic_value().basic())
             }
             "contains" => {
                 let function =
@@ -1395,7 +1398,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.contains",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(call.try_as_basic_value().left())
+                Ok(call.try_as_basic_value().basic())
             }
             "starts_with" => {
                 let function = self
@@ -1423,7 +1426,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.starts",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(call.try_as_basic_value().left())
+                Ok(call.try_as_basic_value().basic())
             }
             "replace" => {
                 let function = self
@@ -1456,7 +1459,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "str.replace",
                     )
                     .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(call.try_as_basic_value().left())
+                Ok(call.try_as_basic_value().basic())
             }
             _ => Err(CodeGenError::UnsupportedExpr(format!(
                 "unsupported string method {method}"
@@ -1511,7 +1514,6 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .into_pointer_value();
         let elem_ty = self.llvm_basic_type(inner)?;
-        let elem_ptr_ty = elem_ty.ptr_type(AddressSpace::default());
         let elem_size = self.basic_type_size_bytes(elem_ty);
         let new_len = self
             .builder
@@ -1538,13 +1540,11 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(raw_ptr, &[total_bytes.into()], "array.push.raw")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .try_as_basic_value()
-            .left()
+            .basic()
             .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
             .into_pointer_value();
         let new_data = self
-            .builder
-            .build_pointer_cast(raw_ptr, elem_ptr_ty, "array.push.ptr")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            .build_pointer_cast_to(raw_ptr, elem_ty, "array.push.ptr")?;
 
         let old_bytes = self
             .builder
@@ -1578,21 +1578,16 @@ impl<'ctx> CodeGen<'ctx> {
             CodeGenError::UnsupportedExpr("array.push arg missing value".to_string())
         })?;
         let end_slot = unsafe {
-            self.builder
-                .build_gep(new_data, &[old_len], "array.push.slot")
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+            self.build_gep(elem_ty, new_data, &[old_len], "array.push.slot")?
         };
         self.build_store(end_slot, value)?;
 
+        let array_ty = self.llvm_basic_type(&target.ty)?.into_struct_type();
         let len_ptr = self
-            .builder
-            .build_struct_gep(array_ptr, 0, "array.len.ptr")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            .build_struct_gep(array_ty, array_ptr, 0, "array.len.ptr")?;
         self.build_store(len_ptr, new_len.into())?;
         let data_ptr = self
-            .builder
-            .build_struct_gep(array_ptr, 1, "array.data.ptr")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            .build_struct_gep(array_ty, array_ptr, 1, "array.data.ptr")?;
         self.build_store(data_ptr, new_data.into())?;
         Ok(None)
     }
@@ -1601,15 +1596,17 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         target: &TypedExpr,
         field: &str,
+        field_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
         let ptr = self.emit_field_ptr(target, field)?;
-        self.build_load(ptr, field)
+        self.build_typed_load(ptr, self.llvm_basic_type(field_ty)?, field)
     }
 
     fn emit_index(
         &mut self,
         target: &TypedExpr,
         index: &TypedExpr,
+        item_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
         let ptr = self.emit_lvalue_ptr(&TypedExpr {
             kind: TypedExprKind::Index(Box::new(target.clone()), Box::new(index.clone())),
@@ -1617,7 +1614,7 @@ impl<'ctx> CodeGen<'ctx> {
             span: target.span,
             use_effect: None,
         })?;
-        self.build_load(ptr, "index.load")
+        self.build_typed_load(ptr, self.llvm_basic_type(item_ty)?, "index.load")
     }
 
     fn emit_field_ptr(
@@ -1655,16 +1652,10 @@ impl<'ctx> CodeGen<'ctx> {
             .cloned()
             .ok_or_else(|| CodeGenError::MissingSymbol(class_name.to_string()))?;
         if let Some(index) = layout.field_indices.get(field).copied() {
-            return self
-                .builder
-                .build_struct_gep(ptr, index, field)
-                .map_err(|err| CodeGenError::Llvm(err.to_string()));
+            return self.build_struct_gep(layout.struct_type, ptr, index, field);
         }
         if let Some(parent_class) = layout.parent_class {
-            let parent_ptr = self
-                .builder
-                .build_struct_gep(ptr, 0, "parent.ptr")
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            let parent_ptr = self.build_struct_gep(layout.struct_type, ptr, 0, "parent.ptr")?;
             return self.emit_field_ptr_in_class(parent_ptr, &parent_class, field);
         }
         Err(CodeGenError::MissingSymbol(format!("{class_name}.{field}")))
@@ -1702,10 +1693,7 @@ impl<'ctx> CodeGen<'ctx> {
         let parent_class = layout.parent_class.ok_or_else(|| {
             CodeGenError::MissingSymbol(format!("{child_class} does not extend {target_class}"))
         })?;
-        let parent_ptr = self
-            .builder
-            .build_struct_gep(child_ptr, 0, "upcast.ptr")
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let parent_ptr = self.build_struct_gep(layout.struct_type, child_ptr, 0, "upcast.ptr")?;
         self.emit_upcast_to_parent(parent_ptr, &parent_class, target_class)
     }
 

@@ -535,7 +535,7 @@ fn wrap_main_for_binary<'ctx>(
         | Type::Bool => {
             let value = call
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .map(|value| value.into_int_value())
                 .unwrap_or_else(|| exit_ty.const_zero());
             if value.get_type().get_bit_width() < exit_ty.get_bit_width() {
@@ -710,13 +710,13 @@ fn linker_command() -> Command {
 fn bundled_llvm_driver() -> Option<(PathBuf, PathBuf)> {
     let root = packaged_llvm_root()?;
     let bin = root.join("bin");
-    let candidates = if cfg!(windows) {
-        ["clang++.exe", "clang.exe", "clang-cl.exe"]
+    let candidates: &[&str] = if cfg!(windows) {
+        &["clang++.exe", "clang.exe", "clang-cl.exe"]
     } else {
-        ["clang++", "clang"]
+        &["clang++", "clang"]
     };
     candidates
-        .into_iter()
+        .iter()
         .map(|name| bin.join(name))
         .find(|path| path.exists())
         .map(|driver| (driver, root))

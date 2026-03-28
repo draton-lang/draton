@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 draton-ast = { path = "../draton-ast" }
 draton-typeck = { path = "../draton-typeck" }
-inkwell = { version = "0.4", features = ["llvm14-0"] }
+inkwell = { version = "0.7.1", features = ["llvm18-1"] }
 thiserror = "1"
 
 [dev-dependencies]

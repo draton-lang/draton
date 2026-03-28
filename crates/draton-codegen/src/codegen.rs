@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::Path;
@@ -10,10 +11,8 @@ use inkwell::module::Module;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
-use inkwell::types::StructType;
-use inkwell::values::{
-    BasicValueEnum, FunctionValue, GlobalValue, PointerValue,
-};
+use inkwell::types::{BasicTypeEnum, StructType};
+use inkwell::values::{AsValueRef, BasicValueEnum, FunctionValue, GlobalValue, IntValue, PointerValue};
 use inkwell::{AddressSpace, OptimizationLevel};
 
 use crate::error::CodeGenError;
@@ -76,6 +75,7 @@ pub struct CodeGen<'ctx> {
     pub(crate) free_points: HashMap<usize, Vec<PointerValue<'ctx>>>,
     pub(crate) ownership_free_spans: HashMap<String, Vec<usize>>,
     pub(crate) current_function_free_bindings: HashMap<usize, Vec<String>>,
+    pub(crate) pointer_pointee_types: RefCell<HashMap<usize, BasicTypeEnum<'ctx>>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -117,6 +117,7 @@ impl<'ctx> CodeGen<'ctx> {
             free_points: HashMap::new(),
             ownership_free_spans: HashMap::new(),
             current_function_free_bindings: HashMap::new(),
+            pointer_pointee_types: RefCell::new(HashMap::new()),
         }
     }
 
@@ -313,9 +314,11 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             builder.position_at_end(entry);
         }
-        builder
+        let ptr = builder
             .build_alloca(ty, name)
-            .map_err(|err| CodeGenError::Llvm(err.to_string()))
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        self.remember_pointer_pointee(ptr, ty);
+        Ok(ptr)
     }
 
     pub(crate) fn current_block_terminated(&self) -> bool {
@@ -325,14 +328,115 @@ impl<'ctx> CodeGen<'ctx> {
             .is_some()
     }
 
+    fn pointer_key(&self, ptr: PointerValue<'ctx>) -> usize {
+        ptr.as_value_ref() as usize
+    }
+
+    pub(crate) fn remember_pointer_pointee(
+        &self,
+        ptr: PointerValue<'ctx>,
+        pointee_ty: BasicTypeEnum<'ctx>,
+    ) {
+        self.pointer_pointee_types
+            .borrow_mut()
+            .insert(self.pointer_key(ptr), pointee_ty);
+    }
+
+    pub(crate) fn pointer_pointee(
+        &self,
+        ptr: PointerValue<'ctx>,
+    ) -> Result<BasicTypeEnum<'ctx>, CodeGenError> {
+        self.pointer_pointee_types
+            .borrow()
+            .get(&self.pointer_key(ptr))
+            .copied()
+            .ok_or_else(|| CodeGenError::Llvm("missing pointee type metadata".to_string()))
+    }
+
     pub(crate) fn build_load(
         &self,
         ptr: PointerValue<'ctx>,
         name: &str,
     ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
+        let pointee_ty = self.pointer_pointee(ptr)?;
         self.builder
-            .build_load(ptr, name)
+            .build_load(pointee_ty, ptr, name)
             .map_err(|err| CodeGenError::Llvm(err.to_string()))
+    }
+
+    pub(crate) fn build_typed_load(
+        &self,
+        ptr: PointerValue<'ctx>,
+        pointee_ty: BasicTypeEnum<'ctx>,
+        name: &str,
+    ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
+        self.builder
+            .build_load(pointee_ty, ptr, name)
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))
+    }
+
+    pub(crate) unsafe fn build_gep(
+        &self,
+        pointee_ty: BasicTypeEnum<'ctx>,
+        ptr: PointerValue<'ctx>,
+        indices: &[IntValue<'ctx>],
+        name: &str,
+    ) -> Result<PointerValue<'ctx>, CodeGenError> {
+        let gep = self
+            .builder
+            .build_gep(pointee_ty, ptr, indices, name)
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        self.remember_pointer_pointee(gep, pointee_ty);
+        Ok(gep)
+    }
+
+    pub(crate) fn build_struct_gep(
+        &self,
+        struct_ty: StructType<'ctx>,
+        ptr: PointerValue<'ctx>,
+        index: u32,
+        name: &str,
+    ) -> Result<PointerValue<'ctx>, CodeGenError> {
+        let gep = self
+            .builder
+            .build_struct_gep(struct_ty, ptr, index, name)
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        let field_ty = struct_ty
+            .get_field_types()
+            .get(index as usize)
+            .copied()
+            .ok_or_else(|| CodeGenError::Llvm(format!("field index {index} out of bounds")))?;
+        self.remember_pointer_pointee(gep, field_ty);
+        Ok(gep)
+    }
+
+    pub(crate) fn build_pointer_cast_to(
+        &self,
+        ptr: PointerValue<'ctx>,
+        pointee_ty: BasicTypeEnum<'ctx>,
+        name: &str,
+    ) -> Result<PointerValue<'ctx>, CodeGenError> {
+        let casted = self
+            .builder
+            .build_pointer_cast(ptr, self.context.ptr_type(AddressSpace::default()), name)
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        self.remember_pointer_pointee(casted, pointee_ty);
+        Ok(casted)
+    }
+
+    pub(crate) fn build_bit_cast_to(
+        &self,
+        ptr: PointerValue<'ctx>,
+        pointee_ty: BasicTypeEnum<'ctx>,
+        name: &str,
+    ) -> Result<PointerValue<'ctx>, CodeGenError> {
+        let casted = self
+            .builder
+            .build_bit_cast(ptr, self.context.ptr_type(AddressSpace::default()), name)
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?
+            .into_pointer_value();
+        self.remember_pointer_pointee(casted, pointee_ty);
+        Ok(casted)
     }
 
     pub(crate) fn build_store(
