@@ -23,7 +23,6 @@ SCRUBBED_TOOLCHAIN_ENV_KEYS = (
     "LINK",
     "LLVM_CONFIG_PATH",
     "LLVM_PATH",
-    "LLVM_SYS_140_PREFIX",
     "LLVM_SYS_181_PREFIX",
     "NM",
     "RANLIB",
@@ -69,7 +68,7 @@ def run(cmd: list[str], cwd: Path, extra_env: dict[str, str] | None = None) -> N
 
 def sanitized_runtime_env(root: Path) -> dict[str, str]:
     env = os.environ.copy()
-    llvm_path = env.get("LLVM_PATH")
+    llvm_path = env.get("LLVM_PATH") or env.get("DRATON_LLVM_BUNDLE_PREFIX")
     filtered = []
     for entry in env.get("PATH", "").split(os.pathsep):
         if not entry:

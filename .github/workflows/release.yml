@@ -28,18 +28,12 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install LLVM 14
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "14.0.0"
-
       - name: Configure LLVM environment
         shell: bash
         run: |
-          echo "LLVM_SYS_140_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
-          echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
-          echo "DRATON_LLVM_BUNDLE_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
-          echo "$LLVM_PATH/bin" >> "$GITHUB_PATH"
+          LLVM_ROOT="$(python scripts/vendor_llvm.py fetch --target host)"
+          python scripts/vendor_llvm.py print-env --target host --format github >> "$GITHUB_ENV"
+          echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
@@ -73,7 +67,6 @@ jobs:
             artifact: draton-early-linux-x86_64.tar.gz
             binary: drat
             python: "3.11"
-            llvm_source: ubuntu-apt
             supported: true
           - label: linux-aarch64
             runner: ubuntu-24.04-arm
@@ -81,7 +74,6 @@ jobs:
             artifact: draton-early-linux-aarch64.tar.gz
             binary: drat
             python: "3.11"
-            llvm_source: ubuntu-apt
             supported: true
           - label: macos-x86_64
             runner: macos-15-intel
@@ -89,7 +81,6 @@ jobs:
             artifact: draton-early-macos-x86_64.tar.gz
             binary: drat
             python: "3.11"
-            llvm_source: install-llvm-action
             supported: true
           - label: macos-aarch64
             runner: macos-14
@@ -97,7 +88,6 @@ jobs:
             artifact: draton-early-macos-aarch64.tar.gz
             binary: drat
             python: "3.11"
-            llvm_source: install-llvm-action
             supported: true
           - label: windows-x86_64
             runner: windows-2022
@@ -105,7 +95,6 @@ jobs:
             artifact: draton-early-windows-x86_64.zip
             binary: drat.exe
             python: "3.11"
-            llvm_source: llvm-package-windows
             supported: true
     steps:
       - name: Check out repository
@@ -122,76 +111,17 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install LLVM 14 (Linux)
-        if: ${{ matrix.supported && matrix.llvm_source == 'ubuntu-apt' }}
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y llvm-14-dev clang-14 lld-14
-          if [ -f "/usr/lib/llvm-14/bin/llvm-config" ]; then
-            sudo mv /usr/lib/llvm-14/bin/llvm-config /usr/lib/llvm-14/bin/llvm-config-real
-          fi
-          rustc scripts/llvm_config_shim.rs -O -o /tmp/llvm-config
-          sudo mv /tmp/llvm-config /usr/lib/llvm-14/bin/llvm-config
-          echo "LLVM_PATH=/usr/lib/llvm-14" >> "$GITHUB_ENV"
-
-      - name: Install LLVM 14 (macOS)
-        if: ${{ matrix.supported && matrix.llvm_source == 'install-llvm-action' }}
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "14.0.6"
-
-      - name: Install LLVM 14 (Windows)
-        if: ${{ matrix.supported && matrix.llvm_source == 'llvm-package-windows' }}
-        shell: pwsh
-        run: |
-          $ProgressPreference = 'SilentlyContinue'
-          $archive = Join-Path $env:GITHUB_WORKSPACE 'llvm-package.7z'
-          Invoke-WebRequest -Uri 'https://github.com/vovkos/llvm-package-windows/releases/download/llvm-14.0.6/llvm-14.0.6-windows-amd64-msvc17-msvcrt.7z' -OutFile $archive
-          $extractRoot = Join-Path $env:RUNNER_TEMP 'llvm-src'
-          if (Test-Path $extractRoot) {
-            Remove-Item -Recurse -Force $extractRoot
-          }
-          & 7z x $archive "-o$extractRoot" | Out-Null
-          $header = Get-ChildItem -Path $extractRoot -Recurse -Filter 'Target.h' |
-            Where-Object { $_.FullName -like '*\include\llvm-c\Target.h' } |
-            Select-Object -First 1
-          if (-not (Test-Path $header)) {
-            throw 'Could not locate llvm-c/Target.h in vovkos LLVM package'
-          }
-          $prefix = $header.Directory.Parent.Parent.FullName
-          $dest = (Join-Path $env:GITHUB_WORKSPACE 'llvm').Replace('/', '\')
-          if (Test-Path $dest) {
-            Remove-Item -Recurse -Force $dest
-          }
-          Copy-Item -Recurse -Force $prefix $dest
-          $header = Join-Path $dest 'include\llvm-c\Target.h'
-          if (-not (Test-Path $header)) {
-            throw "LLVM headers missing after install copy: $header"
-          }
-          $realConfig = Join-Path $dest 'bin\llvm-config.exe'
-          if (Test-Path $realConfig) {
-            Rename-Item -Path $realConfig -NewName 'llvm-config-real.exe'
-          }
-          rustc scripts/llvm_config_shim.rs -O -o (Join-Path $dest 'bin\llvm-config.exe')
-          "LLVM_PATH=$dest" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
       - name: Configure LLVM environment
         if: ${{ matrix.supported }}
         shell: bash
         run: |
-          echo "LLVM_SYS_140_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
-          echo "DRATON_LLVM_BUNDLE_PREFIX=$LLVM_PATH" >> "$GITHUB_ENV"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config.exe" >> "$GITHUB_ENV"
-          elif [ "${{ runner.os }}" = "macOS" ]; then
-            echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
+          LLVM_ROOT="$(python scripts/vendor_llvm.py fetch --target host)"
+          python scripts/vendor_llvm.py print-env --target host --format github >> "$GITHUB_ENV"
+          echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
+          if [ "${{ runner.os }}" = "macOS" ]; then
             echo "DYLD_LIBRARY_PATH=" >> "$GITHUB_ENV"
             echo "LD_LIBRARY_PATH=" >> "$GITHUB_ENV"
-          else
-            echo "LLVM_CONFIG_PATH=$LLVM_PATH/bin/llvm-config" >> "$GITHUB_ENV"
           fi
-          echo "$LLVM_PATH/bin" >> "$GITHUB_PATH"
 
       - name: Cache Rust artifacts
         if: ${{ matrix.supported }}

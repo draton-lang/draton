@@ -87,12 +87,30 @@ def cmd_fetch(target: str) -> int:
     return 0
 
 
-def cmd_print_env(target: str) -> int:
-    prefix = ROOT / "vendor" / "llvm" / target
+def emit_env(prefix: Path, target: str, format_name: str) -> None:
     llvm_config = prefix / "bin" / ("llvm-config.exe" if target.startswith("windows-") else "llvm-config")
-    print(f"export LLVM_SYS_181_PREFIX='{prefix}'")
-    print(f"export LLVM_CONFIG_PATH='{llvm_config}'")
-    print(f"export DRATON_LLVM_BUNDLE_PREFIX='{prefix}'")
+    values = {
+        "LLVM_SYS_181_PREFIX": str(prefix),
+        "LLVM_CONFIG_PATH": str(llvm_config),
+        "DRATON_LLVM_BUNDLE_PREFIX": str(prefix),
+    }
+    if format_name == "shell":
+        for key, value in values.items():
+            print(f"export {key}='{value}'")
+        return
+    if format_name == "github":
+        for key, value in values.items():
+            print(f"{key}={value}")
+        return
+    if format_name == "json":
+        print(json.dumps(values))
+        return
+    raise SystemExit(f"unsupported print-env format: {format_name}")
+
+
+def cmd_print_env(target: str, format_name: str) -> int:
+    prefix = ROOT / "vendor" / "llvm" / target
+    emit_env(prefix, target, format_name)
     return 0
 
 
@@ -105,6 +123,7 @@ def parse_args() -> argparse.Namespace:
 
     env = subparsers.add_parser("print-env", help="print shell exports for the selected LLVM bundle")
     env.add_argument("--target", default="host")
+    env.add_argument("--format", choices=("shell", "github", "json"), default="shell")
     return parser.parse_args()
 
 
@@ -118,7 +137,7 @@ def main() -> int:
     if args.command == "fetch":
         return cmd_fetch(target)
     if args.command == "print-env":
-        return cmd_print_env(target)
+        return cmd_print_env(target, args.format)
     raise SystemExit(f"unknown command: {args.command}")
 
 

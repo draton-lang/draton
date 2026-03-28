@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import os
 import sys
 import tempfile
@@ -24,6 +26,7 @@ def load_module(name: str, relative_path: str):
 
 package_release = load_module("package_release", "scripts/package_release.py")
 smoke_release = load_module("smoke_release", "scripts/smoke_release.py")
+vendor_llvm = load_module("vendor_llvm", "scripts/vendor_llvm.py")
 
 
 class PackageReleaseTests(unittest.TestCase):
@@ -64,6 +67,23 @@ class PackageReleaseTests(unittest.TestCase):
             self.assertTrue((staging_root / "llvm" / "lib" / "libLLVM.so").exists())
 
 
+class VendorLlvmTests(unittest.TestCase):
+    def test_emit_env_supports_github_format(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            prefix = Path(tmpdir) / "llvm-root"
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                vendor_llvm.emit_env(prefix, "linux-x86_64", "github")
+            self.assertEqual(
+                buf.getvalue().splitlines(),
+                [
+                    f"LLVM_SYS_181_PREFIX={prefix}",
+                    f"LLVM_CONFIG_PATH={prefix / 'bin' / 'llvm-config'}",
+                    f"DRATON_LLVM_BUNDLE_PREFIX={prefix}",
+                ],
+            )
+
+
 class SmokeReleaseTests(unittest.TestCase):
     def test_sanitized_runtime_env_prefers_packaged_llvm_and_scrubs_toolchain_vars(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -84,7 +104,6 @@ class SmokeReleaseTests(unittest.TestCase):
                         ]
                     ),
                     "LLVM_PATH": "/opt/llvm",
-                    "LLVM_SYS_140_PREFIX": "/opt/llvm",
                     "LLVM_SYS_181_PREFIX": "/opt/llvm-18",
                     "LLVM_CONFIG_PATH": "/opt/llvm/bin/llvm-config",
                     "CC": "clang",
@@ -101,7 +120,7 @@ class SmokeReleaseTests(unittest.TestCase):
             self.assertEqual(path_entries[1], str(packaged_llvm / "bin"))
             self.assertNotIn("/opt/llvm/bin", path_entries)
             self.assertEqual(env["DRATON_LLVM_BUNDLE_PREFIX"], str(packaged_llvm))
-            for key in ("CC", "CXX", "LD", "LLVM_PATH", "LLVM_CONFIG_PATH", "LLVM_SYS_140_PREFIX", "LLVM_SYS_181_PREFIX"):
+            for key in ("CC", "CXX", "LD", "LLVM_PATH", "LLVM_CONFIG_PATH", "LLVM_SYS_181_PREFIX"):
                 self.assertNotIn(key, env)
             if sys.platform.startswith("linux"):
                 self.assertEqual(env["LD_LIBRARY_PATH"], str(packaged_llvm / "lib"))

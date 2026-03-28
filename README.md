@@ -74,7 +74,7 @@ The docs deployment workflow publishes the built site to GitHub Pages for `docs.
 
 | | |
 |---|---|
-| **LLVM backend** | Native code generation via LLVM 14, with release-mode optimizations |
+| **LLVM backend** | Native code generation via vendored LLVM 18.1.8, with release-mode optimizations |
 | **Static typing** | Full type inference — annotate only what you need to |
 | **Inferred Ownership** | Compile-time copy/borrow/move inference with generated last-use `free` for safe heap values |
 | **Classes & interfaces** | Inheritance, interface implementation, and named method layers |
@@ -94,7 +94,7 @@ If you are installing from a GitHub Release archive, start with [docs/install.md
 Source builds still require:
 
 - Rust stable
-- LLVM 14 development libraries
+- a fetched vendored LLVM 18.1.8 bundle via `scripts/vendor_llvm.py`
 
 ### Install Prebuilt Releases
 
@@ -124,11 +124,13 @@ Release artifacts:
 Source builds require:
 
 - Rust stable
-- LLVM 14 development libraries
+- a fetched vendored LLVM 18.1.8 bundle via `scripts/vendor_llvm.py`
 
 ```sh
 git clone https://github.com/draton-lang/draton.git
 cd draton
+python3 scripts/vendor_llvm.py fetch --target host
+eval "$(python3 scripts/vendor_llvm.py print-env --target host)"
 cargo build --release
 export PATH="$PWD/target/release:$PATH"
 ```
@@ -190,7 +192,7 @@ Current published preview targets:
 
 Windows aarch64 is not part of the current Early Tooling Preview target set.
 
-That blocker is tracked explicitly in [docs/early-preview.md](docs/early-preview.md). The current issue is not a vague CI gap: LLVM 14 does not have a published Windows arm64 prebuilt asset in the release toolchain matrix Draton depends on, so Draton does not claim support for that target until a verified LLVM 14 arm64 release path exists.
+That blocker is tracked explicitly in [docs/early-preview.md](docs/early-preview.md). The current issue is not a vague CI gap: the vendored LLVM 18.1.8 toolchain matrix used by Draton still does not include a verified Windows arm64 release path, so Draton does not claim support for that target yet.
 
 ## Language Tour
 

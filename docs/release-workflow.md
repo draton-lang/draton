@@ -47,7 +47,7 @@ Each shipped Early Preview archive contains:
 
 ## Native Dependency Strategy
 
-Releases are built against LLVM 14, but the shipped `drat` binaries on verified preview targets do not currently depend on an external LLVM shared library at runtime. The smoke test strips LLVM-specific environment variables from the packaged-artifact run and checks the packaged binary for accidental `libLLVM` / `clang-cpp` dynamic dependencies on Linux and macOS.
+Releases are built against vendored LLVM 18.1.8 fetched through `scripts/vendor_llvm.py`, but the shipped `drat` binaries on verified preview targets do not currently depend on an external LLVM shared library at runtime. The smoke test strips LLVM-specific environment variables from the packaged-artifact run and checks the packaged binary for accidental `libLLVM` / `clang-cpp` dynamic dependencies on Linux and macOS.
 
 When the archive includes a bundled `llvm/` directory, the smoke test also points `DRATON_LLVM_BUNDLE_PREFIX` at that packaged toolchain and scrubs common compiler/linker environment overrides before running `drat build`.
 
@@ -69,6 +69,8 @@ Use them locally to sanity-check the release flow before tagging.
 Example:
 
 ```sh
+python3 scripts/vendor_llvm.py fetch --target host
+eval "$(python3 scripts/vendor_llvm.py print-env --target host)"
 cargo build -p drat -p draton-runtime
 python3 scripts/package_release.py \
   --binary target/debug/drat \

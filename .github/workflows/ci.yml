@@ -34,20 +34,20 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install LLVM 14
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y llvm-14 llvm-14-dev clang-14
 
       - name: Configure LLVM environment
         shell: bash
         run: |
-          echo "LLVM_SYS_140_PREFIX=/usr/lib/llvm-14" >> "$GITHUB_ENV"
-          echo "LLVM_CONFIG_PATH=/usr/lib/llvm-14/bin/llvm-config" >> "$GITHUB_ENV"
-          echo "/usr/lib/llvm-14/bin" >> "$GITHUB_PATH"
+          LLVM_ROOT="$(python scripts/vendor_llvm.py fetch --target host)"
+          python scripts/vendor_llvm.py print-env --target host --format github >> "$GITHUB_ENV"
+          echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
