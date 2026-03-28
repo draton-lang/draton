@@ -57,14 +57,42 @@ pub(crate) fn run(cwd: &Path, command: SelfhostStage0Command) -> Result<()> {
         bail!(message);
     }
 
-    let json: Value = serde_json::from_slice(&output.stdout)
-        .map_err(|error| anyhow!("selfhost stage0 returned invalid JSON: {error}"))?;
+    let json: Value = parse_stage0_json(&output.stdout)?;
     if pretty {
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
         println!("{}", serde_json::to_string(&json)?);
     }
     Ok(())
+}
+
+fn parse_stage0_json(stdout: &[u8]) -> Result<Value> {
+    match serde_json::from_slice(stdout) {
+        Ok(json) => Ok(json),
+        Err(primary_error) => {
+            let normalized = normalize_stage0_json(stdout);
+            serde_json::from_slice(&normalized).map_err(|normalized_error| {
+                anyhow!(
+                    "selfhost stage0 returned invalid JSON: {primary_error}; normalized parse also failed: {normalized_error}"
+                )
+            })
+        }
+    }
+}
+
+fn normalize_stage0_json(stdout: &[u8]) -> Vec<u8> {
+    let mut normalized = Vec::with_capacity(stdout.len());
+    let mut index = 0;
+    while index < stdout.len() {
+        if stdout[index] == b'\\' && index + 1 < stdout.len() && stdout[index + 1] == b'"' {
+            normalized.push(b'"');
+            index += 2;
+        } else {
+            normalized.push(stdout[index]);
+            index += 1;
+        }
+    }
+    normalized
 }
 
 fn wants_pretty_json(command: &SelfhostStage0Command) -> bool {

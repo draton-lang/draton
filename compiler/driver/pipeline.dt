@@ -4,6 +4,22 @@
     parse_json: (String) -> String
     typeck_json: (String, Bool) -> String
     build_json: (String, String, String, Bool, String) -> String
+    json_quote: (String) -> String
+    json_escape: (String) -> String
+    json_optional_string: (Bool, String) -> String
+    json_span: (Int, Int, Int, Int) -> String
+    json_token: (String, String, Int, Int, Int, Int) -> String
+    json_lex_error: (String, Bool, String, Bool, String, Int, Int) -> String
+    join_json_array: (Array[String]) -> String
+    char_at: (String, Int) -> String
+    is_ascii_digit: (String) -> Bool
+    is_ascii_alpha: (String) -> Bool
+    is_ascii_alphanumeric: (String) -> Bool
+    is_hex_digit: (String) -> Bool
+    is_ident_start: (String) -> Bool
+    is_ident_continue: (String) -> Bool
+    keyword_token_name: (String) -> String
+    at_token_kind_name: (String) -> String
 }
 
 fn strict_flag(strict_syntax) {
@@ -14,7 +30,825 @@ fn strict_flag(strict_syntax) {
 }
 
 fn lex_json(path) {
-    return host_lex_json(path)
+    @type {
+        source: String
+        position: Int
+        line: Int
+        col: Int
+        tokens: Array[String]
+        errors: Array[String]
+    }
+    let source = read_file(path)
+    let mut position = 0
+    let mut line = 1
+    let mut col = 1
+    let mut tokens = []
+    let mut errors = []
+
+    while char_at(source, position) != "" {
+        let ch = char_at(source, position)
+
+        if ch == " " || ch == "\t" {
+            let next_position = position + 1
+            let next_col = col + 1
+            position = next_position
+            col = next_col
+        } elif ch == "\n" {
+            let next_position = position + 1
+            let next_line = line + 1
+            position = next_position
+            line = next_line
+            col = 1
+        } elif ch == "\r" {
+            let next = char_at(source, position + 1)
+            if next == "\n" {
+                let next_position = position + 2
+                let next_line = line + 1
+                position = next_position
+                line = next_line
+                col = 1
+            } else {
+                let next_position = position + 1
+                let next_line = line + 1
+                position = next_position
+                line = next_line
+                col = 1
+            }
+        } else {
+            let start = position
+            let start_line = line
+            let start_col = col
+
+            if ch == "/" {
+                let next = char_at(source, position + 1)
+                if next == "/" {
+                    let slash_position = position + 2
+                    let slash_col = col + 2
+                    position = slash_position
+                    col = slash_col
+
+                    if char_at(source, position) == "/" {
+                        let content_start = position + 1
+                        let content_col = col + 1
+                        position = content_start
+                        col = content_col
+
+                        let mut doc_ch = char_at(source, position)
+                        while doc_ch != "" && doc_ch != "\n" && doc_ch != "\r" {
+                            let next_position = position + 1
+                            let next_col = col + 1
+                            position = next_position
+                            col = next_col
+                            doc_ch = char_at(source, position)
+                        }
+                        let token_json = json_token(
+                            "DocComment",
+                            source.slice(content_start, position),
+                            start,
+                            position,
+                            start_line,
+                            start_col
+                        )
+                        tokens.push(token_json)
+                    } else {
+                        let mut line_ch = char_at(source, position)
+                        while line_ch != "" && line_ch != "\n" && line_ch != "\r" {
+                            let next_position = position + 1
+                            let next_col = col + 1
+                            position = next_position
+                            col = next_col
+                            line_ch = char_at(source, position)
+                        }
+                    }
+                } elif next == "*" {
+                    let comment_position = position + 2
+                    let comment_col = col + 2
+                    position = comment_position
+                    col = comment_col
+
+                    let mut block_closed = false
+                    let mut block_ch = char_at(source, position)
+                    while block_ch != "" {
+                        if block_ch == "*" && char_at(source, position + 1) == "/" {
+                            let next_position = position + 2
+                            let next_col = col + 2
+                            position = next_position
+                            col = next_col
+                            block_closed = true
+                            block_ch = ""
+                        } else {
+                            if block_ch == "\n" {
+                                let next_position = position + 1
+                                let next_line = line + 1
+                                position = next_position
+                                line = next_line
+                                col = 1
+                            } elif block_ch == "\r" {
+                                if char_at(source, position + 1) == "\n" {
+                                    let next_position = position + 2
+                                    let next_line = line + 1
+                                    position = next_position
+                                    line = next_line
+                                    col = 1
+                                } else {
+                                    let next_position = position + 1
+                                    let next_line = line + 1
+                                    position = next_position
+                                    line = next_line
+                                    col = 1
+                                }
+                            } else {
+                                let next_position = position + 1
+                                let next_col = col + 1
+                                position = next_position
+                                col = next_col
+                            }
+                            block_ch = char_at(source, position)
+                        }
+                    }
+
+                    if !block_closed {
+                        let error_json = json_lex_error(
+                            "UnterminatedBlockComment",
+                            false,
+                            "",
+                            false,
+                            "",
+                            start_line,
+                            start_col
+                        )
+                        errors.push(error_json)
+                    }
+                } else {
+                    let mut kind = "Slash"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "=" {
+                        kind = "SlashEq"
+                        let eq_position = position + 1
+                        let eq_col = col + 1
+                        position = eq_position
+                        col = eq_col
+                    }
+                    let token_json = json_token(
+                        kind,
+                        source.slice(start, position),
+                        start,
+                        position,
+                        start_line,
+                        start_col
+                    )
+                    tokens.push(token_json)
+                }
+            } elif ch == "\"" {
+                let open_position = position + 1
+                let open_col = col + 1
+                position = open_position
+                col = open_col
+                let mut string_done = false
+                let mut string_error = false
+                let mut string_ch = char_at(source, position)
+                while string_ch != "" {
+                    if string_ch == "\"" {
+                        let close_position = position + 1
+                        let close_col = col + 1
+                        position = close_position
+                        col = close_col
+                        let token_json = json_token(
+                            "StrLit",
+                            source.slice(start, position),
+                            start,
+                            position,
+                            start_line,
+                            start_col
+                        )
+                        tokens.push(token_json)
+                        string_done = true
+                        string_ch = ""
+                    } elif string_ch == "\n" || string_ch == "\r" {
+                        let error_json = json_lex_error(
+                            "UnterminatedString",
+                            false,
+                            "",
+                            false,
+                            "",
+                            start_line,
+                            start_col
+                        )
+                        errors.push(error_json)
+                        string_error = true
+                        string_ch = ""
+                    } elif string_ch == "\\" {
+                        let slash_position = position + 1
+                        let slash_col = col + 1
+                        position = slash_position
+                        col = slash_col
+                        if char_at(source, position) != "" {
+                            let escape_position = position + 1
+                            let escape_col = col + 1
+                            position = escape_position
+                            col = escape_col
+                        }
+                        string_ch = char_at(source, position)
+                    } else {
+                        let next_position = position + 1
+                        let next_col = col + 1
+                        position = next_position
+                        col = next_col
+                        string_ch = char_at(source, position)
+                    }
+                }
+                if !string_done && !string_error {
+                    let error_json = json_lex_error(
+                        "UnterminatedString",
+                        false,
+                        "",
+                        false,
+                        "",
+                        start_line,
+                        start_col
+                    )
+                    errors.push(error_json)
+                }
+            } elif ch == "f" && char_at(source, position + 1) == "\"" {
+                let open_position = position + 2
+                let open_col = col + 2
+                position = open_position
+                col = open_col
+                let mut string_done = false
+                let mut string_error = false
+                let mut string_ch = char_at(source, position)
+                while string_ch != "" {
+                    if string_ch == "\"" {
+                        let close_position = position + 1
+                        let close_col = col + 1
+                        position = close_position
+                        col = close_col
+                        let token_json = json_token(
+                            "FStrLit",
+                            source.slice(start, position),
+                            start,
+                            position,
+                            start_line,
+                            start_col
+                        )
+                        tokens.push(token_json)
+                        string_done = true
+                        string_ch = ""
+                    } elif string_ch == "\n" || string_ch == "\r" {
+                        let error_json = json_lex_error(
+                            "UnterminatedString",
+                            false,
+                            "",
+                            false,
+                            "",
+                            start_line,
+                            start_col
+                        )
+                        errors.push(error_json)
+                        string_error = true
+                        string_ch = ""
+                    } elif string_ch == "\\" {
+                        let slash_position = position + 1
+                        let slash_col = col + 1
+                        position = slash_position
+                        col = slash_col
+                        if char_at(source, position) != "" {
+                            let escape_position = position + 1
+                            let escape_col = col + 1
+                            position = escape_position
+                            col = escape_col
+                        }
+                        string_ch = char_at(source, position)
+                    } else {
+                        let next_position = position + 1
+                        let next_col = col + 1
+                        position = next_position
+                        col = next_col
+                        string_ch = char_at(source, position)
+                    }
+                }
+                if !string_done && !string_error {
+                    let error_json = json_lex_error(
+                        "UnterminatedString",
+                        false,
+                        "",
+                        false,
+                        "",
+                        start_line,
+                        start_col
+                    )
+                    errors.push(error_json)
+                }
+            } elif is_ascii_digit(ch) {
+                @type { kind: String }
+                let mut kind = "IntLit"
+                let mut invalid = false
+
+                if ch == "0" {
+                    let next = char_at(source, position + 1)
+                    if next == "x" || next == "X" {
+                        kind = "HexLit"
+                        let prefix_position = position + 2
+                        let prefix_col = col + 2
+                        position = prefix_position
+                        col = prefix_col
+                        let digits_start = position
+                        let mut digit = char_at(source, position)
+                        while is_ascii_alphanumeric(digit) {
+                            if !is_hex_digit(digit) {
+                                invalid = true
+                            }
+                            let next_position = position + 1
+                            let next_col = col + 1
+                            position = next_position
+                            col = next_col
+                            digit = char_at(source, position)
+                        }
+                        let after = char_at(source, position)
+                        if position == digits_start || is_ident_continue(after) {
+                            invalid = true
+                        }
+                        if is_ident_continue(after) {
+                            let mut tail = char_at(source, position)
+                            while is_ident_continue(tail) {
+                                let next_position = position + 1
+                                let next_col = col + 1
+                                position = next_position
+                                col = next_col
+                                tail = char_at(source, position)
+                            }
+                        }
+                    } elif next == "b" || next == "B" {
+                        kind = "BinLit"
+                        let prefix_position = position + 2
+                        let prefix_col = col + 2
+                        position = prefix_position
+                        col = prefix_col
+                        let digits_start = position
+                        let mut digit = char_at(source, position)
+                        while is_ascii_alphanumeric(digit) {
+                            if digit != "0" && digit != "1" {
+                                invalid = true
+                            }
+                            let next_position = position + 1
+                            let next_col = col + 1
+                            position = next_position
+                            col = next_col
+                            digit = char_at(source, position)
+                        }
+                        let after = char_at(source, position)
+                        if position == digits_start || is_ident_continue(after) {
+                            invalid = true
+                        }
+                        if is_ident_continue(after) {
+                            let mut tail = char_at(source, position)
+                            while is_ident_continue(tail) {
+                                let next_position = position + 1
+                                let next_col = col + 1
+                                position = next_position
+                                col = next_col
+                                tail = char_at(source, position)
+                            }
+                        }
+                    } else {
+                        let mut digit = char_at(source, position)
+                        while is_ascii_digit(digit) {
+                            let next_position = position + 1
+                            let next_col = col + 1
+                            position = next_position
+                            col = next_col
+                            digit = char_at(source, position)
+                        }
+                        if char_at(source, position) == "." && is_ascii_digit(char_at(source, position + 1)) {
+                            kind = "FloatLit"
+                            let dot_position = position + 1
+                            let dot_col = col + 1
+                            position = dot_position
+                            col = dot_col
+                            let mut frac = char_at(source, position)
+                            while is_ascii_digit(frac) {
+                                let next_position = position + 1
+                                let next_col = col + 1
+                                position = next_position
+                                col = next_col
+                                frac = char_at(source, position)
+                            }
+                        }
+                        if is_ident_continue(char_at(source, position)) {
+                            invalid = true
+                            let mut tail = char_at(source, position)
+                            while is_ident_continue(tail) {
+                                let next_position = position + 1
+                                let next_col = col + 1
+                                position = next_position
+                                col = next_col
+                                tail = char_at(source, position)
+                            }
+                        }
+                    }
+                } else {
+                    let mut digit = char_at(source, position)
+                    while is_ascii_digit(digit) {
+                        let next_position = position + 1
+                        let next_col = col + 1
+                        position = next_position
+                        col = next_col
+                        digit = char_at(source, position)
+                    }
+                    if char_at(source, position) == "." && is_ascii_digit(char_at(source, position + 1)) {
+                        kind = "FloatLit"
+                        let dot_position = position + 1
+                        let dot_col = col + 1
+                        position = dot_position
+                        col = dot_col
+                        let mut frac = char_at(source, position)
+                        while is_ascii_digit(frac) {
+                            let next_position = position + 1
+                            let next_col = col + 1
+                            position = next_position
+                            col = next_col
+                            frac = char_at(source, position)
+                        }
+                    }
+                    if is_ident_continue(char_at(source, position)) {
+                        invalid = true
+                        let mut tail = char_at(source, position)
+                        while is_ident_continue(tail) {
+                            let next_position = position + 1
+                            let next_col = col + 1
+                            position = next_position
+                            col = next_col
+                            tail = char_at(source, position)
+                        }
+                    }
+                }
+
+                if invalid {
+                    let error_json = json_lex_error(
+                        "InvalidNumericLiteral",
+                        false,
+                        "",
+                        true,
+                        source.slice(start, position),
+                        start_line,
+                        start_col
+                    )
+                    errors.push(error_json)
+                } else {
+                    let token_json = json_token(
+                        kind,
+                        source.slice(start, position),
+                        start,
+                        position,
+                        start_line,
+                        start_col
+                    )
+                    tokens.push(token_json)
+                }
+            } elif is_ident_start(ch) {
+                let next_position = position + 1
+                let next_col = col + 1
+                position = next_position
+                col = next_col
+                let mut ident = char_at(source, position)
+                while is_ident_continue(ident) {
+                    let ident_position = position + 1
+                    let ident_col = col + 1
+                    position = ident_position
+                    col = ident_col
+                    ident = char_at(source, position)
+                }
+                let lexeme = source.slice(start, position)
+                let token_json = json_token(
+                    keyword_token_name(lexeme),
+                    lexeme,
+                    start,
+                    position,
+                    start_line,
+                    start_col
+                )
+                tokens.push(token_json)
+            } elif ch == "@" {
+                if is_ident_start(char_at(source, position + 1)) {
+                    let mut end = start + 1
+                    let next = char_at(source, position + 1)
+                    if next != "" {
+                        end = end + 1
+                    }
+                    let mut current = char_at(source, end)
+                    while is_ident_continue(current) {
+                        end = end + 1
+                        current = char_at(source, end)
+                    }
+                    let kind = at_token_kind_name(source.slice(start, end))
+                    if kind != "At" {
+                        while position < end {
+                            let next_position = position + 1
+                            let next_col = col + 1
+                            position = next_position
+                            col = next_col
+                        }
+                        let token_json = json_token(
+                            kind,
+                            source.slice(start, end),
+                            start,
+                            position,
+                            start_line,
+                            start_col
+                        )
+                        tokens.push(token_json)
+                    } else {
+                        let next_position = position + 1
+                        let next_col = col + 1
+                        position = next_position
+                        col = next_col
+                        let token_json = json_token(
+                            "At",
+                            source.slice(start, position),
+                            start,
+                            position,
+                            start_line,
+                            start_col
+                        )
+                        tokens.push(token_json)
+                    }
+                } else {
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    let token_json = json_token(
+                        "At",
+                        source.slice(start, position),
+                        start,
+                        position,
+                        start_line,
+                        start_col
+                    )
+                    tokens.push(token_json)
+                }
+            } else {
+                @type { kind: String }
+                let mut kind = ""
+                if ch == "+" {
+                    kind = "Plus"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "=" {
+                        kind = "PlusEq"
+                        let eq_position = position + 1
+                        let eq_col = col + 1
+                        position = eq_position
+                        col = eq_col
+                    } elif char_at(source, position) == "+" {
+                        kind = "PlusPlus"
+                        let plus_position = position + 1
+                        let plus_col = col + 1
+                        position = plus_position
+                        col = plus_col
+                    }
+                } elif ch == "-" {
+                    kind = "Minus"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "=" {
+                        kind = "MinusEq"
+                        let eq_position = position + 1
+                        let eq_col = col + 1
+                        position = eq_position
+                        col = eq_col
+                    } elif char_at(source, position) == "-" {
+                        kind = "MinusMinus"
+                        let dash_position = position + 1
+                        let dash_col = col + 1
+                        position = dash_position
+                        col = dash_col
+                    } elif char_at(source, position) == ">" {
+                        kind = "Arrow"
+                        let arrow_position = position + 1
+                        let arrow_col = col + 1
+                        position = arrow_position
+                        col = arrow_col
+                    }
+                } elif ch == "*" {
+                    kind = "Star"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "=" {
+                        kind = "StarEq"
+                        let eq_position = position + 1
+                        let eq_col = col + 1
+                        position = eq_position
+                        col = eq_col
+                    }
+                } elif ch == "%" {
+                    kind = "Percent"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "=" {
+                        kind = "PercentEq"
+                        let eq_position = position + 1
+                        let eq_col = col + 1
+                        position = eq_position
+                        col = eq_col
+                    }
+                } elif ch == "=" {
+                    kind = "Eq"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "=" {
+                        kind = "EqEq"
+                        let eq_position = position + 1
+                        let eq_col = col + 1
+                        position = eq_position
+                        col = eq_col
+                    } elif char_at(source, position) == ">" {
+                        kind = "FatArrow"
+                        let arrow_position = position + 1
+                        let arrow_col = col + 1
+                        position = arrow_position
+                        col = arrow_col
+                    }
+                } elif ch == "!" {
+                    kind = "Bang"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "=" {
+                        kind = "BangEq"
+                        let eq_position = position + 1
+                        let eq_col = col + 1
+                        position = eq_position
+                        col = eq_col
+                    }
+                } elif ch == "<" {
+                    kind = "Lt"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "=" {
+                        kind = "LtEq"
+                        let eq_position = position + 1
+                        let eq_col = col + 1
+                        position = eq_position
+                        col = eq_col
+                    } elif char_at(source, position) == "<" {
+                        kind = "LtLt"
+                        let shift_position = position + 1
+                        let shift_col = col + 1
+                        position = shift_position
+                        col = shift_col
+                    }
+                } elif ch == ">" {
+                    kind = "Gt"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "=" {
+                        kind = "GtEq"
+                        let eq_position = position + 1
+                        let eq_col = col + 1
+                        position = eq_position
+                        col = eq_col
+                    } elif char_at(source, position) == ">" {
+                        kind = "GtGt"
+                        let shift_position = position + 1
+                        let shift_col = col + 1
+                        position = shift_position
+                        col = shift_col
+                    }
+                } elif ch == "&" {
+                    kind = "Amp"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "&" {
+                        kind = "AmpAmp"
+                        let amp_position = position + 1
+                        let amp_col = col + 1
+                        position = amp_position
+                        col = amp_col
+                    }
+                } elif ch == "|" {
+                    kind = "Pipe"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "|" {
+                        kind = "PipePipe"
+                        let pipe_position = position + 1
+                        let pipe_col = col + 1
+                        position = pipe_position
+                        col = pipe_col
+                    }
+                } elif ch == "^" {
+                    kind = "Caret"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                } elif ch == "~" {
+                    kind = "Tilde"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                } elif ch == "?" {
+                    kind = "Question"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "?" {
+                        kind = "QuestionQuestion"
+                        let q_position = position + 1
+                        let q_col = col + 1
+                        position = q_position
+                        col = q_col
+                    }
+                } elif ch == "." {
+                    kind = "Dot"
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                    if char_at(source, position) == "." {
+                        kind = "DotDot"
+                        let dot_position = position + 1
+                        let dot_col = col + 1
+                        position = dot_position
+                        col = dot_col
+                    }
+                } elif ch == "(" || ch == ")" || ch == "[" || ch == "]" || ch == "{" || ch == "}" || ch == "," || ch == ";" || ch == ":" {
+                    if ch == "(" { kind = "LParen" }
+                    elif ch == ")" { kind = "RParen" }
+                    elif ch == "[" { kind = "LBracket" }
+                    elif ch == "]" { kind = "RBracket" }
+                    elif ch == "{" { kind = "LBrace" }
+                    elif ch == "}" { kind = "RBrace" }
+                    elif ch == "," { kind = "Comma" }
+                    elif ch == ";" { kind = "Semicolon" }
+                    else { kind = "Colon" }
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                } else {
+                    let error_json = json_lex_error(
+                        "UnexpectedChar",
+                        false,
+                        "",
+                        false,
+                        "",
+                        start_line,
+                        start_col
+                    )
+                    errors.push(error_json)
+                    let next_position = position + 1
+                    let next_col = col + 1
+                    position = next_position
+                    col = next_col
+                }
+
+                if kind != "" {
+                    let token_json = json_token(
+                        kind,
+                        source.slice(start, position),
+                        start,
+                        position,
+                        start_line,
+                        start_col
+                    )
+                    tokens.push(token_json)
+                }
+            }
+        }
+    }
+
+    let eof_json = json_token("Eof", "", position, position, line, col)
+    tokens.push(eof_json)
+    return str_concat(
+        str_concat("{\"errors\":", join_json_array(errors)),
+        str_concat(",\"tokens\":", str_concat(join_json_array(tokens), "}"))
+    )
 }
 
 fn parse_json(path) {
@@ -27,4 +861,185 @@ fn typeck_json(path, strict_syntax) {
 
 fn build_json(path, output, mode, strict_syntax, target) {
     return host_build_json(path, output, mode, strict_flag(strict_syntax), target)
+}
+
+fn json_quote(value) {
+    return str_concat("\"", str_concat(json_escape(value), "\""))
+}
+
+fn json_escape(value) {
+    let mut out = ""
+    let mut index = 0
+    while index < value.len() {
+        let ch = value.slice(index, index + 1)
+        if ch == "\\" {
+            out = str_concat(out, "\\\\")
+        } elif ch == "\"" {
+            out = str_concat(out, "\\\"")
+        } elif ch == "\n" {
+            out = str_concat(out, "\\n")
+        } elif ch == "\r" {
+            out = str_concat(out, "\\r")
+        } elif ch == "\t" {
+            out = str_concat(out, "\\t")
+        } else {
+            out = str_concat(out, ch)
+        }
+        index = index + 1
+    }
+    return out
+}
+
+fn json_optional_string(has_value, value) {
+    if has_value {
+        return json_quote(value)
+    }
+    return "null"
+}
+
+fn json_span(start, end, line, col) {
+    return str_concat(
+        str_concat("{\"col\":", int_to_string(col)),
+        str_concat(
+            ",\"end\":",
+            str_concat(
+                int_to_string(end),
+                str_concat(
+                    ",\"line\":",
+                    str_concat(int_to_string(line), str_concat(",\"start\":", str_concat(int_to_string(start), "}")))
+                )
+            )
+        )
+    )
+}
+
+fn json_token(kind, lexeme, start, end, line, col) {
+    return str_concat(
+        str_concat("{\"kind\":", json_quote(kind)),
+        str_concat(
+            ",\"lexeme\":",
+            str_concat(
+                json_quote(lexeme),
+                str_concat(",\"span\":", str_concat(json_span(start, end, line, col), "}"))
+            )
+        )
+    )
+}
+
+fn json_lex_error(kind, has_found, found, has_lexeme, lexeme, line, col) {
+    return str_concat(
+        str_concat("{\"kind\":", json_quote(kind)),
+        str_concat(
+            ",\"found\":",
+            str_concat(
+                json_optional_string(has_found, found),
+                str_concat(
+                    ",\"lexeme\":",
+                    str_concat(
+                        json_optional_string(has_lexeme, lexeme),
+                        str_concat(
+                            ",\"line\":",
+                            str_concat(int_to_string(line), str_concat(",\"col\":", str_concat(int_to_string(col), "}")))
+                        )
+                    )
+                )
+            )
+        )
+    )
+}
+
+fn join_json_array(items) {
+    let mut out = "["
+    let mut index = 0
+    while index < items.len() {
+        if index > 0 {
+            out = str_concat(out, ",")
+        }
+        out = str_concat(out, items[index])
+        index = index + 1
+    }
+    return str_concat(out, "]")
+}
+
+fn char_at(value, index) {
+    if index < 0 || index >= value.len() {
+        return ""
+    }
+    return value.slice(index, index + 1)
+}
+
+fn is_ascii_digit(ch) {
+    return "0123456789".contains(ch)
+}
+
+fn is_ascii_alpha(ch) {
+    return "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".contains(ch)
+}
+
+fn is_ascii_alphanumeric(ch) {
+    return is_ascii_alpha(ch) || is_ascii_digit(ch)
+}
+
+fn is_hex_digit(ch) {
+    return "0123456789abcdefABCDEF".contains(ch)
+}
+
+fn is_ident_start(ch) {
+    return is_ascii_alpha(ch) || ch == "_"
+}
+
+fn is_ident_continue(ch) {
+    return is_ident_start(ch) || is_ascii_digit(ch)
+}
+
+fn keyword_token_name(lexeme) {
+    return match lexeme {
+        "let" => "Let",
+        "mut" => "Mut",
+        "fn" => "Fn",
+        "return" => "Return",
+        "if" => "If",
+        "elif" => "Elif",
+        "else" => "Else",
+        "for" => "For",
+        "while" => "While",
+        "in" => "In",
+        "match" => "Match",
+        "class" => "Class",
+        "layer" => "Layer",
+        "extends" => "Extends",
+        "implements" => "Implements",
+        "interface" => "Interface",
+        "enum" => "Enum",
+        "error" => "Error",
+        "pub" => "Pub",
+        "import" => "Import",
+        "from" => "From",
+        "as" => "As",
+        "spawn" => "Spawn",
+        "chan" => "Chan",
+        "const" => "Const",
+        "lambda" => "Lambda",
+        "true" => "BoolLit",
+        "false" => "BoolLit",
+        "None" => "NoneLit",
+        _ => "Ident",
+    }
+}
+
+fn at_token_kind_name(lexeme) {
+    return match lexeme {
+        "@type" => "AtType",
+        "@unsafe" => "AtUnsafe",
+        "@pointer" => "AtPointer",
+        "@asm" => "AtAsm",
+        "@comptime" => "AtComptime",
+        "@if" => "AtIf",
+        "@acyclic" => "AtAcyclic",
+        "@gc_config" => "AtGcConfig",
+        "@panic_handler" => "AtPanicHandler",
+        "@oom_handler" => "AtOomHandler",
+        "@extern" => "AtExtern",
+        _ => "At",
+    }
 }
