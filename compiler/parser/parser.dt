@@ -1,7 +1,7 @@
 import { Program } from ast.item.item
 import { Span } from ast.span
 import { Expr } from ast.expr.expr
-import { Token } from lexer.token
+import { Token, TokenKind } from lexer.token
 import { ParseError, ParseWarning } from parser.errors
 import { parse_program, parse_item, parse_type_block } from parser.parse.items
 import { parse_block, parse_stmt } from parser.parse.stmts
@@ -44,6 +44,9 @@ class Parser {
         pos: Int
         errors: Array[ParseError]
         warnings: Array[ParseWarning]
+        peek: (Parser) -> Token
+        at: (Parser, TokenKind) -> Bool
+        sync_to: (Parser, Array[TokenKind]) -> Unit
     }
 
     fn current_token() {
@@ -261,6 +264,35 @@ class Parser {
                self.current_kind() == AtIf ||
                self.current_kind() == AtGcConfig {
                 return
+            }
+            self.advance()
+        }
+    }
+
+    fn peek() {
+        let mut idx = self.pos + 1
+        if self.tokens.len() == 0 {
+            return Token { kind: Eof, lexeme: "", span: Span { start: 0, end: 0, line: 1, col: 1 } }
+        }
+        if idx >= self.tokens.len() {
+            idx = self.tokens.len() - 1
+        }
+        return self.tokens[idx]
+    }
+
+    fn at(kind) {
+        self.skip_doc_comments()
+        return self.current_kind() == kind
+    }
+
+    fn sync_to(recovery_set) {
+        while !self.is_eof() {
+            let mut index = 0
+            while index < recovery_set.len() {
+                if self.current_kind() == recovery_set[index] {
+                    return
+                }
+                index = index + 1
             }
             self.advance()
         }
