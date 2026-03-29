@@ -1,7 +1,8 @@
+use std::collections::hash_map::DefaultHasher;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
@@ -10,8 +11,14 @@ use crate::commands::build::{self, BuildRequest, Profile};
 
 #[derive(Debug, Clone)]
 pub(crate) enum SelfhostStage0Command {
-    Lex { path: PathBuf, json: bool },
-    Parse { path: PathBuf, json: bool },
+    Lex {
+        path: PathBuf,
+        json: bool,
+    },
+    Parse {
+        path: PathBuf,
+        json: bool,
+    },
     Typeck {
         path: PathBuf,
         json: bool,
@@ -107,10 +114,16 @@ fn wants_pretty_json(command: &SelfhostStage0Command) -> bool {
 fn stage0_args(cwd: &Path, command: &SelfhostStage0Command) -> Vec<String> {
     match command {
         SelfhostStage0Command::Lex { path, .. } => {
-            vec!["lex".to_string(), resolve_path(cwd, path).display().to_string()]
+            vec![
+                "lex".to_string(),
+                resolve_path(cwd, path).display().to_string(),
+            ]
         }
         SelfhostStage0Command::Parse { path, .. } => {
-            vec!["parse".to_string(), resolve_path(cwd, path).display().to_string()]
+            vec![
+                "parse".to_string(),
+                resolve_path(cwd, path).display().to_string(),
+            ]
         }
         SelfhostStage0Command::Typeck {
             path,
@@ -146,23 +159,27 @@ fn build_stage0_binary() -> Result<PathBuf> {
     let compiler_entry = compiler_root.join("main.dt");
     let pipeline_src = compiler_root.join("driver").join("pipeline.dt");
     if !compiler_entry.exists() {
-        bail!("selfhost entrypoint not found at {}", compiler_entry.display());
+        bail!(
+            "selfhost entrypoint not found at {}",
+            compiler_entry.display()
+        );
     }
     if !pipeline_src.exists() {
         bail!("selfhost pipeline not found at {}", pipeline_src.display());
     }
 
-    let temp_root = std::env::temp_dir()
-        .join("draton")
-        .join("selfhost_stage0")
-        .join(format!(
-            "{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|value| value.as_nanos())
-                .unwrap_or(0)
-        ));
+    let temp_root = stage0_cache_root(&compiler_entry, &pipeline_src)?;
+    let cached_binary = temp_root
+        .join("build")
+        .join("debug")
+        .join(stage0_binary_name());
+    if cached_binary.exists() {
+        return Ok(cached_binary);
+    }
+    if temp_root.exists() {
+        fs::remove_dir_all(&temp_root)
+            .with_context(|| format!("failed to reset {}", temp_root.display()))?;
+    }
     let temp_driver = temp_root.join("driver");
     fs::create_dir_all(&temp_driver)
         .with_context(|| format!("failed to create {}", temp_driver.display()))?;
@@ -196,6 +213,30 @@ fn build_stage0_binary() -> Result<PathBuf> {
         },
     )?;
     Ok(built.binary_path)
+}
+
+fn stage0_cache_root(compiler_entry: &Path, pipeline_src: &Path) -> Result<PathBuf> {
+    let mut hasher = DefaultHasher::new();
+    "draton-selfhost-stage0".hash(&mut hasher);
+    env!("CARGO_PKG_VERSION").hash(&mut hasher);
+    fs::read(compiler_entry)
+        .with_context(|| format!("failed to read {}", compiler_entry.display()))?
+        .hash(&mut hasher);
+    fs::read(pipeline_src)
+        .with_context(|| format!("failed to read {}", pipeline_src.display()))?
+        .hash(&mut hasher);
+    Ok(std::env::temp_dir()
+        .join("draton")
+        .join("selfhost_stage0_cache")
+        .join(format!("{:016x}", hasher.finish())))
+}
+
+fn stage0_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "draton-selfhost-stage0.exe"
+    } else {
+        "draton-selfhost-stage0"
+    }
 }
 
 fn repo_root() -> PathBuf {
