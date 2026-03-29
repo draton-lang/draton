@@ -18,6 +18,15 @@ fn temp_case_dir(name: &str) -> PathBuf {
     dir
 }
 
+fn describe_output(output: &std::process::Output) -> String {
+    format!(
+        "status={:?}\nstdout:\n{}\nstderr:\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
+}
+
 #[test]
 fn lex_json_returns_machine_readable_tokens() {
     let dir = temp_case_dir("lex");
@@ -40,7 +49,11 @@ fn main() {
         .output()
         .expect("run drat selfhost-stage0 lex");
 
-    assert!(output.status.success(), "command failed");
+    assert!(
+        output.status.success(),
+        "command failed\n{}",
+        describe_output(&output)
+    );
     let json: Value = serde_json::from_slice(&output.stdout).expect("parse json");
     assert!(json["tokens"].is_array(), "expected tokens array");
     assert!(json["errors"].is_array(), "expected errors array");
@@ -79,7 +92,11 @@ fn main() {
         .output()
         .expect("run drat selfhost-stage0 typeck");
 
-    assert!(output.status.success(), "command failed");
+    assert!(
+        output.status.success(),
+        "command failed\n{}",
+        describe_output(&output)
+    );
     let json: Value = serde_json::from_slice(&output.stdout).expect("parse json");
     assert!(json["lex_errors"].is_array(), "expected lex_errors array");
     assert!(json["parse_errors"].is_array(), "expected parse_errors array");
@@ -115,7 +132,11 @@ fn main() {
         .output()
         .expect("run drat selfhost-stage0 build");
 
-    assert!(output.status.success(), "command failed");
+    assert!(
+        output.status.success(),
+        "command failed\n{}",
+        describe_output(&output)
+    );
     let json: Value = serde_json::from_slice(&output.stdout).expect("parse json");
     assert_eq!(json["ok"], Value::Bool(true), "expected ok=true");
     assert_eq!(

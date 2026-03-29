@@ -62,6 +62,7 @@ jobs:
           LLVM_ROOT="$(python scripts/vendor_llvm.py fetch --target host)"
           python scripts/vendor_llvm.py print-env --target host --format github >> "$GITHUB_ENV"
           echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$LLVM_ROOT/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
@@ -104,6 +105,7 @@ jobs:
           LLVM_ROOT="$(python scripts/vendor_llvm.py fetch --target host)"
           python scripts/vendor_llvm.py print-env --target host --format github >> "$GITHUB_ENV"
           echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$LLVM_ROOT/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
