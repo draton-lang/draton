@@ -47,7 +47,7 @@ class RemotePhase1Tests(unittest.TestCase):
                 "gh",
                 "workflow",
                 "run",
-                remote_phase1.WORKFLOW,
+                "ci.yml",
                 "--ref",
                 "codex/test-branch",
                 "-f",

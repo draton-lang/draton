@@ -9,7 +9,7 @@ import time
 from datetime import datetime, timezone
 
 
-WORKFLOW = "selfhost-phase1-remote.yml"
+WORKFLOW = "ci.yml"
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,11 +50,14 @@ def parse_args() -> argparse.Namespace:
 def run_command(args: list[str]) -> str:
     completed = subprocess.run(
         args,
-        check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
+    if completed.returncode != 0:
+        raise SystemExit(
+            completed.stderr.strip() or f"command failed with exit code {completed.returncode}: {' '.join(args)}"
+        )
     return completed.stdout
 
 

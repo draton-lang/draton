@@ -5,10 +5,23 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
+    inputs:
+      parse_slice:
+        description: "Run the heavier self-host parser slice in stage0"
+        required: false
+        default: false
+        type: boolean
+      release_smoke:
+        description: "Run packaged release smoke after the self-host checks"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   rust-tests:
     name: rust-tests
+    if: ${{ github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-22.04
     steps:
       - name: Check out repository
@@ -25,6 +38,7 @@ jobs:
 
   strict-syntax-smoke:
     name: strict-syntax-smoke
+    if: ${{ github.event_name != 'workflow_dispatch' }}
     needs: rust-tests
     runs-on: ubuntu-22.04
     env:
@@ -57,3 +71,85 @@ jobs:
 
       - name: Run strict canonical fixture
         run: /tmp/draton_strict_fixture
+
+  phase1-remote:
+    name: phase1-remote
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      DRATON_DISABLE_GCROOT: "1"
+      DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install legacy libtinfo compatibility
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libtinfo5
+
+      - name: Configure LLVM environment
+        shell: bash
+        run: |
+          LLVM_ROOT="$(python scripts/vendor_llvm.py fetch --target host)"
+          python scripts/vendor_llvm.py print-env --target host --format github >> "$GITHUB_ENV"
+          echo "$LLVM_ROOT/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create artifact directory
+        shell: bash
+        run: mkdir -p .artifacts/selfhost-phase1
+
+      - name: Run baseline focused tests
+        shell: bash
+        run: |
+          cargo test -p draton-parser --test items
+          cargo test -p draton-typeck --test errors
+          cargo test -p drat --test selfhost_stage0 -- --nocapture
+
+      - name: Run baseline self-host commands
+        shell: bash
+        run: |
+          cargo run -p drat -- selfhost-stage0 lex --json examples/hello.dt | tee .artifacts/selfhost-phase1/lex.json
+          cargo run -p drat -- selfhost-stage0 typeck --json examples/hello.dt | tee .artifacts/selfhost-phase1/typeck.json
+          cargo run -p drat -- selfhost-stage0 build --json examples/hello.dt -o /tmp/selfhost-phase1-hello | tee .artifacts/selfhost-phase1/build.json
+          /tmp/selfhost-phase1-hello | tee .artifacts/selfhost-phase1/build.stdout
+
+      - name: Run parser slice remotely
+        if: ${{ inputs.parse_slice }}
+        shell: bash
+        env:
+          DRATON_SELFHOST_STAGE0_PARSE_SLICE: "1"
+        run: |
+          timeout 20m cargo run -p drat -- selfhost-stage0 parse --json examples/hello.dt | tee .artifacts/selfhost-phase1/parse.json
+
+      - name: Run packaged release smoke
+        if: ${{ inputs.release_smoke }}
+        shell: bash
+        run: |
+          cargo build --release --locked -p drat -p draton-runtime -p draton-lsp
+          python scripts/package_release.py --binary target/release/drat --artifact draton-phase1-remote-linux-x86_64.tar.gz --out-dir dist
+          python scripts/smoke_release.py --archive dist/draton-phase1-remote-linux-x86_64.tar.gz
+
+      - name: Upload remote phase1 artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfhost-phase1-remote
+          path: |
+            .artifacts/selfhost-phase1
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: ignore
