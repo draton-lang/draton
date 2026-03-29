@@ -1,4 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
+use std::env;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -33,7 +34,7 @@ pub(crate) enum SelfhostStage0Command {
 }
 
 pub(crate) fn run(cwd: &Path, command: SelfhostStage0Command) -> Result<()> {
-    let stage0_binary = build_stage0_binary()?;
+    let stage0_binary = build_stage0_binary(&command)?;
     let pretty = wants_pretty_json(&command);
     let args = stage0_args(cwd, &command);
     let output = Command::new(&stage0_binary)
@@ -153,11 +154,34 @@ fn stage0_args(cwd: &Path, command: &SelfhostStage0Command) -> Vec<String> {
     }
 }
 
-fn build_stage0_binary() -> Result<PathBuf> {
+struct Stage0Layout {
+    cache_key: &'static str,
+    entries: &'static [&'static str],
+}
+
+fn stage0_layout(command: &SelfhostStage0Command) -> Stage0Layout {
+    match command {
+        SelfhostStage0Command::Parse { .. }
+            if env::var_os("DRATON_SELFHOST_STAGE0_PARSE_SLICE").is_some() =>
+        {
+            Stage0Layout {
+                cache_key: "parse",
+                entries: &["main.dt", "driver/pipeline.dt", "ast", "lexer", "parser"],
+            }
+        }
+        _ => Stage0Layout {
+            cache_key: "minimal",
+            entries: &["main.dt", "driver/pipeline.dt"],
+        },
+    }
+}
+
+fn build_stage0_binary(command: &SelfhostStage0Command) -> Result<PathBuf> {
     let repo_root = repo_root();
     let compiler_root = repo_root.join("compiler");
     let compiler_entry = compiler_root.join("main.dt");
     let pipeline_src = compiler_root.join("driver").join("pipeline.dt");
+    let layout = stage0_layout(command);
     if !compiler_entry.exists() {
         bail!(
             "selfhost entrypoint not found at {}",
@@ -168,7 +192,7 @@ fn build_stage0_binary() -> Result<PathBuf> {
         bail!("selfhost pipeline not found at {}", pipeline_src.display());
     }
 
-    let temp_root = stage0_cache_root(&compiler_entry, &pipeline_src)?;
+    let temp_root = stage0_cache_root(&compiler_root, &layout)?;
     let cached_binary = temp_root
         .join("build")
         .join("debug")
@@ -180,23 +204,7 @@ fn build_stage0_binary() -> Result<PathBuf> {
         fs::remove_dir_all(&temp_root)
             .with_context(|| format!("failed to reset {}", temp_root.display()))?;
     }
-    let temp_driver = temp_root.join("driver");
-    fs::create_dir_all(&temp_driver)
-        .with_context(|| format!("failed to create {}", temp_driver.display()))?;
-    fs::copy(&compiler_entry, temp_root.join("main.dt")).with_context(|| {
-        format!(
-            "failed to copy {} into {}",
-            compiler_entry.display(),
-            temp_root.display()
-        )
-    })?;
-    fs::copy(&pipeline_src, temp_driver.join("pipeline.dt")).with_context(|| {
-        format!(
-            "failed to copy {} into {}",
-            pipeline_src.display(),
-            temp_driver.display()
-        )
-    })?;
+    copy_compiler_entries(&compiler_root, &temp_root, &layout)?;
     let config_path = temp_root.join("draton.toml");
     fs::write(
         &config_path,
@@ -215,20 +223,116 @@ fn build_stage0_binary() -> Result<PathBuf> {
     Ok(built.binary_path)
 }
 
-fn stage0_cache_root(compiler_entry: &Path, pipeline_src: &Path) -> Result<PathBuf> {
+fn stage0_cache_root(compiler_root: &Path, layout: &Stage0Layout) -> Result<PathBuf> {
     let mut hasher = DefaultHasher::new();
     "draton-selfhost-stage0".hash(&mut hasher);
     env!("CARGO_PKG_VERSION").hash(&mut hasher);
-    fs::read(compiler_entry)
-        .with_context(|| format!("failed to read {}", compiler_entry.display()))?
-        .hash(&mut hasher);
-    fs::read(pipeline_src)
-        .with_context(|| format!("failed to read {}", pipeline_src.display()))?
-        .hash(&mut hasher);
+    layout.cache_key.hash(&mut hasher);
+    for relative in layout.entries {
+        hash_compiler_path(compiler_root, &compiler_root.join(relative), &mut hasher)?;
+    }
     Ok(std::env::temp_dir()
         .join("draton")
         .join("selfhost_stage0_cache")
         .join(format!("{:016x}", hasher.finish())))
+}
+
+fn hash_compiler_path(root: &Path, current: &Path, hasher: &mut DefaultHasher) -> Result<()> {
+    if !current.exists() {
+        bail!("missing compiler dependency {}", current.display());
+    }
+    let relative = current
+        .strip_prefix(root)
+        .with_context(|| format!("failed to relativize {}", current.display()))?;
+    relative.hash(hasher);
+    if current.is_file() {
+        fs::read(current)
+            .with_context(|| format!("failed to read {}", current.display()))?
+            .hash(hasher);
+        return Ok(());
+    }
+    let mut entries = fs::read_dir(current)
+        .with_context(|| format!("failed to read {}", current.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .with_context(|| format!("failed to iterate {}", current.display()))?;
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("failed to read file type for {}", path.display()))?;
+        if file_type.is_dir() {
+            hash_compiler_path(root, &path, hasher)?;
+        } else if file_type.is_file() {
+            let relative = path
+                .strip_prefix(root)
+                .with_context(|| format!("failed to relativize {}", path.display()))?;
+            relative.hash(hasher);
+            fs::read(&path)
+                .with_context(|| format!("failed to read {}", path.display()))?
+                .hash(hasher);
+        }
+    }
+    Ok(())
+}
+
+fn copy_compiler_entries(
+    compiler_root: &Path,
+    temp_root: &Path,
+    layout: &Stage0Layout,
+) -> Result<()> {
+    fs::create_dir_all(temp_root)
+        .with_context(|| format!("failed to create {}", temp_root.display()))?;
+    for relative in layout.entries {
+        let source = compiler_root.join(relative);
+        let dest = temp_root.join(relative);
+        if source.is_dir() {
+            copy_directory_recursive(&source, &dest)?;
+        } else if source.is_file() {
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            fs::copy(&source, &dest).with_context(|| {
+                format!(
+                    "failed to copy {} into {}",
+                    source.display(),
+                    dest.display()
+                )
+            })?;
+        } else {
+            bail!("missing compiler dependency {}", source.display());
+        }
+    }
+    Ok(())
+}
+
+fn copy_directory_recursive(source: &Path, dest: &Path) -> Result<()> {
+    fs::create_dir_all(dest).with_context(|| format!("failed to create {}", dest.display()))?;
+    let mut entries = fs::read_dir(source)
+        .with_context(|| format!("failed to read {}", source.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .with_context(|| format!("failed to iterate {}", source.display()))?;
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let source_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("failed to read file type for {}", source_path.display()))?;
+        if file_type.is_dir() {
+            copy_directory_recursive(&source_path, &dest_path)?;
+        } else if file_type.is_file() {
+            fs::copy(&source_path, &dest_path).with_context(|| {
+                format!(
+                    "failed to copy {} into {}",
+                    source_path.display(),
+                    dest_path.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
 }
 
 fn stage0_binary_name() -> &'static str {
