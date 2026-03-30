@@ -161,17 +161,15 @@ struct Stage0Layout {
 
 fn stage0_layout(command: &SelfhostStage0Command) -> Stage0Layout {
     match command {
-        SelfhostStage0Command::Parse { .. }
-            if env::var_os("DRATON_SELFHOST_STAGE0_PARSE_SLICE").is_some() =>
-        {
-            Stage0Layout {
-                cache_key: "parse",
-                entries: &["main.dt", "driver/pipeline.dt", "ast", "lexer", "parser"],
-            }
-        }
-        _ => Stage0Layout {
+        _ if env::var_os("DRATON_SELFHOST_STAGE0_MINIMAL").is_some() => Stage0Layout {
             cache_key: "minimal",
             entries: &["main.dt", "driver/pipeline.dt"],
+        },
+        _ => Stage0Layout {
+            cache_key: "full",
+            entries: &[
+                "main.dt", "driver", "ast", "lexer", "parser", "typeck", "codegen",
+            ],
         },
     }
 }
