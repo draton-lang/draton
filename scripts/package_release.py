@@ -278,6 +278,9 @@ def main() -> int:
     if staging_dir.exists():
         shutil.rmtree(staging_dir)
     copy_release_files(staging_dir, binary, runtime_lib)
+    runtime_path = staging_dir / runtime_filename(binary)
+    if not runtime_path.exists():
+        raise SystemExit(f"package_release: runtime staticlib missing from staging: {runtime_path}")
 
     if archive_name.endswith(".tar.gz"):
         create_tar_gz(archive_path, staging_dir)

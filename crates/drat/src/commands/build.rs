@@ -568,6 +568,9 @@ fn link_binary(
         ensure_supported_target(target)?;
     }
     let mut command = linker_command()?;
+    if is_bundled_linker() {
+        command.arg("-fuse-ld=lld");
+    }
     command.arg(object_path);
     if env::var_os("DRATON_SKIP_RUNTIME_LINK").is_none() {
         let runtime_lib = ensure_runtime_staticlib(profile)?;
@@ -623,6 +626,10 @@ fn ensure_runtime_staticlib(profile: Profile) -> Result<PathBuf> {
     }
 
     if let Some(path) = packaged_runtime_staticlib() {
+        return Ok(path);
+    }
+
+    if let Some(path) = dev_checkout_runtime_staticlib(profile) {
         return Ok(path);
     }
 
@@ -687,6 +694,22 @@ fn packaged_runtime_staticlib() -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
+fn dev_checkout_runtime_staticlib(profile: Profile) -> Option<PathBuf> {
+    let mut path = target_dir();
+    if matches!(profile, Profile::Release | Profile::Size | Profile::Fast) {
+        path = path.join("release");
+    } else {
+        path = path.join("debug");
+    }
+    let filename = if cfg!(windows) {
+        "draton_runtime.lib"
+    } else {
+        "libdraton_runtime.a"
+    };
+    let candidate = path.join(filename);
+    candidate.exists().then_some(candidate)
+}
+
 fn linker_command() -> Result<Command> {
     if cfg!(windows) {
         if let Some(root) = packaged_windows_gnu_root() {
@@ -728,6 +751,18 @@ fn bundled_llvm_driver() -> Option<(PathBuf, PathBuf)> {
         .map(|name| bin.join(name))
         .find(|path| path.exists())
         .map(|driver| (driver, root))
+}
+
+fn is_bundled_linker() -> bool {
+    if let Some((_, root)) = bundled_llvm_driver() {
+        let lld = if cfg!(windows) {
+            root.join("bin").join("ld.lld.exe")
+        } else {
+            root.join("bin").join("ld.lld")
+        };
+        return lld.exists();
+    }
+    false
 }
 
 fn packaged_llvm_root() -> Option<PathBuf> {
