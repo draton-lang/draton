@@ -2,6 +2,7 @@ import { Item } from ast.item.item
 import { TypeExpr, NamedTypeExpr, GenericTypeExpr, FnTypeExpr, PointerTypeExpr, InferTypeExpr } from ast.types
 import { FnDef } from ast.item.func
 import { TypeBlock } from ast.item.type_block
+import { EnumDef } from ast.item.variants
 import { Type, VarType, ArrayType, MapType, SetType, TupleType, OptionType, ResultType, ChanType, FnType, NamedType, PointerType } from typeck.types.ty
 import { Scheme } from typeck.types.scheme
 import { TypeEnv } from typeck.types.env
@@ -9,6 +10,60 @@ import { Substitution } from typeck.types.subst
 import { TypeError } from typeck.types.errors
 import { DeprecatedSyntaxMode } from typeck.infer.result
 import { TypedExpr } from typeck.typed.exprs
+
+class BindingHintEntry {
+    let name
+    let type_expr
+
+    @type {
+        name: String
+        type_expr: TypeExpr
+    }
+}
+
+class ClassFunctionHintEntry {
+    let class_name
+    let function
+
+    @type {
+        class_name: String
+        function: FnDef
+    }
+}
+
+class ClassBindingHintEntry {
+    let class_name
+    let name
+    let type_expr
+
+    @type {
+        class_name: String
+        name: String
+        type_expr: TypeExpr
+    }
+}
+
+class InterfaceFunctionHintEntry {
+    let interface_name
+    let function
+
+    @type {
+        interface_name: String
+        function: FnDef
+    }
+}
+
+class InterfaceBindingHintEntry {
+    let interface_name
+    let name
+    let type_expr
+
+    @type {
+        interface_name: String
+        name: String
+        type_expr: TypeExpr
+    }
+}
 
 class TypeChecker {
     let env
@@ -28,6 +83,8 @@ class TypeChecker {
     let mut binding_hints
     let mut class_function_hints
     let mut class_binding_hints
+    let mut interface_function_hints
+    let mut interface_binding_hints
     let mut local_binding_hints
     let mut current_return
     let mut current_class
@@ -47,11 +104,13 @@ class TypeChecker {
         interface_methods: Array[String]
         class_interfaces: Array[String]
         declared_classes: Array[String]
-        enum_defs: Array[String]
+        enum_defs: Array[EnumDef]
         function_hints: Array[FnDef]
-        binding_hints: Array[TypeBlock]
-        class_function_hints: Array[String]
-        class_binding_hints: Array[String]
+        binding_hints: Array[BindingHintEntry]
+        class_function_hints: Array[ClassFunctionHintEntry]
+        class_binding_hints: Array[ClassBindingHintEntry]
+        interface_function_hints: Array[InterfaceFunctionHintEntry]
+        interface_binding_hints: Array[InterfaceBindingHintEntry]
         local_binding_hints: Array[TypeBlock]
         current_return: Array[Type]
         current_class: Array[String]
@@ -78,6 +137,8 @@ class TypeChecker {
             binding_hints: [],
             class_function_hints: [],
             class_binding_hints: [],
+            interface_function_hints: [],
+            interface_binding_hints: [],
             local_binding_hints: [],
             current_return: [],
             current_class: [],
@@ -214,7 +275,7 @@ class TypeChecker {
         return NamedType { kind: Named, name: name, args: args }
     }
 
-    fn push_error(error) {
-        self.errors.push(error)
+    fn push_error(type_error) {
+        self.errors.push(type_error)
     }
 }

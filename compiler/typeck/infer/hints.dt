@@ -1,11 +1,99 @@
+import { Item } from ast.item.item
+import { ClassMemberKind } from ast.item.klass
+import { TypeBlock, TypeMemberKind } from ast.item.type_block
+import {
+    BindingHintEntry,
+    ClassBindingHintEntry,
+    ClassFunctionHintEntry,
+    InterfaceBindingHintEntry,
+    InterfaceFunctionHintEntry,
+} from typeck.infer.checker
+
 fn extract_hints(checker, items) {
     let mut index = 0
     while index < items.len() {
         let item = items[index]
         if item.kind == TypeBlock && item.type_block != None {
-            checker.binding_hints.push(item.type_block)
-        } elif (item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler) && item.fn_def != None {
-            checker.function_hints.push(item.fn_def)
+            collect_type_block_hints(checker, item.type_block, None)
+        } elif item.kind == Class && item.class_def != None {
+            let class_def = item.class_def
+            let mut type_block_index = 0
+            while type_block_index < class_def.type_blocks.len() {
+                collect_type_block_hints(checker, class_def.type_blocks[type_block_index], Some(class_def.name))
+                type_block_index = type_block_index + 1
+            }
+
+            let mut member_index = 0
+            while member_index < class_def.members.len() {
+                let member = class_def.members[member_index]
+                if member.kind == Layer && member.layer_def != None {
+                    let layer = member.layer_def
+                    let mut layer_block_index = 0
+                    while layer_block_index < layer.type_blocks.len() {
+                        collect_type_block_hints(checker, layer.type_blocks[layer_block_index], Some(class_def.name))
+                        layer_block_index = layer_block_index + 1
+                    }
+                }
+                member_index = member_index + 1
+            }
+        } elif item.kind == Interface && item.interface_def != None {
+            let interface_def = item.interface_def
+            let mut type_block_index = 0
+            while type_block_index < interface_def.type_blocks.len() {
+                collect_interface_type_block_hints(checker, interface_def.type_blocks[type_block_index], interface_def.name)
+                type_block_index = type_block_index + 1
+            }
+        }
+        index = index + 1
+    }
+}
+
+fn collect_type_block_hints(checker, type_block, class_name) {
+    let mut index = 0
+    while index < type_block.members.len() {
+        let member = type_block.members[index]
+        if member.kind == Binding && member.name != None && member.type_expr != None {
+            if class_name != None {
+                checker.class_binding_hints.push(ClassBindingHintEntry {
+                    class_name: class_name,
+                    name: member.name,
+                    type_expr: member.type_expr
+                })
+            } else {
+                checker.binding_hints.push(BindingHintEntry {
+                    name: member.name,
+                    type_expr: member.type_expr
+                })
+            }
+        } elif member.kind == Function && member.function != None {
+            if class_name != None {
+                checker.class_function_hints.push(ClassFunctionHintEntry {
+                    class_name: class_name,
+                    function: member.function
+                })
+            } else {
+                checker.function_hints.push(member.function)
+            }
+        }
+        index = index + 1
+    }
+}
+
+fn collect_interface_type_block_hints(checker, type_block, interface_name) {
+    let mut index = 0
+    while index < type_block.members.len() {
+        let member = type_block.members[index]
+        if member.kind == Binding && member.name != None && member.type_expr != None {
+            checker.interface_binding_hints.push(InterfaceBindingHintEntry {
+                interface_name: interface_name,
+                name: member.name,
+                type_expr: member.type_expr
+            })
+        } elif member.kind == Function && member.function != None {
+            checker.interface_function_hints.push(InterfaceFunctionHintEntry {
+                interface_name: interface_name,
+                function: member.function
+            })
         }
         index = index + 1
     }

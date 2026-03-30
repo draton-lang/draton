@@ -39,7 +39,7 @@ fn predeclare_items(checker, items) {
         } elif item.kind == Class && item.class_def != None {
             checker.declared_classes.push(item.class_def.name)
         } elif item.kind == Enum && item.enum_def != None {
-            checker.enum_defs.push(item.enum_def.name)
+            checker.enum_defs.push(item.enum_def)
         }
         index = index + 1
     }

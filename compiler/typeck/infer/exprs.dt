@@ -2,6 +2,7 @@ import { TypedExpr, TypedExprKind, TypedFStrPart, TypedFStrPartKind, TypedMapEnt
 import { TypedParam } from typeck.typed.items
 import { TypedBlock } from typeck.typed.stmts
 import { Type, ArrayType, MapType, SetType, TupleType, OptionType, ResultType, ChanType, FnType } from typeck.types.ty
+import { check_match } from typeck.infer.exhaust
 
 fn infer_expr(checker, expr) {
     if expr.kind == IntLit {
@@ -232,6 +233,7 @@ fn infer_expr(checker, expr) {
             arms.push(TypedMatchArm { pattern: pattern, body: typed_body, span: arm.span })
             index = index + 1
         }
+        check_match(checker, subject.ty, arms)
         let mut typed = checker.typed_expr(Match, result_ty, expr.span)
         typed.left = Some(subject)
         typed.arms = Some(arms)

@@ -1,13 +1,755 @@
-class ExhaustivenessChecker {
-    fn check_match(checker, subject_ty, arms) {
-        return None
+import { EnumDef } from ast.item.variants
+import { TypeError } from typeck.types.errors
+import { Type, TypeKind } from typeck.types.ty
+import { TypedExpr, TypedExprKind, TypedMatchArm } from typeck.typed.exprs
+
+enum PatternKind {
+    Wildcard,
+    LiteralInt,
+    LiteralFloat,
+    LiteralBool,
+    LiteralStr,
+    LiteralNone,
+    EnumVariant,
+    Tuple,
+    Named,
+    Or
+}
+
+enum SubjectKind {
+    Bool,
+    Enum,
+    Int,
+    Float,
+    String,
+    Tuple,
+    Option,
+    Result,
+    Other
+}
+
+class Pattern {
+    let kind
+    let int_value
+    let float_value
+    let bool_value
+    let str_value
+    let enum_name
+    let items
+    let named_name
+
+    @type {
+        kind: PatternKind
+        int_value: Option[Int]
+        float_value: Option[Float]
+        bool_value: Option[Bool]
+        str_value: Option[String]
+        enum_name: Option[String]
+        items: Option[Array[Pattern]]
+        named_name: Option[String]
     }
 }
 
-fn classify_subject(ty) {
-    return ty.kind.to_string()
+class Subject {
+    let kind
+    let enum_name
+    let variants
+    let inner
+    let ok
+    let err
+    let slots
+
+    @type {
+        kind: SubjectKind
+        enum_name: Option[String]
+        variants: Option[Array[String]]
+        inner: Option[Subject]
+        ok: Option[Subject]
+        err: Option[Subject]
+        slots: Option[Array[Subject]]
+    }
 }
 
-fn extract_pattern(arm) {
-    return arm.pattern.kind.to_string()
+class RedundantEntry {
+    let index
+    let label
+
+    @type {
+        index: Int
+        label: String
+    }
+}
+
+class ExhaustivenessChecker {
+    let enum_defs
+
+    @type {
+        enum_defs: Array[EnumDef]
+    }
+}
+
+fn check_match(checker, subject_ty, arms) {
+    let subject = classify_subject(subject_ty, checker.enum_defs)
+    let mut patterns = []
+    let mut index = 0
+    while index < arms.len() {
+        patterns.push(extract_pattern(arms[index].pattern))
+        index = index + 1
+    }
+
+    let missing = check_exhaustiveness(checker, patterns, subject)
+    let mut missing_index = 0
+    let error_line = default_match_line(arms)
+    let error_col = default_match_col(arms)
+    while missing_index < missing.len() {
+        checker.errors.push(TypeError {
+            kind: NonExhaustiveMatch,
+            name: None,
+            expected: None,
+            found: None,
+            hint: None,
+            field: None,
+            interface_name: None,
+            class_name: None,
+            method: None,
+            pattern: None,
+            missing: Some(missing[missing_index]),
+            syntax: None,
+            replacement: None,
+            expected_count: None,
+            got_count: None,
+            tuple_len: None,
+            pattern_len: None,
+            line: error_line,
+            col: error_col
+        })
+        missing_index = missing_index + 1
+    }
+
+    let redundant = check_redundancy(checker, patterns, subject)
+    let mut redundant_index = 0
+    while redundant_index < redundant.len() {
+        let entry = redundant[redundant_index]
+        let arm = arms[entry.index]
+        checker.warnings.push(TypeError {
+            kind: RedundantPattern,
+            name: None,
+            expected: None,
+            found: None,
+            hint: None,
+            field: None,
+            interface_name: None,
+            class_name: None,
+            method: None,
+            pattern: Some(entry.label),
+            missing: None,
+            syntax: None,
+            replacement: None,
+            expected_count: None,
+            got_count: None,
+            tuple_len: None,
+            pattern_len: None,
+            line: arm.span.line,
+            col: arm.span.col
+        })
+        redundant_index = redundant_index + 1
+    }
+}
+
+fn classify_subject(ty, enum_defs) {
+    if ty.kind == Bool {
+        return empty_subject(Bool)
+    }
+    if ty.kind == Int || ty.kind == Int8 || ty.kind == Int16 || ty.kind == Int32 || ty.kind == Int64 ||
+       ty.kind == UInt8 || ty.kind == UInt16 || ty.kind == UInt32 || ty.kind == UInt64 {
+        return empty_subject(Int)
+    }
+    if ty.kind == Float || ty.kind == Float32 || ty.kind == Float64 {
+        return empty_subject(Float)
+    }
+    if ty.kind == String {
+        return empty_subject(String)
+    }
+    if ty.kind == Option {
+        let mut subject = empty_subject(Option)
+        subject.inner = Some(classify_subject(ty.inner, enum_defs))
+        return subject
+    }
+    if ty.kind == Result {
+        let mut subject = empty_subject(Result)
+        subject.ok = Some(classify_subject(ty.ok, enum_defs))
+        subject.err = Some(classify_subject(ty.err, enum_defs))
+        return subject
+    }
+    if ty.kind == Tuple {
+        let mut slots = []
+        let mut index = 0
+        while index < ty.items.len() {
+            slots.push(classify_subject(ty.items[index], enum_defs))
+            index = index + 1
+        }
+        let mut subject = empty_subject(Tuple)
+        subject.slots = Some(slots)
+        return subject
+    }
+    if ty.kind == Named && ty.args.len() == 0 {
+        let enum_def = lookup_enum_def(enum_defs, ty.name)
+        if enum_def != None {
+            let mut subject = empty_subject(Enum)
+            subject.enum_name = Some(ty.name)
+            subject.variants = Some(enum_def.variants)
+            return subject
+        }
+    }
+    return empty_subject(Other)
+}
+
+fn extract_pattern(expr) {
+    if expr.kind == Ident {
+        return empty_pattern(Wildcard)
+    }
+    if expr.kind == IntLit {
+        let mut pattern = empty_pattern(LiteralInt)
+        pattern.int_value = expr.int_value
+        return pattern
+    }
+    if expr.kind == FloatLit {
+        let mut pattern = empty_pattern(LiteralFloat)
+        pattern.float_value = expr.float_value
+        return pattern
+    }
+    if expr.kind == BoolLit {
+        let mut pattern = empty_pattern(LiteralBool)
+        pattern.bool_value = expr.bool_value
+        return pattern
+    }
+    if expr.kind == StrLit {
+        let mut pattern = empty_pattern(LiteralStr)
+        pattern.str_value = expr.string_value
+        return pattern
+    }
+    if expr.kind == NoneLit {
+        return empty_pattern(LiteralNone)
+    }
+    if expr.kind == Field && expr.target != None && expr.target.kind == Ident && expr.target.name != None && expr.name != None {
+        let mut pattern = empty_pattern(EnumVariant)
+        pattern.enum_name = expr.target.name
+        pattern.str_value = expr.name
+        return pattern
+    }
+    if expr.kind == Tuple && expr.items != None {
+        let mut items = []
+        let mut index = 0
+        while index < expr.items.len() {
+            items.push(extract_pattern(expr.items[index]))
+            index = index + 1
+        }
+        let mut pattern = empty_pattern(Tuple)
+        pattern.items = Some(items)
+        return pattern
+    }
+    if expr.kind == Ok {
+        let mut pattern = empty_pattern(Named)
+        pattern.named_name = Some("Ok")
+        return pattern
+    }
+    if expr.kind == Err {
+        let mut pattern = empty_pattern(Named)
+        pattern.named_name = Some("Err")
+        return pattern
+    }
+    if expr.kind == Call && expr.callee != None && expr.callee.kind == Ident && expr.callee.name != None {
+        let mut pattern = empty_pattern(Named)
+        pattern.named_name = expr.callee.name
+        return pattern
+    }
+    return empty_pattern(Wildcard)
+}
+
+fn check_exhaustiveness(checker, patterns, subject) {
+    if subject.kind == Bool {
+        return check_bool_patterns(patterns)
+    }
+    if subject.kind == Enum {
+        return check_enum_patterns(patterns, subject.enum_name, subject.variants)
+    }
+    if subject.kind == Option {
+        return check_option_patterns(patterns)
+    }
+    if subject.kind == Result {
+        return check_result_patterns(patterns)
+    }
+    if subject.kind == Tuple {
+        return check_tuple_patterns(patterns, subject.slots)
+    }
+    if has_wildcard(patterns) {
+        return []
+    }
+    return ["_ (wildcard required for non-enumerable type)"]
+}
+
+fn check_redundancy(checker, patterns, subject) {
+    if subject.kind == Bool {
+        return redundant_bool_patterns(patterns)
+    }
+    if subject.kind == Enum {
+        return redundant_enum_patterns(patterns, subject.enum_name)
+    }
+    if subject.kind == Option {
+        return redundant_option_patterns(patterns)
+    }
+    if subject.kind == Result {
+        return redundant_result_patterns(patterns)
+    }
+    if subject.kind == Tuple {
+        return redundant_tuple_patterns(patterns)
+    }
+    return redundant_literal_or_wildcard_patterns(patterns)
+}
+
+fn display_pattern(pattern) {
+    if pattern.kind == Wildcard {
+        return "_"
+    }
+    if pattern.kind == LiteralInt && pattern.int_value != None {
+        return pattern.int_value.to_string()
+    }
+    if pattern.kind == LiteralFloat && pattern.float_value != None {
+        return pattern.float_value.to_string()
+    }
+    if pattern.kind == LiteralBool && pattern.bool_value != None {
+        if pattern.bool_value {
+            return "true"
+        }
+        return "false"
+    }
+    if pattern.kind == LiteralStr && pattern.str_value != None {
+        return str_concat("\"", str_concat(pattern.str_value, "\""))
+    }
+    if pattern.kind == LiteralNone {
+        return "None"
+    }
+    if pattern.kind == EnumVariant && pattern.enum_name != None && pattern.str_value != None {
+        return str_concat(pattern.enum_name, str_concat(".", pattern.str_value))
+    }
+    if pattern.kind == Tuple && pattern.items != None {
+        let mut rendered = []
+        let mut index = 0
+        while index < pattern.items.len() {
+            rendered.push(display_pattern(pattern.items[index]))
+            index = index + 1
+        }
+        return str_concat("(", str_concat(join_with(rendered, ", "), ")"))
+    }
+    if pattern.kind == Named && pattern.named_name != None {
+        return str_concat(pattern.named_name, "(...)")
+    }
+    if pattern.kind == Or && pattern.items != None {
+        let mut rendered = []
+        let mut index = 0
+        while index < pattern.items.len() {
+            rendered.push(display_pattern(pattern.items[index]))
+            index = index + 1
+        }
+        return join_with(rendered, " | ")
+    }
+    return "_"
+}
+
+fn empty_pattern(kind) {
+    return Pattern {
+        kind: kind,
+        int_value: None,
+        float_value: None,
+        bool_value: None,
+        str_value: None,
+        enum_name: None,
+        items: None,
+        named_name: None
+    }
+}
+
+fn empty_subject(kind) {
+    return Subject {
+        kind: kind,
+        enum_name: None,
+        variants: None,
+        inner: None,
+        ok: None,
+        err: None,
+        slots: None
+    }
+}
+
+fn lookup_enum_def(enum_defs, name) {
+    let mut index = 0
+    while index < enum_defs.len() {
+        if enum_defs[index].name == name {
+            return enum_defs[index]
+        }
+        index = index + 1
+    }
+    return None
+}
+
+fn has_wildcard(patterns) {
+    let mut index = 0
+    while index < patterns.len() {
+        if patterns[index].kind == Wildcard {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn check_bool_patterns(patterns) {
+    let mut has_true = false
+    let mut has_false = false
+    let mut index = 0
+    while index < patterns.len() {
+        let pattern = patterns[index]
+        if pattern.kind == Wildcard {
+            has_true = true
+            has_false = true
+        } elif pattern.kind == LiteralBool && pattern.bool_value != None {
+            if pattern.bool_value {
+                has_true = true
+            } else {
+                has_false = true
+            }
+        }
+        index = index + 1
+    }
+    let mut missing = []
+    if !has_true {
+        missing.push("true")
+    }
+    if !has_false {
+        missing.push("false")
+    }
+    return missing
+}
+
+fn check_enum_patterns(patterns, enum_name, variants) {
+    if has_wildcard(patterns) || enum_name == None || variants == None {
+        return []
+    }
+    let mut missing = []
+    let mut variant_index = 0
+    while variant_index < variants.len() {
+        let variant = variants[variant_index]
+        let mut covered = false
+        let mut pattern_index = 0
+        while pattern_index < patterns.len() {
+            let pattern = patterns[pattern_index]
+            if pattern.kind == EnumVariant && pattern.enum_name == enum_name && pattern.str_value == Some(variant) {
+                covered = true
+            }
+            pattern_index = pattern_index + 1
+        }
+        if !covered {
+            missing.push(str_concat(enum_name, str_concat(".", variant)))
+        }
+        variant_index = variant_index + 1
+    }
+    return missing
+}
+
+fn check_option_patterns(patterns) {
+    if has_wildcard(patterns) {
+        return []
+    }
+    let mut has_some = false
+    let mut has_none = false
+    let mut index = 0
+    while index < patterns.len() {
+        let pattern = patterns[index]
+        if pattern.kind == LiteralNone {
+            has_none = true
+        } elif pattern.kind == Named && pattern.named_name == Some("Some") {
+            has_some = true
+        }
+        index = index + 1
+    }
+    let mut missing = []
+    if !has_some {
+        missing.push("Some(_)")
+    }
+    if !has_none {
+        missing.push("None")
+    }
+    return missing
+}
+
+fn check_result_patterns(patterns) {
+    if has_wildcard(patterns) {
+        return []
+    }
+    let mut has_ok = false
+    let mut has_err = false
+    let mut index = 0
+    while index < patterns.len() {
+        let pattern = patterns[index]
+        if pattern.kind == Named && pattern.named_name == Some("Ok") {
+            has_ok = true
+        } elif pattern.kind == Named && pattern.named_name == Some("Err") {
+            has_err = true
+        }
+        index = index + 1
+    }
+    let mut missing = []
+    if !has_ok {
+        missing.push("Ok(_)")
+    }
+    if !has_err {
+        missing.push("Err(_)")
+    }
+    return missing
+}
+
+fn check_tuple_patterns(patterns, slots) {
+    if has_wildcard(patterns) {
+        return []
+    }
+    let expected_len = tuple_slot_len(slots)
+    let mut index = 0
+    while index < patterns.len() {
+        let pattern = patterns[index]
+        if pattern.kind == Tuple && pattern.items != None && pattern.items.len() == expected_len {
+            return []
+        }
+        index = index + 1
+    }
+    let mut placeholders = []
+    let mut slot_index = 0
+    while slot_index < expected_len {
+        placeholders.push("_")
+        slot_index = slot_index + 1
+    }
+    return [str_concat("(", str_concat(join_with(placeholders, ", "), ")"))]
+}
+
+fn redundant_bool_patterns(patterns) {
+    let mut redundant = []
+    let mut saw_true = false
+    let mut saw_false = false
+    let mut saw_wildcard = false
+    let mut index = 0
+    while index < patterns.len() {
+        let pattern = patterns[index]
+        if saw_wildcard {
+            redundant.push(RedundantEntry { index: index, label: display_pattern(pattern) })
+        } elif pattern.kind == Wildcard {
+            saw_wildcard = true
+        } elif pattern.kind == LiteralBool && pattern.bool_value != None {
+            if pattern.bool_value && saw_true {
+                redundant.push(RedundantEntry { index: index, label: "true" })
+            } elif !pattern.bool_value && saw_false {
+                redundant.push(RedundantEntry { index: index, label: "false" })
+            } elif pattern.bool_value {
+                saw_true = true
+            } else {
+                saw_false = true
+            }
+        }
+        index = index + 1
+    }
+    return redundant
+}
+
+fn redundant_enum_patterns(patterns, enum_name) {
+    let mut redundant = []
+    let mut seen = []
+    let mut saw_wildcard = false
+    let mut index = 0
+    while index < patterns.len() {
+        let pattern = patterns[index]
+        if saw_wildcard {
+            redundant.push(RedundantEntry { index: index, label: display_pattern(pattern) })
+        } elif pattern.kind == Wildcard {
+            saw_wildcard = true
+        } elif pattern.kind == EnumVariant && pattern.enum_name == enum_name && pattern.str_value != None {
+            let label = str_concat(enum_name, str_concat(".", pattern.str_value))
+            if contains_string(seen, label) {
+                redundant.push(RedundantEntry { index: index, label: label })
+            } else {
+                seen.push(label)
+            }
+        }
+        index = index + 1
+    }
+    return redundant
+}
+
+fn redundant_option_patterns(patterns) {
+    let mut redundant = []
+    let mut seen_none = false
+    let mut seen_some = false
+    let mut saw_wildcard = false
+    let mut index = 0
+    while index < patterns.len() {
+        let pattern = patterns[index]
+        if saw_wildcard {
+            redundant.push(RedundantEntry { index: index, label: display_pattern(pattern) })
+        } elif pattern.kind == Wildcard {
+            saw_wildcard = true
+        } elif pattern.kind == LiteralNone {
+            if seen_none {
+                redundant.push(RedundantEntry { index: index, label: "None" })
+            } else {
+                seen_none = true
+            }
+        } elif pattern.kind == Named && pattern.named_name == Some("Some") {
+            if seen_some {
+                redundant.push(RedundantEntry { index: index, label: "Some(_)" })
+            } else {
+                seen_some = true
+            }
+        }
+        index = index + 1
+    }
+    return redundant
+}
+
+fn redundant_result_patterns(patterns) {
+    let mut redundant = []
+    let mut seen_ok = false
+    let mut seen_err = false
+    let mut saw_wildcard = false
+    let mut index = 0
+    while index < patterns.len() {
+        let pattern = patterns[index]
+        if saw_wildcard {
+            redundant.push(RedundantEntry { index: index, label: display_pattern(pattern) })
+        } elif pattern.kind == Wildcard {
+            saw_wildcard = true
+        } elif pattern.kind == Named && pattern.named_name == Some("Ok") {
+            if seen_ok {
+                redundant.push(RedundantEntry { index: index, label: "Ok(_)" })
+            } else {
+                seen_ok = true
+            }
+        } elif pattern.kind == Named && pattern.named_name == Some("Err") {
+            if seen_err {
+                redundant.push(RedundantEntry { index: index, label: "Err(_)" })
+            } else {
+                seen_err = true
+            }
+        }
+        index = index + 1
+    }
+    return redundant
+}
+
+fn redundant_tuple_patterns(patterns) {
+    let mut redundant = []
+    let mut saw_wildcard = false
+    let mut index = 0
+    while index < patterns.len() {
+        let pattern = patterns[index]
+        if saw_wildcard {
+            redundant.push(RedundantEntry { index: index, label: display_pattern(pattern) })
+        } elif pattern.kind == Wildcard {
+            saw_wildcard = true
+        }
+        index = index + 1
+    }
+    return redundant
+}
+
+fn redundant_literal_or_wildcard_patterns(patterns) {
+    let mut redundant = []
+    let mut seen = []
+    let mut saw_wildcard = false
+    let mut index = 0
+    while index < patterns.len() {
+        let pattern = patterns[index]
+        if saw_wildcard {
+            redundant.push(RedundantEntry { index: index, label: display_pattern(pattern) })
+        } else {
+            let label = literal_or_wildcard_label(pattern)
+            if label != None {
+                if label == "_" {
+                    saw_wildcard = true
+                } elif contains_string(seen, label) {
+                    redundant.push(RedundantEntry { index: index, label: label })
+                } else {
+                    seen.push(label)
+                }
+            }
+        }
+        index = index + 1
+    }
+    return redundant
+}
+
+fn literal_or_wildcard_label(pattern) {
+    if pattern.kind == LiteralInt && pattern.int_value != None {
+        return pattern.int_value.to_string()
+    }
+    if pattern.kind == LiteralFloat && pattern.float_value != None {
+        return pattern.float_value.to_string()
+    }
+    if pattern.kind == LiteralBool && pattern.bool_value != None {
+        if pattern.bool_value {
+            return "true"
+        }
+        return "false"
+    }
+    if pattern.kind == LiteralStr && pattern.str_value != None {
+        return str_concat("\"", str_concat(pattern.str_value, "\""))
+    }
+    if pattern.kind == LiteralNone {
+        return "None"
+    }
+    if pattern.kind == Wildcard {
+        return "_"
+    }
+    return None
+}
+
+fn contains_string(items, needle) {
+    let mut index = 0
+    while index < items.len() {
+        if items[index] == needle {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn tuple_slot_len(slots) {
+    if slots == None {
+        return 0
+    }
+    return slots.len()
+}
+
+fn join_with(items, separator) {
+    let mut out = ""
+    let mut index = 0
+    while index < items.len() {
+        if index > 0 {
+            out = str_concat(out, separator)
+        }
+        out = str_concat(out, items[index])
+        index = index + 1
+    }
+    return out
+}
+
+fn default_match_line(arms) {
+    if arms.len() == 0 {
+        return 1
+    }
+    return arms[0].span.line
+}
+
+fn default_match_col(arms) {
+    if arms.len() == 0 {
+        return 1
+    }
+    return arms[0].span.col
 }
