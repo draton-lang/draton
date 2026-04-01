@@ -165,11 +165,15 @@ fn stage0_layout(command: &SelfhostStage0Command) -> Stage0Layout {
             cache_key: "minimal",
             entries: &["main.dt", "driver/pipeline.dt"],
         },
-        _ => Stage0Layout {
-            cache_key: "full",
-            entries: &[
-                "main.dt", "driver", "ast", "lexer", "parser", "typeck", "codegen",
-            ],
+        SelfhostStage0Command::Lex { .. } => Stage0Layout {
+            cache_key: "lex",
+            entries: &["main.dt", "driver/pipeline.dt"],
+        },
+        SelfhostStage0Command::Parse { .. }
+        | SelfhostStage0Command::Typeck { .. }
+        | SelfhostStage0Command::Build { .. } => Stage0Layout {
+            cache_key: "semantic",
+            entries: &["main.dt", "driver", "ast", "lexer", "parser", "typeck"],
         },
     }
 }
