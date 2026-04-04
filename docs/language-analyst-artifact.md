@@ -109,7 +109,7 @@ The language can be understood in three layers:
 | Canonical syntax | Rust parser + docs |
 | Type contract semantics | Rust typechecker + docs |
 | Native codegen semantics | Rust codegen + runtime |
-| Self-host rewrite boundary | Must be documented explicitly before reintroduction |
+| Self-host rewrite boundary | Must be documented explicitly and tracked in `docs/selfhost-canonical-migration-status.md` |
 | Policy and anti-drift | AGENTS + architecture/rules docs |
 
 ## Current Repository State
@@ -118,8 +118,9 @@ As of the current repository state:
 
 - canonical syntax is stabilized
 - strict syntax mode exists
-- the Rust frontend/tooling path is the only in-tree compiler implementation
-- the historical self-host mirror under `src/` has been retired while a rewrite is prepared
+- the Rust frontend/tooling path remains the authoritative compiler implementation
+- an in-tree self-host rewrite exists under `compiler/`
+- the historical self-host mirror under `src/` has been retired
 - `src/` now holds docs-site source rather than compiler code
 
 ## Implications For Reviewers And Contributors

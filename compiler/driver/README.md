@@ -1,14 +1,17 @@
 # Stage0 Driver Contract
 
-`compiler/driver/` will hold the self-host pipeline entrypoints.
+`compiler/driver/` contains the current self-host stage0 pipeline entrypoints.
 
-Phase 1 boundary:
+Current boundary:
 
 - the planned machine-readable interface is `lex --json`, `parse --json`, `typeck --json`, and `build`
 - the current executable stage0 implementation lives in the hidden Rust command `drat selfhost-stage0`
-- the Rust stage0 command is the parity surface until the Draton driver files in this directory become runnable
+- `compiler/main.dt` dispatches the stage0 subcommands into this directory
+- `pipeline.dt` currently implements `lex_json` in Draton
+- `pipeline.dt` still routes `parse_json`, `typeck_json`, and `build_json` through `host_parse_json`, `host_type_json`, and `host_build_json`
+- the Rust stage0 command remains the bootstrap and parity wrapper around these files
 
-Planned file ownership:
+Current file ownership:
 
 - `pipeline.dt`: full pipeline orchestration
 - `diagnostics.dt`: human-readable diagnostic formatting

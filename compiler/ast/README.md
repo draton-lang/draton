@@ -1,6 +1,6 @@
 # Self-Host AST
 
-This directory is reserved for the canonical Draton AST model used by the self-host compiler.
+This directory contains the canonical Draton AST model used by the self-host compiler rewrite.
 
 Current boundary:
 

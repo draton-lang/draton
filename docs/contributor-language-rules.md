@@ -40,9 +40,10 @@ Do not:
 
 ## Current readiness boundary
 
-- No in-tree self-host compiler source is currently shipped.
-- Strict syntax and anti-drift checks currently target the Rust frontend/tooling path.
-- Future self-host work should be reintroduced explicitly instead of assuming the old `src/` mirror still exists.
+- The in-tree self-host rewrite lives under `compiler/`, and it remains subordinate to the Rust frontend/tooling path.
+- Strict syntax and anti-drift checks still target the Rust frontend/tooling path as the authority.
+- Contributors must update [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md) when a self-host bridge, blocker, or parity claim changes.
+- The old `src/` mirror remains retired and must not be treated as compiler source.
 
 ## Review checklist
 

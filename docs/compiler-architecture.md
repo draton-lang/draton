@@ -2,7 +2,7 @@
 
 This document explains how the Draton implementation is organized in the repository and how source code moves through the toolchain.
 
-For the language-side architectural model, see [language-architecture.md](language-architecture.md). For visual summaries, see [language-class-diagram.md](language-class-diagram.md). For the compact architecture checklist, see [language-analyst-artifact.md](language-analyst-artifact.md). For current self-host reset status, see [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
+For the language-side architectural model, see [language-architecture.md](language-architecture.md). For visual summaries, see [language-class-diagram.md](language-class-diagram.md). For the compact architecture checklist, see [language-analyst-artifact.md](language-analyst-artifact.md). For current self-host migration status, see [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
 
 ## Source of truth
 
@@ -207,7 +207,7 @@ The compiler and runtime are therefore separated like this:
 
 ## Self-host status
 
-The previous self-host compiler mirror under `src/` was intentionally retired to clear the way for a rewrite.
+The previous self-host compiler mirror under `src/` was intentionally retired to clear the way for the current rewrite under `compiler/`.
 
 Current boundary:
 
@@ -215,8 +215,10 @@ Current boundary:
 - `src/` is used by the Docusaurus site source (`src/pages`, `src/css`)
 - the Rust crates remain the only authoritative compiler/tooling implementation until the new self-host tree reaches parity
 - the self-host tree is exercised through Rust stage0 parity and bootstrap scaffolding, not as the public toolchain entrypoint
+- `compiler/main.dt` and `compiler/driver/pipeline.dt` are the live stage0 entrypoints
+- `compiler/driver/pipeline.dt` currently implements `lex_json` in Draton, while `parse_json`, `typeck_json`, and `build_json` still bridge through `host_parse_json`, `host_type_json`, and `host_build_json`
 
-The reset status is documented in [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
+The current migration status is documented in [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
 
 ## Tooling and policy architecture
 
@@ -237,7 +239,7 @@ These documents are part of the architecture because they lock:
 - canonical syntax
 - contributor expectations
 - compatibility boundaries
-- self-host reset/rewrite boundaries
+- self-host migration boundaries
 
 ## How changes should flow
 

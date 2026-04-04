@@ -22,7 +22,7 @@ What is intentionally still limited:
 
 - the release line is still called an early preview
 - the docs are strict about canonical syntax and anti-drift policy
-- the self-host compiler is being rewritten and is not currently shipped in-tree
+- the self-host compiler rewrite exists in-tree under `compiler/`, but it is not the shipped public compiler path and still depends on Rust host bridges for major stages
 
 ## The shortest path to a working project
 

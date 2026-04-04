@@ -36,6 +36,7 @@ It is built from the `docs/` tree and deployed by GitHub Actions. The repo-local
 - [docs/canonical-syntax-rules.md](docs/canonical-syntax-rules.md)
 - [docs/contributor-language-rules.md](docs/contributor-language-rules.md)
 - [docs/syntax-migration.md](docs/syntax-migration.md)
+- [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md)
 - [docs/roadmap-1year.md](docs/roadmap-1year.md)
 
 Runtime and memory-model references:
@@ -303,7 +304,7 @@ drat run --strict-syntax examples/hello.dt
 Strict mode currently targets the Rust frontend/tooling path.
 Canonical `@type` blocks are currently supported at file, class, layer, interface, and function scope in the Rust frontend/tooling path.
 
-The historical self-host compiler mirror was intentionally removed from `src/` while a rewrite is prepared. Current syntax and tooling guarantees are therefore enforced through the Rust crates and their tests/CI. The reset status is tracked in [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md).
+The historical self-host compiler mirror was intentionally removed from `src/`. The current in-tree self-host rewrite lives under `compiler/`, but the Rust crates still define the authoritative syntax and tooling behavior. Today `compiler/driver/pipeline.dt` implements `lex_json` in Draton while `parse_json`, `typeck_json`, and `build_json` still bridge through Rust host builtins. Current migration status is tracked in [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md).
 
 ### Enums and pattern matching
 

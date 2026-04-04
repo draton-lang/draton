@@ -18,7 +18,7 @@ Observed baseline:
 - `compiler/codegen/llvm/*.dt` is still mostly placeholder code and is not a production backend yet.
 - CI already validates a small stage0 surface in `.github/workflows/ci.yml` and `crates/drat/tests/selfhost_stage0.rs`.
 - The bootstrap workload is still blocked in published benchmark artifacts by `LLVM ERROR: unknown special variable`.
-- Several docs point to `docs/selfhost-canonical-migration-status.md`, but that file does not currently exist and must be restored as part of the roadmap.
+- `docs/selfhost-canonical-migration-status.md` is the required status control plane for keeping self-host claims aligned with the actual `compiler/` and Rust bridge state.
 
 That baseline leads to one conclusion:
 
@@ -125,6 +125,8 @@ Before the project can claim any real self-host milestone, these truth gaps must
 3. Separate "frontend parity complete" from "backend self-host complete" in all docs and CI labels.
 4. Stop treating any successful `selfhost-stage0 build` result as evidence of backend independence while `host_build_json` remains in use.
 
+Items 1 and 2 were completed for the current repository state on April 4, 2026. They remain ongoing maintenance requirements after that restoration pass.
+
 ## Phase 0: Re-establish truthful status tracking
 
 Goal:
@@ -133,7 +135,7 @@ Create a fully truthful control plane for self-host work.
 
 Required work:
 
-- add `docs/selfhost-canonical-migration-status.md`
+- maintain `docs/selfhost-canonical-migration-status.md`
 - document current ownership of `compiler/main.dt`, `compiler/driver/pipeline.dt`, `compiler/parser/**`, `compiler/typeck/**`, and `compiler/codegen/**`
 - mark every `host_*` bridge explicitly
 - mark every backend placeholder under `compiler/codegen/llvm/**`, `compiler/codegen/emit/**`, and related files
@@ -143,6 +145,11 @@ Exit criteria:
 
 - no self-host doc claims a stage is "done" when it still depends on a host bridge
 - every missing or placeholder stage is visible in one status document
+
+Status on April 4, 2026:
+
+- `docs/selfhost-canonical-migration-status.md` has been restored as the Phase 0 status sheet
+- repo-level self-host docs should describe `compiler/` as a real in-tree rewrite that is still subordinate to `crates/`
 
 ## Phase 1: Freeze parity contracts between Rust and Draton
 
@@ -384,8 +391,8 @@ The current "blocked bootstrap" state must become a tracked failure class with a
 
 The next practical sequence for implementation should be:
 
-1. Restore `docs/selfhost-canonical-migration-status.md`.
-2. Mark every host bridge and backend placeholder explicitly.
+1. Keep `docs/selfhost-canonical-migration-status.md` current.
+2. Mark every host bridge and backend placeholder explicitly when they change.
 3. Make parser parity runnable without `host_parse_json`.
 4. Make typechecker parity runnable without `host_type_json`.
 5. Port ownership parity fully.

@@ -24,7 +24,7 @@ In the Rust compiler/tooling path:
 - default mode keeps legacy inline type syntax working and emits deprecation warnings
 - `drat build --strict-syntax` and `drat run --strict-syntax` turn the same deprecated forms into hard errors
 
-No in-tree self-host compiler source currently ships in this repository. Canonical syntax enforcement therefore applies to the Rust frontend/tooling path today, and any future self-host rewrite should start from the same canonical surface instead of reviving compatibility-form syntax.
+An in-tree self-host rewrite now lives under `compiler/`, but canonical syntax enforcement is still authoritative in the Rust frontend/tooling path today. The self-host stage0 pipeline currently runs `lex_json` in Draton while `parse_json`, `typeck_json`, and `build_json` still bridge through Rust host builtins, so the rewrite must keep matching the same canonical surface instead of reviving compatibility-form syntax.
 
 ## Canonical replacements
 
@@ -122,4 +122,4 @@ Repository status tracking for future self-host work:
 Current CI status:
 
 - strict syntax is enforced through Rust frontend/tooling checks such as `drat build --strict-syntax`
-- there is no active self-host syntax subset or bootstrap gate until a new self-host implementation is introduced
+- the repository also exercises an in-tree self-host stage0 surface, but that surface is not a separate syntax authority while host bridges remain in use

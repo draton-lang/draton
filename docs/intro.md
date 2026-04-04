@@ -71,4 +71,4 @@ Draton has stabilized its canonical syntax and ships an early tooling preview wi
 - language server
 - strict syntax enforcement
 
-The Rust frontend/tooling path is the only active in-tree compiler implementation right now. The previous self-host tree was retired while a rewrite is prepared.
+The Rust frontend/tooling path remains the authoritative compiler implementation. An in-tree self-host rewrite now exists under `compiler/`, but it is still a parity and bootstrap track rather than the public toolchain path.

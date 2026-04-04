@@ -155,7 +155,7 @@ When in doubt, prefer syntax that keeps code visually simple and pushes contract
 
 The Rust frontend/tooling path is the authoritative implementation of the canonical syntax rules.
 
-No in-tree self-host compiler source is currently shipped while the compiler rewrite is being prepared. Contributors should not imply that a retired `src/` mirror still defines or verifies canonical syntax.
+An in-tree self-host rewrite now exists under `compiler/`, but it does not define or verify canonical syntax while the Rust frontend/tooling path remains authoritative. Contributors should not imply that the retired `src/` mirror still defines or verifies canonical syntax.
 
 ## Authority of this document
 

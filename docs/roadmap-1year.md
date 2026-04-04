@@ -13,7 +13,7 @@ Draton has completed its syntax-stabilization phase for the Rust frontend/toolin
 - canonical syntax is defined and documented
 - deprecated inline type syntax is in compatibility mode, with strict enforcement available
 - the Rust frontend/tooling path is authoritative
-- the historical self-host tree has been retired while a rewrite is prepared
+- the historical `src/` self-host mirror has been retired, and the current rewrite now lives under `compiler/`
 - `src/` now belongs to the docs site rather than compiler code
 
 This means Draton is no longer primarily in a syntax-definition phase. It is entering a tooling, ecosystem, and performance phase.
@@ -49,7 +49,7 @@ Concrete engineering steps:
 - add formatter regression coverage for canonical syntax forms
 - improve deprecation diagnostics so compatibility-mode warnings stay actionable and concise
 - add more LSP smoke and integration tests around canonical syntax constructs
-- keep syntax/tooling CI fast and trustworthy while the self-host rewrite is out of tree
+- keep syntax/tooling CI fast and trustworthy while the in-tree self-host rewrite is still bridged through Rust for major stages
 - make docs/examples consistently runnable from the repository root
 
 Expected outcome:
@@ -88,7 +88,7 @@ Priority work:
 
 - improve type inference performance on larger programs
 - improve code generation performance and backend throughput
-- reduce future self-host bootstrap time once the rewrite exists
+- reduce future self-host bootstrap time as the rewrite matures
 - introduce incremental or cache-aware build capabilities where technically justified
 
 Concrete engineering steps:
