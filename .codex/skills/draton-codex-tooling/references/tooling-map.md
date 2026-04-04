@@ -10,6 +10,12 @@
 - [`.codex/tools/list_tools.py`](../../../../.codex/tools/list_tools.py)
 - [`.codex/tools/cleanup_tool_state.py`](../../../../.codex/tools/cleanup_tool_state.py)
 
+## Default policy
+
+- For non-trivial command execution, choose a local tool first.
+- Use raw shell directly only for lightweight inspection or when the local tool suite does not cover the task yet.
+- Avoid uncontrolled process spawning when `run_guarded.py` or a more specific local tool can do the work.
+
 ## When to use `run_guarded.py`
 
 Use it for:

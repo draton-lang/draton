@@ -39,7 +39,10 @@ This repository defines and protects the Draton language and its tooling. Treat 
 ## Local Codex tools
 
 - Repository-local Codex tools live under `.codex/tools/`.
-- Prefer guarded local tools over raw long-running shell commands when the task may consume significant time, memory, CPU, or process slots.
+- Default to repository-local tools for command execution whenever the action is more than a trivial quick read.
+- Prefer guarded local tools over raw shell commands when the task may consume significant time, memory, CPU, or process slots.
+- Use raw shell execution directly only for lightweight inspection or when the local tool suite does not cover the job yet.
+- Do not spawn uncontrolled long-running processes when a local guarded tool can perform the work instead.
 - Use the matching local tooling skill implicitly when command execution strategy matters.
 
 ## Non-negotiable language rules
