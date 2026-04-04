@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Codex Tooling"
+  short_description: "Use guarded local Codex tools."
+  default_prompt: "Use $draton-codex-tooling to pick guarded local tools for Draton work."
+policy:
+  allow_implicit_invocation: true

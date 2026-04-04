@@ -36,6 +36,12 @@ This repository defines and protects the Draton language and its tooling. Treat 
 - Use matching local skills implicitly; do not wait for the user to name them explicitly.
 - Keep local skills concise, triggerable by real task wording, and aligned with the policies in this file.
 
+## Local Codex tools
+
+- Repository-local Codex tools live under `.codex/tools/`.
+- Prefer guarded local tools over raw long-running shell commands when the task may consume significant time, memory, CPU, or process slots.
+- Use the matching local tooling skill implicitly when command execution strategy matters.
+
 ## Non-negotiable language rules
 
 - Preserve readability-first code.
