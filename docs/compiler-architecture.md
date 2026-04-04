@@ -217,6 +217,7 @@ Current boundary:
 - the self-host tree is exercised through Rust stage0 parity and bootstrap scaffolding, not as the public toolchain entrypoint
 - `compiler/main.dt` and `compiler/driver/pipeline.dt` are the live stage0 entrypoints
 - `compiler/driver/pipeline.dt` currently implements `lex_json` in Draton, while `parse_json`, `typeck_json`, and `build_json` still bridge through `host_parse_json`, `host_type_json`, and `host_build_json`
+- `crates/drat/src/commands/selfhost_stage0.rs` now freezes the hidden stage0 oracle output into the versioned envelope `draton.selfhost.stage0/v1`; this improves parity gating, but it does not move authority away from the Rust crates or remove the host bridges
 
 The current migration status is documented in [selfhost-canonical-migration-status.md](selfhost-canonical-migration-status.md).
 

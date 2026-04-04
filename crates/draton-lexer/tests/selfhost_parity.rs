@@ -41,9 +41,7 @@ fn lexer_selfhost_parity() {
         checked_files += 1;
     }
 
-    println!(
-        "checked {checked_files} files, skipped {skipped_files} expected-error fixtures"
-    );
+    println!("checked {checked_files} files, skipped {skipped_files} expected-error fixtures");
 }
 
 fn repo_root() -> PathBuf {
@@ -51,7 +49,12 @@ fn repo_root() -> PathBuf {
         .parent()
         .and_then(Path::parent)
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| panic!("failed to derive repo root from {}", env!("CARGO_MANIFEST_DIR")))
+        .unwrap_or_else(|| {
+            panic!(
+                "failed to derive repo root from {}",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        })
 }
 
 fn collect_source_files(repo_root: &Path) -> Vec<PathBuf> {
@@ -73,9 +76,8 @@ fn collect_dt_files(root: &Path, files: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(root)
         .unwrap_or_else(|err| panic!("failed to read directory {}: {err}", root.display()));
     for entry in entries {
-        let entry = entry.unwrap_or_else(|err| {
-            panic!("failed to read entry under {}: {err}", root.display())
-        });
+        let entry = entry
+            .unwrap_or_else(|err| panic!("failed to read entry under {}: {err}", root.display()));
         let path = entry.path();
         if path.is_dir() {
             collect_dt_files(&path, files);
@@ -104,7 +106,12 @@ fn run_selfhost_lexer(repo_root: &Path, path: &Path) -> Vec<ComparableToken> {
                 .unwrap_or_else(|| panic!("non-utf8 path: {}", absolute_path.display())),
         ])
         .output()
-        .unwrap_or_else(|err| panic!("failed to run self-host lexer for {}: {err}", path.display()));
+        .unwrap_or_else(|err| {
+            panic!(
+                "failed to run self-host lexer for {}: {err}",
+                path.display()
+            )
+        });
 
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -126,13 +133,13 @@ fn run_selfhost_lexer(repo_root: &Path, path: &Path) -> Vec<ComparableToken> {
             String::from_utf8_lossy(&output.stdout)
         )
     });
-    let array = json
+    let result = expect_lex_envelope(path, &absolute_path, &json);
+    let array = result
         .get("tokens")
         .and_then(Value::as_array)
-        .or_else(|| json.as_array())
         .unwrap_or_else(|| {
             panic!(
-                "self-host lexer returned JSON without token array for {}\nstdout:\n{}",
+                "self-host lexer returned JSON without result.tokens array for {}\nstdout:\n{}",
                 path.display(),
                 String::from_utf8_lossy(&output.stdout)
             )
@@ -145,6 +152,63 @@ fn run_selfhost_lexer(repo_root: &Path, path: &Path) -> Vec<ComparableToken> {
         .collect()
 }
 
+fn expect_lex_envelope<'a>(
+    display_path: &Path,
+    absolute_path: &Path,
+    json: &'a Value,
+) -> &'a Value {
+    assert_eq!(
+        json["schema"],
+        Value::String("draton.selfhost.stage0/v1".to_string()),
+        "lexer parity contract break for {}: unexpected schema",
+        display_path.display()
+    );
+    assert_eq!(
+        json["stage"],
+        Value::String("lex".to_string()),
+        "lexer parity contract break for {}: unexpected stage",
+        display_path.display()
+    );
+    assert_eq!(
+        json["input_path"].as_str(),
+        Some(absolute_path.to_string_lossy().as_ref()),
+        "lexer parity contract break for {}: unexpected input_path",
+        display_path.display()
+    );
+    assert_eq!(
+        json["bridge"]["kind"],
+        Value::String("selfhost".to_string()),
+        "lexer parity contract break for {}: unexpected bridge kind",
+        display_path.display()
+    );
+    assert_eq!(
+        json["bridge"]["builtin"],
+        Value::Null,
+        "lexer parity contract break for {}: expected null bridge builtin",
+        display_path.display()
+    );
+    assert_eq!(
+        json["success"],
+        Value::Bool(true),
+        "lexer parity contract break for {}: expected success=true",
+        display_path.display()
+    );
+    let result = json.get("result").unwrap_or_else(|| {
+        panic!(
+            "lexer parity contract break for {}: missing result payload\n{}",
+            display_path.display(),
+            serde_json::to_string_pretty(json).unwrap_or_else(|_| json.to_string())
+        )
+    });
+    assert_eq!(
+        result["errors"],
+        Value::Array(Vec::new()),
+        "lexer parity contract break for {}: expected empty result.errors",
+        display_path.display()
+    );
+    result
+}
+
 fn comparable_token_from_json(path: &Path, index: usize, token: &Value) -> ComparableToken {
     let kind = token
         .get("kind")
@@ -154,19 +218,23 @@ fn comparable_token_from_json(path: &Path, index: usize, token: &Value) -> Compa
     let lexeme = token
         .get("lexeme")
         .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("missing string lexeme for {} token #{index}", path.display()))
+        .unwrap_or_else(|| {
+            panic!(
+                "missing string lexeme for {} token #{index}",
+                path.display()
+            )
+        })
         .to_string();
-    let span = token.get("span");
     let line = token
-        .get("line")
+        .get("span")
+        .and_then(|value| value.get("line"))
         .and_then(Value::as_u64)
-        .or_else(|| span.and_then(|value| value.get("line")).and_then(Value::as_u64))
         .unwrap_or_else(|| panic!("missing numeric line for {} token #{index}", path.display()))
         as usize;
     let col = token
-        .get("col")
+        .get("span")
+        .and_then(|value| value.get("col"))
         .and_then(Value::as_u64)
-        .or_else(|| span.and_then(|value| value.get("col")).and_then(Value::as_u64))
         .unwrap_or_else(|| panic!("missing numeric col for {} token #{index}", path.display()))
         as usize;
     (kind, lexeme, line, col)

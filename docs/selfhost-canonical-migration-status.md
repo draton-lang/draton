@@ -14,6 +14,19 @@ This document is the canonical status sheet for the in-tree self-host compiler w
 
 ## Current stage summary
 
+### Phase 1 parity contract freeze
+
+The current Phase 1 outcome is a frozen oracle surface for the stages that already exist in stage0. This is a parity-contract milestone, not a frontend-complete or backend-complete milestone.
+
+- `drat selfhost-stage0 lex`, `parse`, `typeck`, and `build` now target one versioned envelope shape: `draton.selfhost.stage0/v1`.
+- The frozen envelope fields are `schema`, `stage`, `input_path`, `bridge`, `success`, `result`, and `error`.
+- The frozen stage artifacts are:
+  - lexer: token stream plus lex diagnostics
+  - parser: lex diagnostics plus parse diagnostics, parse warnings, and AST program payload
+  - typechecker: lex diagnostics, parse diagnostics, parse warnings, type diagnostics, type warnings, and typed program payload
+  - build: output artifact paths plus machine-readable build failure payload
+- This does not mean parser, typechecker, ownership, or backend parity is complete. It only means the Rust-authoritative oracle surface for the current stage0 path is now explicit and machine-checkable.
+
 ### Lexer parity
 
 - Current status: partially real in Draton; Rust is still authoritative.
@@ -22,6 +35,7 @@ This document is the canonical status sheet for the in-tree self-host compiler w
   - `compiler/lexer/lexer.dt`, `compiler/lexer/token.dt`, `compiler/lexer/errors.dt`, and `compiler/lexer/result.dt` contain a real lexer rewrite.
   - `compiler/driver/pipeline.dt` implements `lex_json` in Draton and does not call a `host_lex_json` bridge.
   - `compiler/main.dt` exposes the `lex` stage0 entrypoint.
+  - `crates/drat/src/commands/selfhost_stage0.rs` normalizes `lex` output into the frozen `draton.selfhost.stage0/v1` envelope so CI can diff the lexer oracle without shape fallbacks.
 - What still bridges to host Rust:
   - Bootstrap and execution still depend on `crates/drat/src/commands/selfhost_stage0.rs`, which builds the stage0 binary with the Rust toolchain.
   - The compiled stage0 binary still runs on the Rust-owned codegen/runtime stack from `crates/`.
@@ -43,6 +57,7 @@ This document is the canonical status sheet for the in-tree self-host compiler w
 - What still bridges to host Rust:
   - `compiler/driver/pipeline.dt` implements `parse_json` by calling `host_parse_json(path)`.
   - `crates/draton-runtime/src/lib.rs` implements `host_parse_json_path` and exports `draton_host_parse_json`.
+  - `crates/drat/src/commands/selfhost_stage0.rs` can freeze the parser oracle envelope, but it does not remove the `host_parse_json` bridge underneath.
 - Blockers:
   - `compiler/driver/pipeline.dt` still hard-codes the `host_parse_json` bridge.
   - `crates/draton-runtime/src/lib.rs` still serializes parser JSON from the Rust parser.
@@ -62,6 +77,7 @@ This document is the canonical status sheet for the in-tree self-host compiler w
 - What still bridges to host Rust:
   - `compiler/driver/pipeline.dt` implements `typeck_json` by calling `host_type_json(path, strict_flag(strict_syntax))`.
   - `crates/draton-runtime/src/lib.rs` implements `host_type_json_path` and exports `draton_host_type_json`.
+  - `crates/drat/src/commands/selfhost_stage0.rs` can freeze the typechecker oracle envelope, but it does not remove the `host_type_json` bridge underneath.
 - Blockers:
   - `compiler/driver/pipeline.dt` still hard-codes the `host_type_json` bridge.
   - `crates/draton-runtime/src/lib.rs` still runs the Rust parser and Rust typechecker for typecheck JSON output.
@@ -117,7 +133,7 @@ This document is the canonical status sheet for the in-tree self-host compiler w
 - Source of truth: `crates/drat/src/commands/selfhost_stage0.rs`, `crates/drat/tests/selfhost_stage0.rs`, and `.github/workflows/ci.yml`.
 - What is already real:
   - `crates/drat/src/commands/selfhost_stage0.rs` builds and runs the `compiler/` tree through the hidden `drat selfhost-stage0` command.
-  - `crates/drat/tests/selfhost_stage0.rs` validates machine-readable `lex`, `typeck`, and `build` envelopes.
+  - `crates/drat/tests/selfhost_stage0.rs` validates machine-readable `lex`, `parse`, `typeck`, and `build` envelopes, including stable build-failure payloads.
   - `.github/workflows/ci.yml` includes a workflow-dispatch path that runs stage0 commands and uploads artifacts.
   - `crates/draton-runtime/src/lib.rs` provides a fallback/rescue path that can build or reuse the Rust `drat` binary.
 - What still bridges to host Rust:
@@ -127,7 +143,7 @@ This document is the canonical status sheet for the in-tree self-host compiler w
 - Blockers:
   - `crates/drat/src/commands/selfhost_stage0.rs` still owns stage0 bootstrap and cache layout.
   - `crates/draton-runtime/src/lib.rs` still owns the host fallback compiler path.
-  - `.github/workflows/ci.yml` only proves a narrow stage0 smoke surface.
+  - `.github/workflows/ci.yml` now proves the frozen stage0 envelope plus lexer parity in the remote Phase 1 job, but parser parity remains an opt-in remote slice because the underlying parser stage is still host-bridged and heavier.
   - `docs/benchmarks/gc-results-2026-03-17.md` records the current bootstrap workload as blocked by `LLVM ERROR: unknown special variable`.
 - Exit criteria:
   - Stage0 commands expose deterministic parity envelopes for every intended frontend stage.

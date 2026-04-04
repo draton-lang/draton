@@ -31,10 +31,18 @@ fn parser_selfhost_parity() {
             continue;
         }
 
-        let rust_program = serde_json::to_value(&parse_result.program)
-            .unwrap_or_else(|err| panic!("failed to serialize rust AST for {}: {err}", path.display()));
-        let selfhost_program = run_selfhost_parser(&repo_root, &path);
-        assert_json_match(&path, &rust_program, &selfhost_program);
+        let rust_program = serde_json::to_value(&parse_result.program).unwrap_or_else(|err| {
+            panic!("failed to serialize rust AST for {}: {err}", path.display())
+        });
+        let rust_warnings = serde_json::to_value(&parse_result.warnings).unwrap_or_else(|err| {
+            panic!(
+                "failed to serialize rust warnings for {}: {err}",
+                path.display()
+            )
+        });
+        let (selfhost_program, selfhost_warnings) = run_selfhost_parser(&repo_root, &path);
+        assert_json_match(&path, "program", &rust_program, &selfhost_program);
+        assert_json_match(&path, "parse_warnings", &rust_warnings, &selfhost_warnings);
         checked_files += 1;
     }
 
@@ -48,7 +56,12 @@ fn repo_root() -> PathBuf {
         .parent()
         .and_then(Path::parent)
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| panic!("failed to derive repo root from {}", env!("CARGO_MANIFEST_DIR")))
+        .unwrap_or_else(|| {
+            panic!(
+                "failed to derive repo root from {}",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        })
 }
 
 fn collect_source_files(repo_root: &Path) -> Vec<PathBuf> {
@@ -70,9 +83,8 @@ fn collect_dt_files(root: &Path, files: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(root)
         .unwrap_or_else(|err| panic!("failed to read directory {}: {err}", root.display()));
     for entry in entries {
-        let entry = entry.unwrap_or_else(|err| {
-            panic!("failed to read entry under {}: {err}", root.display())
-        });
+        let entry = entry
+            .unwrap_or_else(|err| panic!("failed to read entry under {}: {err}", root.display()));
         let path = entry.path();
         if path.is_dir() {
             collect_dt_files(&path, files);
@@ -82,7 +94,7 @@ fn collect_dt_files(root: &Path, files: &mut Vec<PathBuf>) {
     }
 }
 
-fn run_selfhost_parser(repo_root: &Path, path: &Path) -> Value {
+fn run_selfhost_parser(repo_root: &Path, path: &Path) -> (Value, Value) {
     let absolute_path = path
         .canonicalize()
         .unwrap_or_else(|err| panic!("failed to canonicalize {}: {err}", path.display()));
@@ -95,12 +107,18 @@ fn run_selfhost_parser(repo_root: &Path, path: &Path) -> Value {
             "--",
             "selfhost-stage0",
             "parse",
+            "--json",
             absolute_path
                 .to_str()
                 .unwrap_or_else(|| panic!("non-utf8 path: {}", absolute_path.display())),
         ])
         .output()
-        .unwrap_or_else(|err| panic!("failed to run self-host parser for {}: {err}", path.display()));
+        .unwrap_or_else(|err| {
+            panic!(
+                "failed to run self-host parser for {}: {err}",
+                path.display()
+            )
+        });
 
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -123,58 +141,92 @@ fn run_selfhost_parser(repo_root: &Path, path: &Path) -> Value {
         )
     });
 
-    extract_program_value(path, &json)
+    extract_parse_payload(path, &absolute_path, &json)
 }
 
-fn extract_program_value(path: &Path, json: &Value) -> Value {
-    if let Some(ok) = json.get("ok").and_then(Value::as_bool) {
-        if !ok {
-            let error = json
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown self-host parser error");
-            panic!("self-host parser reported failure for {}: {}", path.display(), error);
-        }
-
-        if let Some(value) = json.get("value") {
-            return extract_program_value(path, value);
-        }
-    }
-
-    if let Some(program) = json.get("parse_result").and_then(|value| value.get("program")) {
-        return program.clone();
-    }
-    if let Some(program) = json.get("program") {
-        return program.clone();
-    }
-
-    if let Some(object) = json.as_object() {
-        if object.contains_key("ok") {
-            for (key, value) in object {
-                if key != "ok" && key != "error" {
-                    return extract_program_value(path, value);
-                }
-            }
-        }
-    }
-
-    panic!(
-        "self-host parser JSON did not contain a program payload for {}\nstdout:\n{}",
-        path.display(),
-        serde_json::to_string_pretty(json).unwrap_or_else(|_| json.to_string())
+fn extract_parse_payload(path: &Path, absolute_path: &Path, json: &Value) -> (Value, Value) {
+    assert_eq!(
+        json["schema"],
+        Value::String("draton.selfhost.stage0/v1".to_string()),
+        "parser parity contract break for {}: unexpected schema",
+        path.display()
     );
+    assert_eq!(
+        json["stage"],
+        Value::String("parse".to_string()),
+        "parser parity contract break for {}: unexpected stage",
+        path.display()
+    );
+    assert_eq!(
+        json["input_path"].as_str(),
+        Some(absolute_path.to_string_lossy().as_ref()),
+        "parser parity contract break for {}: unexpected input_path",
+        path.display()
+    );
+    assert_eq!(
+        json["bridge"]["kind"],
+        Value::String("host".to_string()),
+        "parser parity contract break for {}: unexpected bridge kind",
+        path.display()
+    );
+    assert_eq!(
+        json["bridge"]["builtin"],
+        Value::String("host_parse_json".to_string()),
+        "parser parity contract break for {}: unexpected bridge builtin",
+        path.display()
+    );
+    assert_eq!(
+        json["success"],
+        Value::Bool(true),
+        "parser parity contract break for {}: expected success=true",
+        path.display()
+    );
+
+    let result = json.get("result").unwrap_or_else(|| {
+        panic!(
+            "parser parity contract break for {}: missing result payload\n{}",
+            path.display(),
+            serde_json::to_string_pretty(json).unwrap_or_else(|_| json.to_string())
+        )
+    });
+    assert_eq!(
+        result["lex_errors"],
+        Value::Array(Vec::new()),
+        "parser parity contract break for {}: expected empty lex_errors",
+        path.display()
+    );
+    assert_eq!(
+        result["parse_errors"],
+        Value::Array(Vec::new()),
+        "parser parity contract break for {}: expected empty parse_errors",
+        path.display()
+    );
+
+    (
+        result.get("program").cloned().unwrap_or(Value::Null),
+        result
+            .get("parse_warnings")
+            .cloned()
+            .unwrap_or_else(|| Value::Array(Vec::new())),
+    )
 }
 
-fn assert_json_match(path: &Path, rust_program: &Value, selfhost_program: &Value) {
+fn assert_json_match(path: &Path, label: &str, rust_program: &Value, selfhost_program: &Value) {
     if rust_program == selfhost_program {
         return;
     }
 
-    let diff = first_json_diff("program", rust_program, selfhost_program)
-        .unwrap_or_else(|| JsonDiff::new("program".to_string(), Some(rust_program.clone()), Some(selfhost_program.clone())));
+    let diff = first_json_diff(label, rust_program, selfhost_program).unwrap_or_else(|| {
+        JsonDiff::new(
+            label.to_string(),
+            Some(rust_program.clone()),
+            Some(selfhost_program.clone()),
+        )
+    });
     panic!(
-        "parser parity mismatch for {}\nfirst differing path: {}\nrust: {}\nselfhost: {}",
+        "parser parity mismatch for {}\nlabel: {}\nfirst differing path: {}\nrust: {}\nselfhost: {}",
         path.display(),
+        label,
         diff.path,
         display_json_side(diff.left.as_ref()),
         display_json_side(diff.right.as_ref())

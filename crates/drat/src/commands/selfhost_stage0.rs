@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{anyhow, bail, Context, Result};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::commands::build::{self, BuildRequest, Profile};
 
@@ -37,6 +37,7 @@ pub(crate) fn run(cwd: &Path, command: SelfhostStage0Command) -> Result<()> {
     let stage0_binary = build_stage0_binary(&command)?;
     let pretty = wants_pretty_json(&command);
     let args = stage0_args(cwd, &command);
+    let input_path = stage0_input_path(cwd, &command);
     let output = Command::new(&stage0_binary)
         .current_dir(cwd)
         .args(&args)
@@ -65,7 +66,8 @@ pub(crate) fn run(cwd: &Path, command: SelfhostStage0Command) -> Result<()> {
         bail!(message);
     }
 
-    let json: Value = parse_stage0_json(&output.stdout)?;
+    let payload = parse_stage0_json(&output.stdout)?;
+    let json = stage0_envelope(&command, &input_path, payload)?;
     if pretty {
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
@@ -75,32 +77,256 @@ pub(crate) fn run(cwd: &Path, command: SelfhostStage0Command) -> Result<()> {
 }
 
 fn parse_stage0_json(stdout: &[u8]) -> Result<Value> {
-    match serde_json::from_slice(stdout) {
-        Ok(json) => Ok(json),
-        Err(primary_error) => {
-            let normalized = normalize_stage0_json(stdout);
-            serde_json::from_slice(&normalized).map_err(|normalized_error| {
-                anyhow!(
-                    "selfhost stage0 returned invalid JSON: {primary_error}; normalized parse also failed: {normalized_error}"
-                )
-            })
+    let mut value: Value = serde_json::from_slice(stdout)
+        .map_err(|error| anyhow!("selfhost stage0 returned invalid JSON: {error}"))?;
+    for depth in 0..=2 {
+        match value {
+            Value::String(inner) => {
+                let trimmed = inner.trim();
+                if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+                    bail!("selfhost stage0 returned a JSON string instead of an object/array");
+                }
+                value = serde_json::from_str(trimmed).map_err(|error| {
+                    anyhow!(
+                        "selfhost stage0 returned nested JSON string at depth {} that failed to parse: {}",
+                        depth + 1,
+                        error
+                    )
+                })?;
+            }
+            other => return Ok(other),
         }
+    }
+
+    bail!("selfhost stage0 returned excessively nested JSON string payloads")
+}
+
+fn stage0_envelope(
+    command: &SelfhostStage0Command,
+    input_path: &Path,
+    payload: Value,
+) -> Result<Value> {
+    let (success, result) = match command {
+        SelfhostStage0Command::Lex { .. } => normalize_lex_payload(payload)?,
+        SelfhostStage0Command::Parse { .. } => normalize_parse_payload(payload)?,
+        SelfhostStage0Command::Typeck { .. } => normalize_typeck_payload(payload)?,
+        SelfhostStage0Command::Build { .. } => normalize_build_payload(payload)?,
+    };
+    Ok(json!({
+        "schema": "draton.selfhost.stage0/v1",
+        "stage": stage_name(command),
+        "input_path": input_path.display().to_string(),
+        "bridge": stage0_bridge(command),
+        "success": success,
+        "result": result,
+        "error": Value::Null,
+    }))
+}
+
+fn normalize_lex_payload(payload: Value) -> Result<(bool, Value)> {
+    let payload = expect_object(payload, "lex payload")?;
+    let tokens = expect_array_field(&payload, "lex", "tokens")?;
+    let errors = expect_array_field(&payload, "lex", "errors")?;
+    let success = errors.is_empty();
+    Ok((
+        success,
+        json!({
+            "tokens": tokens,
+            "errors": errors,
+        }),
+    ))
+}
+
+fn normalize_parse_payload(payload: Value) -> Result<(bool, Value)> {
+    let payload = expect_object(payload, "parse payload")?;
+    let lex_errors = expect_array_field(&payload, "parse", "lex_errors")?;
+    let parse_result = optional_object_field(&payload, "parse", "parse_result")?;
+    let (parse_errors, parse_warnings, program) = match parse_result {
+        Some(parse_result) => (
+            expect_array_field(&parse_result, "parse", "parse_result.errors")?,
+            expect_array_field(&parse_result, "parse", "parse_result.warnings")?,
+            expect_optional_field(&parse_result, "program"),
+        ),
+        None => (Vec::new(), Vec::new(), Value::Null),
+    };
+    let success = lex_errors.is_empty() && parse_errors.is_empty();
+    Ok((
+        success,
+        json!({
+            "lex_errors": lex_errors,
+            "parse_errors": parse_errors,
+            "parse_warnings": parse_warnings,
+            "program": program,
+        }),
+    ))
+}
+
+fn normalize_typeck_payload(payload: Value) -> Result<(bool, Value)> {
+    let payload = expect_object(payload, "typeck payload")?;
+    let lex_errors = expect_array_field(&payload, "typeck", "lex_errors")?;
+    let parse_errors = expect_array_field(&payload, "typeck", "parse_errors")?;
+    let parse_warnings = expect_array_field(&payload, "typeck", "parse_warnings")?;
+    let typecheck_result = optional_object_field(&payload, "typeck", "typecheck_result")?;
+    let (type_errors, type_warnings, typed_program) = match typecheck_result {
+        Some(typecheck_result) => (
+            expect_array_field(&typecheck_result, "typeck", "typecheck_result.errors")?,
+            expect_array_field(&typecheck_result, "typeck", "typecheck_result.warnings")?,
+            expect_optional_field(&typecheck_result, "typed_program"),
+        ),
+        None => (Vec::new(), Vec::new(), Value::Null),
+    };
+    let success = lex_errors.is_empty() && parse_errors.is_empty() && type_errors.is_empty();
+    Ok((
+        success,
+        json!({
+            "lex_errors": lex_errors,
+            "parse_errors": parse_errors,
+            "parse_warnings": parse_warnings,
+            "type_errors": type_errors,
+            "type_warnings": type_warnings,
+            "typed_program": typed_program,
+        }),
+    ))
+}
+
+fn normalize_build_payload(payload: Value) -> Result<(bool, Value)> {
+    let payload = expect_object(payload, "build payload")?;
+    let success = expect_bool_field(&payload, "build", "ok")?;
+    let output = match payload.get("output") {
+        Some(Value::Object(_)) => payload.get("output").cloned().unwrap_or(Value::Null),
+        Some(Value::Null) | None => Value::Null,
+        Some(other) => bail!(
+            "selfhost stage0 build contract break: expected output to be object or null, found {}",
+            json_kind(other)
+        ),
+    };
+    let error = match payload.get("error") {
+        Some(Value::Null) | None => Value::Null,
+        Some(Value::String(message)) => json!({
+            "kind": "build_failed",
+            "message": message,
+        }),
+        Some(other) => bail!(
+            "selfhost stage0 build contract break: expected error to be string or null, found {}",
+            json_kind(other)
+        ),
+    };
+    if success && output.is_null() {
+        bail!("selfhost stage0 build contract break: ok=true requires output payload");
+    }
+    if success && !error.is_null() {
+        bail!("selfhost stage0 build contract break: ok=true requires error=null");
+    }
+    if !success && error.is_null() {
+        bail!("selfhost stage0 build contract break: ok=false requires error payload");
+    }
+    Ok((
+        success,
+        json!({
+            "output": output,
+            "error": error,
+        }),
+    ))
+}
+
+fn expect_object(value: Value, context: &str) -> Result<serde_json::Map<String, Value>> {
+    match value {
+        Value::Object(object) => Ok(object),
+        other => bail!(
+            "selfhost stage0 contract break in {context}: expected object, found {}",
+            json_kind(&other)
+        ),
     }
 }
 
-fn normalize_stage0_json(stdout: &[u8]) -> Vec<u8> {
-    let mut normalized = Vec::with_capacity(stdout.len());
-    let mut index = 0;
-    while index < stdout.len() {
-        if stdout[index] == b'\\' && index + 1 < stdout.len() && stdout[index + 1] == b'"' {
-            normalized.push(b'"');
-            index += 2;
-        } else {
-            normalized.push(stdout[index]);
-            index += 1;
-        }
+fn expect_array_field(
+    object: &serde_json::Map<String, Value>,
+    stage: &str,
+    field: &str,
+) -> Result<Vec<Value>> {
+    match object.get(field) {
+        Some(Value::Array(items)) => Ok(items.clone()),
+        Some(other) => bail!(
+            "selfhost stage0 {stage} contract break: expected {field} to be array, found {}",
+            json_kind(other)
+        ),
+        None => bail!("selfhost stage0 {stage} contract break: missing {field}"),
     }
-    normalized
+}
+
+fn expect_bool_field(
+    object: &serde_json::Map<String, Value>,
+    stage: &str,
+    field: &str,
+) -> Result<bool> {
+    match object.get(field) {
+        Some(Value::Bool(value)) => Ok(*value),
+        Some(other) => bail!(
+            "selfhost stage0 {stage} contract break: expected {field} to be bool, found {}",
+            json_kind(other)
+        ),
+        None => bail!("selfhost stage0 {stage} contract break: missing {field}"),
+    }
+}
+
+fn optional_object_field(
+    object: &serde_json::Map<String, Value>,
+    stage: &str,
+    field: &str,
+) -> Result<Option<serde_json::Map<String, Value>>> {
+    match object.get(field) {
+        Some(Value::Object(value)) => Ok(Some(value.clone())),
+        Some(Value::Null) | None => Ok(None),
+        Some(other) => bail!(
+            "selfhost stage0 {stage} contract break: expected {field} to be object or null, found {}",
+            json_kind(other)
+        ),
+    }
+}
+
+fn expect_optional_field(object: &serde_json::Map<String, Value>, field: &str) -> Value {
+    object.get(field).cloned().unwrap_or(Value::Null)
+}
+
+fn json_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+fn stage_name(command: &SelfhostStage0Command) -> &'static str {
+    match command {
+        SelfhostStage0Command::Lex { .. } => "lex",
+        SelfhostStage0Command::Parse { .. } => "parse",
+        SelfhostStage0Command::Typeck { .. } => "typeck",
+        SelfhostStage0Command::Build { .. } => "build",
+    }
+}
+
+fn stage0_bridge(command: &SelfhostStage0Command) -> Value {
+    match command {
+        SelfhostStage0Command::Lex { .. } => json!({
+            "kind": "selfhost",
+            "builtin": Value::Null,
+        }),
+        SelfhostStage0Command::Parse { .. } => json!({
+            "kind": "host",
+            "builtin": "host_parse_json",
+        }),
+        SelfhostStage0Command::Typeck { .. } => json!({
+            "kind": "host",
+            "builtin": "host_type_json",
+        }),
+        SelfhostStage0Command::Build { .. } => json!({
+            "kind": "host",
+            "builtin": "host_build_json",
+        }),
+    }
 }
 
 fn wants_pretty_json(command: &SelfhostStage0Command) -> bool {
@@ -151,6 +377,15 @@ fn stage0_args(cwd: &Path, command: &SelfhostStage0Command) -> Vec<String> {
             bool_flag(request.strict_syntax),
             request.target.clone().unwrap_or_default(),
         ],
+    }
+}
+
+fn stage0_input_path(cwd: &Path, command: &SelfhostStage0Command) -> PathBuf {
+    match command {
+        SelfhostStage0Command::Lex { path, .. }
+        | SelfhostStage0Command::Parse { path, .. }
+        | SelfhostStage0Command::Typeck { path, .. }
+        | SelfhostStage0Command::Build { path, .. } => resolve_path(cwd, path),
     }
 }
 

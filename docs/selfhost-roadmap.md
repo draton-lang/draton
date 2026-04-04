@@ -169,9 +169,15 @@ Turn the Rust implementation into a precise oracle for the self-host rewrite.
 Required work:
 
 - define stable parity outputs for tokens, AST, parse diagnostics, type diagnostics, typed program data, ownership summaries, IR shape, and final binary behavior
+- freeze the stage0 oracle artifacts for the currently exposed stages:
+  - lexer: token stream plus lex diagnostics
+  - parser: lex diagnostics plus parse diagnostics, parse warnings, and AST program payload
+  - typechecker: lex diagnostics, parse diagnostics, parse warnings, type diagnostics, type warnings, and typed program payload
+  - build: output artifact paths plus machine-readable build failure payload
 - expand machine-readable parity fixtures instead of relying only on ad hoc smoke output
 - keep the Rust side authoritative while shrinking ambiguity
 - ensure `drat selfhost-stage0 lex|parse|typeck|build` has deterministic JSON envelopes
+- make the stage0 oracle envelope explicit and stable: `schema`, `stage`, `input_path`, `bridge`, `success`, `result`, `error`
 
 Key files:
 
@@ -183,6 +189,7 @@ Key files:
 Exit criteria:
 
 - every frontend stage has golden parity fixtures
+- stage0 oracle envelopes are stable enough to diff directly in CI without ad hoc fallback parsing
 - parity failures report the first semantic difference, not just "command failed"
 
 ## Phase 2: Finish frontend parity in Draton

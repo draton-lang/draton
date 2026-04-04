@@ -121,6 +121,10 @@ jobs:
           cargo test -p draton-typeck --test errors
           cargo test -p drat --test selfhost_stage0 -- --nocapture
 
+      - name: Run lexer parity oracle
+        shell: bash
+        run: cargo test -p draton-lexer --test selfhost_parity -- --ignored --nocapture
+
       - name: Run baseline self-host commands
         shell: bash
         run: |
@@ -136,6 +140,7 @@ jobs:
           DRATON_SELFHOST_STAGE0_PARSE_SLICE: "1"
         run: |
           timeout 20m cargo run -p drat -- selfhost-stage0 parse --json examples/hello.dt | tee .artifacts/selfhost-phase1/parse.json
+          timeout 20m cargo test -p draton-parser --test selfhost_parity -- --ignored --nocapture
 
       - name: Run packaged release smoke
         if: ${{ inputs.release_smoke }}
