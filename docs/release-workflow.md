@@ -2,6 +2,22 @@
 
 The release pipeline is defined in `.github/workflows/release.yml`.
 
+## Branch promotion policy
+
+Draton uses three long-lived branches:
+
+- `dev` for active development and frequent integration
+- `unstable` for release-candidate style validation and broader testing
+- `main` for code that is already considered stable
+
+The expected promotion path is:
+
+```text
+dev -> unstable -> main
+```
+
+Release preparation should follow that flow. `main` is not the place to discover whether a change is safe; that confidence should already come from validation on `dev` and `unstable`.
+
 ## Trigger
 
 The workflow runs on:

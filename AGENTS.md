@@ -18,6 +18,17 @@ This repository defines and protects the Draton language and its tooling. Treat 
   - [docs/syntax-migration.md](docs/syntax-migration.md)
   - [docs/selfhost-canonical-migration-status.md](docs/selfhost-canonical-migration-status.md)
 
+## Branch strategy
+
+- `main` is the stable branch and the most important protected line in the repository.
+- Only push to `main` when the code has already proven stable through development, verification, and release-candidate testing.
+- `dev` is the active development branch. Ongoing coding, day-to-day fixes, feature work, and integration should land there first.
+- `unstable` is the pre-release validation branch. Promote code from `dev` into `unstable` for broader testing before considering `main`.
+- The intended promotion flow is `dev` -> `unstable` -> `main`.
+- Do not treat `unstable` as a long-term fork or alternate product direction. Its purpose is to validate what may become stable.
+- If a change has not been exercised enough to trust it for users, it does not belong on `main`.
+- When documenting release or contribution guidance, keep this branch policy consistent across repo docs.
+
 ## Non-negotiable language rules
 
 - Preserve readability-first code.

@@ -51,6 +51,23 @@ Tooling references:
 - [docs/tools/task.md](docs/tools/task.md)
 - [docs/tools/lsp.md](docs/tools/lsp.md)
 
+## Branch Workflow
+
+The repository uses three long-lived branches with a strict promotion order:
+
+- `main` is the stable branch and should only receive code that is genuinely ready to be treated as stable.
+- `dev` is the active development branch and is the default target for ongoing coding and frequent pushes.
+- `unstable` receives code promoted from `dev` for broader testing and release-candidate style validation.
+- Only changes that prove stable on `unstable` should be promoted into `main`.
+
+Promotion path:
+
+```text
+dev -> unstable -> main
+```
+
+Contributor guidance lives in [CONTRIBUTING.md](CONTRIBUTING.md), and release-facing details live in [docs/release-workflow.md](docs/release-workflow.md).
+
 ## Documentation Site
 
 The repository now includes a Docusaurus docs site for Draton’s public manual and contributor-facing architecture docs.
