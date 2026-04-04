@@ -24,11 +24,138 @@ class TypeCheckResult {
 fn type_check(program, mode) {
     let mut checker = TypeChecker.new()
     checker.deprecated_syntax_mode = mode
+    collect_deprecated_syntax(checker, program)
     extract_hints(checker, program.items)
     let typed_program = check_program(checker, program)
     return TypeCheckResult {
         typed_program: typed_program,
         errors: checker.errors,
         warnings: checker.warnings
+    }
+}
+
+fn collect_deprecated_syntax(checker, program) {
+    let mut index = 0
+    while index < program.items.len() {
+        collect_deprecated_item(checker, program.items[index])
+        index = index + 1
+    }
+}
+
+fn collect_deprecated_item(checker, item) {
+    if item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler {
+        collect_deprecated_fn(checker, item.fn_def)
+        return
+    }
+    if item.kind == Class {
+        let mut index = 0
+        while index < item.class_def.members.len() {
+            let member = item.class_def.members[index]
+            if member.kind == Method {
+                collect_deprecated_fn(checker, member.method)
+            } elif member.kind == Layer {
+                let mut layer_index = 0
+                while layer_index < member.layer_def.methods.len() {
+                    collect_deprecated_fn(checker, member.layer_def.methods[layer_index])
+                    layer_index = layer_index + 1
+                }
+            }
+            index = index + 1
+        }
+        return
+    }
+    if item.kind == Interface {
+        let mut index = 0
+        while index < item.interface_def.methods.len() {
+            collect_deprecated_fn(checker, item.interface_def.methods[index])
+            index = index + 1
+        }
+        return
+    }
+    if item.kind == Extern {
+        let mut index = 0
+        while index < item.extern_block.functions.len() {
+            collect_deprecated_fn(checker, item.extern_block.functions[index])
+            index = index + 1
+        }
+    }
+}
+
+fn collect_deprecated_fn(checker, function) {
+    let mut index = 0
+    while index < function.params.len() {
+        let param = function.params[index]
+        if param.type_hint != None {
+            checker.push_deprecated_syntax(
+                "inline function parameter type annotation '" + param.name + ": ...'",
+                "@type { " + function.name + ": (...) -> ReturnType }",
+                param.span
+            )
+        }
+        index = index + 1
+    }
+    if function.ret_type != None {
+        checker.push_deprecated_syntax(
+            "inline return type annotation for '" + function.name + "'",
+            "@type { " + function.name + ": (...) -> ReturnType }",
+            function.span
+        )
+    }
+    if function.body != None {
+        collect_deprecated_block(checker, function.body)
+    }
+}
+
+fn collect_deprecated_block(checker, block) {
+    let mut index = 0
+    while index < block.stmts.len() {
+        collect_deprecated_stmt(checker, block.stmts[index])
+        index = index + 1
+    }
+}
+
+fn collect_deprecated_stmt(checker, stmt) {
+    if stmt.kind == Let {
+        if stmt.value.type_hint != None {
+            checker.push_deprecated_syntax(
+                "inline let type annotation '" + stmt.value.name + ": ...'",
+                "@type { " + stmt.value.name + ": Type }",
+                stmt.value.span
+            )
+        }
+        return
+    }
+    if stmt.kind == If {
+        collect_deprecated_block(checker, stmt.value.then_branch)
+        if stmt.value.else_branch != None {
+            let else_branch = stmt.value.else_branch
+            if else_branch.kind == If {
+                collect_deprecated_block(checker, else_branch.if_branch.then_branch)
+            } else {
+                collect_deprecated_block(checker, else_branch.block)
+            }
+        }
+        return
+    }
+    if stmt.kind == For {
+        collect_deprecated_block(checker, stmt.value.body)
+        return
+    }
+    if stmt.kind == While {
+        collect_deprecated_block(checker, stmt.value.body)
+        return
+    }
+    if stmt.kind == Spawn {
+        if stmt.value.body.kind == Block {
+            collect_deprecated_block(checker, stmt.value.body.block)
+        }
+        return
+    }
+    if stmt.kind == Block || stmt.kind == UnsafeBlock || stmt.kind == PointerBlock || stmt.kind == ComptimeBlock {
+        collect_deprecated_block(checker, stmt.value)
+        return
+    }
+    if stmt.kind == IfCompile {
+        collect_deprecated_block(checker, stmt.value.body)
     }
 }

@@ -127,6 +127,7 @@ fn infer_stmt(checker, stmt) {
         }
     }
     if stmt.kind == GcConfig {
+        checker.push_deprecated_syntax("@gc_config has no effect", "Draton uses Inferred Ownership and has no GC runtime", stmt.span)
         let mut entries = []
         let mut index = 0
         while index < stmt.value.entries.len() {

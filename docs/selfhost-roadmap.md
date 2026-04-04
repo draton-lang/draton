@@ -13,7 +13,7 @@ Observed baseline:
 - `crates/` is the active source of truth for lexing, parsing, type checking, code generation, runtime ABI, CLI, packaging, and tests.
 - `compiler/` already contains a substantial Draton rewrite: lexer, AST, parser, type checker, driver scaffolding, and a large codegen tree.
 - `crates/drat/src/commands/selfhost_stage0.rs` builds and runs the `compiler/` tree through the hidden `drat selfhost-stage0` command.
-- `compiler/driver/pipeline.dt` currently implements `lex_json` and `parse_json` in Draton, while `typeck_json` and `build_json` still delegate to `host_type_json` and `host_build_json`.
+- `compiler/driver/pipeline.dt` currently implements `lex_json`, `parse_json`, and `typeck_json` in Draton, while `build_json` still delegates to `host_build_json`.
 - `crates/draton-runtime/src/lib.rs` provides those `host_*` builtins and can invoke the Rust `drat` binary as a fallback compiler path.
 - `compiler/codegen/llvm/*.dt` is still mostly placeholder code and is not a production backend yet.
 - CI already validates a small stage0 surface in `.github/workflows/ci.yml` and `crates/drat/tests/selfhost_stage0.rs`.
@@ -223,7 +223,8 @@ Exit criteria:
 Current status on April 4, 2026:
 
 - `selfhost-stage0 parse` is now routed through the Draton lexer/parser path and keeps the frozen stage0 envelope by emitting Rust-shaped parser JSON from `compiler/`.
-- `selfhost-stage0 typeck` still depends on `host_type_json`, so Phase 2 is not complete yet.
+- `selfhost-stage0 typeck` is now routed through the Draton lexer/parser/typechecker path and keeps the frozen stage0 envelope by emitting Rust-shaped typed-program JSON from `compiler/`.
+- The stage0 host-bridge removal part of Phase 2 is now complete, but Rust remains the parity oracle and ownership parity still belongs to Phase 3.
 
 ## Phase 3: Port inferred ownership fully into the self-host compiler
 
@@ -424,7 +425,7 @@ The next practical sequence for implementation should be:
 1. Keep `docs/selfhost-canonical-migration-status.md` current.
 2. Mark every host bridge and backend placeholder explicitly when they change.
 3. Keep parser parity runnable and truthful without `host_parse_json`.
-4. Make typechecker parity runnable without `host_type_json`.
+4. Expand typechecker parity coverage now that `host_type_json` is no longer on the stage0 path.
 5. Port ownership parity fully.
 6. Design the first real self-host backend target.
 7. Remove `host_build_json` from the default self-host path.

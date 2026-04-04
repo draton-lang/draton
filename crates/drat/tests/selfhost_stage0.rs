@@ -202,7 +202,7 @@ fn main() {
         "--json",
         src.to_str().expect("utf8 path"),
     ]);
-    let result = expect_envelope(&json, "typeck", &src, "host", Some("host_type_json"), true);
+    let result = expect_envelope(&json, "typeck", &src, "selfhost", None, true);
     assert!(result["lex_errors"].is_array(), "expected lex_errors array");
     assert!(
         result["parse_errors"].is_array(),
@@ -223,6 +223,60 @@ fn main() {
     assert!(
         result["typed_program"]["items"].is_array(),
         "expected typed program items"
+    );
+}
+
+#[test]
+fn typeck_json_respects_strict_syntax_deprecated_diagnostics() {
+    let dir = temp_case_dir("typeck_strict");
+    let src = dir.join("main.dt");
+    fs::write(
+        &src,
+        r#"
+fn add(a: Int) -> Int {
+    let value: Int = a
+    return value
+}
+"#,
+    )
+    .expect("write source");
+
+    let warn_json = run_stage0(&[
+        "selfhost-stage0",
+        "typeck",
+        "--json",
+        src.to_str().expect("utf8 path"),
+    ]);
+    let warn_result = expect_envelope(&warn_json, "typeck", &src, "selfhost", None, true);
+    assert_eq!(
+        warn_result["type_errors"],
+        Value::Array(Vec::new()),
+        "expected no strict-mode type errors"
+    );
+    assert!(
+        warn_result["type_warnings"]
+            .as_array()
+            .expect("type warnings array")
+            .iter()
+            .any(|warning| warning.get("DeprecatedSyntax").is_some()),
+        "expected DeprecatedSyntax warning in warn mode"
+    );
+
+    let strict_json = run_stage0(&[
+        "selfhost-stage0",
+        "typeck",
+        "--json",
+        "--strict-syntax",
+        src.to_str().expect("utf8 path"),
+    ]);
+    let strict_result = expect_envelope(&strict_json, "typeck", &src, "selfhost", None, false);
+    assert!(
+        strict_result["type_errors"]
+            .as_array()
+            .expect("type errors array")
+            .iter()
+            .any(|error| error.get("DeprecatedSyntax").is_some()),
+        "expected DeprecatedSyntax error in strict mode"
     );
 }
 

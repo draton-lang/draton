@@ -278,4 +278,33 @@ class TypeChecker {
     fn push_error(type_error) {
         self.errors.push(type_error)
     }
+
+    fn push_deprecated_syntax(syntax, replacement, span) {
+        let diagnostic = TypeError {
+            kind: DeprecatedSyntax,
+            name: None,
+            expected: None,
+            found: None,
+            hint: None,
+            field: None,
+            interface_name: None,
+            class_name: None,
+            method: None,
+            pattern: None,
+            missing: None,
+            syntax: Some(syntax),
+            replacement: Some(replacement),
+            expected_count: None,
+            got_count: None,
+            tuple_len: None,
+            pattern_len: None,
+            line: span.line,
+            col: span.col
+        }
+        if self.deprecated_syntax_mode == Warn {
+            self.warnings.push(diagnostic)
+            return
+        }
+        self.errors.push(diagnostic)
+    }
 }

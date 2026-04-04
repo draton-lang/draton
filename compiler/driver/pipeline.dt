@@ -1,4 +1,5 @@
 import { parse_stage_json } from driver.parse_stage
+import { typeck_stage_json } from driver.typeck_stage
 
 @type {
     strict_flag: (Bool) -> Int
@@ -864,7 +865,7 @@ fn parse_json(path) {
 }
 
 fn typeck_json(path, strict_syntax) {
-    return host_type_json(path, strict_flag(strict_syntax))
+    return typeck_stage_json(path, strict_syntax)
 }
 
 fn build_json(path, output, mode, strict_syntax, target) {

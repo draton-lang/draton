@@ -73,19 +73,24 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
 
 ### Typechecker parity
 
-- Current status: rewrite tree exists, but stage0 typechecker output still comes from the Rust host bridge.
+- Current status: stage0 typechecker output now comes from the self-host lexer/parser/typechecker path, but Rust remains the authoritative parity oracle and ownership parity is still not proven.
 - Source of truth: `crates/draton-typeck`.
 - What is already real:
   - `compiler/typeck/infer/`, `compiler/typeck/types/`, and `compiler/typeck/typed/` contain a real self-host typechecker tree.
   - `compiler/typeck/typed/program.dt` and related files define typed-program structures in the self-host tree.
-- What still bridges to host Rust:
-  - `compiler/driver/pipeline.dt` implements `typeck_json` by calling `host_type_json(path, strict_flag(strict_syntax))`.
-  - `crates/draton-runtime/src/lib.rs` implements `host_type_json_path` and exports `draton_host_type_json`.
-  - `crates/drat/src/commands/selfhost_stage0.rs` can freeze the typechecker oracle envelope, but it does not remove the `host_type_json` bridge underneath.
+- What is already real in stage0:
+  - `compiler/driver/pipeline.dt` now routes `typeck_json` through `compiler/driver/typeck_stage.dt` instead of `host_type_json`.
+  - `compiler/driver/typeck_stage.dt` runs the self-host lexer, parser, and typechecker, then serializes the typed-program payload into the frozen Rust-shaped stage0 contract.
+  - `compiler/typeck/infer/result.dt` now carries self-host deprecated-syntax diagnostics for stage0 warn/deny behavior instead of relying on the Rust host bridge.
+  - `crates/drat/src/commands/selfhost_stage0.rs` now reports the typechecker bridge as `selfhost` with no builtin bridge name.
+- What still depends on Rust authority:
+  - `crates/drat/src/commands/selfhost_stage0.rs` still owns stage0 bootstrap, caching, and envelope normalization.
+  - `crates/draton-typeck/src/check.rs` and `crates/draton-typeck/src/ownership.rs` remain the authoritative semantic and ownership oracle.
+  - The self-host typechecker JSON serializer under `compiler/driver/typeck_stage.dt` must keep matching the Rust `serde` shape to preserve envelope v1.
 - Blockers:
-  - `compiler/driver/pipeline.dt` still hard-codes the `host_type_json` bridge.
-  - `crates/draton-runtime/src/lib.rs` still runs the Rust parser and Rust typechecker for typecheck JSON output.
-  - `crates/draton-typeck/src/check.rs` and `crates/draton-typeck/src/ownership.rs` remain the authoritative semantic and ownership logic.
+  - Ownership summaries and `use_effect` parity are not proven yet; `compiler/typeck/infer/items.dt` still leaves `ownership_summary: None`.
+  - The self-host typed-program serializer must stay aligned on enum tagging, spans, warnings, and typed-structure field names.
+  - `crates/draton-typeck/src/check.rs` and `crates/draton-typeck/src/ownership.rs` remain the authoritative semantic and ownership logic that the self-host tree still has to match.
 - Exit criteria:
   - `compiler/driver/pipeline.dt` no longer calls `host_type_json`.
   - Stage0 typecheck JSON comes from the Draton typechecker path under `compiler/typeck/`.
@@ -93,17 +98,18 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
 
 ### Ownership parity
 
-- Current status: not yet proven; ownership logic exists in the self-host tree, but the stage0 semantic path still bridges around it through Rust.
+- Current status: not yet proven; ownership logic exists in the self-host tree, and stage0 `typeck` no longer bridges around it through Rust, but parity is still incomplete.
 - Source of truth: `crates/draton-typeck/src/ownership.rs` and `docs/runtime/inferred-ownership-spec.md`.
 - What is already real:
   - `compiler/typeck/typed/ownership.dt` exists and establishes where ownership behavior belongs in the self-host tree.
   - Ownership-aware typed data structures already exist alongside the self-host typed-program model.
 - What still bridges to host Rust:
-  - `compiler/driver/pipeline.dt` routes `typeck_json` through `host_type_json`, so ownership-relevant JSON still comes from Rust.
-  - `crates/draton-runtime/src/lib.rs` uses the Rust `TypeChecker` path for stage0 semantic output.
+  - `compiler/driver/pipeline.dt` still routes `build_json` through `host_build_json`, so the production build path still relies on Rust ownership behavior.
+  - `crates/draton-runtime/src/lib.rs` still reaches the Rust `drat build` path for production build fallback behavior.
 - Blockers:
-  - `compiler/driver/pipeline.dt` still bypasses self-host ownership logic through `host_type_json`.
-  - `crates/draton-runtime/src/lib.rs` remains the semantic bridge.
+  - `compiler/typeck/infer/items.dt` still leaves `ownership_summary: None`.
+  - `compiler/typeck/typed/exprs.dt` exposes `use_effect`, but the current self-host typechecker path does not yet match Rust ownership effects or diagnostics.
+  - `crates/draton-runtime/src/lib.rs` remains the production-path bridge through `host_build_json`.
   - `crates/draton-typeck/src/ownership.rs` remains the authoritative ownership implementation that the self-host tree has not yet matched.
   - `docs/runtime/inferred-ownership-spec.md` remains ahead of any proven self-host ownership parity claim.
 - Exit criteria:
@@ -156,9 +162,6 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
 
 ## Host bridges currently in use
 
-- `host_type_json`
-  - Called from `compiler/driver/pipeline.dt`.
-  - Implemented by `crates/draton-runtime/src/lib.rs` through `host_type_json_path` and `draton_host_type_json`.
 - `host_build_json`
   - Called from `compiler/driver/pipeline.dt`.
   - Implemented by `crates/draton-runtime/src/lib.rs` through `host_build_json_path` and `draton_host_build_json`.
@@ -179,8 +182,8 @@ These paths exist in-tree but must not be described as production-ready backend 
 ## What must not be claimed yet
 
 - Do not claim the self-host compiler is the authoritative implementation.
-- Do not claim typechecker parity while `compiler/driver/pipeline.dt` still calls `host_type_json`.
-- Do not claim Phase 2 complete while `selfhost-stage0 typeck` still depends on `host_type_json`.
+- Do not claim full typechecker parity merely because the `host_type_json` bridge is gone; Rust still defines the oracle.
+- Do not claim ownership parity complete while `compiler/typeck/infer/items.dt` still leaves `ownership_summary: None` and Rust remains the ownership authority.
 - Do not claim backend independence or a production-ready self-host backend while `compiler/driver/pipeline.dt` still calls `host_build_json`.
 - Do not claim `drat selfhost-stage0 build` proves self-host backend completion; today it still goes through Rust fallback infrastructure.
 - Do not claim Rust is optional for bootstrap or recovery.
@@ -191,5 +194,5 @@ Phase 0 to Phase 1 handoff should do the following, in order:
 
 1. Keep this status file current whenever a bridge, blocker, or parity claim changes.
 2. Expand deterministic parity fixtures for `drat selfhost-stage0 lex`, `parse`, `typeck`, and `build`.
-3. Finish the `typeck_json` cutover without weakening the Rust-authoritative parity model.
+3. Expand focused typechecker parity coverage now that `typeck_json` no longer bridges through Rust.
 4. Treat parser, typechecker, ownership, backend, and bootstrap as separate parity tracks instead of one generic “self-host complete” milestone.
