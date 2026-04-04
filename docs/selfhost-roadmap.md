@@ -1,6 +1,6 @@
 # Draton Self-Host Roadmap
 
-This document is the implementation roadmap for moving Draton from a Rust-authoritative compiler with an in-tree self-host rewrite to a fully self-hosted compiler toolchain whose normal path is Draton code plus small target-specific assembly/runtime stubs.
+This document is the implementation roadmap for moving Draton from a Rust-authoritative compiler with an in-tree self-host rewrite to a fully self-hosted compiler toolchain whose normal path is Draton code, an LLVM-first production backend, and small target-specific assembly/runtime stubs where needed.
 
 It is a planning and execution document. It does not change the current repository authority rules by itself.
 
@@ -31,7 +31,8 @@ The target state is:
 - the default Draton compiler binary is built from Draton sources
 - the default compile pipeline no longer depends on Rust host builtins during normal operation
 - release artifacts no longer require the Rust toolchain to build or run ordinary Draton programs
-- the normal backend path is implemented in Draton and emits native output through Draton-owned backend code plus small target-specific assembly/runtime shims
+- the normal production backend path remains LLVM-first and is driven by a self-hosted Draton compiler rather than permanent Rust host bridges
+- a separate Draton-written backend, referred to here as `DraGen`, exists as a secondary backend to prove that backend work can be implemented in Draton itself
 - Rust remains in-repo as a rescue compiler, parity oracle, and rebuild path when the self-host compiler is broken
 - canonical syntax, the class/layer model, and inferred ownership remain identical to the Rust implementation's current semantics
 
@@ -39,7 +40,8 @@ More concretely, "like Zig" for Draton should mean:
 
 - a small trusted bootstrap base
 - a self-hosted compiler that can rebuild itself
-- target bring-up through explicit backend/runtime work rather than permanent dependence on a large external host stack
+- LLVM retained as the primary production backend rather than replaced for ideological reasons
+- a secondary Draton backend used to prove self-host backend capability without forcing it to become the release path immediately
 - a separate rescue path that is not the normal product path
 
 It does not mean copying Zig's exact internals or rewriting everything at once.
@@ -76,16 +78,23 @@ The Draton frontend must first match Rust exactly before backend independence ma
 
 Responsibilities:
 
-- lowering from typed Draton plus ownership annotations into a Draton-owned backend IR
-- instruction selection, calling convention handling, stack layout, and data layout
-- object or assembly emission without `host_build_json`
+- lowering from typed Draton plus ownership annotations into the production LLVM path without `host_build_json`
+- keeping LLVM as the primary backend for release-quality code generation
+- maintaining `DraGen` as a secondary Draton-written backend for proof, experimentation, and long-term backend independence work
+- handling object emission, assembly emission, calling convention details, stack layout, and data layout appropriate to each backend path
 
 Rule:
 
-The self-host backend should not stop at a fake LLVM wrapper. It must either:
+The self-host backend plan should not stop at a fake LLVM wrapper. The primary path should remain LLVM-backed, but it must be owned by the self-hosted compiler rather than by Rust bridge calls. `DraGen` may emit object files or assembly for supported targets, but it is not the production backend by default merely because it is written in Draton.
 
-- emit object files directly, or
-- emit real assembly plus a tiny linker/assembler integration layer
+Production rule:
+
+- LLVM remains the main backend for normal releases and normal user builds
+
+Secondary-backend rule:
+
+- `DraGen` exists to prove and exercise backend implementation in Draton
+- `DraGen` does not become the default backend until it reaches release-quality parity and has an explicit roadmap decision behind it
 
 The current placeholder LLVM C-API mirror under `compiler/codegen/llvm/` is acceptable as scaffolding, but it is not the end-state.
 
@@ -229,7 +238,7 @@ Exit criteria:
 - self-host typecheck plus ownership matches Rust on selected programs
 - no safe-code lowering path depends on Rust-only ownership behavior
 
-## Phase 4: Replace the fake backend surface with a real Draton backend
+## Phase 4: Replace the fake backend surface with a real LLVM-first self-host backend and an auxiliary Draton backend
 
 Goal:
 
@@ -238,11 +247,12 @@ Stop routing binary production through `host_build_json` and stop treating place
 Required work:
 
 - introduce a real backend plan under `compiler/codegen/`
-- define a Draton-owned lowered IR or machine IR
+- make the LLVM path the real self-host production backend instead of a Rust-bridged placeholder path
+- define `DraGen` explicitly as a secondary backend rather than an accidental parallel implementation
 - choose an initial supported target set
-- emit either object files directly or assembly plus a minimal external assembly/link step
+- allow `DraGen` to emit object files directly or assembly plus a minimal external assembly/link step for the targets it supports
 - keep target-specific handwritten assembly small and isolated
-- provide a real implementation for code emission, not placeholder return values
+- provide real implementations for code emission instead of placeholder return values
 
 Recommended target order:
 
@@ -267,7 +277,8 @@ Key files:
 Exit criteria:
 
 - `selfhost-stage0 build` no longer calls `host_build_json`
-- a Draton-built compiler can produce runnable binaries for the first supported target without invoking Rust compiler logic during the compile path
+- the self-hosted compiler can drive the LLVM production path without invoking Rust compiler logic during the compile path
+- `DraGen` can compile at least a clearly scoped target subset well enough to prove that backend code can be authored and maintained in Draton
 
 ## Phase 5: Build a real bootstrap ladder
 
@@ -347,8 +358,15 @@ The normal product should eventually ship:
 
 - a self-hosted `drat` compiler binary
 - Draton standard library and runtime code
+- an LLVM-based production backend path
 - small target-specific assembly or object stubs for startup and ABI glue
 - no requirement to have Rust installed to compile ordinary Draton projects
+
+The auxiliary backend story should be explicit:
+
+- `DraGen` is shipped or documented as a secondary backend
+- `DraGen` exists to prove backend implementation in Draton and to create a path toward deeper self-host independence
+- `DraGen` is not implied to be the default backend unless release docs say so explicitly
 
 The rescue story should ship separately or behind an explicit mode:
 
@@ -408,6 +426,7 @@ This roadmap does not justify:
 
 - moving compiler implementation into `src/`
 - weakening canonical syntax rules for convenience
+- replacing LLVM as the primary backend before there is a concrete quality and maintenance reason to do so
 - keeping placeholder backend code indefinitely while calling the compiler self-hosted
 - deleting the Rust compiler before the self-host path can recover itself
 - broad multi-target bring-up before one target can bootstrap cleanly
@@ -419,7 +438,8 @@ Draton can claim a real self-hosted compiler stack when all of the following are
 
 - the default compiler path is implemented in Draton
 - the default compiler path does not call Rust host bridges for parse, typecheck, ownership, or build
-- the default backend is real and not placeholder code
+- the default production backend is LLVM-backed, real, and not placeholder code
+- `DraGen` exists as a real secondary backend with clearly documented scope
 - the compiler can rebuild itself through at least two consecutive stages on a supported target
 - the release artifact does not require Rust for normal use
 - Rust still exists as a tested rescue compiler and parity oracle
