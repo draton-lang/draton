@@ -66,7 +66,7 @@ Promotion path:
 dev -> unstable -> main
 ```
 
-Contributor guidance lives in [CONTRIBUTING.md](CONTRIBUTING.md), and release-facing details live in [docs/release-workflow.md](docs/release-workflow.md).
+Contributor guidance lives in [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md), and release-facing details live in [docs/release-workflow.md](docs/release-workflow.md).
 
 ## Documentation Site
 

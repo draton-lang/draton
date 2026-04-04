@@ -1,87 +1,37 @@
 # Contributing to Draton
 
-Thanks for your interest in contributing to Draton.
+Draton accepts contributions, but the repository is intentionally strict about branch flow and language/tooling stability.
 
-## Before You Start
+## Branch workflow
 
-- Read the [Code of Conduct](CODE_OF_CONDUCT.md)
-- Search existing issues and pull requests before opening a new one
-- For security issues, do not open a public issue; follow [SECURITY.md](SECURITY.md)
+- `main` is the stable branch.
+- `main` is reserved for changes that are already proven stable.
+- Do not push experimental, partially verified, or still-churning work to `main`.
+- `dev` is the primary development branch.
+- Ongoing implementation, routine fixes, refactors, and feature work should be pushed to `dev`.
+- `unstable` is the release-candidate and testing branch.
+- Promote changes from `dev` to `unstable` when they are ready for wider validation.
+- Only promote from `unstable` to `main` after the code has been tested enough to justify calling it stable.
 
-## Development Setup
-
-1. Install the Rust stable toolchain.
-2. Install LLVM 14 and make sure `llvm-config` resolves to that version.
-3. Clone the repository and enter the workspace root.
-
-```bash
-git clone git@github.com:draton-lang/draton.git
-cd draton
-```
-
-## Recommended Workflow
-
-1. Create a branch from `main`.
-2. Make one logical change at a time.
-3. Add or update tests with the change.
-4. Run formatting, tests, and lint checks locally.
-5. Open a pull request with a clear description of what changed and why.
-
-## Local Verification
-
-Run these commands before opening a pull request:
-
-```bash
-cargo fmt --all
-cargo test --workspace
-cargo clippy --workspace -- -D warnings
-```
-
-If you are changing only one crate, you can run targeted commands first, but the full
-workspace should still pass before merge.
-
-## Commit Messages
-
-Use clear, descriptive commit messages. A good default format is:
+Promotion path:
 
 ```text
-<type>: <short summary>
+dev -> unstable -> main
 ```
 
-Examples:
+## Practical expectations
 
-- `feat: add class layer syntax`
-- `fix: preserve spans for multiline comments`
-- `refactor: simplify method predeclaration in type checker`
+- Start normal contribution work from `dev`.
+- Use `unstable` to validate integrated changes before they become stable.
+- Treat `main` as the branch that should stay dependable for downstream users, release preparation, and public consumption.
+- If you are unsure whether a change is stable enough for `main`, it is not ready for `main`.
 
-Avoid vague messages like `fix`, `update`, or `misc`.
+## Language and tooling guardrails
 
-## Pull Request Expectations
+Read these before opening syntax-facing or tooling-heavy changes:
 
-Please include:
-
-- A concise summary of the problem
-- The approach you took
-- Any user-visible or language-level behavior changes
-- Tests that cover the change
-- Follow-up work, if anything remains intentionally out of scope
-
-Small, focused pull requests are much easier to review than broad mixed changes.
-
-## Style Notes
-
-- Keep code changes consistent with the surrounding crate style
-- Prefer small, targeted patches over broad rewrites
-- Preserve compatibility unless the change explicitly intends to evolve the language or
-  public API
-- Do not leave TODO placeholders in code submitted for review
-
-## Reporting Bugs
-
-Use the issue templates in this repository where possible. Include reproduction steps,
-expected behavior, actual behavior, and environment details.
-
-## Questions
-
-If you are unsure whether a change belongs in the language, runtime, or CLI, open an
-issue first so the design can be discussed before implementation.
+- [AGENTS.md](../AGENTS.md)
+- [docs/contributor-language-rules.md](../docs/contributor-language-rules.md)
+- [docs/canonical-syntax-rules.md](../docs/canonical-syntax-rules.md)
+- [docs/compiler-architecture.md](../docs/compiler-architecture.md)
+- [docs/release-workflow.md](../docs/release-workflow.md)
