@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Workspace Boundaries"
+  short_description: "Respect Draton code boundaries."
+  default_prompt: "Use $draton-workspace-boundaries to work in the correct Draton implementation area."
+policy:
+  allow_implicit_invocation: true

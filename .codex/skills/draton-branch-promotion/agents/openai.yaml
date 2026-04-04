@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Branch Promotion"
+  short_description: "Apply Draton branch policy."
+  default_prompt: "Use $draton-branch-promotion to follow Draton branch promotion and release flow correctly."
+policy:
+  allow_implicit_invocation: true

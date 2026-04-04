@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Vendored LLVM"
+  short_description: "Handle Draton LLVM workflows."
+  default_prompt: "Use $draton-vendored-llvm to work with Draton vendored LLVM setup and validation."
+policy:
+  allow_implicit_invocation: true

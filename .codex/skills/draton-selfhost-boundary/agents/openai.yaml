@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Selfhost Boundary"
+  short_description: "Control Draton self-host scope."
+  default_prompt: "Use $draton-selfhost-boundary to keep self-host work aligned with the Rust frontend."
+policy:
+  allow_implicit_invocation: true

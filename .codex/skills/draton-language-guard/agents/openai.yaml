@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Language Guard"
+  short_description: "Protect canonical Draton syntax."
+  default_prompt: "Use $draton-language-guard to handle a Draton syntax or language-rule change safely."
+policy:
+  allow_implicit_invocation: true

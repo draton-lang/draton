@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Commit Discipline"
+  short_description: "Keep Draton commits disciplined."
+  default_prompt: "Use $draton-commit-discipline to structure and create Draton commits correctly."
+policy:
+  allow_implicit_invocation: true

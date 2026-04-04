@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Doc Sync"
+  short_description: "Keep docs and behavior aligned."
+  default_prompt: "Use $draton-doc-sync to update Draton docs and examples alongside behavior changes."
+policy:
+  allow_implicit_invocation: true

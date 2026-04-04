@@ -29,6 +29,13 @@ This repository defines and protects the Draton language and its tooling. Treat 
 - If a change has not been exercised enough to trust it for users, it does not belong on `main`.
 - When documenting release or contribution guidance, keep this branch policy consistent across repo docs.
 
+## Local Codex skills
+
+- Repository-local Codex skills live under `.codex/skills/`.
+- Prefer these local skills over generic behavior when a task matches their descriptions.
+- Use matching local skills implicitly; do not wait for the user to name them explicitly.
+- Keep local skills concise, triggerable by real task wording, and aligned with the policies in this file.
+
 ## Non-negotiable language rules
 
 - Preserve readability-first code.

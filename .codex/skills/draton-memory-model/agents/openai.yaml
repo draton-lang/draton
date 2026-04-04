@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Memory Model"
+  short_description: "Protect inferred ownership rules."
+  default_prompt: "Use $draton-memory-model to keep Draton memory-model changes aligned with inferred ownership."
+policy:
+  allow_implicit_invocation: true

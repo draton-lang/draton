@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Release Readiness"
+  short_description: "Prepare Draton release work."
+  default_prompt: "Use $draton-release-readiness to prepare or validate Draton release work safely."
+policy:
+  allow_implicit_invocation: true

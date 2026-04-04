@@ -1,0 +1,6 @@
+interface:
+  display_name: "Draton Verification"
+  short_description: "Run focused Draton verification."
+  default_prompt: "Use $draton-verification to choose and run the right Draton checks for this change."
+policy:
+  allow_implicit_invocation: true
