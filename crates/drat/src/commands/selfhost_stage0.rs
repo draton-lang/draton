@@ -315,8 +315,8 @@ fn stage0_bridge(command: &SelfhostStage0Command) -> Value {
             "builtin": Value::Null,
         }),
         SelfhostStage0Command::Parse { .. } => json!({
-            "kind": "host",
-            "builtin": "host_parse_json",
+            "kind": "selfhost",
+            "builtin": Value::Null,
         }),
         SelfhostStage0Command::Typeck { .. } => json!({
             "kind": "host",

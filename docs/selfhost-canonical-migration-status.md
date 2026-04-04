@@ -49,19 +49,23 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
 
 ### Parser parity
 
-- Current status: rewrite tree exists, but stage0 parser output still comes from the Rust host bridge.
+- Current status: stage0 parser output now comes from the self-host lexer/parser path, but Rust remains the authoritative parity oracle.
 - Source of truth: `crates/draton-parser`, especially `crates/draton-parser/tests/selfhost_parity.rs`.
 - What is already real:
   - `compiler/parser/parser.dt` and the parser subtrees under `compiler/parser/parse/` contain an in-tree parser rewrite.
   - `compiler/ast/` contains the self-host AST model used by the rewrite.
-- What still bridges to host Rust:
-  - `compiler/driver/pipeline.dt` implements `parse_json` by calling `host_parse_json(path)`.
-  - `crates/draton-runtime/src/lib.rs` implements `host_parse_json_path` and exports `draton_host_parse_json`.
-  - `crates/drat/src/commands/selfhost_stage0.rs` can freeze the parser oracle envelope, but it does not remove the `host_parse_json` bridge underneath.
-- Blockers:
-  - `compiler/driver/pipeline.dt` still hard-codes the `host_parse_json` bridge.
-  - `crates/draton-runtime/src/lib.rs` still serializes parser JSON from the Rust parser.
+- What is already real in stage0:
+  - `compiler/driver/pipeline.dt` now routes `parse_json` through `compiler/driver/parse_stage.dt` instead of `host_parse_json`.
+  - `compiler/driver/parse_stage.dt` runs the self-host lexer and parser, then serializes the parser payload into the frozen Rust-shaped stage0 contract.
+  - `crates/drat/src/commands/selfhost_stage0.rs` now reports the parser bridge as `selfhost` with no builtin bridge name.
+- What still depends on Rust authority:
+  - `crates/drat/src/commands/selfhost_stage0.rs` still owns stage0 bootstrap, caching, and envelope normalization.
   - `crates/draton-parser/tests/selfhost_parity.rs` remains the authoritative parser oracle.
+  - The self-host parser JSON serializer under `compiler/driver/parse_stage.dt` must keep matching the Rust `serde` shape to preserve envelope v1.
+- Blockers:
+  - Parser parity still has to stay aligned on warnings, spans, recovery behavior, and exact Rust-shaped AST JSON.
+  - Stage0 bootstrap still goes through Rust-owned build orchestration and runtime/codegen infrastructure.
+  - `crates/draton-parser/tests/selfhost_parity.rs` remains the authoritative parser oracle for first-diff reporting.
 - Exit criteria:
   - `compiler/driver/pipeline.dt` no longer calls `host_parse_json`.
   - Stage0 parse JSON comes from the Draton parser path under `compiler/parser/`.
@@ -143,7 +147,7 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
 - Blockers:
   - `crates/drat/src/commands/selfhost_stage0.rs` still owns stage0 bootstrap and cache layout.
   - `crates/draton-runtime/src/lib.rs` still owns the host fallback compiler path.
-  - `.github/workflows/ci.yml` now proves the frozen stage0 envelope plus lexer parity in the remote Phase 1 job, but parser parity remains an opt-in remote slice because the underlying parser stage is still host-bridged and heavier.
+- `.github/workflows/ci.yml` keeps parser parity as an opt-in heavier remote slice; the parser stage itself is now self-hosted, but the parity run remains expensive enough to stay outside the default fast path.
   - `docs/benchmarks/gc-results-2026-03-17.md` records the current bootstrap workload as blocked by `LLVM ERROR: unknown special variable`.
 - Exit criteria:
   - Stage0 commands expose deterministic parity envelopes for every intended frontend stage.
@@ -152,9 +156,6 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
 
 ## Host bridges currently in use
 
-- `host_parse_json`
-  - Called from `compiler/driver/pipeline.dt`.
-  - Implemented by `crates/draton-runtime/src/lib.rs` through `host_parse_json_path` and `draton_host_parse_json`.
 - `host_type_json`
   - Called from `compiler/driver/pipeline.dt`.
   - Implemented by `crates/draton-runtime/src/lib.rs` through `host_type_json_path` and `draton_host_type_json`.
@@ -178,8 +179,8 @@ These paths exist in-tree but must not be described as production-ready backend 
 ## What must not be claimed yet
 
 - Do not claim the self-host compiler is the authoritative implementation.
-- Do not claim parser parity while `compiler/driver/pipeline.dt` still calls `host_parse_json`.
 - Do not claim typechecker parity while `compiler/driver/pipeline.dt` still calls `host_type_json`.
+- Do not claim Phase 2 complete while `selfhost-stage0 typeck` still depends on `host_type_json`.
 - Do not claim backend independence or a production-ready self-host backend while `compiler/driver/pipeline.dt` still calls `host_build_json`.
 - Do not claim `drat selfhost-stage0 build` proves self-host backend completion; today it still goes through Rust fallback infrastructure.
 - Do not claim Rust is optional for bootstrap or recovery.
@@ -190,5 +191,5 @@ Phase 0 to Phase 1 handoff should do the following, in order:
 
 1. Keep this status file current whenever a bridge, blocker, or parity claim changes.
 2. Expand deterministic parity fixtures for `drat selfhost-stage0 lex`, `parse`, `typeck`, and `build`.
-3. Use the Rust crates as the oracle while removing ambiguity from JSON envelopes and diagnostics.
+3. Finish the `typeck_json` cutover without weakening the Rust-authoritative parity model.
 4. Treat parser, typechecker, ownership, backend, and bootstrap as separate parity tracks instead of one generic “self-host complete” milestone.

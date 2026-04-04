@@ -165,14 +165,14 @@ fn extract_parse_payload(path: &Path, absolute_path: &Path, json: &Value) -> (Va
     );
     assert_eq!(
         json["bridge"]["kind"],
-        Value::String("host".to_string()),
+        Value::String("selfhost".to_string()),
         "parser parity contract break for {}: unexpected bridge kind",
         path.display()
     );
     assert_eq!(
         json["bridge"]["builtin"],
-        Value::String("host_parse_json".to_string()),
-        "parser parity contract break for {}: unexpected bridge builtin",
+        Value::Null,
+        "parser parity contract break for {}: expected null bridge builtin",
         path.display()
     );
     assert_eq!(

@@ -1,3 +1,5 @@
+import { parse_stage_json } from driver.parse_stage
+
 @type {
     strict_flag: (Bool) -> Int
     lex_json: (String) -> String
@@ -858,7 +860,7 @@ fn lex_json(path) {
 }
 
 fn parse_json(path) {
-    return host_parse_json(path)
+    return parse_stage_json(path)
 }
 
 fn typeck_json(path, strict_syntax) {

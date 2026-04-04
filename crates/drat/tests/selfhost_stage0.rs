@@ -166,7 +166,7 @@ fn main() {
         "--json",
         src.to_str().expect("utf8 path"),
     ]);
-    let result = expect_envelope(&json, "parse", &src, "host", Some("host_parse_json"), true);
+    let result = expect_envelope(&json, "parse", &src, "selfhost", None, true);
     assert!(result["lex_errors"].is_array(), "expected lex_errors array");
     assert!(
         result["parse_errors"].is_array(),

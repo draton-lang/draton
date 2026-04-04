@@ -1,0 +1,1070 @@
+import { Lexer } from lexer.lexer
+import { LexError } from lexer.errors
+import { Parser } from parser.parser
+import { ParseError, ParseWarning } from parser.errors
+import { Program, Item } from ast.item.item
+import { FnDef, Param } from ast.item.func
+import { ClassDef, ClassMember } from ast.item.klass
+import { LayerDef } from ast.item.layers
+import { InterfaceDef } from ast.item.iface
+import { EnumDef } from ast.item.variants
+import { ErrorDef } from ast.item.errors
+import { ConstDef } from ast.item.constant
+import { ImportDef, ImportItem } from ast.item.imports
+import { ExternBlock } from ast.item.extern
+import { TypeBlock, TypeMember } from ast.item.type_block
+import { Expr, MapEntry } from ast.expr.expr
+import { FStrPart } from ast.expr.fstr
+import { MatchArm, MatchArmBody } from ast.expr.matching
+import { TypeExpr } from ast.types
+import { Span } from ast.span
+import { Block, Stmt } from ast.stmt.stmt
+import { LetStmt, LetDestructureStmt, DestructureBinding } from ast.stmt.binding
+import { AssignStmt } from ast.stmt.assign
+import { IfStmt, ElseBranch, ForStmt, WhileStmt } from ast.stmt.control
+import { SpawnStmt, SpawnBody } from ast.stmt.spawning
+import { ReturnStmt, IfCompileStmt, GcConfigStmt, GcConfigEntry } from ast.stmt.misc
+
+@type {
+    parse_stage_json: (String) -> String
+    json_field: (String, String) -> String
+    json_object: (Array[String]) -> String
+    json_array: (Array[String]) -> String
+    join_json_items: (Array[String]) -> String
+    json_quote: (String) -> String
+    json_escape: (String) -> String
+    json_bool: (Bool) -> String
+    json_float: (Float) -> String
+    json_string_array: (Array[String]) -> String
+    tagged_value: (String, String) -> String
+    tagged_object: (String, Array[String]) -> String
+    serialize_optional_string: (Option[String]) -> String
+    serialize_lex_errors: (Array[LexError]) -> String
+    serialize_lex_error: (LexError) -> String
+    serialize_parse_errors: (Array[ParseError]) -> String
+    serialize_parse_error: (ParseError) -> String
+    serialize_parse_warnings: (Array[ParseWarning]) -> String
+    serialize_parse_warning: (ParseWarning) -> String
+    serialize_program: (Program) -> String
+    serialize_item: (Item) -> String
+    serialize_items: (Array[Item]) -> String
+    serialize_fn_def: (FnDef) -> String
+    serialize_fn_defs: (Array[FnDef]) -> String
+    serialize_params: (Array[Param]) -> String
+    serialize_param: (Param) -> String
+    serialize_class_def: (ClassDef) -> String
+    serialize_class_members: (Array[ClassMember]) -> String
+    serialize_class_member: (ClassMember) -> String
+    serialize_layer_def: (LayerDef) -> String
+    serialize_interface_def: (InterfaceDef) -> String
+    serialize_enum_def: (EnumDef) -> String
+    serialize_error_def: (ErrorDef) -> String
+    serialize_const_def: (ConstDef) -> String
+    serialize_import_def: (ImportDef) -> String
+    serialize_import_items: (Array[ImportItem]) -> String
+    serialize_import_item: (ImportItem) -> String
+    serialize_extern_block: (ExternBlock) -> String
+    serialize_type_blocks: (Array[TypeBlock]) -> String
+    serialize_type_block: (TypeBlock) -> String
+    serialize_type_members: (Array[TypeMember]) -> String
+    serialize_type_member: (TypeMember) -> String
+    serialize_type_exprs: (Array[TypeExpr]) -> String
+    serialize_type_expr: (TypeExpr) -> String
+    serialize_optional_type_expr: (Option[TypeExpr]) -> String
+    serialize_block: (Block) -> String
+    serialize_stmts: (Array[Stmt]) -> String
+    serialize_stmt: (Stmt) -> String
+    serialize_let_stmt: (LetStmt) -> String
+    serialize_let_destructure_stmt: (LetDestructureStmt) -> String
+    serialize_destructure_bindings: (Array[DestructureBinding]) -> String
+    serialize_destructure_binding: (DestructureBinding) -> String
+    serialize_assign_stmt: (AssignStmt) -> String
+    serialize_return_stmt: (ReturnStmt) -> String
+    serialize_if_stmt: (IfStmt) -> String
+    serialize_optional_else_branch: (Option[ElseBranch]) -> String
+    serialize_else_branch: (ElseBranch) -> String
+    serialize_for_stmt: (ForStmt) -> String
+    serialize_while_stmt: (WhileStmt) -> String
+    serialize_spawn_stmt: (SpawnStmt) -> String
+    serialize_spawn_body: (SpawnBody) -> String
+    serialize_if_compile_stmt: (IfCompileStmt) -> String
+    serialize_gc_config_stmt: (GcConfigStmt) -> String
+    serialize_gc_config_entries: (Array[GcConfigEntry]) -> String
+    serialize_gc_config_entry: (GcConfigEntry) -> String
+    serialize_optional_expr: (Option[Expr]) -> String
+    serialize_exprs: (Array[Expr]) -> String
+    serialize_expr: (Expr) -> String
+    serialize_map_entries: (Array[MapEntry]) -> String
+    serialize_fstr_parts: (Array[FStrPart]) -> String
+    serialize_fstr_part: (FStrPart) -> String
+    serialize_match_arms: (Array[MatchArm]) -> String
+    serialize_match_arm: (MatchArm) -> String
+    serialize_match_arm_body: (MatchArmBody) -> String
+    serialize_span: (Span) -> String
+    byte_at: (String, Int) -> Int
+}
+
+fn parse_stage_json(path) {
+    let source = read_file(path)
+    let lexer = Lexer { source: source, position: 0, line: 1, col: 1 }
+    let lexed = lexer.tokenize()
+
+    let mut fields = []
+    fields.push(json_field("lex_errors", serialize_lex_errors(lexed.errors)))
+
+    if lexed.errors.len() > 0 {
+        fields.push(json_field("parse_result", "null"))
+        return json_object(fields)
+    }
+
+    let parser = Parser { tokens: lexed.tokens, pos: 0, errors: [], warnings: [] }
+    let parsed = parser.parse()
+    let mut parse_result_fields = []
+    parse_result_fields.push(json_field("program", serialize_program(parsed.program)))
+    parse_result_fields.push(json_field("errors", serialize_parse_errors(parsed.errors)))
+    parse_result_fields.push(json_field("warnings", serialize_parse_warnings(parsed.warnings)))
+    fields.push(json_field("parse_result", json_object(parse_result_fields)))
+    return json_object(fields)
+}
+
+fn serialize_lex_errors(errors) {
+    let mut items = []
+    let mut index = 0
+    while index < errors.len() {
+        items.push(serialize_lex_error(errors[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_lex_error(error) {
+    if error.kind == UnexpectedChar {
+        return tagged_object("UnexpectedChar", [
+            json_field("found", serialize_optional_string(error.found)),
+            json_field("line", error.line.to_string()),
+            json_field("col", error.col.to_string())
+        ])
+    }
+    if error.kind == UnterminatedString {
+        return tagged_object("UnterminatedString", [
+            json_field("line", error.line.to_string()),
+            json_field("col", error.col.to_string())
+        ])
+    }
+    if error.kind == UnterminatedBlockComment {
+        return tagged_object("UnterminatedBlockComment", [
+            json_field("line", error.line.to_string()),
+            json_field("col", error.col.to_string())
+        ])
+    }
+    return tagged_object("InvalidNumericLiteral", [
+        json_field("lexeme", serialize_optional_string(error.lexeme)),
+        json_field("line", error.line.to_string()),
+        json_field("col", error.col.to_string())
+    ])
+}
+
+fn serialize_parse_errors(errors) {
+    let mut items = []
+    let mut index = 0
+    while index < errors.len() {
+        items.push(serialize_parse_error(errors[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_parse_error(error) {
+    if error.kind == UnexpectedToken {
+        return tagged_object("UnexpectedToken", [
+            json_field("found", serialize_optional_string(error.found)),
+            json_field("expected", serialize_optional_string(error.expected)),
+            json_field("line", error.line.to_string()),
+            json_field("col", error.col.to_string())
+        ])
+    }
+    if error.kind == UnexpectedEof {
+        return tagged_object("UnexpectedEof", [
+            json_field("expected", serialize_optional_string(error.expected)),
+            json_field("line", error.line.to_string()),
+            json_field("col", error.col.to_string())
+        ])
+    }
+    if error.kind == InvalidExpr {
+        return tagged_object("InvalidExpr", [
+            json_field("line", error.line.to_string()),
+            json_field("col", error.col.to_string())
+        ])
+    }
+    if error.kind == NestedLayerNotAllowed {
+        return tagged_object("NestedLayerNotAllowed", [
+            json_field("line", error.line.to_string()),
+            json_field("col", error.col.to_string())
+        ])
+    }
+    return tagged_object("LayerOutsideClass", [
+        json_field("line", error.line.to_string()),
+        json_field("col", error.col.to_string())
+    ])
+}
+
+fn serialize_parse_warnings(warnings) {
+    let mut items = []
+    let mut index = 0
+    while index < warnings.len() {
+        items.push(serialize_parse_warning(warnings[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_parse_warning(warning) {
+    return tagged_object("DeprecatedSyntax", [
+        json_field("syntax", json_quote(warning.syntax)),
+        json_field("replacement", json_quote(warning.replacement)),
+        json_field("line", warning.line.to_string()),
+        json_field("col", warning.col.to_string())
+    ])
+}
+
+fn serialize_program(program) {
+    return json_object([
+        json_field("items", serialize_items(program.items))
+    ])
+}
+
+fn serialize_items(items) {
+    let mut out = []
+    let mut index = 0
+    while index < items.len() {
+        out.push(serialize_item(items[index]))
+        index = index + 1
+    }
+    return json_array(out)
+}
+
+fn serialize_item(item) {
+    if item.kind == Fn {
+        return tagged_value("Fn", serialize_fn_def(item.fn_def))
+    }
+    if item.kind == Class {
+        return tagged_value("Class", serialize_class_def(item.class_def))
+    }
+    if item.kind == Interface {
+        return tagged_value("Interface", serialize_interface_def(item.interface_def))
+    }
+    if item.kind == Enum {
+        return tagged_value("Enum", serialize_enum_def(item.enum_def))
+    }
+    if item.kind == Error {
+        return tagged_value("Error", serialize_error_def(item.error_def))
+    }
+    if item.kind == Const {
+        return tagged_value("Const", serialize_const_def(item.const_def))
+    }
+    if item.kind == Import {
+        return tagged_value("Import", serialize_import_def(item.import_def))
+    }
+    if item.kind == Extern {
+        return tagged_value("Extern", serialize_extern_block(item.extern_block))
+    }
+    if item.kind == PanicHandler {
+        return tagged_value("PanicHandler", serialize_fn_def(item.fn_def))
+    }
+    if item.kind == OomHandler {
+        return tagged_value("OomHandler", serialize_fn_def(item.fn_def))
+    }
+    return tagged_value("TypeBlock", serialize_type_block(item.type_block))
+}
+
+fn serialize_fn_def(fn_def) {
+    let mut body_json = "null"
+    if fn_def.body != None {
+        body_json = serialize_block(fn_def.body)
+    }
+    return json_object([
+        json_field("is_pub", json_bool(fn_def.is_pub)),
+        json_field("name", json_quote(fn_def.name)),
+        json_field("type_params", json_string_array(fn_def.type_params)),
+        json_field("params", serialize_params(fn_def.params)),
+        json_field("ret_type", serialize_optional_type_expr(fn_def.ret_type)),
+        json_field("body", body_json),
+        json_field("span", serialize_span(fn_def.span))
+    ])
+}
+
+fn serialize_fn_defs(functions) {
+    let mut items = []
+    let mut index = 0
+    while index < functions.len() {
+        items.push(serialize_fn_def(functions[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_params(params) {
+    let mut items = []
+    let mut index = 0
+    while index < params.len() {
+        items.push(serialize_param(params[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_param(param) {
+    return json_object([
+        json_field("name", json_quote(param.name)),
+        json_field("type_hint", serialize_optional_type_expr(param.type_hint)),
+        json_field("span", serialize_span(param.span))
+    ])
+}
+
+fn serialize_class_def(class_def) {
+    return json_object([
+        json_field("name", json_quote(class_def.name)),
+        json_field("type_params", json_string_array(class_def.type_params)),
+        json_field("extends", serialize_optional_string(class_def.base_class)),
+        json_field("implements", json_string_array(class_def.interfaces)),
+        json_field("members", serialize_class_members(class_def.members)),
+        json_field("type_blocks", serialize_type_blocks(class_def.type_blocks)),
+        json_field("span", serialize_span(class_def.span))
+    ])
+}
+
+fn serialize_class_members(members) {
+    let mut items = []
+    let mut index = 0
+    while index < members.len() {
+        items.push(serialize_class_member(members[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_class_member(member) {
+    if member.kind == Field {
+        return tagged_value("Field", json_object([
+            json_field("is_mut", json_bool(member.field.is_mut)),
+            json_field("name", json_quote(member.field.name)),
+            json_field("type_hint", serialize_optional_type_expr(member.field.type_hint)),
+            json_field("span", serialize_span(member.field.span))
+        ]))
+    }
+    if member.kind == Method {
+        return tagged_value("Method", serialize_fn_def(member.method))
+    }
+    return tagged_value("Layer", serialize_layer_def(member.layer_def))
+}
+
+fn serialize_layer_def(layer_def) {
+    return json_object([
+        json_field("name", json_quote(layer_def.name)),
+        json_field("methods", serialize_fn_defs(layer_def.methods)),
+        json_field("type_blocks", serialize_type_blocks(layer_def.type_blocks)),
+        json_field("span", serialize_span(layer_def.span))
+    ])
+}
+
+fn serialize_interface_def(interface_def) {
+    return json_object([
+        json_field("name", json_quote(interface_def.name)),
+        json_field("methods", serialize_fn_defs(interface_def.methods)),
+        json_field("type_blocks", serialize_type_blocks(interface_def.type_blocks)),
+        json_field("span", serialize_span(interface_def.span))
+    ])
+}
+
+fn serialize_enum_def(enum_def) {
+    return json_object([
+        json_field("name", json_quote(enum_def.name)),
+        json_field("variants", json_string_array(enum_def.variants)),
+        json_field("span", serialize_span(enum_def.span))
+    ])
+}
+
+fn serialize_error_def(error_def) {
+    return json_object([
+        json_field("name", json_quote(error_def.name)),
+        json_field("fields", serialize_params(error_def.fields)),
+        json_field("span", serialize_span(error_def.span))
+    ])
+}
+
+fn serialize_const_def(const_def) {
+    return json_object([
+        json_field("name", json_quote(const_def.name)),
+        json_field("value", serialize_expr(const_def.value)),
+        json_field("span", serialize_span(const_def.span))
+    ])
+}
+
+fn serialize_import_def(import_def) {
+    return json_object([
+        json_field("module", json_string_array(import_def.module)),
+        json_field("items", serialize_import_items(import_def.items)),
+        json_field("span", serialize_span(import_def.span))
+    ])
+}
+
+fn serialize_import_items(items) {
+    let mut out = []
+    let mut index = 0
+    while index < items.len() {
+        out.push(serialize_import_item(items[index]))
+        index = index + 1
+    }
+    return json_array(out)
+}
+
+fn serialize_import_item(item) {
+    return json_object([
+        json_field("name", json_quote(item.name)),
+        json_field("alias", serialize_optional_string(item.alias)),
+        json_field("span", serialize_span(item.span))
+    ])
+}
+
+fn serialize_extern_block(extern_block) {
+    return json_object([
+        json_field("abi", json_quote(extern_block.abi)),
+        json_field("functions", serialize_fn_defs(extern_block.functions)),
+        json_field("span", serialize_span(extern_block.span))
+    ])
+}
+
+fn serialize_type_blocks(blocks) {
+    let mut items = []
+    let mut index = 0
+    while index < blocks.len() {
+        items.push(serialize_type_block(blocks[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_type_block(type_block) {
+    return json_object([
+        json_field("members", serialize_type_members(type_block.members)),
+        json_field("span", serialize_span(type_block.span))
+    ])
+}
+
+fn serialize_type_members(members) {
+    let mut out = []
+    let mut index = 0
+    while index < members.len() {
+        out.push(serialize_type_member(members[index]))
+        index = index + 1
+    }
+    return json_array(out)
+}
+
+fn serialize_type_member(member) {
+    if member.kind == Binding {
+        return tagged_object("Binding", [
+            json_field("name", serialize_optional_string(member.name)),
+            json_field("type_expr", serialize_optional_type_expr(member.type_expr)),
+            json_field("span", serialize_span(member.span))
+        ])
+    }
+    return tagged_value("Function", serialize_fn_def(member.function))
+}
+
+fn serialize_type_exprs(types) {
+    let mut items = []
+    let mut index = 0
+    while index < types.len() {
+        items.push(serialize_type_expr(types[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_type_expr(type_expr) {
+    if type_expr.kind == Named {
+        return tagged_value("Named", json_array([
+            json_quote(type_expr.name),
+            serialize_span(type_expr.span)
+        ]))
+    }
+    if type_expr.kind == Generic {
+        return tagged_value("Generic", json_array([
+            json_quote(type_expr.name),
+            serialize_type_exprs(type_expr.args),
+            serialize_span(type_expr.span)
+        ]))
+    }
+    if type_expr.kind == Fn {
+        return tagged_value("Fn", json_array([
+            serialize_type_exprs(type_expr.params),
+            serialize_type_expr(type_expr.ret),
+            serialize_span(type_expr.span)
+        ]))
+    }
+    if type_expr.kind == Pointer {
+        return tagged_value("Pointer", serialize_span(type_expr.span))
+    }
+    return tagged_value("Infer", serialize_span(type_expr.span))
+}
+
+fn serialize_optional_type_expr(type_expr) {
+    if type_expr == None {
+        return "null"
+    }
+    return serialize_type_expr(type_expr)
+}
+
+fn serialize_block(block) {
+    return json_object([
+        json_field("stmts", serialize_stmts(block.stmts)),
+        json_field("span", serialize_span(block.span))
+    ])
+}
+
+fn serialize_stmts(stmts) {
+    let mut items = []
+    let mut index = 0
+    while index < stmts.len() {
+        items.push(serialize_stmt(stmts[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_stmt(stmt) {
+    if stmt.kind == Let {
+        return tagged_value("Let", serialize_let_stmt(stmt.value))
+    }
+    if stmt.kind == LetDestructure {
+        return tagged_value("LetDestructure", serialize_let_destructure_stmt(stmt.value))
+    }
+    if stmt.kind == Assign {
+        return tagged_value("Assign", serialize_assign_stmt(stmt.value))
+    }
+    if stmt.kind == Return {
+        return tagged_value("Return", serialize_return_stmt(stmt.value))
+    }
+    if stmt.kind == Expr {
+        return tagged_value("Expr", serialize_expr(stmt.value))
+    }
+    if stmt.kind == If {
+        return tagged_value("If", serialize_if_stmt(stmt.value))
+    }
+    if stmt.kind == For {
+        return tagged_value("For", serialize_for_stmt(stmt.value))
+    }
+    if stmt.kind == While {
+        return tagged_value("While", serialize_while_stmt(stmt.value))
+    }
+    if stmt.kind == Spawn {
+        return tagged_value("Spawn", serialize_spawn_stmt(stmt.value))
+    }
+    if stmt.kind == Block {
+        return tagged_value("Block", serialize_block(stmt.value))
+    }
+    if stmt.kind == UnsafeBlock {
+        return tagged_value("UnsafeBlock", serialize_block(stmt.value))
+    }
+    if stmt.kind == PointerBlock {
+        return tagged_value("PointerBlock", serialize_block(stmt.value))
+    }
+    if stmt.kind == AsmBlock {
+        return tagged_value("AsmBlock", json_array([
+            json_quote(stmt.value),
+            serialize_span(stmt.span)
+        ]))
+    }
+    if stmt.kind == ComptimeBlock {
+        return tagged_value("ComptimeBlock", serialize_block(stmt.value))
+    }
+    if stmt.kind == IfCompile {
+        return tagged_value("IfCompile", serialize_if_compile_stmt(stmt.value))
+    }
+    if stmt.kind == GcConfig {
+        return tagged_value("GcConfig", serialize_gc_config_stmt(stmt.value))
+    }
+    return tagged_value("TypeBlock", serialize_type_block(stmt.value))
+}
+
+fn serialize_let_stmt(let_stmt) {
+    return json_object([
+        json_field("is_mut", json_bool(let_stmt.is_mut)),
+        json_field("name", json_quote(let_stmt.name)),
+        json_field("type_hint", serialize_optional_type_expr(let_stmt.type_hint)),
+        json_field("value", serialize_optional_expr(let_stmt.value)),
+        json_field("span", serialize_span(let_stmt.span))
+    ])
+}
+
+fn serialize_let_destructure_stmt(stmt) {
+    return json_object([
+        json_field("is_mut", json_bool(stmt.is_mut)),
+        json_field("names", serialize_destructure_bindings(stmt.names)),
+        json_field("value", serialize_expr(stmt.value)),
+        json_field("span", serialize_span(stmt.span))
+    ])
+}
+
+fn serialize_destructure_bindings(bindings) {
+    let mut items = []
+    let mut index = 0
+    while index < bindings.len() {
+        items.push(serialize_destructure_binding(bindings[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_destructure_binding(binding) {
+    if binding.kind == Name {
+        return tagged_object("Name", [
+            json_field("name", serialize_optional_string(binding.name))
+        ])
+    }
+    return json_quote("Wildcard")
+}
+
+fn serialize_assign_stmt(assign) {
+    return json_object([
+        json_field("target", serialize_expr(assign.target)),
+        json_field("op", json_quote(assign.op.to_string())),
+        json_field("value", serialize_optional_expr(assign.value)),
+        json_field("span", serialize_span(assign.span))
+    ])
+}
+
+fn serialize_return_stmt(return_stmt) {
+    return json_object([
+        json_field("value", serialize_optional_expr(return_stmt.value)),
+        json_field("span", serialize_span(return_stmt.span))
+    ])
+}
+
+fn serialize_if_stmt(if_stmt) {
+    return json_object([
+        json_field("condition", serialize_expr(if_stmt.condition)),
+        json_field("then_branch", serialize_block(if_stmt.then_branch)),
+        json_field("else_branch", serialize_optional_else_branch(if_stmt.else_branch)),
+        json_field("span", serialize_span(if_stmt.span))
+    ])
+}
+
+fn serialize_optional_else_branch(else_branch) {
+    if else_branch == None {
+        return "null"
+    }
+    return serialize_else_branch(else_branch)
+}
+
+fn serialize_else_branch(else_branch) {
+    if else_branch.kind == If {
+        return tagged_value("If", serialize_if_stmt(else_branch.if_branch))
+    }
+    return tagged_value("Block", serialize_block(else_branch.block))
+}
+
+fn serialize_for_stmt(for_stmt) {
+    return json_object([
+        json_field("name", json_quote(for_stmt.name)),
+        json_field("iter", serialize_expr(for_stmt.iter)),
+        json_field("body", serialize_block(for_stmt.body)),
+        json_field("span", serialize_span(for_stmt.span))
+    ])
+}
+
+fn serialize_while_stmt(while_stmt) {
+    return json_object([
+        json_field("condition", serialize_expr(while_stmt.condition)),
+        json_field("body", serialize_block(while_stmt.body)),
+        json_field("span", serialize_span(while_stmt.span))
+    ])
+}
+
+fn serialize_spawn_stmt(spawn_stmt) {
+    return json_object([
+        json_field("body", serialize_spawn_body(spawn_stmt.body)),
+        json_field("span", serialize_span(spawn_stmt.span))
+    ])
+}
+
+fn serialize_spawn_body(body) {
+    if body.kind == Expr {
+        return tagged_value("Expr", serialize_expr(body.expr))
+    }
+    return tagged_value("Block", serialize_block(body.block))
+}
+
+fn serialize_if_compile_stmt(stmt) {
+    return json_object([
+        json_field("condition", serialize_expr(stmt.condition)),
+        json_field("body", serialize_block(stmt.body)),
+        json_field("span", serialize_span(stmt.span))
+    ])
+}
+
+fn serialize_gc_config_stmt(stmt) {
+    return json_object([
+        json_field("entries", serialize_gc_config_entries(stmt.entries)),
+        json_field("span", serialize_span(stmt.span))
+    ])
+}
+
+fn serialize_gc_config_entries(entries) {
+    let mut items = []
+    let mut index = 0
+    while index < entries.len() {
+        items.push(serialize_gc_config_entry(entries[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_gc_config_entry(entry) {
+    return json_object([
+        json_field("key", json_quote(entry.key)),
+        json_field("value", serialize_expr(entry.value)),
+        json_field("span", serialize_span(entry.span))
+    ])
+}
+
+fn serialize_optional_expr(expr) {
+    if expr == None {
+        return "null"
+    }
+    return serialize_expr(expr)
+}
+
+fn serialize_exprs(exprs) {
+    let mut items = []
+    let mut index = 0
+    while index < exprs.len() {
+        items.push(serialize_expr(exprs[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_expr(expr) {
+    if expr.kind == IntLit {
+        return tagged_value("IntLit", json_array([
+            expr.value.to_string(),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == FloatLit {
+        return tagged_value("FloatLit", json_array([
+            json_float(expr.value),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == StrLit {
+        return tagged_value("StrLit", json_array([
+            json_quote(expr.value),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == FStrLit {
+        return tagged_value("FStrLit", json_array([
+            serialize_fstr_parts(expr.parts),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == BoolLit {
+        return tagged_value("BoolLit", json_array([
+            json_bool(expr.value),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == NoneLit {
+        return tagged_value("NoneLit", serialize_span(expr.span))
+    }
+    if expr.kind == Ident {
+        return tagged_value("Ident", json_array([
+            json_quote(expr.name),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Array {
+        return tagged_value("Array", json_array([
+            serialize_exprs(expr.items),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Map {
+        return tagged_value("Map", json_array([
+            serialize_map_entries(expr.entries),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Set {
+        return tagged_value("Set", json_array([
+            serialize_exprs(expr.items),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Tuple {
+        return tagged_value("Tuple", json_array([
+            serialize_exprs(expr.items),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == BinOp {
+        return tagged_value("BinOp", json_array([
+            serialize_expr(expr.left),
+            json_quote(expr.op.to_string()),
+            serialize_expr(expr.right),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == UnOp {
+        return tagged_value("UnOp", json_array([
+            json_quote(expr.op.to_string()),
+            serialize_expr(expr.expr),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Call {
+        return tagged_value("Call", json_array([
+            serialize_expr(expr.callee),
+            serialize_exprs(expr.args),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == MethodCall {
+        return tagged_value("MethodCall", json_array([
+            serialize_expr(expr.target),
+            json_quote(expr.name),
+            serialize_exprs(expr.args),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Field {
+        return tagged_value("Field", json_array([
+            serialize_expr(expr.target),
+            json_quote(expr.name),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Index {
+        return tagged_value("Index", json_array([
+            serialize_expr(expr.target),
+            serialize_expr(expr.index),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Lambda {
+        return tagged_value("Lambda", json_array([
+            json_string_array(expr.params),
+            serialize_expr(expr.body),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Cast {
+        return tagged_value("Cast", json_array([
+            serialize_expr(expr.expr),
+            serialize_type_expr(expr.ty),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Match {
+        return tagged_value("Match", json_array([
+            serialize_expr(expr.subject),
+            serialize_match_arms(expr.arms),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Ok {
+        return tagged_value("Ok", json_array([
+            serialize_expr(expr.value),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Err {
+        return tagged_value("Err", json_array([
+            serialize_expr(expr.value),
+            serialize_span(expr.span)
+        ]))
+    }
+    if expr.kind == Nullish {
+        return tagged_value("Nullish", json_array([
+            serialize_expr(expr.left),
+            serialize_expr(expr.right),
+            serialize_span(expr.span)
+        ]))
+    }
+    return tagged_value("Chan", json_array([
+        serialize_type_expr(expr.ty),
+        serialize_span(expr.span)
+    ]))
+}
+
+fn serialize_map_entries(entries) {
+    let mut items = []
+    let mut index = 0
+    while index < entries.len() {
+        let entry = entries[index]
+        items.push(json_array([
+            serialize_expr(entry.key),
+            serialize_expr(entry.value)
+        ]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_fstr_parts(parts) {
+    let mut items = []
+    let mut index = 0
+    while index < parts.len() {
+        items.push(serialize_fstr_part(parts[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_fstr_part(part) {
+    if part.kind == Literal {
+        return tagged_value("Literal", json_quote(part.value))
+    }
+    return tagged_value("Interp", serialize_expr(part.expr))
+}
+
+fn serialize_match_arms(arms) {
+    let mut items = []
+    let mut index = 0
+    while index < arms.len() {
+        items.push(serialize_match_arm(arms[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn serialize_match_arm(arm) {
+    return json_object([
+        json_field("pattern", serialize_expr(arm.pattern)),
+        json_field("body", serialize_match_arm_body(arm.body)),
+        json_field("span", serialize_span(arm.span))
+    ])
+}
+
+fn serialize_match_arm_body(body) {
+    if body.kind == Expr {
+        return tagged_value("Expr", serialize_expr(body.expr))
+    }
+    return tagged_value("Block", serialize_block(body.block))
+}
+
+fn serialize_span(span) {
+    return json_object([
+        json_field("start", span.start.to_string()),
+        json_field("end", span.end.to_string()),
+        json_field("line", span.line.to_string()),
+        json_field("col", span.col.to_string())
+    ])
+}
+
+fn json_bool(value) {
+    if value {
+        return "true"
+    }
+    return "false"
+}
+
+fn json_float(value) {
+    let text = value.to_string()
+    if text.contains(".") || text.contains("e") || text.contains("E") {
+        return text
+    }
+    return text + ".0"
+}
+
+fn json_string_array(values) {
+    let mut items = []
+    let mut index = 0
+    while index < values.len() {
+        items.push(json_quote(values[index]))
+        index = index + 1
+    }
+    return json_array(items)
+}
+
+fn tagged_value(tag, value) {
+    return json_object([
+        json_field(tag, value)
+    ])
+}
+
+fn tagged_object(tag, fields) {
+    return json_object([
+        json_field(tag, json_object(fields))
+    ])
+}
+
+fn serialize_optional_string(value) {
+    if value == None {
+        return "null"
+    }
+    return json_quote(value)
+}
+
+fn json_field(name, value) {
+    return json_quote(name) + ":" + value
+}
+
+fn json_object(fields) {
+    return "{" + join_json_items(fields) + "}"
+}
+
+fn json_array(items) {
+    return "[" + join_json_items(items) + "]"
+}
+
+fn join_json_items(items) {
+    let mut out = ""
+    let mut index = 0
+    while index < items.len() {
+        if index > 0 {
+            out = out + ","
+        }
+        out = out + items[index]
+        index = index + 1
+    }
+    return out
+}
+
+fn json_quote(value) {
+    let quote = ascii_char(34)
+    return quote + json_escape(value) + quote
+}
+
+fn json_escape(value) {
+    let mut out = ""
+    let mut index = 0
+    while index < value.len() {
+        let byte = byte_at(value, index)
+        if byte == 92 {
+            out = out + ascii_char(92) + ascii_char(92)
+        } elif byte == 34 {
+            out = out + ascii_char(92) + ascii_char(34)
+        } elif byte == 10 {
+            out = out + ascii_char(92) + "n"
+        } elif byte == 13 {
+            out = out + ascii_char(92) + "r"
+        } elif byte == 9 {
+            out = out + ascii_char(92) + "t"
+        } else {
+            out = out + ascii_char(byte)
+        }
+        index = index + 1
+    }
+    return out
+}
+
+fn byte_at(value, index) {
+    if index < 0 || index >= value.len() {
+        return -1
+    }
+    return str_byte_at(value, index)
+}
