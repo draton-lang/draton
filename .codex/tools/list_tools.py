@@ -24,6 +24,41 @@ def main() -> int:
                 ],
             },
             {
+                "name": "guarded_cargo.py",
+                "purpose": "Run common cargo workflows through guarded presets.",
+                "best_for": [
+                    "parser tests",
+                    "typechecker tests",
+                    "workspace builds",
+                    "workspace clippy or fmt checks",
+                ],
+            },
+            {
+                "name": "system_snapshot.py",
+                "purpose": "Capture host load, memory, and disk state before expensive work.",
+                "best_for": [
+                    "resource triage",
+                    "preflight checks",
+                ],
+            },
+            {
+                "name": "repo_processes.py",
+                "purpose": "List repository-related processes and their resource usage.",
+                "best_for": [
+                    "stuck builds",
+                    "overlapping test runs",
+                    "diagnostics",
+                ],
+            },
+            {
+                "name": "stop_repo_processes.py",
+                "purpose": "Stop repository-related processes with controlled signals.",
+                "best_for": [
+                    "clean shutdown",
+                    "stuck repo jobs",
+                ],
+            },
+            {
                 "name": "cleanup_tool_state.py",
                 "purpose": "Clear stale guarded-run slot records when interrupted runs leave state behind.",
                 "best_for": [

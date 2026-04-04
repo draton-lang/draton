@@ -11,15 +11,21 @@ Prefer repository-local guarded tools when command execution strategy matters. T
 
 1. Read [references/tooling-map.md](references/tooling-map.md).
 2. If the task needs command execution beyond a trivial quick read, prefer `.codex/tools/run_guarded.py`.
-3. Use `.codex/tools/list_tools.py` when the best local tool is unclear.
-4. Use `.codex/tools/cleanup_tool_state.py` after interrupted runs or stale slot state.
-5. Coordinate with `$draton-verification`, `$draton-release-readiness`, or `$draton-vendored-llvm` for the actual command list.
+3. If the task is a common cargo workflow, prefer `.codex/tools/guarded_cargo.py`.
+4. Use `.codex/tools/system_snapshot.py` before expensive verification when host pressure may matter.
+5. Use `.codex/tools/repo_processes.py` to inspect overlapping repo jobs.
+6. Use `.codex/tools/stop_repo_processes.py` only when repo jobs need controlled shutdown.
+7. Use `.codex/tools/list_tools.py` when the best local tool is unclear.
+8. Use `.codex/tools/cleanup_tool_state.py` after interrupted runs or stale slot state.
+9. Coordinate with `$draton-verification`, `$draton-release-readiness`, or `$draton-vendored-llvm` for the actual command list.
 
 ## Rules
 
 - Prefer one guarded command over multiple uncontrolled background commands.
 - Keep concurrency low unless the task truly benefits from more slots.
 - Set time and memory budgets intentionally for heavy builds and tests.
+- Snapshot the machine before heavy work if there is any sign of resource pressure.
+- Inspect and stop repo-local processes before escalating to broader kill patterns.
 - Treat raw shell execution as the fallback, not the default, for expensive work.
 
 ## Resources
