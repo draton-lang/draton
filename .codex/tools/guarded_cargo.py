@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -68,8 +70,27 @@ def resolve_cargo() -> str:
     raise SystemExit("cargo executable not found; set CARGO or install cargo in PATH")
 
 
+def preset_env(preset_name: str | None, cwd: str) -> list[tuple[str, str]]:
+    if preset_name != "selfhost-stage0":
+        return []
+
+    workspace = Path(cwd).resolve()
+    repo_name = workspace.name or "repo"
+    repo_hash = hashlib.sha256(str(workspace).encode("utf-8")).hexdigest()[:12]
+    root = Path(tempfile.gettempdir()) / "draton-guarded" / f"{repo_name}-{repo_hash}" / preset_name
+    target_dir = root / "target"
+    tmp_dir = root / "tmp"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    return [
+        ("CARGO_TARGET_DIR", str(target_dir)),
+        ("TMPDIR", str(tmp_dir)),
+    ]
+
+
 def main() -> int:
     args = parse_args()
+    cwd = str(Path(args.cwd).resolve())
     if args.preset is not None:
         preset = PRESETS[args.preset]
         cargo_args = preset["args"]
@@ -87,7 +108,7 @@ def main() -> int:
         sys.executable,
         str(RUN_GUARDED),
         "--cwd",
-        args.cwd,
+        cwd,
         "--timeout-sec",
         str(timeout),
         "--memory-mb",
@@ -101,6 +122,8 @@ def main() -> int:
         "--wait-sec",
         str(args.wait_sec),
     ]
+    for key, value in preset_env(args.preset, cwd):
+        command.extend(["--env", f"{key}={value}"])
     if args.json_only:
         command.append("--json-only")
     command.extend(["--", resolve_cargo(), *cargo_args])
