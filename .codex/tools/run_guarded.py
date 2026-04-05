@@ -24,6 +24,7 @@ DEFAULT_WAIT_SEC = 120
 DEFAULT_CONCURRENCY = 2
 DEFAULT_MEMORY_MB = 2048
 DEFAULT_CPU_SECONDS = 600
+DEFAULT_FILE_SIZE_MB = 64
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--concurrency", type=int, default=DEFAULT_CONCURRENCY)
     parser.add_argument("--memory-mb", type=int, default=DEFAULT_MEMORY_MB)
     parser.add_argument("--cpu-seconds", type=int, default=DEFAULT_CPU_SECONDS)
-    parser.add_argument("--file-size-mb", type=int, default=64)
+    parser.add_argument("--file-size-mb", type=int, default=DEFAULT_FILE_SIZE_MB)
     parser.add_argument("--nice", type=int, default=10)
     parser.add_argument(
         "--env",
@@ -214,6 +215,7 @@ def main() -> int:
             "timeout_sec": args.timeout_sec,
             "memory_mb": args.memory_mb,
             "cpu_seconds": args.cpu_seconds,
+            "file_size_mb": args.file_size_mb,
             "duration_sec": round(time.time() - started, 3),
             "stdout": stdout,
             "stderr": stderr,
