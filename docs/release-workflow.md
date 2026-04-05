@@ -67,6 +67,8 @@ Releases are built against vendored LLVM 18.1.8 fetched through `scripts/vendor_
 
 When the archive includes a bundled `llvm/` directory, the smoke test also points `DRATON_LLVM_BUNDLE_PREFIX` at that packaged toolchain and scrubs common compiler/linker environment overrides before running `drat build`.
 
+For source-build verification, prefer `python3 scripts/vendor_llvm.py print-env --target host` over calling the raw bundle `llvm-config` directly. The script now prepares a repo-local `llvm-config` shim inside the vendored prefix so `llvm-sys` can query version and library metadata even when the upstream bundle executable is not runnable on the current Linux host.
+
 The remaining runtime expectation is limited to normal OS libraries:
 
 - Linux: common system libraries such as `libstdc++`, `libffi`, `libz`, and `libtinfo`

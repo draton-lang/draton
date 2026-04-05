@@ -27,50 +27,109 @@ fn print_and_exit(message: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn bundled_system_libs() -> &'static str {
-    if cfg!(target_os = "linux") {
-        "-lrt -ldl -lm -lz -ltinfo -lxml2"
-    } else {
-        ""
-    }
+fn cmake_config_path() -> PathBuf {
+    prefix_dir().join("lib").join("cmake").join("llvm").join("LLVMConfig.cmake")
 }
 
-fn fallback_query(args: &[String]) -> Option<ExitCode> {
-    let prefix = prefix_dir();
-    let include_dir = prefix.join("include");
-    let lib_dir = prefix.join("lib");
-    match args {
-        [flag] if flag == "--version" => Some(print_and_exit("14.0.6")),
-        [flag] if flag == "--prefix" => Some(print_and_exit(&prefix.display().to_string())),
-        [flag] if flag == "--libdir" => Some(print_and_exit(&lib_dir.display().to_string())),
-        [flag] if flag == "--includedir" => Some(print_and_exit(&include_dir.display().to_string())),
-        [flag] if flag == "--build-mode" => Some(print_and_exit("Release")),
-        [flag] if flag == "--cflags" => {
-            Some(print_and_exit(&format!("-I{}", include_dir.display())))
-        }
-        [flag] if flag == "--ldflags" => {
-            Some(print_and_exit(&format!("-L{}", lib_dir.display())))
-        }
-        [flag, link] if flag == "--libnames" && link == "--link-static" => match libnames() {
-            Ok(value) => Some(print_and_exit(&value)),
-            Err(error) => {
-                eprintln!("failed to enumerate LLVM static libraries: {error}");
-                Some(ExitCode::from(1))
+fn read_cmake_var(name: &str) -> Option<String> {
+    let prefix = format!("set({name} ");
+    let contents = fs::read_to_string(cmake_config_path()).ok()?;
+    for line in contents.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix(&prefix) {
+            let value = rest.strip_suffix(')').unwrap_or(rest).trim();
+            if let Some(stripped) = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
+                return Some(stripped.to_string());
             }
-        },
-        [flag] if flag == "--system-libs" => Some(print_and_exit(bundled_system_libs())),
-        [flag, link] if flag == "--system-libs" && link == "--link-static" => {
-            Some(print_and_exit(bundled_system_libs()))
+            return Some(value.to_string());
         }
-        [flag, ..] if flag == "--libs" => match libnames() {
-            Ok(value) => Some(print_and_exit(&value)),
-            Err(error) => {
-                eprintln!("failed to enumerate LLVM static libraries: {error}");
-                Some(ExitCode::from(1))
-            }
-        },
-        _ => None,
     }
+    None
+}
+
+fn cmake_enabled(name: &str) -> bool {
+    matches!(read_cmake_var(name).as_deref(), Some("ON" | "TRUE" | "1"))
+}
+
+fn bundled_system_libs() -> String {
+    if !cfg!(target_os = "linux") {
+        return String::new();
+    }
+
+    let mut libs = vec!["-lrt", "-ldl", "-lm"];
+    if cmake_enabled("LLVM_ENABLE_ZLIB") {
+        libs.push("-lz");
+    }
+    if cmake_enabled("LLVM_ENABLE_TERMINFO") {
+        libs.push("-ltinfo");
+    }
+    if cmake_enabled("LLVM_ENABLE_LIBXML2") {
+        libs.push("-lxml2");
+    }
+    libs.join(" ")
+}
+
+fn cmake_static_libnames() -> io::Result<Option<String>> {
+    let Some(value) = read_cmake_var("LLVM_AVAILABLE_LIBS") else {
+        return Ok(None);
+    };
+
+    let lib_dir = prefix_dir().join("lib");
+    let mut names = Vec::new();
+    for component in value.split(';').rev().filter(|component| !component.is_empty()) {
+        let filename = if cfg!(windows) {
+            format!("{component}.lib")
+        } else {
+            format!("lib{component}.a")
+        };
+        if lib_dir.join(&filename).exists() {
+            names.push(filename);
+        }
+    }
+
+    if names.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(names.join(" ")))
+}
+
+fn llvm_package_version() -> String {
+    read_cmake_var("LLVM_PACKAGE_VERSION").unwrap_or_else(|| "18.1.8".to_string())
+}
+
+fn llvm_build_mode() -> String {
+    read_cmake_var("LLVM_BUILD_TYPE")
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "Release".to_string())
+}
+
+fn llvm_definitions() -> String {
+    read_cmake_var("LLVM_DEFINITIONS").unwrap_or_default()
+}
+
+fn libnames() -> io::Result<String> {
+    if let Some(value) = cmake_static_libnames()? {
+        return Ok(value);
+    }
+    libnames_from_dir()
+}
+
+fn libflags() -> io::Result<String> {
+    Ok(libnames()?
+        .split_whitespace()
+        .map(|name| {
+            if cfg!(windows) {
+                name.to_string()
+            } else {
+                name.strip_prefix("lib")
+                    .and_then(|value| value.strip_suffix(".a"))
+                    .map(|value| format!("-l{value}"))
+                    .unwrap_or_else(|| format!("-l{name}"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" "))
 }
 
 fn library_name(path: &Path) -> Option<String> {
@@ -96,7 +155,7 @@ fn library_name(path: &Path) -> Option<String> {
     }
 }
 
-fn libnames() -> io::Result<String> {
+fn libnames_from_dir() -> io::Result<String> {
     let mut names = Vec::new();
     for entry in fs::read_dir(prefix_dir().join("lib"))? {
         let entry = entry?;
@@ -108,6 +167,50 @@ fn libnames() -> io::Result<String> {
     names.sort();
     names.dedup();
     Ok(names.join(" "))
+}
+
+fn fallback_query(args: &[String]) -> Option<ExitCode> {
+    let prefix = prefix_dir();
+    let include_dir = prefix.join("include");
+    let lib_dir = prefix.join("lib");
+    match args {
+        [flag] if flag == "--version" => Some(print_and_exit(&llvm_package_version())),
+        [flag] if flag == "--prefix" => Some(print_and_exit(&prefix.display().to_string())),
+        [flag] if flag == "--libdir" => Some(print_and_exit(&lib_dir.display().to_string())),
+        [flag] if flag == "--includedir" => Some(print_and_exit(&include_dir.display().to_string())),
+        [flag] if flag == "--build-mode" => Some(print_and_exit(&llvm_build_mode())),
+        [flag] if flag == "--cflags" => {
+            let definitions = llvm_definitions();
+            let mut value = format!("-I{}", include_dir.display());
+            if !definitions.is_empty() {
+                value.push(' ');
+                value.push_str(&definitions);
+            }
+            Some(print_and_exit(&value))
+        }
+        [flag] if flag == "--ldflags" => {
+            Some(print_and_exit(&format!("-L{}", lib_dir.display())))
+        }
+        [flag, link] if flag == "--libnames" && link == "--link-static" => match libnames() {
+            Ok(value) => Some(print_and_exit(&value)),
+            Err(error) => {
+                eprintln!("failed to enumerate LLVM static libraries: {error}");
+                Some(ExitCode::from(1))
+            }
+        },
+        [flag] if flag == "--system-libs" => Some(print_and_exit(&bundled_system_libs())),
+        [flag, link] if flag == "--system-libs" && link == "--link-static" => {
+            Some(print_and_exit(&bundled_system_libs()))
+        }
+        [flag, ..] if flag == "--libs" => match libflags() {
+            Ok(value) => Some(print_and_exit(&value)),
+            Err(error) => {
+                eprintln!("failed to enumerate LLVM libraries: {error}");
+                Some(ExitCode::from(1))
+            }
+        },
+        _ => None,
+    }
 }
 
 fn delegate(args: &[String]) -> ExitCode {

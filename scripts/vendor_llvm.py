@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import shutil
+import subprocess
 import sys
 import tarfile
 import urllib.request
@@ -13,6 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "vendor" / "llvm" / "manifest.json"
+SHIM_SOURCE = ROOT / "scripts" / "llvm_config_shim.rs"
+LLVM_ROOT = ROOT / "vendor" / "llvm"
 
 
 def load_manifest() -> dict:
@@ -63,12 +67,11 @@ def extract_archive(archive_path: Path, destination: Path) -> Path:
 def cmd_fetch(target: str) -> int:
     manifest = load_manifest()
     entry = manifest["targets"][target]
-    llvm_root = ROOT / "vendor" / "llvm"
-    archives_dir = llvm_root / "_archives"
+    archives_dir = LLVM_ROOT / "_archives"
     archives_dir.mkdir(parents=True, exist_ok=True)
     archive_path = archives_dir / entry["archive"]
-    extract_dir = llvm_root / "_extract" / target
-    target_dir = llvm_root / target
+    extract_dir = LLVM_ROOT / "_extract" / target
+    target_dir = LLVM_ROOT / target
 
     if not archive_path.exists():
         print(f"downloading {entry['url']} -> {archive_path}", file=sys.stderr)
@@ -83,6 +86,8 @@ def cmd_fetch(target: str) -> int:
             f"unexpected root dir: expected {entry['root_dir']}, found {extracted_root.name}"
         )
     normalize_layout(extracted_root, target_dir)
+    prepare_llvm_config(target_dir, target)
+    ensure_host_alias(target)
     print(target_dir)
     return 0
 
@@ -109,9 +114,109 @@ def emit_env(prefix: Path, target: str, format_name: str) -> None:
 
 
 def cmd_print_env(target: str, format_name: str) -> int:
-    prefix = ROOT / "vendor" / "llvm" / target
+    prefix = LLVM_ROOT / target
+    prepare_llvm_config(prefix, target)
+    ensure_host_alias(target)
     emit_env(prefix, target, format_name)
     return 0
+
+
+def llvm_config_name(target: str) -> str:
+    return "llvm-config.exe" if target.startswith("windows-") else "llvm-config"
+
+
+def llvm_config_real_name(target: str) -> str:
+    return "llvm-config-real.exe" if target.startswith("windows-") else "llvm-config-real"
+
+
+def shim_marker_name(target: str) -> str:
+    return ".llvm-config-shim.exe.stamp" if target.startswith("windows-") else ".llvm-config-shim.stamp"
+
+
+def extracted_llvm_config_path(target: str) -> Path | None:
+    manifest = load_manifest()
+    entry = manifest["targets"].get(target)
+    if entry is None:
+        return None
+    path = LLVM_ROOT / "_extract" / target / entry["root_dir"] / "bin" / llvm_config_name(target)
+    return path if path.exists() else None
+
+
+def build_llvm_config_shim(target: str, shim_path: Path) -> None:
+    rustc = resolve_rustc()
+    if rustc is None:
+        raise SystemExit("rustc is required to prepare the vendored llvm-config shim")
+    shim_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = shim_path.with_suffix(f"{shim_path.suffix}.tmp")
+    subprocess.run(
+        [rustc, "--edition=2021", "-O", str(SHIM_SOURCE), "-o", str(temp_path)],
+        check=True,
+        cwd=ROOT,
+    )
+    temp_path.replace(shim_path)
+
+
+def resolve_rustc() -> str | None:
+    explicit = os.environ.get("RUSTC")
+    if explicit:
+        candidate = Path(explicit).expanduser()
+        if candidate.exists():
+            return str(candidate)
+    for candidate in (
+        Path.home() / ".cargo" / "bin" / "rustc",
+        Path("/home/lehungquangminh/.cargo/bin/rustc"),
+    ):
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("rustc")
+
+
+def prepare_llvm_config(prefix: Path, target: str) -> None:
+    if not prefix.exists():
+        return
+    bin_dir = prefix / "bin"
+    if not bin_dir.exists():
+        return
+
+    shim_path = bin_dir / llvm_config_name(target)
+    real_path = bin_dir / llvm_config_real_name(target)
+    marker_path = bin_dir / shim_marker_name(target)
+
+    if not real_path.exists():
+        extracted = extracted_llvm_config_path(target)
+        if extracted is not None:
+            shutil.copy2(extracted, real_path)
+        elif shim_path.exists() and not marker_path.exists():
+            shutil.move(shim_path, real_path)
+
+    needs_compile = not shim_path.exists() or not marker_path.exists()
+    if not needs_compile and SHIM_SOURCE.stat().st_mtime > shim_path.stat().st_mtime:
+        needs_compile = True
+    if needs_compile:
+        build_llvm_config_shim(target, shim_path)
+        marker_path.write_text(f"shim-source={SHIM_SOURCE}\n", encoding="utf-8")
+
+
+def ensure_host_alias(target: str) -> None:
+    host_target = detect_host_target()
+    if target != host_target:
+        return
+
+    target_dir = LLVM_ROOT / target
+    if not target_dir.exists():
+        return
+
+    alias = LLVM_ROOT / "host"
+    desired = Path(target)
+    try:
+        if alias.is_symlink() or alias.is_file():
+            alias.unlink()
+        elif alias.is_dir():
+            shutil.rmtree(alias)
+        alias.symlink_to(desired, target_is_directory=True)
+    except OSError:
+        # Best-effort alias on hosts that do not support directory symlinks cleanly.
+        return
 
 
 def parse_args() -> argparse.Namespace:

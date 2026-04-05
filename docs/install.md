@@ -39,7 +39,7 @@ What they do rely on:
 - macOS: system runtime libraries that ship with supported macOS releases
 - Windows x86_64: the standard Windows user-mode runtime stack present on supported desktop systems
 
-If you are building Draton from source instead of using a release archive, fetch the vendored LLVM 18.1.8 bundle first and export the environment that `scripts/vendor_llvm.py` prints.
+If you are building Draton from source instead of using a release archive, fetch the vendored LLVM 18.1.8 bundle first and export the environment that `scripts/vendor_llvm.py` prints. That command also prepares the repo-local `llvm-config` shim under `vendor/llvm/<target>/bin`, which is the supported way to make `llvm-sys` see the vendored toolchain on Linux hosts where the upstream bundle's `llvm-config` binary is not directly runnable.
 
 ## Install with scripts
 

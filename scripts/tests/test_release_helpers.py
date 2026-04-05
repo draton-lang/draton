@@ -83,6 +83,53 @@ class VendorLlvmTests(unittest.TestCase):
                 ],
             )
 
+    def test_prepare_llvm_config_installs_real_binary_and_compiles_shim(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            prefix = temp_root / "vendor" / "llvm" / "linux-x86_64"
+            (prefix / "bin").mkdir(parents=True)
+            source = temp_root / "extract" / "bin" / "llvm-config"
+            source.parent.mkdir(parents=True)
+            source.write_text("real llvm-config", encoding="utf-8")
+
+            captured: list[list[str]] = []
+
+            def fake_run(cmd: list[str], check: bool, cwd: Path) -> None:
+                captured.append(cmd)
+                self.assertTrue(check)
+                self.assertEqual(cwd, REPO_ROOT)
+                Path(cmd[-1]).write_text("compiled shim", encoding="utf-8")
+
+            with mock.patch.object(vendor_llvm, "resolve_rustc", return_value="/usr/bin/rustc"):
+                with mock.patch.object(vendor_llvm, "extracted_llvm_config_path", return_value=source):
+                    with mock.patch.object(vendor_llvm.subprocess, "run", side_effect=fake_run):
+                        vendor_llvm.prepare_llvm_config(prefix, "linux-x86_64")
+
+            self.assertEqual((prefix / "bin" / "llvm-config-real").read_text(encoding="utf-8"), "real llvm-config")
+            self.assertEqual((prefix / "bin" / "llvm-config").read_text(encoding="utf-8"), "compiled shim")
+            self.assertTrue((prefix / "bin" / ".llvm-config-shim.stamp").exists())
+            self.assertEqual(len(captured), 1)
+            self.assertEqual(captured[0][0], "/usr/bin/rustc")
+            self.assertEqual(captured[0][-1], str(prefix / "bin" / "llvm-config.tmp"))
+
+    def test_ensure_host_alias_points_to_normalized_host_target(self) -> None:
+        if os.name == "nt":
+            self.skipTest("host symlink checks are POSIX-only in this repo")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            llvm_root = temp_root / "vendor" / "llvm"
+            target_dir = llvm_root / "linux-x86_64"
+            target_dir.mkdir(parents=True)
+
+            with mock.patch.object(vendor_llvm, "LLVM_ROOT", llvm_root):
+                with mock.patch.object(vendor_llvm, "detect_host_target", return_value="linux-x86_64"):
+                    vendor_llvm.ensure_host_alias("linux-x86_64")
+
+            alias = llvm_root / "host"
+            self.assertTrue(alias.is_symlink())
+            self.assertEqual(alias.resolve(), target_dir.resolve())
+
 
 class SmokeReleaseTests(unittest.TestCase):
     def test_sanitized_runtime_env_prefers_packaged_llvm_and_scrubs_toolchain_vars(self) -> None:
