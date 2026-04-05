@@ -68,7 +68,11 @@ fn warns_that_gc_config_has_no_effect() {
     let lexed = Lexer::new(wrapped).tokenize();
     assert!(lexed.errors.is_empty(), "lexer errors: {:?}", lexed.errors);
     let result = Parser::new(lexed.tokens).parse();
-    assert!(result.errors.is_empty(), "parser errors: {:?}", result.errors);
+    assert!(
+        result.errors.is_empty(),
+        "parser errors: {:?}",
+        result.errors
+    );
     assert!(result.warnings.iter().any(|warning| matches!(
         warning,
         ParseWarning::DeprecatedSyntax { syntax, replacement, .. }

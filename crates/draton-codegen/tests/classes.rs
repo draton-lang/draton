@@ -69,7 +69,10 @@ class Node {
     );
     let method_start = ir.find("define void @Node.link").expect("Node.link");
     let method_ir = &ir[method_start..];
-    assert!(!method_ir.contains("call void @draton_gc_write_barrier"), "{method_ir}");
+    assert!(
+        !method_ir.contains("call void @draton_gc_write_barrier"),
+        "{method_ir}"
+    );
 }
 
 #[test]

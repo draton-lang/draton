@@ -95,7 +95,8 @@ fn typecheck_program(path: &Path, source: &str) -> TypeCheckResult {
     );
     let typed = TypeChecker::new().check(parsed.program);
     assert!(
-        !typed.errors
+        !typed
+            .errors
             .iter()
             .any(|error| matches!(error, TypeError::Ownership(_))),
         "ownership errors in {}: {:?}",
@@ -128,15 +129,12 @@ fn item_contains_malloc_lowered_alloc(item: &TypedItem, class_names: &HashSet<St
             .body
             .as_ref()
             .is_some_and(|body| block_contains_malloc_lowered_alloc(body, class_names)),
-        TypedItem::Class(class_def) => class_def
-            .methods
-            .iter()
-            .any(|method| {
-                method
-                    .body
-                    .as_ref()
-                    .is_some_and(|body| block_contains_malloc_lowered_alloc(body, class_names))
-            }),
+        TypedItem::Class(class_def) => class_def.methods.iter().any(|method| {
+            method
+                .body
+                .as_ref()
+                .is_some_and(|body| block_contains_malloc_lowered_alloc(body, class_names))
+        }),
         TypedItem::Extern(extern_block) => extern_block.functions.iter().any(|function| {
             function
                 .body
@@ -149,7 +147,9 @@ fn item_contains_malloc_lowered_alloc(item: &TypedItem, class_names: &HashSet<St
                 .as_ref()
                 .is_some_and(|body| block_contains_malloc_lowered_alloc(body, class_names))
         }),
-        TypedItem::Const(const_def) => expr_contains_malloc_lowered_alloc(&const_def.value, class_names),
+        TypedItem::Const(const_def) => {
+            expr_contains_malloc_lowered_alloc(&const_def.value, class_names)
+        }
         TypedItem::Enum(_)
         | TypedItem::Error(_)
         | TypedItem::Import(_)
@@ -158,7 +158,8 @@ fn item_contains_malloc_lowered_alloc(item: &TypedItem, class_names: &HashSet<St
 }
 
 fn block_contains_malloc_lowered_alloc(block: &TypedBlock, class_names: &HashSet<String>) -> bool {
-    block.stmts
+    block
+        .stmts
         .iter()
         .any(|stmt| stmt_contains_malloc_lowered_alloc(&stmt.kind, class_names))
 }
@@ -187,23 +188,32 @@ fn stmt_contains_malloc_lowered_alloc(kind: &TypedStmtKind, class_names: &HashSe
         TypedStmtKind::If(if_stmt) => {
             expr_contains_malloc_lowered_alloc(&if_stmt.condition, class_names)
                 || block_contains_malloc_lowered_alloc(&if_stmt.then_branch, class_names)
-                || if_stmt.else_branch.as_ref().is_some_and(|branch| match branch {
-                    TypedElseBranch::If(inner) => {
-                        expr_contains_malloc_lowered_alloc(&inner.condition, class_names)
-                            || block_contains_malloc_lowered_alloc(&inner.then_branch, class_names)
-                            || inner.else_branch.as_ref().is_some_and(|next| match next {
-                                TypedElseBranch::If(next_if) => {
-                                    block_contains_malloc_lowered_alloc(&next_if.then_branch, class_names)
-                                }
-                                TypedElseBranch::Block(block) => {
-                                    block_contains_malloc_lowered_alloc(block, class_names)
-                                }
-                            })
-                    }
-                    TypedElseBranch::Block(block) => {
-                        block_contains_malloc_lowered_alloc(block, class_names)
-                    }
-                })
+                || if_stmt
+                    .else_branch
+                    .as_ref()
+                    .is_some_and(|branch| match branch {
+                        TypedElseBranch::If(inner) => {
+                            expr_contains_malloc_lowered_alloc(&inner.condition, class_names)
+                                || block_contains_malloc_lowered_alloc(
+                                    &inner.then_branch,
+                                    class_names,
+                                )
+                                || inner.else_branch.as_ref().is_some_and(|next| match next {
+                                    TypedElseBranch::If(next_if) => {
+                                        block_contains_malloc_lowered_alloc(
+                                            &next_if.then_branch,
+                                            class_names,
+                                        )
+                                    }
+                                    TypedElseBranch::Block(block) => {
+                                        block_contains_malloc_lowered_alloc(block, class_names)
+                                    }
+                                })
+                        }
+                        TypedElseBranch::Block(block) => {
+                            block_contains_malloc_lowered_alloc(block, class_names)
+                        }
+                    })
         }
         TypedStmtKind::For(for_stmt) => {
             expr_contains_malloc_lowered_alloc(&for_stmt.iter, class_names)
@@ -220,7 +230,9 @@ fn stmt_contains_malloc_lowered_alloc(kind: &TypedStmtKind, class_names: &HashSe
         TypedStmtKind::Block(block)
         | TypedStmtKind::UnsafeBlock(block)
         | TypedStmtKind::PointerBlock(block)
-        | TypedStmtKind::ComptimeBlock(block) => block_contains_malloc_lowered_alloc(block, class_names),
+        | TypedStmtKind::ComptimeBlock(block) => {
+            block_contains_malloc_lowered_alloc(block, class_names)
+        }
         TypedStmtKind::IfCompile(if_compile) => {
             expr_contains_malloc_lowered_alloc(&if_compile.condition, class_names)
                 || block_contains_malloc_lowered_alloc(&if_compile.body, class_names)
@@ -235,7 +247,9 @@ fn stmt_contains_malloc_lowered_alloc(kind: &TypedStmtKind, class_names: &HashSe
 
 fn expr_contains_malloc_lowered_alloc(expr: &TypedExpr, class_names: &HashSet<String>) -> bool {
     match &expr.kind {
-        TypedExprKind::Lambda(_, body) => expr_contains_malloc_lowered_alloc(body, class_names) || true,
+        TypedExprKind::Lambda(_, body) => {
+            expr_contains_malloc_lowered_alloc(body, class_names) || true
+        }
         TypedExprKind::Call(callee, args) => {
             is_class_literal_call(callee, args, class_names)
                 || expr_contains_malloc_lowered_alloc(callee, class_names)
@@ -249,9 +263,11 @@ fn expr_contains_malloc_lowered_alloc(expr: &TypedExpr, class_names: &HashSet<St
                     .iter()
                     .any(|arg| expr_contains_malloc_lowered_alloc(arg, class_names))
         }
-        TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => items
-            .iter()
-            .any(|item| expr_contains_malloc_lowered_alloc(item, class_names)),
+        TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+            items
+                .iter()
+                .any(|item| expr_contains_malloc_lowered_alloc(item, class_names))
+        }
         TypedExprKind::Map(entries) => entries.iter().any(|(key, value)| {
             expr_contains_malloc_lowered_alloc(key, class_names)
                 || expr_contains_malloc_lowered_alloc(value, class_names)

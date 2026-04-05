@@ -81,7 +81,9 @@ impl<'ctx> CodeGen<'ctx> {
             TypedExprKind::Field(target, field) => {
                 self.emit_field_load(target, field, &expr.ty).map(Some)
             }
-            TypedExprKind::Index(target, index) => self.emit_index(target, index, &expr.ty).map(Some),
+            TypedExprKind::Index(target, index) => {
+                self.emit_index(target, index, &expr.ty).map(Some)
+            }
             TypedExprKind::Cast(value, to_ty) => self.emit_cast(value, to_ty).map(Some),
             TypedExprKind::Match(subject, arms) => self.emit_match(subject, arms, &expr.ty),
             TypedExprKind::Ok(value) => self.emit_result(value, &expr.ty, true),
@@ -237,13 +239,13 @@ impl<'ctx> CodeGen<'ctx> {
                 CodeGenError::UnsupportedExpr("array item missing value".to_string())
             })?;
             let slot = unsafe {
-                    self.build_gep(
-                        item_ty,
-                        data_ptr,
-                        &[self.context.i64_type().const_int(index as u64, false)],
-                        "array.slot",
-                    )?
-                };
+                self.build_gep(
+                    item_ty,
+                    data_ptr,
+                    &[self.context.i64_type().const_int(index as u64, false)],
+                    "array.slot",
+                )?
+            };
             self.build_store(slot, value)?;
         }
         let array_ty = self.llvm_basic_type(ty)?.into_struct_type();
@@ -587,9 +589,11 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?
                 .into(),
             UnOp::Ref => self.emit_lvalue_ptr(value_expr)?.into(),
-            UnOp::Deref => {
-                self.build_typed_load(value.into_pointer_value(), self.llvm_basic_type(ty)?, "deref")?
-            }
+            UnOp::Deref => self.build_typed_load(
+                value.into_pointer_value(),
+                self.llvm_basic_type(ty)?,
+                "deref",
+            )?,
         };
         Ok(Some(result))
     }
@@ -1230,10 +1234,14 @@ impl<'ctx> CodeGen<'ctx> {
                 let function = self
                     .module
                     .get_function("draton_host_lex_json")
-                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_host_lex_json".to_string()))?;
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_host_lex_json".to_string())
+                    })?;
                 let value = self
                     .emit_expr(args.first().ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr("host_lex_json requires one argument".to_string())
+                        CodeGenError::UnsupportedExpr(
+                            "host_lex_json requires one argument".to_string(),
+                        )
                     })?)?
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("host_lex_json arg missing value".to_string())
@@ -1248,13 +1256,19 @@ impl<'ctx> CodeGen<'ctx> {
                 let function = self
                     .module
                     .get_function("draton_host_parse_json")
-                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_host_parse_json".to_string()))?;
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_host_parse_json".to_string())
+                    })?;
                 let value = self
                     .emit_expr(args.first().ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr("host_parse_json requires one argument".to_string())
+                        CodeGenError::UnsupportedExpr(
+                            "host_parse_json requires one argument".to_string(),
+                        )
                     })?)?
                     .ok_or_else(|| {
-                        CodeGenError::UnsupportedExpr("host_parse_json arg missing value".to_string())
+                        CodeGenError::UnsupportedExpr(
+                            "host_parse_json arg missing value".to_string(),
+                        )
                     })?;
                 let call = self
                     .builder
@@ -1266,12 +1280,16 @@ impl<'ctx> CodeGen<'ctx> {
                 let function = self
                     .module
                     .get_function("draton_host_type_json")
-                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_host_type_json".to_string()))?;
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_host_type_json".to_string())
+                    })?;
                 let values = args
                     .iter()
                     .map(|arg| {
                         self.emit_expr(arg)?.ok_or_else(|| {
-                            CodeGenError::UnsupportedExpr("host_type_json arg missing value".to_string())
+                            CodeGenError::UnsupportedExpr(
+                                "host_type_json arg missing value".to_string(),
+                            )
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -1293,12 +1311,16 @@ impl<'ctx> CodeGen<'ctx> {
                 let function = self
                     .module
                     .get_function("draton_host_build_json")
-                    .ok_or_else(|| CodeGenError::MissingSymbol("draton_host_build_json".to_string()))?;
+                    .ok_or_else(|| {
+                        CodeGenError::MissingSymbol("draton_host_build_json".to_string())
+                    })?;
                 let values = args
                     .iter()
                     .map(|arg| {
                         self.emit_expr(arg)?.ok_or_else(|| {
-                            CodeGenError::UnsupportedExpr("host_build_json arg missing value".to_string())
+                            CodeGenError::UnsupportedExpr(
+                                "host_build_json arg missing value".to_string(),
+                            )
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -1633,8 +1655,7 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
             .into_pointer_value();
-        let new_data = self
-            .build_pointer_cast_to(raw_ptr, elem_ty, "array.push.ptr")?;
+        let new_data = self.build_pointer_cast_to(raw_ptr, elem_ty, "array.push.ptr")?;
 
         let old_bytes = self
             .builder
@@ -1667,17 +1688,13 @@ impl<'ctx> CodeGen<'ctx> {
         let value = self.emit_expr(&args[0])?.ok_or_else(|| {
             CodeGenError::UnsupportedExpr("array.push arg missing value".to_string())
         })?;
-        let end_slot = unsafe {
-            self.build_gep(elem_ty, new_data, &[old_len], "array.push.slot")?
-        };
+        let end_slot = unsafe { self.build_gep(elem_ty, new_data, &[old_len], "array.push.slot")? };
         self.build_store(end_slot, value)?;
 
         let array_ty = self.llvm_basic_type(&target.ty)?.into_struct_type();
-        let len_ptr = self
-            .build_struct_gep(array_ty, array_ptr, 0, "array.len.ptr")?;
+        let len_ptr = self.build_struct_gep(array_ty, array_ptr, 0, "array.len.ptr")?;
         self.build_store(len_ptr, new_len.into())?;
-        let data_ptr = self
-            .build_struct_gep(array_ty, array_ptr, 1, "array.data.ptr")?;
+        let data_ptr = self.build_struct_gep(array_ty, array_ptr, 1, "array.data.ptr")?;
         self.build_store(data_ptr, new_data.into())?;
         Ok(None)
     }

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use draton_typeck::{
     typed_ast::{TypedClassDef, TypedInterfaceDef},
     Type, TypedFnDef, TypedItem, TypedProgram,
@@ -6,6 +5,7 @@ use draton_typeck::{
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, FunctionValue, PointerValue};
 use inkwell::AddressSpace;
+use std::collections::HashMap;
 
 use crate::codegen::CodeGen;
 use crate::error::CodeGenError;
@@ -304,16 +304,16 @@ impl<'ctx> CodeGen<'ctx> {
             .vtable_types
             .get(iface_name)
             .ok_or_else(|| CodeGenError::MissingSymbol(format!("{iface_name}_vtable")))?;
-        let fn_slot =
-            self.build_struct_gep(vtable_type, vtable_ptr, method_index as u32, "iface.fn.slot")?;
+        let fn_slot = self.build_struct_gep(
+            vtable_type,
+            vtable_ptr,
+            method_index as u32,
+            "iface.fn.slot",
+        )?;
         let fn_ty = self.interface_dispatch_function_type(&methods[method_index])?;
         let fn_ptr = self
             .builder
-            .build_load(
-                fn_ty.ptr_type(AddressSpace::default()),
-                fn_slot,
-                "iface.fn",
-            )
+            .build_load(fn_ty.ptr_type(AddressSpace::default()), fn_slot, "iface.fn")
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .into_pointer_value();
         let mut call_args = vec![BasicMetadataValueEnum::from(data_ptr)];

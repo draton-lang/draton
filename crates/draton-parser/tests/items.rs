@@ -348,14 +348,23 @@ class Package {
 }
 "#;
     let result = parse_program(source);
-    assert!(result.errors.is_empty(), "parser errors: {:?}", result.errors);
-    assert!(result.warnings.is_empty(), "parser warnings: {:?}", result.warnings);
+    assert!(
+        result.errors.is_empty(),
+        "parser errors: {:?}",
+        result.errors
+    );
+    assert!(
+        result.warnings.is_empty(),
+        "parser warnings: {:?}",
+        result.warnings
+    );
     let Item::Class(class_def) = &result.program.items[0] else {
         panic!("expected class");
     };
     assert!(class_def.type_blocks.iter().any(|block| {
-        block.members.iter().any(|member| {
-            matches!(member, TypeMember::Binding { name, .. } if name == "@acyclic")
-        })
+        block
+            .members
+            .iter()
+            .any(|member| matches!(member, TypeMember::Binding { name, .. } if name == "@acyclic"))
     }));
 }

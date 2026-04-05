@@ -13,7 +13,11 @@ fn compile_program(source: &str) -> CheckedProgram {
     let lexed = Lexer::new(source).tokenize();
     assert!(lexed.errors.is_empty(), "lexer errors: {:?}", lexed.errors);
     let parsed = Parser::new(lexed.tokens).parse();
-    assert!(parsed.errors.is_empty(), "parser errors: {:?}", parsed.errors);
+    assert!(
+        parsed.errors.is_empty(),
+        "parser errors: {:?}",
+        parsed.errors
+    );
     let parser_warnings = parsed.warnings;
     let typed = TypeChecker::new().check(parsed.program);
     CheckedProgram {
@@ -29,7 +33,11 @@ fn assert_compiles(source: &str) -> CheckedProgram {
         "parser warnings: {:?}",
         checked.parser_warnings
     );
-    assert!(checked.typed.errors.is_empty(), "errors: {:?}", checked.typed.errors);
+    assert!(
+        checked.typed.errors.is_empty(),
+        "errors: {:?}",
+        checked.typed.errors
+    );
     checked
 }
 

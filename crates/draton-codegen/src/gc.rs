@@ -74,8 +74,9 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
             .into_pointer_value();
         let typed_ptr = match self.llvm_basic_type(ty)? {
-            BasicTypeEnum::PointerType(ptr_ty) => self
-                .build_pointer_cast_to(raw, ptr_ty.into(), &format!("{name}.typed"))?,
+            BasicTypeEnum::PointerType(ptr_ty) => {
+                self.build_pointer_cast_to(raw, ptr_ty.into(), &format!("{name}.typed"))?
+            }
             other => {
                 return Err(CodeGenError::UnsupportedType(format!(
                     "owned allocation requires pointer-backed type, got {other:?}"
@@ -227,7 +228,11 @@ impl<'ctx> CodeGen<'ctx> {
                 Self::collect_gc_pointer_offsets_for_field(ok, field_byte_offset + 8, out);
                 // Err starts after the Ok payload; size of Ok is 8 bytes for a pointer.
                 let ok_size: u32 = if Self::is_gc_pointer_type(ok) { 8 } else { 0 };
-                Self::collect_gc_pointer_offsets_for_field(err, field_byte_offset + 8 + ok_size, out);
+                Self::collect_gc_pointer_offsets_for_field(
+                    err,
+                    field_byte_offset + 8 + ok_size,
+                    out,
+                );
             }
             _ => {}
         }

@@ -60,7 +60,9 @@ spawn {
 "#,
     );
     assert!(matches!(&stmts[0], Stmt::Block(block) if block.stmts.is_empty()));
-    assert!(matches!(&stmts[1], Stmt::Spawn(spawn) if matches!(&spawn.body, SpawnBody::Block(block) if block.stmts.is_empty())));
+    assert!(
+        matches!(&stmts[1], Stmt::Spawn(spawn) if matches!(&spawn.body, SpawnBody::Block(block) if block.stmts.is_empty()))
+    );
 }
 
 #[test]

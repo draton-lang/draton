@@ -406,8 +406,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
-        let raw = self
-            .emit_owned_alloc(&Type::Named(class_def.name.clone(), Vec::new()), "ctor.raw")?;
+        let raw =
+            self.emit_owned_alloc(&Type::Named(class_def.name.clone(), Vec::new()), "ctor.raw")?;
         let object_ptr = raw;
         for field in &class_def.fields {
             let layout = self
@@ -421,8 +421,8 @@ impl<'ctx> CodeGen<'ctx> {
                 .ok_or_else(|| {
                     CodeGenError::MissingSymbol(format!("{}.{}", class_def.name, field.name))
                 })?;
-            let field_ptr = self
-                .build_struct_gep(layout.struct_type, object_ptr, index, &field.name)?;
+            let field_ptr =
+                self.build_struct_gep(layout.struct_type, object_ptr, index, &field.name)?;
             let zero = self.zero_value(&field.ty)?;
             self.build_store(field_ptr, zero)?;
             if Self::is_gc_pointer_type(&field.ty) {

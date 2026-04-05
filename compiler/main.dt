@@ -1,4 +1,6 @@
-import { lex_json, parse_json, typeck_json, build_json } from driver.pipeline
+import { lex_json, build_json } from driver.pipeline
+import { parse_stage_json } from driver.parse_stage
+import { typeck_stage_json } from driver.typeck_stage
 
 @type {
     arg_or_empty: (Int) -> String
@@ -48,11 +50,11 @@ fn main() {
     }
 
     if command == "parse" {
-        return emit_payload(parse_json(path))
+        return emit_payload(parse_stage_json(path))
     }
 
     if command == "typeck" {
-        return emit_payload(typeck_json(path, bool_arg(3)))
+        return emit_payload(typeck_stage_json(path, bool_arg(3)))
     }
 
     if command == "build" {

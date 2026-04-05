@@ -12,7 +12,9 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
 };
 use inkwell::types::{BasicTypeEnum, StructType};
-use inkwell::values::{AsValueRef, BasicValueEnum, FunctionValue, GlobalValue, IntValue, PointerValue};
+use inkwell::values::{
+    AsValueRef, BasicValueEnum, FunctionValue, GlobalValue, IntValue, PointerValue,
+};
 use inkwell::{AddressSpace, OptimizationLevel};
 
 use crate::error::CodeGenError;
@@ -512,7 +514,11 @@ impl<'ctx> CodeGen<'ctx> {
         span_start: usize,
         excluded: &HashSet<String>,
     ) -> Result<(), CodeGenError> {
-        let Some(names) = self.current_function_free_bindings.get(&span_start).cloned() else {
+        let Some(names) = self
+            .current_function_free_bindings
+            .get(&span_start)
+            .cloned()
+        else {
             return Ok(());
         };
         for name in names {

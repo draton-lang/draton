@@ -1,33 +1,51 @@
+use draton_ast::Span;
 use draton_lexer::Lexer;
 use draton_parser::Parser;
 use draton_typeck::typed_ast::{
-    Type, TypedBlock, TypedClassDef, TypedExpr, TypedExprKind, TypedFieldDef, TypedFnDef, TypedItem,
-    TypedParam, TypedProgram, TypedStmt, TypedStmtKind, TypedTypeBlock,
-    TypedTypeMember,
+    Type, TypedBlock, TypedClassDef, TypedExpr, TypedExprKind, TypedFieldDef, TypedFnDef,
+    TypedItem, TypedParam, TypedProgram, TypedStmt, TypedStmtKind, TypedTypeBlock, TypedTypeMember,
 };
 use draton_typeck::{OwnershipChecker, OwnershipError, TypeChecker, TypeError, UseEffect};
-use draton_ast::Span;
 
 fn parse_and_check(source: &str) -> draton_typeck::TypeCheckResult {
     let lexed = Lexer::new(source).tokenize();
     assert!(lexed.errors.is_empty(), "lexer errors: {:?}", lexed.errors);
     let parsed = Parser::new(lexed.tokens).parse();
-    assert!(parsed.errors.is_empty(), "parser errors: {:?}", parsed.errors);
+    assert!(
+        parsed.errors.is_empty(),
+        "parser errors: {:?}",
+        parsed.errors
+    );
     TypeChecker::new().check(parsed.program)
 }
 
-fn rerun_ownership(program: &mut TypedProgram) -> (Vec<OwnershipError>, std::collections::HashMap<String, Vec<Span>>) {
+fn rerun_ownership(
+    program: &mut TypedProgram,
+) -> (
+    Vec<OwnershipError>,
+    std::collections::HashMap<String, Vec<Span>>,
+) {
     let mut checker = OwnershipChecker::new();
     let errors = checker.check_program(program);
     (errors, checker.recorded_free_points().clone())
 }
 
 fn span() -> Span {
-    Span { start: 0, end: 0, line: 1, col: 1 }
+    Span {
+        start: 0,
+        end: 0,
+        line: 1,
+        col: 1,
+    }
 }
 
 fn ident(name: &str, ty: Type) -> TypedExpr {
-    TypedExpr { kind: TypedExprKind::Ident(name.to_string()), ty, span: span(), use_effect: None }
+    TypedExpr {
+        kind: TypedExprKind::Ident(name.to_string()),
+        ty,
+        span: span(),
+        use_effect: None,
+    }
 }
 
 fn call(name: &str, args: Vec<TypedExpr>, ret: Type) -> TypedExpr {
@@ -47,16 +65,28 @@ fn call(name: &str, args: Vec<TypedExpr>, ret: Type) -> TypedExpr {
     }
 }
 
-fn make_fn(name: &str, params: Vec<(&str, Type)>, body: Vec<TypedStmt>, ret_type: Type) -> TypedFnDef {
+fn make_fn(
+    name: &str,
+    params: Vec<(&str, Type)>,
+    body: Vec<TypedStmt>,
+    ret_type: Type,
+) -> TypedFnDef {
     TypedFnDef {
         is_pub: false,
         name: name.to_string(),
         params: params
             .into_iter()
-            .map(|(name, ty)| TypedParam { name: name.to_string(), ty, span: span() })
+            .map(|(name, ty)| TypedParam {
+                name: name.to_string(),
+                ty,
+                span: span(),
+            })
             .collect(),
         ret_type: ret_type.clone(),
-        body: Some(TypedBlock { stmts: body, span: span() }),
+        body: Some(TypedBlock {
+            stmts: body,
+            span: span(),
+        }),
         ty: Type::Fn(Vec::new(), Box::new(ret_type)),
         span: span(),
         ownership_summary: None,
@@ -268,7 +298,10 @@ fn direct_ownership_cycle_reports_error() {
                     kind: TypedStmtKind::Assign(draton_typeck::typed_ast::TypedAssignStmt {
                         target: TypedExpr {
                             kind: TypedExprKind::Field(
-                                Box::new(ident("self", Type::Named("Node".to_string(), Vec::new()))),
+                                Box::new(ident(
+                                    "self",
+                                    Type::Named("Node".to_string(), Vec::new()),
+                                )),
                                 "next".to_string(),
                             ),
                             ty: Type::Named("Node".to_string(), Vec::new()),
@@ -286,7 +319,9 @@ fn direct_ownership_cycle_reports_error() {
         ],
     };
     let (errors, _) = rerun_ownership(&mut program);
-    assert!(errors.iter().any(|error| matches!(error, OwnershipError::OwnershipCycle { .. })));
+    assert!(errors
+        .iter()
+        .any(|error| matches!(error, OwnershipError::OwnershipCycle { .. })));
 }
 
 #[test]
@@ -315,7 +350,9 @@ fn acyclic_definition_rejects_direct_self_field() {
         })],
     };
     let (errors, _) = rerun_ownership(&mut program);
-    assert!(errors.iter().any(|error| matches!(error, OwnershipError::OwnershipCycle { .. })));
+    assert!(errors
+        .iter()
+        .any(|error| matches!(error, OwnershipError::OwnershipCycle { .. })));
 }
 
 #[test]
@@ -324,12 +361,22 @@ fn higher_order_function_with_declared_borrow_effect_works() {
         items: vec![TypedItem::Fn(make_fn(
             "run",
             vec![
-                ("op", Type::Fn(vec![Type::String], Box::new(Type::Named("borrow".to_string(), Vec::new())))),
+                (
+                    "op",
+                    Type::Fn(
+                        vec![Type::String],
+                        Box::new(Type::Named("borrow".to_string(), Vec::new())),
+                    ),
+                ),
                 ("text", Type::String),
             ],
             vec![
                 TypedStmt {
-                    kind: TypedStmtKind::Expr(call("op", vec![ident("text", Type::String)], Type::Unit)),
+                    kind: TypedStmtKind::Expr(call(
+                        "op",
+                        vec![ident("text", Type::String)],
+                        Type::Unit,
+                    )),
                     span: span(),
                 },
                 TypedStmt {
@@ -359,11 +406,21 @@ fn higher_order_function_with_declared_move_effect_works() {
         items: vec![TypedItem::Fn(make_fn(
             "run",
             vec![
-                ("op", Type::Fn(vec![Type::String], Box::new(Type::Named("move".to_string(), Vec::new())))),
+                (
+                    "op",
+                    Type::Fn(
+                        vec![Type::String],
+                        Box::new(Type::Named("move".to_string(), Vec::new())),
+                    ),
+                ),
                 ("text", Type::String),
             ],
             vec![TypedStmt {
-                kind: TypedStmtKind::Expr(call("op", vec![ident("text", Type::String)], Type::Unit)),
+                kind: TypedStmtKind::Expr(call(
+                    "op",
+                    vec![ident("text", Type::String)],
+                    Type::Unit,
+                )),
                 span: span(),
             }],
             Type::Unit,
@@ -380,7 +437,11 @@ fn recursive_borrow_converging_function_gets_borrow_summary() {
             "walk",
             vec![("text", Type::String), ("n", Type::Int)],
             vec![TypedStmt {
-                kind: TypedStmtKind::Expr(call("walk", vec![ident("text", Type::String), ident("n", Type::Int)], Type::Unit)),
+                kind: TypedStmtKind::Expr(call(
+                    "walk",
+                    vec![ident("text", Type::String), ident("n", Type::Int)],
+                    Type::Unit,
+                )),
                 span: span(),
             }],
             Type::Unit,
@@ -388,8 +449,13 @@ fn recursive_borrow_converging_function_gets_borrow_summary() {
     };
     let (errors, _) = rerun_ownership(&mut program);
     assert!(errors.is_empty(), "errors: {:?}", errors);
-    let TypedItem::Fn(function) = &program.items[0] else { panic!("expected fn"); };
-    assert_eq!(function.ownership_summary.as_ref().unwrap().params[0].effect, UseEffect::BorrowShared);
+    let TypedItem::Fn(function) = &program.items[0] else {
+        panic!("expected fn");
+    };
+    assert_eq!(
+        function.ownership_summary.as_ref().unwrap().params[0].effect,
+        UseEffect::BorrowShared
+    );
 }
 
 #[test]
@@ -404,6 +470,11 @@ fn pass_down(text, n) {
 }
 "#,
     );
-    let TypedItem::Fn(function) = &result.typed_program.items[0] else { panic!("expected fn"); };
-    assert_eq!(function.ownership_summary.as_ref().unwrap().params[0].effect, UseEffect::Move);
+    let TypedItem::Fn(function) = &result.typed_program.items[0] else {
+        panic!("expected fn");
+    };
+    assert_eq!(
+        function.ownership_summary.as_ref().unwrap().params[0].effect,
+        UseEffect::Move
+    );
 }

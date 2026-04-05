@@ -120,7 +120,11 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_ty = self.llvm_closure_body_function_type(params, ret_ty)?;
         let fn_ptr = self
             .builder
-            .build_bit_cast(fn_ptr_raw, self.context.ptr_type(AddressSpace::default()), "closure.fn.typed")
+            .build_bit_cast(
+                fn_ptr_raw,
+                self.context.ptr_type(AddressSpace::default()),
+                "closure.fn.typed",
+            )
             .map_err(|err| CodeGenError::Llvm(err.to_string()))?
             .into_pointer_value();
 
@@ -222,10 +226,15 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or_else(|| CodeGenError::Llvm("malloc returned void".to_string()))?
             .into_pointer_value();
-        let env_ptr = self.build_bit_cast_to(raw, BasicTypeEnum::StructType(env_type), "closure.env")?;
+        let env_ptr =
+            self.build_bit_cast_to(raw, BasicTypeEnum::StructType(env_type), "closure.env")?;
         for (index, capture) in captures.iter().enumerate() {
-            let field_ptr =
-                self.build_struct_gep(env_type, env_ptr, index as u32, &format!("env.{}", capture.name))?;
+            let field_ptr = self.build_struct_gep(
+                env_type,
+                env_ptr,
+                index as u32,
+                &format!("env.{}", capture.name),
+            )?;
             let captured_value =
                 self.build_load(capture.storage, &format!("capture.{}", capture.name))?;
             self.build_store(field_ptr, captured_value)?;
@@ -369,7 +378,8 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
         let closure_ptr =
             self.build_bit_cast_to(raw, self.closure_record_type.into(), "closure.ptr")?;
-        let fn_slot = self.build_struct_gep(self.closure_record_type, closure_ptr, 0, "closure.fn.slot")?;
+        let fn_slot =
+            self.build_struct_gep(self.closure_record_type, closure_ptr, 0, "closure.fn.slot")?;
         self.build_store(fn_slot, fn_ptr.into())?;
         let env_slot =
             self.build_struct_gep(self.closure_record_type, closure_ptr, 1, "closure.env.slot")?;

@@ -100,9 +100,7 @@ pub fn is_copy(ty: &Type) -> bool {
         Type::Option(inner) => is_copy(inner),
         Type::Result(ok, err) => is_copy(ok) && is_copy(err),
         Type::Row { fields, rest } => {
-            fields.len() <= 2
-                && fields.values().all(is_copy)
-                && rest.as_deref().is_none_or(is_copy)
+            fields.len() <= 2 && fields.values().all(is_copy) && rest.as_deref().is_none_or(is_copy)
         }
         Type::String
         | Type::Array(_)
@@ -210,9 +208,10 @@ impl OwnershipChecker {
             TypedItem::Interface(interface_def) => {
                 for method in &interface_def.methods {
                     let key = format!("{}::{}", interface_def.name, method.name);
-                    index
-                        .methods
-                        .insert((interface_def.name.clone(), method.name.clone()), key.clone());
+                    index.methods.insert(
+                        (interface_def.name.clone(), method.name.clone()),
+                        key.clone(),
+                    );
                     index.records.insert(
                         key.clone(),
                         FunctionRecord {
@@ -246,9 +245,7 @@ impl OwnershipChecker {
             TypedItem::TypeBlock(type_block) => {
                 self.collect_type_block_functions(type_block, current_class, index);
             }
-            TypedItem::Const(_)
-            | TypedItem::Error(_)
-            | TypedItem::Import(_) => {}
+            TypedItem::Const(_) | TypedItem::Error(_) | TypedItem::Import(_) => {}
         }
     }
 
@@ -307,17 +304,20 @@ impl OwnershipChecker {
         let _ = self;
         match ty {
             Type::Named(name, _) => name == target,
-            Type::Array(inner)
-            | Type::Option(inner)
-            | Type::Chan(inner)
-            | Type::Pointer(inner) => self.type_contains_named(inner, target),
+            Type::Array(inner) | Type::Option(inner) | Type::Chan(inner) | Type::Pointer(inner) => {
+                self.type_contains_named(inner, target)
+            }
             Type::Map(key, value) | Type::Result(key, value) => {
                 self.type_contains_named(key, target) || self.type_contains_named(value, target)
             }
             Type::Set(inner) => self.type_contains_named(inner, target),
-            Type::Tuple(items) => items.iter().any(|item| self.type_contains_named(item, target)),
+            Type::Tuple(items) => items
+                .iter()
+                .any(|item| self.type_contains_named(item, target)),
             Type::Row { fields, rest } => {
-                fields.values().any(|item| self.type_contains_named(item, target))
+                fields
+                    .values()
+                    .any(|item| self.type_contains_named(item, target))
                     || rest
                         .as_deref()
                         .is_some_and(|rest| self.type_contains_named(rest, target))
@@ -348,9 +348,17 @@ impl OwnershipChecker {
         self.insert_builtin("print", vec![UseEffect::BorrowShared], false);
         self.insert_builtin("println", vec![UseEffect::BorrowShared], false);
         self.insert_builtin("input", vec![UseEffect::BorrowShared], true);
-        self.insert_builtin("range", vec![UseEffect::Copy, UseEffect::Copy, UseEffect::Copy], true);
+        self.insert_builtin(
+            "range",
+            vec![UseEffect::Copy, UseEffect::Copy, UseEffect::Copy],
+            true,
+        );
         self.insert_builtin("str_len", vec![UseEffect::BorrowShared], false);
-        self.insert_builtin("str_byte_at", vec![UseEffect::BorrowShared, UseEffect::Copy], false);
+        self.insert_builtin(
+            "str_byte_at",
+            vec![UseEffect::BorrowShared, UseEffect::Copy],
+            false,
+        );
         self.insert_builtin(
             "str_slice",
             vec![UseEffect::BorrowShared, UseEffect::Copy, UseEffect::Copy],
@@ -406,7 +414,10 @@ impl OwnershipChecker {
                     params: params
                         .into_iter()
                         .enumerate()
-                        .map(|(param_index, effect)| ParamOwnershipSummary { param_index, effect })
+                        .map(|(param_index, effect)| ParamOwnershipSummary {
+                            param_index,
+                            effect,
+                        })
                         .collect(),
                     returns_owned,
                 },
@@ -466,7 +477,9 @@ impl OwnershipChecker {
                     self.collect_call_edges_in_expr(value, edges);
                 }
             }
-            TypedStmtKind::LetDestructure(stmt) => self.collect_call_edges_in_expr(&stmt.value, edges),
+            TypedStmtKind::LetDestructure(stmt) => {
+                self.collect_call_edges_in_expr(&stmt.value, edges)
+            }
             TypedStmtKind::Assign(assign) => {
                 self.collect_call_edges_in_expr(&assign.target, edges);
                 if let Some(value) = &assign.value {
@@ -563,7 +576,9 @@ impl OwnershipChecker {
                     self.collect_call_edges_in_expr(arg, edges);
                 }
             }
-            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+            TypedExprKind::Array(items)
+            | TypedExprKind::Set(items)
+            | TypedExprKind::Tuple(items) => {
                 for item in items {
                     self.collect_call_edges_in_expr(item, edges);
                 }
@@ -593,8 +608,12 @@ impl OwnershipChecker {
                 for arm in arms {
                     self.collect_call_edges_in_expr(&arm.pattern, edges);
                     match &arm.body {
-                        TypedMatchArmBody::Expr(expr) => self.collect_call_edges_in_expr(expr, edges),
-                        TypedMatchArmBody::Block(block) => self.collect_call_edges_in_block(block, edges),
+                        TypedMatchArmBody::Expr(expr) => {
+                            self.collect_call_edges_in_expr(expr, edges)
+                        }
+                        TypedMatchArmBody::Block(block) => {
+                            self.collect_call_edges_in_block(block, edges)
+                        }
                     }
                 }
             }
@@ -617,7 +636,9 @@ impl OwnershipChecker {
 
     fn resolve_direct_callee(&self, callee: &TypedExpr) -> Option<String> {
         match &callee.kind {
-            TypedExprKind::Ident(name) if self.index.records.contains_key(name) => Some(name.clone()),
+            TypedExprKind::Ident(name) if self.index.records.contains_key(name) => {
+                Some(name.clone())
+            }
             _ => None,
         }
     }
@@ -661,7 +682,8 @@ impl OwnershipChecker {
                         } else if self.on_stack.contains(edge) {
                             let current = self.lowlink[node];
                             let edge_index = self.indices[edge];
-                            self.lowlink.insert(node.to_string(), current.min(edge_index));
+                            self.lowlink
+                                .insert(node.to_string(), current.min(edge_index));
                         }
                     }
                 }
@@ -761,14 +783,18 @@ impl OwnershipChecker {
             TypedItem::Fn(function)
             | TypedItem::PanicHandler(function)
             | TypedItem::OomHandler(function) => {
-                function.ownership_summary =
-                    self.summaries.get(&function.name).map(|summary| summary.summary.clone());
+                function.ownership_summary = self
+                    .summaries
+                    .get(&function.name)
+                    .map(|summary| summary.summary.clone());
             }
             TypedItem::Class(class_def) => {
                 for method in &mut class_def.methods {
                     let key = format!("{}::{}", class_def.name, method.name);
-                    method.ownership_summary =
-                        self.summaries.get(&key).map(|summary| summary.summary.clone());
+                    method.ownership_summary = self
+                        .summaries
+                        .get(&key)
+                        .map(|summary| summary.summary.clone());
                 }
                 for type_block in &mut class_def.type_blocks {
                     self.write_type_block_summary(type_block, Some(&class_def.name));
@@ -777,8 +803,10 @@ impl OwnershipChecker {
             TypedItem::Interface(interface_def) => {
                 for method in &mut interface_def.methods {
                     let key = format!("{}::{}", interface_def.name, method.name);
-                    method.ownership_summary =
-                        self.summaries.get(&key).map(|summary| summary.summary.clone());
+                    method.ownership_summary = self
+                        .summaries
+                        .get(&key)
+                        .map(|summary| summary.summary.clone());
                 }
                 for type_block in &mut interface_def.type_blocks {
                     self.write_type_block_summary(type_block, Some(&interface_def.name));
@@ -786,11 +814,15 @@ impl OwnershipChecker {
             }
             TypedItem::Extern(extern_block) => {
                 for function in &mut extern_block.functions {
-                    function.ownership_summary =
-                        self.summaries.get(&function.name).map(|summary| summary.summary.clone());
+                    function.ownership_summary = self
+                        .summaries
+                        .get(&function.name)
+                        .map(|summary| summary.summary.clone());
                 }
             }
-            TypedItem::TypeBlock(type_block) => self.write_type_block_summary(type_block, current_class),
+            TypedItem::TypeBlock(type_block) => {
+                self.write_type_block_summary(type_block, current_class)
+            }
             TypedItem::Enum(_)
             | TypedItem::Const(_)
             | TypedItem::Error(_)
@@ -798,7 +830,11 @@ impl OwnershipChecker {
         }
     }
 
-    fn write_type_block_summary(&self, type_block: &mut TypedTypeBlock, current_class: Option<&str>) {
+    fn write_type_block_summary(
+        &self,
+        type_block: &mut TypedTypeBlock,
+        current_class: Option<&str>,
+    ) {
         for member in &mut type_block.members {
             if let TypedTypeMember::Function(function) = member {
                 let key = if let Some(class_name) = current_class {
@@ -806,8 +842,10 @@ impl OwnershipChecker {
                 } else {
                     function.name.clone()
                 };
-                function.ownership_summary =
-                    self.summaries.get(&key).map(|summary| summary.summary.clone());
+                function.ownership_summary = self
+                    .summaries
+                    .get(&key)
+                    .map(|summary| summary.summary.clone());
             }
         }
     }
@@ -924,10 +962,7 @@ impl OwnershipChecker {
                                 let_stmt.name.clone(),
                                 ClosureMeta {
                                     exclusive_captures: self.collect_exclusive_captures(
-                                        params,
-                                        body,
-                                        &scope,
-                                        &captures,
+                                        params, body, &scope, &captures,
                                     ),
                                     captures,
                                     escaping: self.binding_escapes(&let_stmt.name, block),
@@ -940,7 +975,9 @@ impl OwnershipChecker {
                 }
                 TypedStmtKind::LetDestructure(stmt) => {
                     for binding in &stmt.bindings {
-                        if let crate::typed_ast::TypedDestructureBinding::Name { name, .. } = binding {
+                        if let crate::typed_ast::TypedDestructureBinding::Name { name, .. } =
+                            binding
+                        {
                             scope.insert(name.clone());
                         }
                     }
@@ -949,9 +986,11 @@ impl OwnershipChecker {
                     self.collect_closures_in_block(&if_stmt.then_branch, &scope, closures);
                     if let Some(else_branch) = &if_stmt.else_branch {
                         match else_branch {
-                            TypedElseBranch::If(if_stmt) => {
-                                self.collect_closures_in_block(&if_stmt.then_branch, &scope, closures)
-                            }
+                            TypedElseBranch::If(if_stmt) => self.collect_closures_in_block(
+                                &if_stmt.then_branch,
+                                &scope,
+                                closures,
+                            ),
                             TypedElseBranch::Block(block) => {
                                 self.collect_closures_in_block(block, &scope, closures)
                             }
@@ -996,7 +1035,10 @@ impl OwnershipChecker {
         body: &TypedExpr,
         scope: &HashSet<String>,
     ) -> HashSet<String> {
-        let locals = params.iter().map(|param| param.name.clone()).collect::<HashSet<_>>();
+        let locals = params
+            .iter()
+            .map(|param| param.name.clone())
+            .collect::<HashSet<_>>();
         let mut captures = HashSet::new();
         self.collect_captures_in_expr(body, scope, &locals, &mut captures);
         captures
@@ -1016,7 +1058,9 @@ impl OwnershipChecker {
                     captures.insert(name.clone());
                 }
             }
-            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+            TypedExprKind::Array(items)
+            | TypedExprKind::Set(items)
+            | TypedExprKind::Tuple(items) => {
                 for item in items {
                     self.collect_captures_in_expr(item, outer, locals, captures);
                 }
@@ -1035,7 +1079,9 @@ impl OwnershipChecker {
             | TypedExprKind::Cast(inner, _)
             | TypedExprKind::Field(inner, _)
             | TypedExprKind::Ok(inner)
-            | TypedExprKind::Err(inner) => self.collect_captures_in_expr(inner, outer, locals, captures),
+            | TypedExprKind::Err(inner) => {
+                self.collect_captures_in_expr(inner, outer, locals, captures)
+            }
             TypedExprKind::Call(callee, args) => {
                 self.collect_captures_in_expr(callee, outer, locals, captures);
                 for arg in args {
@@ -1091,7 +1137,10 @@ impl OwnershipChecker {
         scope: &HashSet<String>,
         captures: &HashSet<String>,
     ) -> HashSet<String> {
-        let mut locals = params.iter().map(|param| param.name.clone()).collect::<HashSet<_>>();
+        let mut locals = params
+            .iter()
+            .map(|param| param.name.clone())
+            .collect::<HashSet<_>>();
         let mut exclusive = HashSet::new();
         self.collect_exclusive_captures_in_expr(body, scope, &mut locals, captures, &mut exclusive);
         exclusive
@@ -1111,14 +1160,17 @@ impl OwnershipChecker {
                     if outer.contains(&base)
                         && captures.contains(&base)
                         && !locals.contains(&base)
-                        && self.method_receiver_effect(&target.ty, name) == UseEffect::BorrowExclusive
+                        && self.method_receiver_effect(&target.ty, name)
+                            == UseEffect::BorrowExclusive
                     {
                         exclusive.insert(base);
                     }
                 }
                 self.collect_exclusive_captures_in_expr(target, outer, locals, captures, exclusive);
                 for arg in args {
-                    self.collect_exclusive_captures_in_expr(arg, outer, locals, captures, exclusive);
+                    self.collect_exclusive_captures_in_expr(
+                        arg, outer, locals, captures, exclusive,
+                    );
                 }
             }
             TypedExprKind::Call(callee, args) => {
@@ -1143,18 +1195,28 @@ impl OwnershipChecker {
                 }
                 self.collect_exclusive_captures_in_expr(callee, outer, locals, captures, exclusive);
                 for arg in args {
-                    self.collect_exclusive_captures_in_expr(arg, outer, locals, captures, exclusive);
+                    self.collect_exclusive_captures_in_expr(
+                        arg, outer, locals, captures, exclusive,
+                    );
                 }
             }
-            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+            TypedExprKind::Array(items)
+            | TypedExprKind::Set(items)
+            | TypedExprKind::Tuple(items) => {
                 for item in items {
-                    self.collect_exclusive_captures_in_expr(item, outer, locals, captures, exclusive);
+                    self.collect_exclusive_captures_in_expr(
+                        item, outer, locals, captures, exclusive,
+                    );
                 }
             }
             TypedExprKind::Map(entries) => {
                 for (key, value) in entries {
-                    self.collect_exclusive_captures_in_expr(key, outer, locals, captures, exclusive);
-                    self.collect_exclusive_captures_in_expr(value, outer, locals, captures, exclusive);
+                    self.collect_exclusive_captures_in_expr(
+                        key, outer, locals, captures, exclusive,
+                    );
+                    self.collect_exclusive_captures_in_expr(
+                        value, outer, locals, captures, exclusive,
+                    );
                 }
             }
             TypedExprKind::BinOp(lhs, _, rhs) | TypedExprKind::Nullish(lhs, rhs) => {
@@ -1174,21 +1236,39 @@ impl OwnershipChecker {
                 for param in params {
                     nested.insert(param.name.clone());
                 }
-                self.collect_exclusive_captures_in_expr(body, outer, &mut nested, captures, exclusive);
+                self.collect_exclusive_captures_in_expr(
+                    body,
+                    outer,
+                    &mut nested,
+                    captures,
+                    exclusive,
+                );
             }
             TypedExprKind::Match(subject, arms) => {
-                self.collect_exclusive_captures_in_expr(subject, outer, locals, captures, exclusive);
+                self.collect_exclusive_captures_in_expr(
+                    subject, outer, locals, captures, exclusive,
+                );
                 for arm in arms {
-                    self.collect_exclusive_captures_in_expr(&arm.pattern, outer, locals, captures, exclusive);
+                    self.collect_exclusive_captures_in_expr(
+                        &arm.pattern,
+                        outer,
+                        locals,
+                        captures,
+                        exclusive,
+                    );
                     if let TypedMatchArmBody::Expr(expr) = &arm.body {
-                        self.collect_exclusive_captures_in_expr(expr, outer, locals, captures, exclusive);
+                        self.collect_exclusive_captures_in_expr(
+                            expr, outer, locals, captures, exclusive,
+                        );
                     }
                 }
             }
             TypedExprKind::FStrLit(parts) => {
                 for part in parts {
                     if let crate::typed_ast::TypedFStrPart::Interp(expr) = part {
-                        self.collect_exclusive_captures_in_expr(expr, outer, locals, captures, exclusive);
+                        self.collect_exclusive_captures_in_expr(
+                            expr, outer, locals, captures, exclusive,
+                        );
                     }
                 }
             }
@@ -1203,7 +1283,10 @@ impl OwnershipChecker {
     }
 
     fn binding_escapes(&self, name: &str, block: &TypedBlock) -> bool {
-        block.stmts.iter().any(|stmt| self.binding_escapes_in_stmt(name, stmt))
+        block
+            .stmts
+            .iter()
+            .any(|stmt| self.binding_escapes_in_stmt(name, stmt))
     }
 
     fn binding_escapes_in_stmt(&self, name: &str, stmt: &TypedStmt) -> bool {
@@ -1226,7 +1309,9 @@ impl OwnershipChecker {
                         .else_branch
                         .as_ref()
                         .is_some_and(|else_branch| match else_branch {
-                            TypedElseBranch::If(if_stmt) => self.binding_escapes(name, &if_stmt.then_branch),
+                            TypedElseBranch::If(if_stmt) => {
+                                self.binding_escapes(name, &if_stmt.then_branch)
+                            }
                             TypedElseBranch::Block(block) => self.binding_escapes(name, block),
                         })
             }
@@ -1421,7 +1506,9 @@ impl OwnershipChecker {
             TypedStmtKind::IfCompile(if_compile) => {
                 self.last_call_in_expr(name, &if_compile.condition, last)
             }
-            TypedStmtKind::AsmBlock(_) | TypedStmtKind::GcConfig(_) | TypedStmtKind::TypeBlock(_) => {}
+            TypedStmtKind::AsmBlock(_)
+            | TypedStmtKind::GcConfig(_)
+            | TypedStmtKind::TypeBlock(_) => {}
         }
     }
 
@@ -1443,7 +1530,9 @@ impl OwnershipChecker {
                     self.last_call_in_expr(name, arg, last);
                 }
             }
-            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+            TypedExprKind::Array(items)
+            | TypedExprKind::Set(items)
+            | TypedExprKind::Tuple(items) => {
                 for item in items {
                     self.last_call_in_expr(name, item, last);
                 }
@@ -1519,7 +1608,9 @@ impl OwnershipChecker {
                     self.collect_used_bindings_in_expr(value, used);
                 }
             }
-            TypedStmtKind::LetDestructure(stmt) => self.collect_used_bindings_in_expr(&stmt.value, used),
+            TypedStmtKind::LetDestructure(stmt) => {
+                self.collect_used_bindings_in_expr(&stmt.value, used)
+            }
             TypedStmtKind::Assign(assign) => {
                 self.collect_used_bindings_in_expr(&assign.target, used);
                 if let Some(value) = &assign.value {
@@ -1594,7 +1685,9 @@ impl OwnershipChecker {
             TypedExprKind::Ident(name) => {
                 used.insert(name.clone());
             }
-            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+            TypedExprKind::Array(items)
+            | TypedExprKind::Set(items)
+            | TypedExprKind::Tuple(items) => {
                 for item in items {
                     self.collect_used_bindings_in_expr(item, used);
                 }
@@ -1715,10 +1808,17 @@ impl OwnershipChecker {
                         ty: let_stmt.ty.clone(),
                         state: OwnershipState::Owned,
                         state_span: let_stmt.span,
-                        origin: if self.is_copy_type(&let_stmt.ty) { None } else { origin.or_else(|| Some(self.new_origin())) },
+                        origin: if self.is_copy_type(&let_stmt.ty) {
+                            None
+                        } else {
+                            origin.or_else(|| Some(self.new_origin()))
+                        },
                         is_mut: let_stmt.is_mut,
                         is_param: false,
-                        is_closure: matches!(let_stmt.value.as_ref().map(|value| &value.kind), Some(TypedExprKind::Lambda(_, _))),
+                        is_closure: matches!(
+                            let_stmt.value.as_ref().map(|value| &value.kind),
+                            Some(TypedExprKind::Lambda(_, _))
+                        ),
                     },
                 );
                 if let Some(meta) = closures.get(&let_stmt.name) {
@@ -1736,7 +1836,11 @@ impl OwnershipChecker {
                                 ty: ty.clone(),
                                 state: OwnershipState::Owned,
                                 state_span: stmt.span,
-                                origin: if self.is_copy_type(ty) { None } else { origin.or_else(|| Some(self.new_origin())) },
+                                origin: if self.is_copy_type(ty) {
+                                    None
+                                } else {
+                                    origin.or_else(|| Some(self.new_origin()))
+                                },
                                 is_mut: stmt.is_mut,
                                 is_param: false,
                                 is_closure: false,
@@ -1751,8 +1855,12 @@ impl OwnershipChecker {
                 let _ = self.analyze_expr(expr, env, UseEffect::BorrowShared, closures, errors);
             }
             TypedStmtKind::If(if_stmt) => self.analyze_if(if_stmt, env, fn_key, closures, errors),
-            TypedStmtKind::For(for_stmt) => self.analyze_for(for_stmt, env, fn_key, closures, errors),
-            TypedStmtKind::While(while_stmt) => self.analyze_while(while_stmt, env, fn_key, closures, errors),
+            TypedStmtKind::For(for_stmt) => {
+                self.analyze_for(for_stmt, env, fn_key, closures, errors)
+            }
+            TypedStmtKind::While(while_stmt) => {
+                self.analyze_while(while_stmt, env, fn_key, closures, errors)
+            }
             TypedStmtKind::Spawn(spawn) => {
                 if let TypedSpawnBody::Expr(expr) = &mut spawn.body {
                     let _ = self.analyze_expr(expr, env, UseEffect::BorrowShared, closures, errors);
@@ -1769,7 +1877,7 @@ impl OwnershipChecker {
             TypedStmtKind::PointerBlock(block) => {
                 self.reject_pointer_block_crossings(block, env, errors);
             }
-            | TypedStmtKind::AsmBlock(_)
+            TypedStmtKind::AsmBlock(_)
             | TypedStmtKind::GcConfig(_)
             | TypedStmtKind::IfCompile(_)
             | TypedStmtKind::TypeBlock(_) => {}
@@ -1843,11 +1951,7 @@ impl OwnershipChecker {
         }
     }
 
-    fn collect_pointer_crossings_in_stmt(
-        &self,
-        stmt: &TypedStmt,
-        out: &mut Vec<(String, Span)>,
-    ) {
+    fn collect_pointer_crossings_in_stmt(&self, stmt: &TypedStmt, out: &mut Vec<(String, Span)>) {
         let _ = self;
         match &stmt.kind {
             TypedStmtKind::Let(let_stmt) => {
@@ -1903,7 +2007,9 @@ impl OwnershipChecker {
             TypedStmtKind::Block(block)
             | TypedStmtKind::UnsafeBlock(block)
             | TypedStmtKind::PointerBlock(block)
-            | TypedStmtKind::ComptimeBlock(block) => self.collect_pointer_crossings_in_block(block, out),
+            | TypedStmtKind::ComptimeBlock(block) => {
+                self.collect_pointer_crossings_in_block(block, out)
+            }
             TypedStmtKind::IfCompile(if_compile) => {
                 self.collect_pointer_crossings_in_expr(&if_compile.condition, out);
                 self.collect_pointer_crossings_in_block(&if_compile.body, out);
@@ -1917,15 +2023,13 @@ impl OwnershipChecker {
         }
     }
 
-    fn collect_pointer_crossings_in_expr(
-        &self,
-        expr: &TypedExpr,
-        out: &mut Vec<(String, Span)>,
-    ) {
+    fn collect_pointer_crossings_in_expr(&self, expr: &TypedExpr, out: &mut Vec<(String, Span)>) {
         let _ = self;
         match &expr.kind {
             TypedExprKind::Ident(name) => out.push((name.clone(), expr.span)),
-            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+            TypedExprKind::Array(items)
+            | TypedExprKind::Set(items)
+            | TypedExprKind::Tuple(items) => {
                 for item in items {
                     self.collect_pointer_crossings_in_expr(item, out);
                 }
@@ -1997,7 +2101,9 @@ impl OwnershipChecker {
         match &mut assign.target.kind {
             TypedExprKind::Ident(name) => {
                 if let Some(binding) = env.bindings.get(name).cloned() {
-                    if matches!(binding.state, OwnershipState::Owned) && !self.is_copy_type(&binding.ty) {
+                    if matches!(binding.state, OwnershipState::Owned)
+                        && !self.is_copy_type(&binding.ty)
+                    {
                         self.record_free("assign", name, assign.span);
                     }
                 }
@@ -2016,7 +2122,8 @@ impl OwnershipChecker {
                 }
             }
             TypedExprKind::Field(target, field) => {
-                let parent = self.analyze_expr(target, env, UseEffect::BorrowExclusive, closures, errors);
+                let parent =
+                    self.analyze_expr(target, env, UseEffect::BorrowExclusive, closures, errors);
                 let child = assign
                     .value
                     .as_mut()
@@ -2031,7 +2138,8 @@ impl OwnershipChecker {
                 }
             }
             TypedExprKind::Index(target, index) => {
-                let parent = self.analyze_expr(target, env, UseEffect::BorrowExclusive, closures, errors);
+                let parent =
+                    self.analyze_expr(target, env, UseEffect::BorrowExclusive, closures, errors);
                 let _ = self.analyze_expr(index, env, UseEffect::Copy, closures, errors);
                 let child = assign
                     .value
@@ -2042,9 +2150,16 @@ impl OwnershipChecker {
                 }
             }
             _ => {
-                let _ = self.analyze_expr(&mut assign.target, env, UseEffect::BorrowExclusive, closures, errors);
+                let _ = self.analyze_expr(
+                    &mut assign.target,
+                    env,
+                    UseEffect::BorrowExclusive,
+                    closures,
+                    errors,
+                );
                 if let Some(value) = &mut assign.value {
-                    let _ = self.analyze_expr(value, env, UseEffect::BorrowShared, closures, errors);
+                    let _ =
+                        self.analyze_expr(value, env, UseEffect::BorrowShared, closures, errors);
                 }
             }
         }
@@ -2056,10 +2171,9 @@ impl OwnershipChecker {
         env: &mut OwnershipEnv,
         errors: &mut Vec<OwnershipError>,
     ) {
-        let escaped_origin = ret
-            .value
-            .as_mut()
-            .and_then(|value| self.analyze_expr(value, env, UseEffect::Move, &HashMap::new(), errors));
+        let escaped_origin = ret.value.as_mut().and_then(|value| {
+            self.analyze_expr(value, env, UseEffect::Move, &HashMap::new(), errors)
+        });
         let to_free = env
             .bindings
             .iter()
@@ -2086,10 +2200,23 @@ impl OwnershipChecker {
         closures: &HashMap<String, ClosureMeta>,
         errors: &mut Vec<OwnershipError>,
     ) {
-        let _ = self.analyze_expr(&mut if_stmt.condition, env, UseEffect::Copy, closures, errors);
+        let _ = self.analyze_expr(
+            &mut if_stmt.condition,
+            env,
+            UseEffect::Copy,
+            closures,
+            errors,
+        );
         let live_then = self.compute_live_after_block(&if_stmt.then_branch);
         let mut then_env = env.clone();
-        self.analyze_block(&mut if_stmt.then_branch, &mut then_env, fn_key, closures, &live_then, errors);
+        self.analyze_block(
+            &mut if_stmt.then_branch,
+            &mut then_env,
+            fn_key,
+            closures,
+            &live_then,
+            errors,
+        );
         let mut else_env = env.clone();
         if let Some(else_branch) = &mut if_stmt.else_branch {
             match else_branch {
@@ -2113,7 +2240,13 @@ impl OwnershipChecker {
         closures: &HashMap<String, ClosureMeta>,
         errors: &mut Vec<OwnershipError>,
     ) {
-        let _ = self.analyze_expr(&mut for_stmt.iter, env, UseEffect::BorrowShared, closures, errors);
+        let _ = self.analyze_expr(
+            &mut for_stmt.iter,
+            env,
+            UseEffect::BorrowShared,
+            closures,
+            errors,
+        );
         let mut loop_env = env.clone();
         loop_env.bindings.insert(
             for_stmt.name.clone(),
@@ -2129,7 +2262,14 @@ impl OwnershipChecker {
             },
         );
         let live = self.compute_live_after_block(&for_stmt.body);
-        self.analyze_block(&mut for_stmt.body, &mut loop_env, fn_key, closures, &live, errors);
+        self.analyze_block(
+            &mut for_stmt.body,
+            &mut loop_env,
+            fn_key,
+            closures,
+            &live,
+            errors,
+        );
         self.check_loop_reinit(env, &loop_env, for_stmt.span, errors);
         *env = self.join_envs(env, &loop_env);
     }
@@ -2142,10 +2282,23 @@ impl OwnershipChecker {
         closures: &HashMap<String, ClosureMeta>,
         errors: &mut Vec<OwnershipError>,
     ) {
-        let _ = self.analyze_expr(&mut while_stmt.condition, env, UseEffect::Copy, closures, errors);
+        let _ = self.analyze_expr(
+            &mut while_stmt.condition,
+            env,
+            UseEffect::Copy,
+            closures,
+            errors,
+        );
         let mut loop_env = env.clone();
         let live = self.compute_live_after_block(&while_stmt.body);
-        self.analyze_block(&mut while_stmt.body, &mut loop_env, fn_key, closures, &live, errors);
+        self.analyze_block(
+            &mut while_stmt.body,
+            &mut loop_env,
+            fn_key,
+            closures,
+            &live,
+            errors,
+        );
         self.check_loop_reinit(env, &loop_env, while_stmt.span, errors);
         *env = self.join_envs(env, &loop_env);
     }
@@ -2182,7 +2335,11 @@ impl OwnershipChecker {
     ) -> Option<usize> {
         match &mut expr.kind {
             TypedExprKind::Ident(name) => {
-                let effect = if self.is_copy_type(&expr.ty) { UseEffect::Copy } else { desired };
+                let effect = if self.is_copy_type(&expr.ty) {
+                    UseEffect::Copy
+                } else {
+                    desired
+                };
                 expr.use_effect = Some(effect.clone());
                 if let Some(binding) = env.bindings.get(name).cloned() {
                     self.check_binding_use(&binding, &effect, expr.span, env, errors);
@@ -2210,7 +2367,11 @@ impl OwnershipChecker {
                 let base_origin = self.analyze_expr(
                     target,
                     env,
-                    if desired == UseEffect::BorrowExclusive { UseEffect::BorrowExclusive } else { UseEffect::BorrowShared },
+                    if desired == UseEffect::BorrowExclusive {
+                        UseEffect::BorrowExclusive
+                    } else {
+                        UseEffect::BorrowShared
+                    },
                     closures,
                     errors,
                 );
@@ -2220,18 +2381,28 @@ impl OwnershipChecker {
                 {
                     errors.push(OwnershipError::PartialMove {
                         field: field.clone(),
-                        base: self.base_ident_name(target).unwrap_or_else(|| "value".to_string()),
+                        base: self
+                            .base_ident_name(target)
+                            .unwrap_or_else(|| "value".to_string()),
                         span: expr.span,
                     });
                 }
-                expr.use_effect = Some(if self.is_copy_type(&expr.ty) { UseEffect::Copy } else { UseEffect::BorrowShared });
+                expr.use_effect = Some(if self.is_copy_type(&expr.ty) {
+                    UseEffect::Copy
+                } else {
+                    UseEffect::BorrowShared
+                });
                 base_origin
             }
             TypedExprKind::Index(target, index) => {
                 let base_origin = self.analyze_expr(
                     target,
                     env,
-                    if desired == UseEffect::BorrowExclusive { UseEffect::BorrowExclusive } else { UseEffect::BorrowShared },
+                    if desired == UseEffect::BorrowExclusive {
+                        UseEffect::BorrowExclusive
+                    } else {
+                        UseEffect::BorrowShared
+                    },
                     closures,
                     errors,
                 );
@@ -2242,11 +2413,17 @@ impl OwnershipChecker {
                 {
                     errors.push(OwnershipError::PartialMove {
                         field: "index".to_string(),
-                        base: self.base_ident_name(target).unwrap_or_else(|| "value".to_string()),
+                        base: self
+                            .base_ident_name(target)
+                            .unwrap_or_else(|| "value".to_string()),
                         span: expr.span,
                     });
                 }
-                expr.use_effect = Some(if self.is_copy_type(&expr.ty) { UseEffect::Copy } else { UseEffect::BorrowShared });
+                expr.use_effect = Some(if self.is_copy_type(&expr.ty) {
+                    UseEffect::Copy
+                } else {
+                    UseEffect::BorrowShared
+                });
                 base_origin
             }
             TypedExprKind::Call(callee, args) => {
@@ -2279,18 +2456,31 @@ impl OwnershipChecker {
                         moved = origin;
                     }
                 }
-                expr.use_effect = Some(if self.is_copy_type(&expr.ty) { UseEffect::Copy } else { desired.clone() });
+                expr.use_effect = Some(if self.is_copy_type(&expr.ty) {
+                    UseEffect::Copy
+                } else {
+                    desired.clone()
+                });
                 moved.or_else(|| (!self.is_expr_copy(expr)).then(|| self.new_origin()))
             }
             TypedExprKind::MethodCall(target, name, args) => {
                 let receiver_effect = self.method_receiver_effect(&target.ty, name);
-                let target_origin = self.analyze_expr(target, env, receiver_effect, closures, errors);
+                let target_origin =
+                    self.analyze_expr(target, env, receiver_effect, closures, errors);
                 let arg_effects = self.method_arg_effects(&target.ty, name, args);
                 for (arg, effect) in args.iter_mut().zip(arg_effects) {
                     let _ = self.analyze_expr(arg, env, effect, closures, errors);
                 }
-                expr.use_effect = Some(if self.is_copy_type(&expr.ty) { UseEffect::Copy } else { desired.clone() });
-                if matches!(name.as_str(), "push" | "pop") { target_origin } else { None }
+                expr.use_effect = Some(if self.is_copy_type(&expr.ty) {
+                    UseEffect::Copy
+                } else {
+                    desired.clone()
+                });
+                if matches!(name.as_str(), "push" | "pop") {
+                    target_origin
+                } else {
+                    None
+                }
             }
             TypedExprKind::Lambda(params, body) => {
                 let scope = env.bindings.keys().cloned().collect::<HashSet<_>>();
@@ -2307,7 +2497,9 @@ impl OwnershipChecker {
                         } else {
                             UseEffect::BorrowShared
                         };
-                        if effect == UseEffect::Move && matches!(binding.state, OwnershipState::Moved) {
+                        if effect == UseEffect::Move
+                            && matches!(binding.state, OwnershipState::Moved)
+                        {
                             errors.push(OwnershipError::MultipleOwners {
                                 name: capture.clone(),
                                 span: expr.span,
@@ -2315,12 +2507,17 @@ impl OwnershipChecker {
                         } else {
                             self.check_binding_use(&binding, &effect, expr.span, env, errors);
                         }
-                        if effect == UseEffect::Move && !matches!(binding.state, OwnershipState::Moved) {
+                        if effect == UseEffect::Move
+                            && !matches!(binding.state, OwnershipState::Moved)
+                        {
                             if let Some(current) = env.bindings.get_mut(&capture) {
                                 current.state = OwnershipState::Moved;
                                 current.state_span = expr.span;
                             }
-                        } else if matches!(effect, UseEffect::BorrowShared | UseEffect::BorrowExclusive) {
+                        } else if matches!(
+                            effect,
+                            UseEffect::BorrowShared | UseEffect::BorrowExclusive
+                        ) {
                             self.start_borrow(
                                 env,
                                 &capture,
@@ -2338,17 +2535,27 @@ impl OwnershipChecker {
                 expr.use_effect = Some(UseEffect::Move);
                 Some(self.new_origin())
             }
-            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+            TypedExprKind::Array(items)
+            | TypedExprKind::Set(items)
+            | TypedExprKind::Tuple(items) => {
                 for item in items {
                     let _ = self.analyze_expr(
                         item,
                         env,
-                        if self.is_expr_copy(item) { UseEffect::Copy } else { UseEffect::Move },
+                        if self.is_expr_copy(item) {
+                            UseEffect::Copy
+                        } else {
+                            UseEffect::Move
+                        },
                         closures,
                         errors,
                     );
                 }
-                expr.use_effect = Some(if self.is_expr_copy(expr) { UseEffect::Copy } else { UseEffect::Move });
+                expr.use_effect = Some(if self.is_expr_copy(expr) {
+                    UseEffect::Copy
+                } else {
+                    UseEffect::Move
+                });
                 (!self.is_expr_copy(expr)).then(|| self.new_origin())
             }
             TypedExprKind::Map(entries) => {
@@ -2357,7 +2564,11 @@ impl OwnershipChecker {
                     let _ = self.analyze_expr(
                         value,
                         env,
-                        if self.is_expr_copy(value) { UseEffect::Copy } else { UseEffect::Move },
+                        if self.is_expr_copy(value) {
+                            UseEffect::Copy
+                        } else {
+                            UseEffect::Move
+                        },
                         closures,
                         errors,
                     );
@@ -2367,39 +2578,102 @@ impl OwnershipChecker {
             }
             TypedExprKind::Match(subject, arms) => {
                 let _ = self.analyze_expr(subject, env, UseEffect::BorrowShared, closures, errors);
-                expr.use_effect = Some(if self.is_copy_type(&expr.ty) { UseEffect::Copy } else { desired.clone() });
+                expr.use_effect = Some(if self.is_copy_type(&expr.ty) {
+                    UseEffect::Copy
+                } else {
+                    desired.clone()
+                });
                 for arm in arms {
-                    let _ = self.analyze_expr(&mut arm.pattern, env, UseEffect::BorrowShared, closures, errors);
+                    let _ = self.analyze_expr(
+                        &mut arm.pattern,
+                        env,
+                        UseEffect::BorrowShared,
+                        closures,
+                        errors,
+                    );
                     if let TypedMatchArmBody::Expr(expr) = &mut arm.body {
-                        let _ = self.analyze_expr(expr, env, UseEffect::BorrowShared, closures, errors);
+                        let _ =
+                            self.analyze_expr(expr, env, UseEffect::BorrowShared, closures, errors);
                     }
                 }
                 None
             }
             TypedExprKind::BinOp(lhs, op, rhs) => {
-                let _ = self.analyze_expr(lhs, env, if self.binop_moves_lhs(*op, lhs, rhs) { UseEffect::Move } else { UseEffect::BorrowShared }, closures, errors);
-                let _ = self.analyze_expr(rhs, env, if self.is_expr_copy(rhs) { UseEffect::Copy } else { UseEffect::BorrowShared }, closures, errors);
-                expr.use_effect = Some(if self.is_expr_copy(expr) { UseEffect::Copy } else { desired });
+                let _ = self.analyze_expr(
+                    lhs,
+                    env,
+                    if self.binop_moves_lhs(*op, lhs, rhs) {
+                        UseEffect::Move
+                    } else {
+                        UseEffect::BorrowShared
+                    },
+                    closures,
+                    errors,
+                );
+                let _ = self.analyze_expr(
+                    rhs,
+                    env,
+                    if self.is_expr_copy(rhs) {
+                        UseEffect::Copy
+                    } else {
+                        UseEffect::BorrowShared
+                    },
+                    closures,
+                    errors,
+                );
+                expr.use_effect = Some(if self.is_expr_copy(expr) {
+                    UseEffect::Copy
+                } else {
+                    desired
+                });
                 None
             }
             TypedExprKind::UnOp(_, inner)
             | TypedExprKind::Cast(inner, _)
             | TypedExprKind::Ok(inner)
             | TypedExprKind::Err(inner) => {
-                let origin = self.analyze_expr(inner, env, if self.is_expr_copy(inner) { UseEffect::Copy } else { desired.clone() }, closures, errors);
-                expr.use_effect = Some(if self.is_expr_copy(expr) { UseEffect::Copy } else { desired });
+                let origin = self.analyze_expr(
+                    inner,
+                    env,
+                    if self.is_expr_copy(inner) {
+                        UseEffect::Copy
+                    } else {
+                        desired.clone()
+                    },
+                    closures,
+                    errors,
+                );
+                expr.use_effect = Some(if self.is_expr_copy(expr) {
+                    UseEffect::Copy
+                } else {
+                    desired
+                });
                 origin
             }
             TypedExprKind::Nullish(lhs, rhs) => {
                 let _ = self.analyze_expr(lhs, env, UseEffect::BorrowShared, closures, errors);
                 let _ = self.analyze_expr(rhs, env, UseEffect::BorrowShared, closures, errors);
-                expr.use_effect = Some(if self.is_expr_copy(expr) { UseEffect::Copy } else { desired });
+                expr.use_effect = Some(if self.is_expr_copy(expr) {
+                    UseEffect::Copy
+                } else {
+                    desired
+                });
                 None
             }
             TypedExprKind::FStrLit(parts) => {
                 for part in parts {
                     if let crate::typed_ast::TypedFStrPart::Interp(expr) = part {
-                        let _ = self.analyze_expr(expr, env, if self.is_expr_copy(expr) { UseEffect::Copy } else { UseEffect::BorrowShared }, closures, errors);
+                        let _ = self.analyze_expr(
+                            expr,
+                            env,
+                            if self.is_expr_copy(expr) {
+                                UseEffect::Copy
+                            } else {
+                                UseEffect::BorrowShared
+                            },
+                            closures,
+                            errors,
+                        );
                     }
                 }
                 expr.use_effect = Some(UseEffect::Move);
@@ -2411,7 +2685,11 @@ impl OwnershipChecker {
             | TypedExprKind::BoolLit(_)
             | TypedExprKind::NoneLit
             | TypedExprKind::Chan(_) => {
-                expr.use_effect = Some(if self.is_expr_copy(expr) { UseEffect::Copy } else { desired });
+                expr.use_effect = Some(if self.is_expr_copy(expr) {
+                    UseEffect::Copy
+                } else {
+                    desired
+                });
                 None
             }
         }
@@ -2466,24 +2744,43 @@ impl OwnershipChecker {
             return;
         }
         let borrows = env.borrows.get(&binding.name).cloned().unwrap_or_default();
-        let shared = borrows.iter().any(|borrow| borrow.kind == BorrowKind::Shared);
-        let exclusive = borrows.iter().any(|borrow| borrow.kind == BorrowKind::Exclusive);
+        let shared = borrows
+            .iter()
+            .any(|borrow| borrow.kind == BorrowKind::Shared);
+        let exclusive = borrows
+            .iter()
+            .any(|borrow| borrow.kind == BorrowKind::Exclusive);
         match effect {
-            UseEffect::BorrowShared if exclusive => errors.push(OwnershipError::ReadDuringExclusiveBorrow {
-                name: binding.name.clone(),
-                borrow_span: borrows.first().map(|borrow| borrow.span).unwrap_or(binding.state_span),
-                read_span: span,
-            }),
-            UseEffect::BorrowExclusive if shared => errors.push(OwnershipError::ExclusiveBorrowDuringRead {
-                name: binding.name.clone(),
-                read_span: borrows.first().map(|borrow| borrow.span).unwrap_or(binding.state_span),
-                modify_span: span,
-            }),
-            UseEffect::Move if (shared || exclusive) => errors.push(OwnershipError::MoveWhileBorrowed {
-                name: binding.name.clone(),
-                borrow_span: borrows.first().map(|borrow| borrow.span).unwrap_or(binding.state_span),
-                move_span: span,
-            }),
+            UseEffect::BorrowShared if exclusive => {
+                errors.push(OwnershipError::ReadDuringExclusiveBorrow {
+                    name: binding.name.clone(),
+                    borrow_span: borrows
+                        .first()
+                        .map(|borrow| borrow.span)
+                        .unwrap_or(binding.state_span),
+                    read_span: span,
+                })
+            }
+            UseEffect::BorrowExclusive if shared => {
+                errors.push(OwnershipError::ExclusiveBorrowDuringRead {
+                    name: binding.name.clone(),
+                    read_span: borrows
+                        .first()
+                        .map(|borrow| borrow.span)
+                        .unwrap_or(binding.state_span),
+                    modify_span: span,
+                })
+            }
+            UseEffect::Move if (shared || exclusive) => {
+                errors.push(OwnershipError::MoveWhileBorrowed {
+                    name: binding.name.clone(),
+                    borrow_span: borrows
+                        .first()
+                        .map(|borrow| borrow.span)
+                        .unwrap_or(binding.state_span),
+                    move_span: span,
+                })
+            }
             _ => {}
         }
     }
@@ -2499,7 +2796,11 @@ impl OwnershipChecker {
         env.borrows
             .entry(name.to_string())
             .or_default()
-            .push(BorrowRecord { kind, span, persistent });
+            .push(BorrowRecord {
+                kind,
+                span,
+                persistent,
+            });
         if let Some(binding) = env.bindings.get_mut(name) {
             binding.state = if kind == BorrowKind::Exclusive {
                 OwnershipState::BorrowedExclusive
@@ -2524,7 +2825,12 @@ impl OwnershipChecker {
                     if self.is_expr_copy(arg) {
                         UseEffect::Copy
                     } else {
-                        summary.summary.params.get(index).map(|param| param.effect.clone()).unwrap_or(UseEffect::BorrowShared)
+                        summary
+                            .summary
+                            .params
+                            .get(index)
+                            .map(|param| param.effect.clone())
+                            .unwrap_or(UseEffect::BorrowShared)
                     }
                 })
                 .collect();
@@ -2537,12 +2843,24 @@ impl OwnershipChecker {
             {
                 return args
                     .iter()
-                    .map(|arg| if self.is_expr_copy(arg) { UseEffect::Copy } else { effect.clone() })
+                    .map(|arg| {
+                        if self.is_expr_copy(arg) {
+                            UseEffect::Copy
+                        } else {
+                            effect.clone()
+                        }
+                    })
                     .collect();
             }
         }
         args.iter()
-            .map(|arg| if self.is_expr_copy(arg) { UseEffect::Copy } else { UseEffect::BorrowShared })
+            .map(|arg| {
+                if self.is_expr_copy(arg) {
+                    UseEffect::Copy
+                } else {
+                    UseEffect::BorrowShared
+                }
+            })
             .collect()
     }
 
@@ -2578,15 +2896,32 @@ impl OwnershipChecker {
                 .and_then(|key| self.summaries.get(key))
                 .and_then(|summary| summary.receiver_effect.clone())
                 .unwrap_or(UseEffect::BorrowShared),
-            _ => if self.is_copy_type(target_ty) { UseEffect::Copy } else { UseEffect::BorrowShared },
+            _ => {
+                if self.is_copy_type(target_ty) {
+                    UseEffect::Copy
+                } else {
+                    UseEffect::BorrowShared
+                }
+            }
         }
     }
 
-    fn method_arg_effects(&self, target_ty: &Type, name: &str, args: &[TypedExpr]) -> Vec<UseEffect> {
+    fn method_arg_effects(
+        &self,
+        target_ty: &Type,
+        name: &str,
+        args: &[TypedExpr],
+    ) -> Vec<UseEffect> {
         match target_ty {
             Type::Array(_) | Type::Set(_) | Type::Chan(_) if name == "push" => args
                 .iter()
-                .map(|arg| if self.is_expr_copy(arg) { UseEffect::Copy } else { UseEffect::Move })
+                .map(|arg| {
+                    if self.is_expr_copy(arg) {
+                        UseEffect::Copy
+                    } else {
+                        UseEffect::Move
+                    }
+                })
                 .collect(),
             Type::Named(class_name, _) => self
                 .index
@@ -2600,19 +2935,36 @@ impl OwnershipChecker {
                             if self.is_expr_copy(arg) {
                                 UseEffect::Copy
                             } else {
-                                summary.summary.params.get(index).map(|param| param.effect.clone()).unwrap_or(UseEffect::BorrowShared)
+                                summary
+                                    .summary
+                                    .params
+                                    .get(index)
+                                    .map(|param| param.effect.clone())
+                                    .unwrap_or(UseEffect::BorrowShared)
                             }
                         })
                         .collect()
                 })
                 .unwrap_or_else(|| {
                     args.iter()
-                        .map(|arg| if self.is_expr_copy(arg) { UseEffect::Copy } else { UseEffect::BorrowShared })
+                        .map(|arg| {
+                            if self.is_expr_copy(arg) {
+                                UseEffect::Copy
+                            } else {
+                                UseEffect::BorrowShared
+                            }
+                        })
                         .collect()
                 }),
             _ => args
                 .iter()
-                .map(|arg| if self.is_expr_copy(arg) { UseEffect::Copy } else { UseEffect::BorrowShared })
+                .map(|arg| {
+                    if self.is_expr_copy(arg) {
+                        UseEffect::Copy
+                    } else {
+                        UseEffect::BorrowShared
+                    }
+                })
                 .collect(),
         }
     }
@@ -2625,7 +2977,10 @@ impl OwnershipChecker {
         span: Span,
         errors: &mut Vec<OwnershipError>,
     ) {
-        if parent == child || self.has_ancestor(env, parent, child) || env.origin_parents.contains_key(&child) {
+        if parent == child
+            || self.has_ancestor(env, parent, child)
+            || env.origin_parents.contains_key(&child)
+        {
             errors.push(OwnershipError::OwnershipCycle { span });
             return;
         }
@@ -2649,8 +3004,12 @@ impl OwnershipChecker {
             if let Some(right_binding) = right.bindings.get(name) {
                 if let Some(binding) = env.bindings.get_mut(name) {
                     binding.state = match (&left_binding.state, &right_binding.state) {
-                        (OwnershipState::Moved, _) | (_, OwnershipState::Moved) => OwnershipState::Moved,
-                        (OwnershipState::Escaped, OwnershipState::Escaped) => OwnershipState::Escaped,
+                        (OwnershipState::Moved, _) | (_, OwnershipState::Moved) => {
+                            OwnershipState::Moved
+                        }
+                        (OwnershipState::Escaped, OwnershipState::Escaped) => {
+                            OwnershipState::Escaped
+                        }
                         _ => OwnershipState::Owned,
                     };
                     if binding.origin.is_none() {
@@ -2667,7 +3026,9 @@ impl OwnershipChecker {
         let to_free = env
             .bindings
             .iter()
-            .filter(|(_, binding)| matches!(binding.state, OwnershipState::Owned) && !self.is_copy_type(&binding.ty))
+            .filter(|(_, binding)| {
+                matches!(binding.state, OwnershipState::Owned) && !self.is_copy_type(&binding.ty)
+            })
             .map(|(name, _)| name.clone())
             .collect::<Vec<_>>();
         for name in to_free {
@@ -2688,10 +3049,17 @@ impl OwnershipChecker {
             if let Some(records) = env.borrows.get_mut(&name) {
                 records.retain(|record| record.persistent);
             }
-            if env.borrows.get(&name).is_none_or(|records| records.is_empty()) {
+            if env
+                .borrows
+                .get(&name)
+                .is_none_or(|records| records.is_empty())
+            {
                 env.borrows.remove(&name);
                 if let Some(binding) = env.bindings.get_mut(&name) {
-                    if matches!(binding.state, OwnershipState::BorrowedShared | OwnershipState::BorrowedExclusive) {
+                    if matches!(
+                        binding.state,
+                        OwnershipState::BorrowedShared | OwnershipState::BorrowedExclusive
+                    ) {
                         binding.state = OwnershipState::Owned;
                     }
                 }
@@ -2703,7 +3071,9 @@ impl OwnershipChecker {
         let _ = self;
         match &expr.kind {
             TypedExprKind::Ident(name) => Some(name.clone()),
-            TypedExprKind::Field(target, _) | TypedExprKind::Index(target, _) => self.base_ident_name(target),
+            TypedExprKind::Field(target, _) | TypedExprKind::Index(target, _) => {
+                self.base_ident_name(target)
+            }
             _ => None,
         }
     }
@@ -2845,25 +3215,61 @@ impl<'a> SummaryWalker<'a> {
                 }
             }
             TypedExprKind::MethodCall(target, name, args) => {
-                self.visit_expr(target, self.checker.method_receiver_effect(&target.ty, name));
-                for (arg, effect) in args.iter().zip(self.checker.method_arg_effects(&target.ty, name, args)) {
+                self.visit_expr(
+                    target,
+                    self.checker.method_receiver_effect(&target.ty, name),
+                );
+                for (arg, effect) in args
+                    .iter()
+                    .zip(self.checker.method_arg_effects(&target.ty, name, args))
+                {
                     self.visit_expr(arg, effect);
                 }
             }
-            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+            TypedExprKind::Array(items)
+            | TypedExprKind::Set(items)
+            | TypedExprKind::Tuple(items) => {
                 for item in items {
-                    self.visit_expr(item, if self.checker.is_expr_copy(item) { UseEffect::Copy } else { UseEffect::Move });
+                    self.visit_expr(
+                        item,
+                        if self.checker.is_expr_copy(item) {
+                            UseEffect::Copy
+                        } else {
+                            UseEffect::Move
+                        },
+                    );
                 }
             }
             TypedExprKind::Map(entries) => {
                 for (key, value) in entries {
                     self.visit_expr(key, UseEffect::Copy);
-                    self.visit_expr(value, if self.checker.is_expr_copy(value) { UseEffect::Copy } else { UseEffect::Move });
+                    self.visit_expr(
+                        value,
+                        if self.checker.is_expr_copy(value) {
+                            UseEffect::Copy
+                        } else {
+                            UseEffect::Move
+                        },
+                    );
                 }
             }
             TypedExprKind::BinOp(lhs, _, rhs) | TypedExprKind::Nullish(lhs, rhs) => {
-                self.visit_expr(lhs, if self.checker.is_expr_copy(lhs) { UseEffect::Copy } else { UseEffect::BorrowShared });
-                self.visit_expr(rhs, if self.checker.is_expr_copy(rhs) { UseEffect::Copy } else { UseEffect::BorrowShared });
+                self.visit_expr(
+                    lhs,
+                    if self.checker.is_expr_copy(lhs) {
+                        UseEffect::Copy
+                    } else {
+                        UseEffect::BorrowShared
+                    },
+                );
+                self.visit_expr(
+                    rhs,
+                    if self.checker.is_expr_copy(rhs) {
+                        UseEffect::Copy
+                    } else {
+                        UseEffect::BorrowShared
+                    },
+                );
             }
             TypedExprKind::UnOp(_, inner)
             | TypedExprKind::Cast(inner, _)
@@ -2871,7 +3277,14 @@ impl<'a> SummaryWalker<'a> {
             | TypedExprKind::Index(inner, _)
             | TypedExprKind::Ok(inner)
             | TypedExprKind::Err(inner) => {
-                self.visit_expr(inner, if self.checker.is_expr_copy(inner) { UseEffect::Copy } else { desired });
+                self.visit_expr(
+                    inner,
+                    if self.checker.is_expr_copy(inner) {
+                        UseEffect::Copy
+                    } else {
+                        desired
+                    },
+                );
             }
             TypedExprKind::Lambda(_, body) => self.visit_expr(body, UseEffect::BorrowShared),
             TypedExprKind::Match(subject, arms) => {
@@ -2886,7 +3299,14 @@ impl<'a> SummaryWalker<'a> {
             TypedExprKind::FStrLit(parts) => {
                 for part in parts {
                     if let crate::typed_ast::TypedFStrPart::Interp(expr) = part {
-                        self.visit_expr(expr, if self.checker.is_expr_copy(expr) { UseEffect::Copy } else { UseEffect::BorrowShared });
+                        self.visit_expr(
+                            expr,
+                            if self.checker.is_expr_copy(expr) {
+                                UseEffect::Copy
+                            } else {
+                                UseEffect::BorrowShared
+                            },
+                        );
                     }
                 }
             }
@@ -2904,27 +3324,63 @@ impl<'a> SummaryWalker<'a> {
             return args
                 .iter()
                 .enumerate()
-                .map(|(index, arg)| if self.checker.is_expr_copy(arg) { UseEffect::Copy } else { summary.summary.params.get(index).map(|param| param.effect.clone()).unwrap_or(UseEffect::BorrowShared) })
+                .map(|(index, arg)| {
+                    if self.checker.is_expr_copy(arg) {
+                        UseEffect::Copy
+                    } else {
+                        summary
+                            .summary
+                            .params
+                            .get(index)
+                            .map(|param| param.effect.clone())
+                            .unwrap_or(UseEffect::BorrowShared)
+                    }
+                })
                 .collect();
         }
         if let TypedExprKind::Ident(name) = &callee.kind {
             if let Some(effect) = self.contracts.get(name) {
-                return args.iter().map(|arg| if self.checker.is_expr_copy(arg) { UseEffect::Copy } else { effect.clone() }).collect();
+                return args
+                    .iter()
+                    .map(|arg| {
+                        if self.checker.is_expr_copy(arg) {
+                            UseEffect::Copy
+                        } else {
+                            effect.clone()
+                        }
+                    })
+                    .collect();
             }
         }
-        args.iter().map(|arg| if self.checker.is_expr_copy(arg) { UseEffect::Copy } else { UseEffect::BorrowShared }).collect()
+        args.iter()
+            .map(|arg| {
+                if self.checker.is_expr_copy(arg) {
+                    UseEffect::Copy
+                } else {
+                    UseEffect::BorrowShared
+                }
+            })
+            .collect()
     }
 
     fn raise(&mut self, name: &str, effect: UseEffect) {
         if let Some(param) = self.record.params.iter().find(|param| param.name == name) {
             if !self.checker.is_copy_type(&param.ty) {
-                let current = self.param_effects.get(name).cloned().unwrap_or(UseEffect::Copy);
-                self.param_effects.insert(name.to_string(), join_effect(current, effect));
+                let current = self
+                    .param_effects
+                    .get(name)
+                    .cloned()
+                    .unwrap_or(UseEffect::Copy);
+                self.param_effects
+                    .insert(name.to_string(), join_effect(current, effect));
             }
         } else if name == "self" {
             if let Some(receiver_ty) = &self.record.receiver_ty {
                 if !self.checker.is_copy_type(receiver_ty) {
-                    self.receiver_effect = Some(join_effect(self.receiver_effect.clone().unwrap_or(UseEffect::Copy), effect));
+                    self.receiver_effect = Some(join_effect(
+                        self.receiver_effect.clone().unwrap_or(UseEffect::Copy),
+                        effect,
+                    ));
                 }
             }
         }

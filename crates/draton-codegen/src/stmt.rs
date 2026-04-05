@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use draton_ast::{AssignOp, BinOp};
 use draton_typeck::typed_ast::{
     TypedAssignStmt, TypedDestructureBinding, TypedElseBranch, TypedExpr, TypedExprKind,
-    TypedForStmt, TypedIfStmt, TypedLetDestructureStmt, TypedLetStmt, TypedReturnStmt,
-    TypedMatchArmBody, TypedSpawnBody, TypedWhileStmt,
+    TypedForStmt, TypedIfStmt, TypedLetDestructureStmt, TypedLetStmt, TypedMatchArmBody,
+    TypedReturnStmt, TypedSpawnBody, TypedWhileStmt,
 };
 use draton_typeck::{Type, TypedBlock, TypedStmt, TypedStmtKind};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
@@ -28,8 +28,8 @@ impl<'ctx> CodeGen<'ctx> {
             if self.current_block_terminated() {
                 break;
             }
-            let should_defer_tail_frees = std::ptr::eq(stmt, block.stmts.last().unwrap())
-                && last_value.is_some();
+            let should_defer_tail_frees =
+                std::ptr::eq(stmt, block.stmts.last().unwrap()) && last_value.is_some();
             if should_defer_tail_frees {
                 continue;
             }
@@ -508,7 +508,9 @@ impl<'ctx> CodeGen<'ctx> {
             TypedExprKind::Ident(name) => {
                 out.insert(name.clone());
             }
-            TypedExprKind::Array(items) | TypedExprKind::Set(items) | TypedExprKind::Tuple(items) => {
+            TypedExprKind::Array(items)
+            | TypedExprKind::Set(items)
+            | TypedExprKind::Tuple(items) => {
                 for item in items {
                     self.collect_expr_idents(item, out);
                 }
@@ -736,7 +738,12 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let elem_ty = self.llvm_basic_type(inner)?;
         let gep = unsafe {
-            self.build_gep(elem_ty, ptr, &[phi.as_basic_value().into_int_value()], "for.elem.ptr")?
+            self.build_gep(
+                elem_ty,
+                ptr,
+                &[phi.as_basic_value().into_int_value()],
+                "for.elem.ptr",
+            )?
         };
         let elem = self.build_load(gep, "for.elem")?;
         let alloca = self.create_entry_alloca(function, elem.get_type(), &stmt.name)?;

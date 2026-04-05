@@ -1,11 +1,6 @@
-import { parse_stage_json } from driver.parse_stage
-import { typeck_stage_json } from driver.typeck_stage
-
 @type {
     strict_flag: (Bool) -> Int
     lex_json: (String) -> String
-    parse_json: (String) -> String
-    typeck_json: (String, Bool) -> String
     build_json: (String, String, String, Bool, String) -> String
     json_field: (String, String) -> String
     json_quote: (String) -> String
@@ -858,14 +853,6 @@ fn lex_json(path) {
             str_concat(",", str_concat(json_field("tokens", join_json_array(tokens)), "}"))
         )
     )
-}
-
-fn parse_json(path) {
-    return parse_stage_json(path)
-}
-
-fn typeck_json(path, strict_syntax) {
-    return typeck_stage_json(path, strict_syntax)
 }
 
 fn build_json(path, output, mode, strict_syntax, target) {

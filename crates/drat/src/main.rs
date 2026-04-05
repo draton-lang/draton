@@ -37,11 +37,19 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    Init { name: Option<String> },
+    Init {
+        name: Option<String>,
+    },
     Build(BuildFlags),
-    AstDump { path: PathBuf },
-    TypeDump { path: PathBuf },
-    LexDump { path: PathBuf },
+    AstDump {
+        path: PathBuf,
+    },
+    TypeDump {
+        path: PathBuf,
+    },
+    LexDump {
+        path: PathBuf,
+    },
     Run(RunFlags),
     Test,
     Fmt(FmtFlags),
@@ -50,9 +58,15 @@ enum Command {
     Doc,
     Lsp,
     Repl,
-    Add { pkg: String },
-    Remove { pkg: String },
-    Update { subject: Option<String> },
+    Add {
+        pkg: String,
+    },
+    Remove {
+        pkg: String,
+    },
+    Update {
+        subject: Option<String>,
+    },
     Publish,
     #[command(hide = true, name = "selfhost-stage0")]
     SelfhostStage0(SelfhostStage0Flags),

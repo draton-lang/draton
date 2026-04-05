@@ -6,3 +6,4 @@
 /build
 /.fuse_hidden*
 /*.zip
+/vendor
