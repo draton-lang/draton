@@ -31,9 +31,37 @@ fn cmake_config_path() -> PathBuf {
     prefix_dir().join("lib").join("cmake").join("llvm").join("LLVMConfig.cmake")
 }
 
+fn cmake_exports_path() -> PathBuf {
+    prefix_dir().join("lib").join("cmake").join("llvm").join("LLVMExports.cmake")
+}
+
+fn cmake_extensions_path() -> PathBuf {
+    prefix_dir()
+        .join("lib")
+        .join("cmake")
+        .join("llvm")
+        .join("LLVMConfigExtensions.cmake")
+}
+
 fn read_cmake_var(name: &str) -> Option<String> {
     let prefix = format!("set({name} ");
     let contents = fs::read_to_string(cmake_config_path()).ok()?;
+    for line in contents.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix(&prefix) {
+            let value = rest.strip_suffix(')').unwrap_or(rest).trim();
+            if let Some(stripped) = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
+                return Some(stripped.to_string());
+            }
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn read_cmake_var_from(path: PathBuf, name: &str) -> Option<String> {
+    let prefix = format!("set({name} ");
+    let contents = fs::read_to_string(path).ok()?;
     for line in contents.lines() {
         let line = line.trim();
         if let Some(rest) = line.strip_prefix(&prefix) {
@@ -74,17 +102,23 @@ fn cmake_static_libnames() -> io::Result<Option<String>> {
         return Ok(None);
     };
 
+    let static_extensions = read_cmake_var_from(cmake_extensions_path(), "LLVM_STATIC_EXTENSIONS")
+        .unwrap_or_default()
+        .split(';')
+        .filter(|component| !component.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
     let lib_dir = prefix_dir().join("lib");
     let mut names = Vec::new();
+    let mut seen = Vec::new();
     for component in value.split(';').rev().filter(|component| !component.is_empty()) {
-        let filename = if cfg!(windows) {
-            format!("{component}.lib")
-        } else {
-            format!("lib{component}.a")
-        };
-        if lib_dir.join(&filename).exists() {
-            names.push(filename);
-        }
+        append_static_component(
+            component,
+            &lib_dir,
+            &static_extensions,
+            &mut seen,
+            &mut names,
+        )?;
     }
 
     if names.is_empty() {
@@ -92,6 +126,67 @@ fn cmake_static_libnames() -> io::Result<Option<String>> {
     }
 
     Ok(Some(names.join(" ")))
+}
+
+fn static_component_filename(component: &str) -> String {
+    if cfg!(windows) {
+        format!("{component}.lib")
+    } else {
+        format!("lib{component}.a")
+    }
+}
+
+fn read_exported_target_interface(component: &str) -> io::Result<Vec<String>> {
+    let contents = fs::read_to_string(cmake_exports_path())?;
+    let prefix = format!("set_target_properties({component} PROPERTIES");
+    let Some(start) = contents.find(&prefix) else {
+        return Ok(Vec::new());
+    };
+    let tail = &contents[start..];
+    let Some(end) = tail.find("\n)\n").or_else(|| tail.find("\r\n)\r\n")) else {
+        return Ok(Vec::new());
+    };
+    let block = &tail[..end];
+    let marker = "INTERFACE_LINK_LIBRARIES \"";
+    let Some(interface_start) = block.find(marker) else {
+        return Ok(Vec::new());
+    };
+    let rest = &block[interface_start + marker.len()..];
+    let Some(interface_end) = rest.find('"') else {
+        return Ok(Vec::new());
+    };
+    Ok(rest[..interface_end]
+        .split(';')
+        .filter(|item| !item.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+fn append_static_component(
+    component: &str,
+    lib_dir: &Path,
+    static_extensions: &[String],
+    seen: &mut Vec<String>,
+    names: &mut Vec<String>,
+) -> io::Result<()> {
+    if seen.iter().any(|item| item == component) {
+        return Ok(());
+    }
+    seen.push(component.to_string());
+
+    let filename = static_component_filename(component);
+    if lib_dir.join(&filename).exists() {
+        names.push(filename);
+    }
+
+    if static_extensions.iter().any(|item| item == component) {
+        for dependency in read_exported_target_interface(component)? {
+            if lib_dir.join(static_component_filename(&dependency)).exists() {
+                append_static_component(&dependency, lib_dir, static_extensions, seen, names)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn llvm_package_version() -> String {

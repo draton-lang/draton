@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -129,6 +130,67 @@ class VendorLlvmTests(unittest.TestCase):
             alias = llvm_root / "host"
             self.assertTrue(alias.is_symlink())
             self.assertEqual(alias.resolve(), target_dir.resolve())
+
+    def test_llvm_config_shim_static_libnames_include_polly_isl_dependency(self) -> None:
+        rustc = vendor_llvm.resolve_rustc()
+        if rustc is None:
+            self.skipTest("rustc is required to compile the llvm-config shim")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            prefix = temp_root / "llvm"
+            bin_dir = prefix / "bin"
+            lib_dir = prefix / "lib"
+            cmake_dir = lib_dir / "cmake" / "llvm"
+            bin_dir.mkdir(parents=True)
+            cmake_dir.mkdir(parents=True)
+
+            (lib_dir / "libLLVMSupport.a").write_text("", encoding="utf-8")
+            (lib_dir / "libPolly.a").write_text("", encoding="utf-8")
+            (lib_dir / "libPollyISL.a").write_text("", encoding="utf-8")
+            (cmake_dir / "LLVMConfig.cmake").write_text(
+                "\n".join(
+                    [
+                        "set(LLVM_PACKAGE_VERSION 18.1.8)",
+                        "set(LLVM_AVAILABLE_LIBS LLVMSupport;Polly)",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (cmake_dir / "LLVMConfigExtensions.cmake").write_text(
+                "set(LLVM_STATIC_EXTENSIONS Polly)\n",
+                encoding="utf-8",
+            )
+            (cmake_dir / "LLVMExports.cmake").write_text(
+                "\n".join(
+                    [
+                        "set_target_properties(Polly PROPERTIES",
+                        '  INTERFACE_LINK_LIBRARIES "LLVMSupport;PollyISL"',
+                        ")",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            shim_path = bin_dir / "llvm-config"
+            subprocess.run(
+                [rustc, "--edition=2021", "-O", str(vendor_llvm.SHIM_SOURCE), "-o", str(shim_path)],
+                check=True,
+                cwd=REPO_ROOT,
+            )
+
+            result = subprocess.run(
+                [str(shim_path), "--libnames", "--link-static"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(
+                result.stdout.strip().split(),
+                ["libPolly.a", "libLLVMSupport.a", "libPollyISL.a"],
+            )
 
 
 class SmokeReleaseTests(unittest.TestCase):
