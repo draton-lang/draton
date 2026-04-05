@@ -30,14 +30,14 @@ use coop_scheduler::RawChan;
 use draton_lexer::{LexResult, Lexer};
 #[cfg(feature = "host-compiler")]
 use draton_parser::{ParseResult, ParseWarning, Parser};
-#[cfg(feature = "host-compiler")]
-use serde_json::json;
 use draton_stdlib as stdlib;
 #[cfg(feature = "host-compiler")]
 use draton_typeck::{DeprecatedSyntaxMode, TypeCheckResult, TypeChecker};
 use platform::DratonPlatform;
 #[cfg(feature = "scheduler")]
 use scheduler::channel::RawChan;
+#[cfg(feature = "host-compiler")]
+use serde_json::json;
 
 #[repr(C)]
 pub struct DratonString {
@@ -282,7 +282,8 @@ fn host_lex_result(path: &Path) -> Result<LexResult, String> {
 #[cfg(feature = "host-compiler")]
 pub fn host_lex_json_path(path: &Path) -> Result<String, String> {
     let lexed = host_lex_result(path)?;
-    serde_json::to_string(&lexed).map_err(|error| format!("failed to serialize lex result: {error}"))
+    serde_json::to_string(&lexed)
+        .map_err(|error| format!("failed to serialize lex result: {error}"))
 }
 
 #[cfg(feature = "host-compiler")]
@@ -431,8 +432,8 @@ fn runtime_temp_project_root() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .map(|value| value.as_nanos())
         .unwrap_or(0);
-    runtime_workspace_root()
-        .join("build")
+    env::temp_dir()
+        .join("draton")
         .join("phase5_host")
         .join(format!("tmp_{}_{}", std::process::id(), stamp))
 }
@@ -614,7 +615,8 @@ pub fn host_build_json_path(
             "error": error,
         }),
     };
-    serde_json::to_string(&envelope).map_err(|error| format!("failed to serialize build result: {error}"))
+    serde_json::to_string(&envelope)
+        .map_err(|error| format!("failed to serialize build result: {error}"))
 }
 
 #[cfg(feature = "host-compiler")]

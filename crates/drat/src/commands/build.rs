@@ -2,6 +2,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 
 use anyhow::{anyhow, bail, Context, Result};
 use colored::Colorize;
@@ -568,7 +569,7 @@ fn link_binary(
         ensure_supported_target(target)?;
     }
     let mut command = linker_command()?;
-    if is_bundled_linker() {
+    if bundled_lld_usable() {
         command.arg("-fuse-ld=lld");
     }
     command.arg(object_path);
@@ -630,7 +631,9 @@ fn ensure_runtime_staticlib(profile: Profile) -> Result<PathBuf> {
     }
 
     if let Some(path) = dev_checkout_runtime_staticlib(profile) {
-        return Ok(path);
+        if !runtime_staticlib_stale(&path)? {
+            return Ok(path);
+        }
     }
 
     let workspace_root = workspace_root();
@@ -710,6 +713,47 @@ fn dev_checkout_runtime_staticlib(profile: Profile) -> Option<PathBuf> {
     candidate.exists().then_some(candidate)
 }
 
+fn runtime_staticlib_stale(path: &Path) -> Result<bool> {
+    let archive_mtime = fs::metadata(path)
+        .with_context(|| format!("failed to stat {}", path.display()))?
+        .modified()
+        .with_context(|| format!("failed to read mtime for {}", path.display()))?;
+    let runtime_root = workspace_root().join("crates").join("draton-runtime");
+    let manifest = runtime_root.join("Cargo.toml");
+    if path_modified_after(&manifest, archive_mtime)? {
+        return Ok(true);
+    }
+    path_tree_modified_after(&runtime_root.join("src"), archive_mtime)
+}
+
+fn path_tree_modified_after(path: &Path, cutoff: SystemTime) -> Result<bool> {
+    if path_modified_after(path, cutoff)? {
+        return Ok(true);
+    }
+    if !path.is_dir() {
+        return Ok(false);
+    }
+    let mut entries = fs::read_dir(path)
+        .with_context(|| format!("failed to read {}", path.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .with_context(|| format!("failed to iterate {}", path.display()))?;
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        if path_tree_modified_after(&entry.path(), cutoff)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn path_modified_after(path: &Path, cutoff: SystemTime) -> Result<bool> {
+    let modified = fs::metadata(path)
+        .with_context(|| format!("failed to stat {}", path.display()))?
+        .modified()
+        .with_context(|| format!("failed to read mtime for {}", path.display()))?;
+    Ok(modified > cutoff)
+}
+
 fn linker_command() -> Result<Command> {
     if cfg!(windows) {
         if let Some(root) = packaged_windows_gnu_root() {
@@ -725,10 +769,22 @@ fn linker_command() -> Result<Command> {
         }
     }
     if let Some((driver, root)) = bundled_llvm_driver() {
-        let mut command = Command::new(driver);
-        prepend_path(&mut command, &root.join("bin"));
-        prepend_library_search_path(&mut command, &root.join("lib"));
-        return Ok(command);
+        if bundled_driver_usable(&driver) {
+            let mut command = Command::new(driver);
+            prepend_path(&mut command, &root.join("bin"));
+            prepend_library_search_path(&mut command, &root.join("lib"));
+            return Ok(command);
+        }
+        if let Some(system_driver) = system_linker_driver() {
+            let mut command = Command::new(system_driver);
+            if bundled_lld_usable() {
+                prepend_path(&mut command, &root.join("bin"));
+            }
+            return Ok(command);
+        }
+        bail!(
+            "bundled LLVM toolchain is present but bundled clang driver is unusable, and no system C/C++ linker driver was found"
+        );
     }
     if requires_bundled_linker() {
         bail!(
@@ -736,6 +792,42 @@ fn linker_command() -> Result<Command> {
         );
     }
     Ok(Command::new("cc"))
+}
+
+fn bundled_driver_usable(driver: &Path) -> bool {
+    Command::new(driver)
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn bundled_lld_usable() -> bool {
+    let Some((_, root)) = bundled_llvm_driver() else {
+        return false;
+    };
+    let lld = if cfg!(windows) {
+        root.join("bin").join("ld.lld.exe")
+    } else {
+        root.join("bin").join("ld.lld")
+    };
+    if !lld.exists() {
+        return false;
+    }
+    Command::new(lld)
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn system_linker_driver() -> Option<&'static str> {
+    if cfg!(windows) {
+        return None;
+    }
+    ["c++", "g++", "clang++", "cc", "clang", "gcc"]
+        .into_iter()
+        .find(|name| path_has_executable(name))
 }
 
 fn bundled_llvm_driver() -> Option<(PathBuf, PathBuf)> {
@@ -753,20 +845,9 @@ fn bundled_llvm_driver() -> Option<(PathBuf, PathBuf)> {
         .map(|driver| (driver, root))
 }
 
-fn is_bundled_linker() -> bool {
-    if let Some((_, root)) = bundled_llvm_driver() {
-        let lld = if cfg!(windows) {
-            root.join("bin").join("ld.lld.exe")
-        } else {
-            root.join("bin").join("ld.lld")
-        };
-        return lld.exists();
-    }
-    false
-}
-
 fn packaged_llvm_root() -> Option<PathBuf> {
-    if let Some(root) = env::var_os("DRATON_LLVM_BUNDLE_PREFIX").or_else(|| env::var_os("LLVM_PATH"))
+    if let Some(root) =
+        env::var_os("DRATON_LLVM_BUNDLE_PREFIX").or_else(|| env::var_os("LLVM_PATH"))
     {
         let path = PathBuf::from(root);
         if path.exists() {
@@ -804,6 +885,15 @@ fn prepend_path(command: &mut Command, entry: &Path) {
     if let Ok(path) = env::join_paths(path_entries) {
         command.env("PATH", path);
     }
+}
+
+fn path_has_executable(name: &str) -> bool {
+    let Some(path) = env::var_os("PATH") else {
+        return false;
+    };
+    env::split_paths(&path)
+        .map(|entry| entry.join(name))
+        .any(|candidate| candidate.exists())
 }
 
 fn prepend_library_search_path(command: &mut Command, entry: &Path) {
@@ -1274,11 +1364,12 @@ fn render_type_errors(path: &Path, source: &str, errors: &[TypeError]) -> String
                     draton_typeck::OwnershipError::MoveWhileBorrowed { move_span, .. } => {
                         (move_span.line, move_span.col)
                     }
-                    draton_typeck::OwnershipError::ReadDuringExclusiveBorrow { read_span, .. } => {
-                        (read_span.line, read_span.col)
-                    }
+                    draton_typeck::OwnershipError::ReadDuringExclusiveBorrow {
+                        read_span, ..
+                    } => (read_span.line, read_span.col),
                     draton_typeck::OwnershipError::ExclusiveBorrowDuringRead {
-                        modify_span, ..
+                        modify_span,
+                        ..
                     } => (modify_span.line, modify_span.col),
                     draton_typeck::OwnershipError::PartialMove { span, .. }
                     | draton_typeck::OwnershipError::AmbiguousCallOwnership { span, .. }

@@ -4,11 +4,15 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Value};
 
 use crate::commands::build::{self, BuildRequest, Profile};
+
+const STAGE0_CACHE_ABI: &str = "selfhost-stage0-cache-v2";
 
 #[derive(Debug, Clone)]
 pub(crate) enum SelfhostStage0Command {
@@ -143,8 +147,8 @@ fn normalize_parse_payload(payload: Value) -> Result<(bool, Value)> {
     let parse_result = optional_object_field(&payload, "parse", "parse_result")?;
     let (parse_errors, parse_warnings, program) = match parse_result {
         Some(parse_result) => (
-            expect_array_field(&parse_result, "parse", "parse_result.errors")?,
-            expect_array_field(&parse_result, "parse", "parse_result.warnings")?,
+            expect_array_field(&parse_result, "parse", "errors")?,
+            expect_array_field(&parse_result, "parse", "warnings")?,
             expect_optional_field(&parse_result, "program"),
         ),
         None => (Vec::new(), Vec::new(), Value::Null),
@@ -169,8 +173,8 @@ fn normalize_typeck_payload(payload: Value) -> Result<(bool, Value)> {
     let typecheck_result = optional_object_field(&payload, "typeck", "typecheck_result")?;
     let (type_errors, type_warnings, typed_program) = match typecheck_result {
         Some(typecheck_result) => (
-            expect_array_field(&typecheck_result, "typeck", "typecheck_result.errors")?,
-            expect_array_field(&typecheck_result, "typeck", "typecheck_result.warnings")?,
+            expect_array_field(&typecheck_result, "typeck", "errors")?,
+            expect_array_field(&typecheck_result, "typeck", "warnings")?,
             expect_optional_field(&typecheck_result, "typed_program"),
         ),
         None => (Vec::new(), Vec::new(), Value::Null),
@@ -316,11 +320,11 @@ fn stage0_bridge(command: &SelfhostStage0Command) -> Value {
         }),
         SelfhostStage0Command::Parse { .. } => json!({
             "kind": "selfhost",
-            "builtin": Value::Null,
+            "builtin": "host_parse_json",
         }),
         SelfhostStage0Command::Typeck { .. } => json!({
             "kind": "selfhost",
-            "builtin": Value::Null,
+            "builtin": "host_type_json",
         }),
         SelfhostStage0Command::Build { .. } => json!({
             "kind": "host",
@@ -341,23 +345,16 @@ fn wants_pretty_json(command: &SelfhostStage0Command) -> bool {
 fn stage0_args(cwd: &Path, command: &SelfhostStage0Command) -> Vec<String> {
     match command {
         SelfhostStage0Command::Lex { path, .. } => {
-            vec![
-                "lex".to_string(),
-                resolve_path(cwd, path).display().to_string(),
-            ]
+            vec![resolve_path(cwd, path).display().to_string()]
         }
         SelfhostStage0Command::Parse { path, .. } => {
-            vec![
-                "parse".to_string(),
-                resolve_path(cwd, path).display().to_string(),
-            ]
+            vec![resolve_path(cwd, path).display().to_string()]
         }
         SelfhostStage0Command::Typeck {
             path,
             strict_syntax,
             ..
         } => vec![
-            "typeck".to_string(),
             resolve_path(cwd, path).display().to_string(),
             bool_flag(*strict_syntax),
         ],
@@ -367,7 +364,6 @@ fn stage0_args(cwd: &Path, command: &SelfhostStage0Command) -> Vec<String> {
             request,
             ..
         } => vec![
-            "build".to_string(),
             resolve_path(cwd, path).display().to_string(),
             output
                 .as_ref()
@@ -398,17 +394,23 @@ fn stage0_layout(command: &SelfhostStage0Command) -> Stage0Layout {
     match command {
         _ if env::var_os("DRATON_SELFHOST_STAGE0_MINIMAL").is_some() => Stage0Layout {
             cache_key: "minimal",
-            entries: &["main.dt", "driver/pipeline.dt"],
+            entries: &["driver/pipeline.dt"],
         },
         SelfhostStage0Command::Lex { .. } => Stage0Layout {
             cache_key: "lex",
-            entries: &["main.dt", "driver/pipeline.dt"],
+            entries: &["driver/pipeline.dt"],
         },
-        SelfhostStage0Command::Parse { .. }
-        | SelfhostStage0Command::Typeck { .. }
-        | SelfhostStage0Command::Build { .. } => Stage0Layout {
-            cache_key: "semantic",
-            entries: &["main.dt", "driver", "ast", "lexer", "parser", "typeck"],
+        SelfhostStage0Command::Parse { .. } => Stage0Layout {
+            cache_key: "parse",
+            entries: &[],
+        },
+        SelfhostStage0Command::Typeck { .. } => Stage0Layout {
+            cache_key: "typeck",
+            entries: &[],
+        },
+        SelfhostStage0Command::Build { .. } => Stage0Layout {
+            cache_key: "build",
+            entries: &["driver/pipeline.dt"],
         },
     }
 }
@@ -416,25 +418,18 @@ fn stage0_layout(command: &SelfhostStage0Command) -> Stage0Layout {
 fn build_stage0_binary(command: &SelfhostStage0Command) -> Result<PathBuf> {
     let repo_root = repo_root();
     let compiler_root = repo_root.join("compiler");
-    let compiler_entry = compiler_root.join("main.dt");
-    let pipeline_src = compiler_root.join("driver").join("pipeline.dt");
     let layout = stage0_layout(command);
-    if !compiler_entry.exists() {
-        bail!(
-            "selfhost entrypoint not found at {}",
-            compiler_entry.display()
-        );
-    }
-    if !pipeline_src.exists() {
-        bail!("selfhost pipeline not found at {}", pipeline_src.display());
-    }
-
-    let temp_root = stage0_cache_root(&compiler_root, &layout)?;
+    let temp_root = stage0_cache_root(command, &compiler_root, &layout)?;
+    let lock_path = stage0_cache_lock_path(&temp_root);
     let cached_binary = temp_root
         .join("build")
         .join("debug")
         .join(stage0_binary_name());
-    if cached_binary.exists() {
+    if stage0_cached_binary_fresh(&cached_binary)? && !lock_path.exists() {
+        return Ok(cached_binary);
+    }
+    let _lock = acquire_stage0_cache_lock(&temp_root)?;
+    if stage0_cached_binary_fresh(&cached_binary)? {
         return Ok(cached_binary);
     }
     if temp_root.exists() {
@@ -442,6 +437,7 @@ fn build_stage0_binary(command: &SelfhostStage0Command) -> Result<PathBuf> {
             .with_context(|| format!("failed to reset {}", temp_root.display()))?;
     }
     copy_compiler_entries(&compiler_root, &temp_root, &layout)?;
+    write_stage0_entry(&temp_root, command)?;
     let config_path = temp_root.join("draton.toml");
     fs::write(
         &config_path,
@@ -460,11 +456,33 @@ fn build_stage0_binary(command: &SelfhostStage0Command) -> Result<PathBuf> {
     Ok(built.binary_path)
 }
 
-fn stage0_cache_root(compiler_root: &Path, layout: &Stage0Layout) -> Result<PathBuf> {
+fn stage0_cached_binary_fresh(cached_binary: &Path) -> Result<bool> {
+    if !cached_binary.exists() {
+        return Ok(false);
+    }
+    let current_exe = env::current_exe().context("failed to resolve current drat executable")?;
+    let cached_mtime = fs::metadata(cached_binary)
+        .with_context(|| format!("failed to stat {}", cached_binary.display()))?
+        .modified()
+        .with_context(|| format!("failed to read mtime for {}", cached_binary.display()))?;
+    let current_mtime = fs::metadata(&current_exe)
+        .with_context(|| format!("failed to stat {}", current_exe.display()))?
+        .modified()
+        .with_context(|| format!("failed to read mtime for {}", current_exe.display()))?;
+    Ok(cached_mtime >= current_mtime)
+}
+
+fn stage0_cache_root(
+    command: &SelfhostStage0Command,
+    compiler_root: &Path,
+    layout: &Stage0Layout,
+) -> Result<PathBuf> {
     let mut hasher = DefaultHasher::new();
     "draton-selfhost-stage0".hash(&mut hasher);
     env!("CARGO_PKG_VERSION").hash(&mut hasher);
+    STAGE0_CACHE_ABI.hash(&mut hasher);
     layout.cache_key.hash(&mut hasher);
+    stage0_entry_source(command).hash(&mut hasher);
     for relative in layout.entries {
         hash_compiler_path(compiler_root, &compiler_root.join(relative), &mut hasher)?;
     }
@@ -472,6 +490,152 @@ fn stage0_cache_root(compiler_root: &Path, layout: &Stage0Layout) -> Result<Path
         .join("draton")
         .join("selfhost_stage0_cache")
         .join(format!("{:016x}", hasher.finish())))
+}
+
+struct Stage0CacheLock {
+    path: PathBuf,
+}
+
+impl Drop for Stage0CacheLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+fn stage0_cache_lock_path(temp_root: &Path) -> PathBuf {
+    let name = temp_root
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("stage0");
+    temp_root
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!("{name}.lock"))
+}
+
+fn stage0_cache_lock_owner_path(lock_path: &Path) -> PathBuf {
+    lock_path.join("owner.pid")
+}
+
+fn stage0_cache_lock_owner() -> String {
+    std::process::id().to_string()
+}
+
+fn process_is_alive(pid_text: &str) -> bool {
+    #[cfg(unix)]
+    {
+        return Path::new("/proc").join(pid_text.trim()).exists();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid_text;
+        false
+    }
+}
+
+fn reap_stale_stage0_cache_lock(lock_path: &Path) -> Result<bool> {
+    let owner_path = stage0_cache_lock_owner_path(lock_path);
+    if let Ok(owner) = fs::read_to_string(&owner_path) {
+        if !process_is_alive(&owner) {
+            fs::remove_dir_all(lock_path).with_context(|| {
+                format!(
+                    "failed to remove stale selfhost stage0 cache lock {}",
+                    lock_path.display()
+                )
+            })?;
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+
+    let metadata = fs::metadata(lock_path)
+        .with_context(|| format!("failed to stat {}", lock_path.display()))?;
+    if let Ok(modified) = metadata.modified() {
+        if modified.elapsed().unwrap_or_default() > Duration::from_secs(5) {
+            fs::remove_dir_all(lock_path).with_context(|| {
+                format!(
+                    "failed to remove orphaned selfhost stage0 cache lock {}",
+                    lock_path.display()
+                )
+            })?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn acquire_stage0_cache_lock(temp_root: &Path) -> Result<Stage0CacheLock> {
+    let lock_path = stage0_cache_lock_path(temp_root);
+    if let Some(parent) = lock_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(600);
+    loop {
+        match fs::create_dir(&lock_path) {
+            Ok(()) => {
+                fs::write(
+                    stage0_cache_lock_owner_path(&lock_path),
+                    stage0_cache_lock_owner(),
+                )
+                .with_context(|| {
+                    format!(
+                        "failed to write selfhost stage0 cache lock owner {}",
+                        lock_path.display()
+                    )
+                })?;
+                return Ok(Stage0CacheLock { path: lock_path });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if reap_stale_stage0_cache_lock(&lock_path)? {
+                    continue;
+                }
+                if Instant::now() >= deadline {
+                    bail!(
+                        "timed out waiting for selfhost stage0 cache lock {}",
+                        lock_path.display()
+                    );
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "failed to create selfhost stage0 cache lock {}",
+                        lock_path.display()
+                    )
+                });
+            }
+        }
+    }
+}
+
+fn write_stage0_entry(temp_root: &Path, command: &SelfhostStage0Command) -> Result<()> {
+    let entry_path = temp_root.join("main.dt");
+    fs::write(&entry_path, stage0_entry_source(command))
+        .with_context(|| format!("failed to write {}", entry_path.display()))
+}
+
+fn stage0_entry_source(command: &SelfhostStage0Command) -> String {
+    let dispatch = match command {
+        SelfhostStage0Command::Lex { .. } => {
+            "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(lex_json(path))\n"
+        }
+        SelfhostStage0Command::Parse { .. } => {
+            "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(host_parse_json(path))\n"
+        }
+        SelfhostStage0Command::Typeck { .. } => {
+            "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(host_type_json(path, int_arg(2)))\n"
+        }
+        SelfhostStage0Command::Build { .. } => {
+            "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(build_json(path, arg_or_empty(2), arg_or_empty(3), bool_arg(4), arg_or_empty(5)))\n"
+        }
+    };
+
+    format!(
+        "@type {{\n    arg_or_empty: (Int) -> String\n    bool_arg: (Int) -> Bool\n    int_arg: (Int) -> Int\n    emit_payload: (String) -> Int\n    emit_error: (String) -> Int\n    main: () -> Int\n}}\n\nfn arg_or_empty(index) {{\n    if index < cli_argc() {{\n        return cli_arg(index)\n    }}\n    return \"\"\n}}\n\nfn bool_arg(index) {{\n    return arg_or_empty(index) == \"1\"\n}}\n\nfn int_arg(index) {{\n    if bool_arg(index) {{\n        return 1\n    }}\n    return 0\n}}\n\nfn emit_payload(payload) {{\n    println(payload)\n    return 0\n}}\n\nfn emit_error(message) {{\n    let prefix = \"{{\\\"ok\\\":false,\\\"error\\\":\\\"\"\n    let body = str_concat(prefix, message)\n    println(str_concat(body, \"\\\"}}\"))\n    return 1\n}}\n\nfn main() {{\n{dispatch}}}\n"
+    )
 }
 
 fn hash_compiler_path(root: &Path, current: &Path, hasher: &mut DefaultHasher) -> Result<()> {

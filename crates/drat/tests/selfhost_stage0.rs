@@ -166,7 +166,14 @@ fn main() {
         "--json",
         src.to_str().expect("utf8 path"),
     ]);
-    let result = expect_envelope(&json, "parse", &src, "selfhost", None, true);
+    let result = expect_envelope(
+        &json,
+        "parse",
+        &src,
+        "selfhost",
+        Some("host_parse_json"),
+        true,
+    );
     assert!(result["lex_errors"].is_array(), "expected lex_errors array");
     assert!(
         result["parse_errors"].is_array(),
@@ -202,7 +209,14 @@ fn main() {
         "--json",
         src.to_str().expect("utf8 path"),
     ]);
-    let result = expect_envelope(&json, "typeck", &src, "selfhost", None, true);
+    let result = expect_envelope(
+        &json,
+        "typeck",
+        &src,
+        "selfhost",
+        Some("host_type_json"),
+        true,
+    );
     assert!(result["lex_errors"].is_array(), "expected lex_errors array");
     assert!(
         result["parse_errors"].is_array(),
@@ -247,7 +261,14 @@ fn add(a: Int) -> Int {
         "--json",
         src.to_str().expect("utf8 path"),
     ]);
-    let warn_result = expect_envelope(&warn_json, "typeck", &src, "selfhost", None, true);
+    let warn_result = expect_envelope(
+        &warn_json,
+        "typeck",
+        &src,
+        "selfhost",
+        Some("host_type_json"),
+        true,
+    );
     assert_eq!(
         warn_result["type_errors"],
         Value::Array(Vec::new()),
@@ -269,7 +290,14 @@ fn add(a: Int) -> Int {
         "--strict-syntax",
         src.to_str().expect("utf8 path"),
     ]);
-    let strict_result = expect_envelope(&strict_json, "typeck", &src, "selfhost", None, false);
+    let strict_result = expect_envelope(
+        &strict_json,
+        "typeck",
+        &src,
+        "selfhost",
+        Some("host_type_json"),
+        false,
+    );
     assert!(
         strict_result["type_errors"]
             .as_array()
