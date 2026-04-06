@@ -98,6 +98,7 @@ fn infer_ownership_summaries(program) {
     }
 
     apply_program_summaries(program, records, summaries)
+    populate_program_use_effects(program, summaries)
     return program
 }
 
@@ -691,6 +692,358 @@ fn apply_program_summaries(program, records, summaries) {
     }
 }
 
+fn populate_program_use_effects(program, summaries) {
+    let mut index = 0
+    while index < program.items.len() {
+        populate_item_use_effects(program.items[index], summaries)
+        index = index + 1
+    }
+}
+
+fn populate_item_use_effects(item, summaries) {
+    if (item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler) && item.fn_def != None {
+        populate_function_use_effects(item.fn_def, summaries)
+        return
+    }
+    if item.kind == Class && item.class_def != None {
+        let mut index = 0
+        while index < item.class_def.methods.len() {
+            populate_function_use_effects(item.class_def.methods[index], summaries)
+            index = index + 1
+        }
+        index = 0
+        while index < item.class_def.type_blocks.len() {
+            populate_type_block_use_effects(item.class_def.type_blocks[index], summaries)
+            index = index + 1
+        }
+        return
+    }
+    if item.kind == Interface && item.interface_def != None {
+        let mut index = 0
+        while index < item.interface_def.methods.len() {
+            populate_function_use_effects(item.interface_def.methods[index], summaries)
+            index = index + 1
+        }
+        index = 0
+        while index < item.interface_def.type_blocks.len() {
+            populate_type_block_use_effects(item.interface_def.type_blocks[index], summaries)
+            index = index + 1
+        }
+        return
+    }
+    if item.kind == Extern && item.extern_block != None {
+        let mut index = 0
+        while index < item.extern_block.functions.len() {
+            populate_function_use_effects(item.extern_block.functions[index], summaries)
+            index = index + 1
+        }
+        return
+    }
+    if item.kind == TypeBlock && item.type_block != None {
+        populate_type_block_use_effects(item.type_block, summaries)
+    }
+}
+
+fn populate_type_block_use_effects(type_block, summaries) {
+    let mut index = 0
+    while index < type_block.members.len() {
+        if type_block.members[index].function != None {
+            populate_function_use_effects(type_block.members[index].function, summaries)
+        }
+        index = index + 1
+    }
+}
+
+fn populate_function_use_effects(function, summaries) {
+    let mut contracts = []
+    if function.body != None {
+        populate_block_use_effects(function.body, summaries, contracts)
+    }
+}
+
+fn populate_block_use_effects(block, summaries, contracts) {
+    let mut index = 0
+    while index < block.stmts.len() {
+        populate_stmt_use_effects(block.stmts[index], summaries, contracts)
+        index = index + 1
+    }
+}
+
+fn populate_stmt_use_effects(stmt, summaries, contracts) {
+    if stmt.kind == Let && stmt.let_stmt != None {
+        if stmt.let_stmt.value != None {
+            populate_expr_use_effects(stmt.let_stmt.value, Move, summaries, contracts)
+        }
+        return
+    }
+    if stmt.kind == LetDestructure && stmt.let_destructure != None {
+        populate_expr_use_effects(stmt.let_destructure.value, Move, summaries, contracts)
+        return
+    }
+    if stmt.kind == Assign && stmt.assign_stmt != None {
+        populate_expr_use_effects(stmt.assign_stmt.target, BorrowExclusive, summaries, contracts)
+        if stmt.assign_stmt.value != None {
+            populate_expr_use_effects(stmt.assign_stmt.value, Move, summaries, contracts)
+        }
+        return
+    }
+    if stmt.kind == Return && stmt.return_stmt != None {
+        if stmt.return_stmt.value != None {
+            populate_expr_use_effects(stmt.return_stmt.value, Move, summaries, contracts)
+        }
+        return
+    }
+    if stmt.kind == Expr && stmt.expr != None {
+        populate_expr_use_effects(stmt.expr, BorrowShared, summaries, contracts)
+        return
+    }
+    if stmt.kind == If && stmt.if_stmt != None {
+        populate_expr_use_effects(stmt.if_stmt.condition, Copy, summaries, contracts)
+        populate_block_use_effects(stmt.if_stmt.then_branch, summaries, contracts)
+        if stmt.if_stmt.else_branch != None {
+            populate_else_branch_use_effects(stmt.if_stmt.else_branch, summaries, contracts)
+        }
+        return
+    }
+    if stmt.kind == For && stmt.for_stmt != None {
+        populate_expr_use_effects(stmt.for_stmt.iter, BorrowShared, summaries, contracts)
+        populate_block_use_effects(stmt.for_stmt.body, summaries, contracts)
+        return
+    }
+    if stmt.kind == While && stmt.while_stmt != None {
+        populate_expr_use_effects(stmt.while_stmt.condition, Copy, summaries, contracts)
+        populate_block_use_effects(stmt.while_stmt.body, summaries, contracts)
+        return
+    }
+    if stmt.kind == Spawn && stmt.spawn_stmt != None {
+        if stmt.spawn_stmt.body.expr != None {
+            populate_expr_use_effects(stmt.spawn_stmt.body.expr, BorrowShared, summaries, contracts)
+        }
+        if stmt.spawn_stmt.body.block != None {
+            populate_block_use_effects(stmt.spawn_stmt.body.block, summaries, contracts)
+        }
+        return
+    }
+    if (stmt.kind == Block || stmt.kind == UnsafeBlock || stmt.kind == PointerBlock || stmt.kind == ComptimeBlock) && stmt.block != None {
+        populate_block_use_effects(stmt.block, summaries, contracts)
+        return
+    }
+    if stmt.kind == IfCompile && stmt.if_compile != None {
+        populate_expr_use_effects(stmt.if_compile.condition, Copy, summaries, contracts)
+        populate_block_use_effects(stmt.if_compile.body, summaries, contracts)
+        return
+    }
+    if stmt.kind == GcConfig && stmt.gc_config != None {
+        let mut index = 0
+        while index < stmt.gc_config.entries.len() {
+            populate_expr_use_effects(stmt.gc_config.entries[index].value, BorrowShared, summaries, contracts)
+            index = index + 1
+        }
+        return
+    }
+    if stmt.kind == TypeBlock && stmt.type_block != None {
+        let mut index = 0
+        while index < stmt.type_block.members.len() {
+            let member = stmt.type_block.members[index]
+            if member.name != None && member.ty != None {
+                let effect = effect_contract_from_type(member.ty)
+                if effect != None {
+                    upsert_contract(contracts, member.name, effect)
+                }
+            }
+            index = index + 1
+        }
+    }
+}
+
+fn populate_else_branch_use_effects(else_branch, summaries, contracts) {
+    if else_branch.if_branch != None {
+        populate_expr_use_effects(else_branch.if_branch.condition, Copy, summaries, contracts)
+        populate_block_use_effects(else_branch.if_branch.then_branch, summaries, contracts)
+        if else_branch.if_branch.else_branch != None {
+            populate_else_branch_use_effects(else_branch.if_branch.else_branch, summaries, contracts)
+        }
+        return
+    }
+    if else_branch.block != None {
+        populate_block_use_effects(else_branch.block, summaries, contracts)
+    }
+}
+
+fn populate_expr_use_effects(expr, desired, summaries, contracts) {
+    if expr.kind == Ident {
+        let mut effect = desired
+        if is_copy_type(expr.ty) {
+            effect = Copy
+        }
+        expr.use_effect = Some(effect)
+        return
+    }
+    if expr.kind == Field && expr.target != None {
+        let mut target_effect = BorrowShared
+        if desired == BorrowExclusive {
+            target_effect = BorrowExclusive
+        }
+        populate_expr_use_effects(expr.target, target_effect, summaries, contracts)
+        if is_copy_type(expr.ty) {
+            expr.use_effect = Some(Copy)
+        } else {
+            expr.use_effect = Some(BorrowShared)
+        }
+        return
+    }
+    if expr.kind == Index && expr.target != None {
+        let mut target_effect = BorrowShared
+        if desired == BorrowExclusive {
+            target_effect = BorrowExclusive
+        }
+        populate_expr_use_effects(expr.target, target_effect, summaries, contracts)
+        if expr.index != None {
+            populate_expr_use_effects(expr.index, Copy, summaries, contracts)
+        }
+        if is_copy_type(expr.ty) {
+            expr.use_effect = Some(Copy)
+        } else {
+            expr.use_effect = Some(BorrowShared)
+        }
+        return
+    }
+    if expr.kind == Call && expr.callee != None {
+        let effects = summary_call_effects(expr.callee, expr.args, summaries, contracts)
+        populate_expr_use_effects(expr.callee, Copy, summaries, contracts)
+        let mut index = 0
+        while expr.args != None && index < expr.args.len() {
+            populate_expr_use_effects(expr.args[index], effects[index], summaries, contracts)
+            index = index + 1
+        }
+        if is_expr_copy(expr) {
+            expr.use_effect = Some(Copy)
+        } else {
+            expr.use_effect = Some(desired)
+        }
+        return
+    }
+    if expr.kind == MethodCall && expr.target != None {
+        populate_expr_use_effects(expr.target, method_receiver_effect(expr.target.ty, expr.name, summaries), summaries, contracts)
+        let effects = method_arg_effects(expr.target.ty, expr.name, expr.args, summaries)
+        let mut index = 0
+        while expr.args != None && index < expr.args.len() {
+            populate_expr_use_effects(expr.args[index], effects[index], summaries, contracts)
+            index = index + 1
+        }
+        if is_expr_copy(expr) {
+            expr.use_effect = Some(Copy)
+        } else {
+            expr.use_effect = Some(desired)
+        }
+        return
+    }
+    if (expr.kind == Array || expr.kind == Set || expr.kind == Tuple) && expr.items != None {
+        let mut index = 0
+        while index < expr.items.len() {
+            let mut item_effect = Move
+            if is_expr_copy(expr.items[index]) {
+                item_effect = Copy
+            }
+            populate_expr_use_effects(expr.items[index], item_effect, summaries, contracts)
+            index = index + 1
+        }
+        if is_expr_copy(expr) {
+            expr.use_effect = Some(Copy)
+        } else {
+            expr.use_effect = Some(Move)
+        }
+        return
+    }
+    if expr.kind == Map && expr.entries != None {
+        let mut index = 0
+        while index < expr.entries.len() {
+            populate_expr_use_effects(expr.entries[index].key, Copy, summaries, contracts)
+            let mut value_effect = Move
+            if is_expr_copy(expr.entries[index].value) {
+                value_effect = Copy
+            }
+            populate_expr_use_effects(expr.entries[index].value, value_effect, summaries, contracts)
+            index = index + 1
+        }
+        expr.use_effect = Some(Move)
+        return
+    }
+    if (expr.kind == BinOp || expr.kind == Nullish) && expr.left != None && expr.right != None {
+        let mut left_effect = BorrowShared
+        if expr.kind == BinOp && binop_moves_left(expr) {
+            left_effect = Move
+        } elif is_expr_copy(expr.left) {
+            left_effect = Copy
+        }
+        let mut right_effect = BorrowShared
+        if is_expr_copy(expr.right) {
+            right_effect = Copy
+        }
+        populate_expr_use_effects(expr.left, left_effect, summaries, contracts)
+        populate_expr_use_effects(expr.right, right_effect, summaries, contracts)
+        if is_expr_copy(expr) {
+            expr.use_effect = Some(Copy)
+        } else {
+            expr.use_effect = Some(desired)
+        }
+        return
+    }
+    if (expr.kind == UnOp || expr.kind == Cast || expr.kind == Ok || expr.kind == Err) && expr.body != None {
+        let mut body_effect = desired
+        if is_expr_copy(expr.body) {
+            body_effect = Copy
+        }
+        populate_expr_use_effects(expr.body, body_effect, summaries, contracts)
+        if is_expr_copy(expr) {
+            expr.use_effect = Some(Copy)
+        } else {
+            expr.use_effect = Some(desired)
+        }
+        return
+    }
+    if expr.kind == Lambda {
+        if expr.body != None {
+            populate_expr_use_effects(expr.body, BorrowShared, summaries, contracts)
+        }
+        expr.use_effect = Some(Move)
+        return
+    }
+    if expr.kind == Match {
+        if expr.left != None {
+            populate_expr_use_effects(expr.left, BorrowShared, summaries, contracts)
+        }
+        if is_expr_copy(expr) {
+            expr.use_effect = Some(Copy)
+        } else {
+            expr.use_effect = Some(desired)
+        }
+        let mut index = 0
+        while expr.arms != None && index < expr.arms.len() {
+            populate_expr_use_effects(expr.arms[index].pattern, BorrowShared, summaries, contracts)
+            if expr.arms[index].body.expr != None {
+                populate_expr_use_effects(expr.arms[index].body.expr, BorrowShared, summaries, contracts)
+            }
+            if expr.arms[index].body.block != None {
+                populate_block_use_effects(expr.arms[index].body.block, summaries, contracts)
+            }
+            index = index + 1
+        }
+        return
+    }
+    if expr.kind == FStrLit {
+        expr.use_effect = Some(Move)
+        return
+    }
+    if expr.kind == IntLit || expr.kind == FloatLit || expr.kind == StrLit || expr.kind == BoolLit || expr.kind == NoneLit || expr.kind == Chan {
+        if is_expr_copy(expr) {
+            expr.use_effect = Some(Copy)
+        } else {
+            expr.use_effect = Some(desired)
+        }
+    }
+}
+
 fn apply_item_summaries(item, records, summaries) {
     if (item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler) && item.fn_def != None {
         apply_function_summary(item.fn_def, item.fn_def.name, records, summaries)
@@ -857,6 +1210,13 @@ fn is_expr_copy(expr) {
         return false
     }
     return is_copy_type(expr.ty)
+}
+
+fn binop_moves_left(expr) {
+    if expr.kind != BinOp || expr.left == None || expr.right == None || expr.op == None {
+        return false
+    }
+    return expr.op == "+" && expr.left.ty.kind == String && expr.right.ty.kind == String
 }
 
 fn is_copy_type(ty) {

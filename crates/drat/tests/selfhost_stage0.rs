@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use draton_lexer::Lexer;
 use draton_parser::Parser;
-use draton_typeck::typed_ast::{TypedFnDef, TypedItem};
+use draton_typeck::typed_ast::{TypedExpr, TypedExprKind, TypedFnDef, TypedItem, TypedStmtKind};
 use draton_typeck::{TypeCheckResult, TypeChecker, TypeError, UseEffect};
 use serde_json::Value;
 
@@ -141,6 +141,51 @@ fn stage0_first_error_kind(result: &Value) -> Option<&str> {
         return ownership.keys().next().map(|kind| kind.as_str());
     }
     error.keys().next().map(|kind| kind.as_str())
+}
+
+fn rust_let_value<'a>(function: &'a TypedFnDef, index: usize) -> &'a TypedExpr {
+    match &function
+        .body
+        .as_ref()
+        .expect("function body")
+        .stmts
+        .get(index)
+        .expect("stmt")
+        .kind
+    {
+        TypedStmtKind::Let(stmt) => stmt.value.as_ref().expect("let value"),
+        other => panic!("expected let stmt, found {other:?}"),
+    }
+}
+
+fn rust_return_value<'a>(function: &'a TypedFnDef, index: usize) -> &'a TypedExpr {
+    match &function
+        .body
+        .as_ref()
+        .expect("function body")
+        .stmts
+        .get(index)
+        .expect("stmt")
+        .kind
+    {
+        TypedStmtKind::Return(stmt) => stmt.value.as_ref().expect("return value"),
+        other => panic!("expected return stmt, found {other:?}"),
+    }
+}
+
+fn rust_expr_stmt<'a>(function: &'a TypedFnDef, index: usize) -> &'a TypedExpr {
+    match &function
+        .body
+        .as_ref()
+        .expect("function body")
+        .stmts
+        .get(index)
+        .expect("stmt")
+        .kind
+    {
+        TypedStmtKind::Expr(expr) => expr,
+        other => panic!("expected expr stmt, found {other:?}"),
+    }
 }
 
 fn expect_envelope<'a>(
@@ -539,6 +584,113 @@ fn pass_down(text, n) {
         stage0_summary["params"][0]["effect"].as_str(),
         Some(use_effect_name(&rust_summary.params[0].effect)),
         "parameter effect drift"
+    );
+}
+
+#[test]
+fn typeck_json_emits_use_effect_metadata() {
+    let dir = temp_case_dir("typeck_use_effects");
+    let src = dir.join("main.dt");
+    let source = r#"fn forward(text) {
+    return text
+}
+
+fn main() {
+    let name = input("name: ")
+    let out = forward(name)
+    print(out.len())
+}
+"#;
+    fs::write(&src, source).expect("write source");
+
+    let json = run_stage0(&[
+        "selfhost-stage0",
+        "typeck",
+        "--json",
+        src.to_str().expect("utf8 path"),
+    ]);
+    let result = expect_envelope(
+        &json,
+        "typeck",
+        &src,
+        "selfhost",
+        Some("host_type_json"),
+        true,
+    );
+    assert_eq!(
+        result["lex_errors"],
+        Value::Array(Vec::new()),
+        "unexpected lex errors\n{}",
+        serde_json::to_string_pretty(&json).unwrap_or_else(|_| json.to_string())
+    );
+    assert_eq!(
+        result["parse_errors"],
+        Value::Array(Vec::new()),
+        "unexpected parse errors\n{}",
+        serde_json::to_string_pretty(&json).unwrap_or_else(|_| json.to_string())
+    );
+    assert_eq!(
+        result["type_errors"],
+        Value::Array(Vec::new()),
+        "unexpected selfhost type errors\n{}",
+        serde_json::to_string_pretty(&json).unwrap_or_else(|_| json.to_string())
+    );
+
+    let rust_checked = compile_with_rust_typechecker(source);
+    assert!(
+        rust_checked.errors.is_empty(),
+        "rust typechecker errors: {:?}",
+        rust_checked.errors
+    );
+
+    let rust_forward = rust_function(&rust_checked, "forward");
+    let rust_forward_return = rust_return_value(rust_forward, 0);
+    let stage0_forward = stage0_function(&result["typed_program"], "forward");
+    let selfhost_forward_return =
+        &stage0_forward["Fn"]["body"]["stmts"][0]["kind"]["Return"]["value"];
+    assert_eq!(
+        selfhost_forward_return["use_effect"].as_str(),
+        rust_forward_return.use_effect.as_ref().map(use_effect_name),
+        "forward return use_effect drift"
+    );
+
+    let rust_main = rust_function(&rust_checked, "main");
+    let rust_name_init = rust_let_value(rust_main, 0);
+    let stage0_main = stage0_function(&result["typed_program"], "main");
+    let selfhost_name_init = &stage0_main["Fn"]["body"]["stmts"][0]["kind"]["Let"]["value"];
+    assert_eq!(
+        selfhost_name_init["use_effect"].as_str(),
+        rust_name_init.use_effect.as_ref().map(use_effect_name),
+        "input initializer use_effect drift"
+    );
+
+    let rust_out_init = rust_let_value(rust_main, 1);
+    let rust_move_arg = match &rust_out_init.kind {
+        TypedExprKind::Call(_, args) => args.first().expect("forward arg"),
+        other => panic!("expected call expr, found {other:?}"),
+    };
+    let selfhost_move_arg =
+        &stage0_main["Fn"]["body"]["stmts"][1]["kind"]["Let"]["value"]["kind"]["Call"][1][0];
+    assert_eq!(
+        selfhost_move_arg["use_effect"].as_str(),
+        rust_move_arg.use_effect.as_ref().map(use_effect_name),
+        "forward argument use_effect drift"
+    );
+
+    let rust_print_expr = rust_expr_stmt(rust_main, 2);
+    let rust_method_target = match &rust_print_expr.kind {
+        TypedExprKind::Call(_, args) => match &args.first().expect("print arg").kind {
+            TypedExprKind::MethodCall(target, _, _) => target.as_ref(),
+            other => panic!("expected method call arg, found {other:?}"),
+        },
+        other => panic!("expected print call, found {other:?}"),
+    };
+    let selfhost_method_target = &stage0_main["Fn"]["body"]["stmts"][2]["kind"]["Expr"]["kind"]
+        ["Call"][1][0]["kind"]["MethodCall"][0];
+    assert_eq!(
+        selfhost_method_target["use_effect"].as_str(),
+        rust_method_target.use_effect.as_ref().map(use_effect_name),
+        "method receiver use_effect drift"
     );
 }
 

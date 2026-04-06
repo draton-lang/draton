@@ -251,11 +251,12 @@ Exit criteria:
 - self-host typecheck plus ownership matches Rust on selected programs
 - no safe-code lowering path depends on Rust-only ownership behavior
 
-Current status on April 5, 2026:
+Current status on April 6, 2026:
 
 - The self-host typechecker now runs a dedicated ownership-summary pass under `compiler/typeck/infer/ownership.dt` after HM inference.
-- Stage0 `typeck` JSON now exposes self-host `ownership_summary` metadata for function items, and focused stage0 tests compare recursive borrow/move summaries against the Rust oracle.
-- Full ownership parity is still not complete: self-host `use_effect` population, ownership diagnostics, and free-point selection still trail `crates/draton-typeck/src/ownership.rs`.
+- `compiler/typeck/infer/ownership.dt` now also populates selected expression `use_effect` metadata in the self-host typed program for high-value ownership sites such as lets, returns, calls, method calls, and field/index reads.
+- Focused stage0 tests now lock the Rust-oracle `use_effect` shape on selected fixtures so the target ownership metadata stays explicit while the self-host path catches up.
+- Full ownership parity is still not complete: hidden `drat selfhost-stage0 typeck` still bridges through `host_type_json`, and self-host ownership diagnostics and free-point selection still trail `crates/draton-typeck/src/ownership.rs`.
 
 ## Phase 4: Replace the fake backend surface with a real LLVM-first self-host backend and an auxiliary Draton backend
 
