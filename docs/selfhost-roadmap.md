@@ -220,11 +220,11 @@ Exit criteria:
 - `selfhost-stage0 typeck` uses no host typechecker bridge
 - parser and typechecker parity suites pass against representative repository fixtures
 
-Current status on April 4, 2026:
+Current status on April 6, 2026:
 
-- `selfhost-stage0 parse` is now routed through the Draton lexer/parser path and keeps the frozen stage0 envelope by emitting Rust-shaped parser JSON from `compiler/`.
-- `selfhost-stage0 typeck` is now routed through the Draton lexer/parser/typechecker path and keeps the frozen stage0 envelope by emitting Rust-shaped typed-program JSON from `compiler/`.
-- The stage0 host-bridge removal part of Phase 2 is now complete, but Rust remains the parity oracle and ownership parity still belongs to Phase 3.
+- `selfhost-stage0 parse` is routed through the Draton lexer/parser path and keeps the frozen stage0 envelope by emitting Rust-shaped parser JSON from `compiler/`.
+- Hidden `selfhost-stage0 typeck` still bridges through `host_type_json`, so the Phase 2 typechecker host-bridge removal work is not yet complete.
+- Rust remains the parity oracle, and ownership parity still belongs to Phase 3.
 
 ## Phase 3: Port inferred ownership fully into the self-host compiler
 
