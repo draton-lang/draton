@@ -3,6 +3,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use draton_lexer::Lexer;
+use draton_parser::Parser;
+use draton_typeck::typed_ast::{TypedFnDef, TypedItem};
+use draton_typeck::{TypeCheckResult, TypeChecker, TypeError, UseEffect};
 use serde_json::Value;
 
 fn temp_case_dir(name: &str) -> PathBuf {
@@ -45,6 +49,98 @@ fn run_stage0(args: &[&str]) -> Value {
             describe_output(&output)
         )
     })
+}
+
+fn compile_with_rust_typechecker(source: &str) -> TypeCheckResult {
+    let lexed = Lexer::new(source).tokenize();
+    assert!(lexed.errors.is_empty(), "lexer errors: {:?}", lexed.errors);
+    let parsed = Parser::new(lexed.tokens).parse();
+    assert!(
+        parsed.errors.is_empty(),
+        "parser errors: {:?}",
+        parsed.errors
+    );
+    assert!(
+        parsed.warnings.is_empty(),
+        "parser warnings: {:?}",
+        parsed.warnings
+    );
+    TypeChecker::new().check(parsed.program)
+}
+
+fn rust_function<'a>(result: &'a TypeCheckResult, name: &str) -> &'a TypedFnDef {
+    result
+        .typed_program
+        .items
+        .iter()
+        .find_map(|item| match item {
+            TypedItem::Fn(function) if function.name == name => Some(function),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing rust function '{name}'"))
+}
+
+fn stage0_function<'a>(typed_program: &'a Value, name: &str) -> &'a Value {
+    typed_program["items"]
+        .as_array()
+        .expect("typed program items")
+        .iter()
+        .find(|item| item["Fn"]["name"] == name)
+        .unwrap_or_else(|| {
+            panic!(
+                "missing stage0 function '{name}' in\n{}",
+                serde_json::to_string_pretty(typed_program)
+                    .unwrap_or_else(|_| typed_program.to_string())
+            )
+        })
+}
+
+fn use_effect_name(effect: &UseEffect) -> &'static str {
+    match effect {
+        UseEffect::Copy => "Copy",
+        UseEffect::BorrowShared => "BorrowShared",
+        UseEffect::BorrowExclusive => "BorrowExclusive",
+        UseEffect::Move => "Move",
+    }
+}
+
+fn rust_first_ownership_error_kind(result: &TypeCheckResult) -> Option<&'static str> {
+    result.errors.iter().find_map(|error| match error {
+        TypeError::Ownership(ownership) => Some(match ownership {
+            draton_typeck::OwnershipError::UseAfterMove { .. } => "UseAfterMove",
+            draton_typeck::OwnershipError::MoveWhileBorrowed { .. } => "MoveWhileBorrowed",
+            draton_typeck::OwnershipError::ReadDuringExclusiveBorrow { .. } => {
+                "ReadDuringExclusiveBorrow"
+            }
+            draton_typeck::OwnershipError::ExclusiveBorrowDuringRead { .. } => {
+                "ExclusiveBorrowDuringRead"
+            }
+            draton_typeck::OwnershipError::PartialMove { .. } => "PartialMove",
+            draton_typeck::OwnershipError::AmbiguousCallOwnership { .. } => {
+                "AmbiguousCallOwnership"
+            }
+            draton_typeck::OwnershipError::BorrowedValueEscapes { .. } => "BorrowedValueEscapes",
+            draton_typeck::OwnershipError::MultipleOwners { .. } => "MultipleOwners",
+            draton_typeck::OwnershipError::OwnershipCycle { .. } => "OwnershipCycle",
+            draton_typeck::OwnershipError::LoopMoveWithoutReinit { .. } => "LoopMoveWithoutReinit",
+            draton_typeck::OwnershipError::ExternalBoundaryRejection { .. } => {
+                "ExternalBoundaryRejection"
+            }
+            draton_typeck::OwnershipError::SafeToRawAliasRejection { .. } => {
+                "SafeToRawAliasRejection"
+            }
+        }),
+        _ => None,
+    })
+}
+
+fn stage0_first_error_kind(result: &Value) -> Option<&str> {
+    let errors = result["type_errors"].as_array()?;
+    let error = errors.first()?.as_object()?;
+    if let Some(ownership) = error.get("Ownership").and_then(Value::as_object) {
+        return ownership.keys().next().map(|kind| kind.as_str());
+    }
+    error.keys().next().map(|kind| kind.as_str())
 }
 
 fn expect_envelope<'a>(
@@ -209,6 +305,12 @@ fn main() {
         "--json",
         src.to_str().expect("utf8 path"),
     ]);
+    if json["success"] != Value::Bool(true) {
+        panic!(
+            "unexpected stage0 payload\n{}",
+            serde_json::to_string_pretty(&json).unwrap_or_else(|_| json.to_string())
+        );
+    }
     let result = expect_envelope(
         &json,
         "typeck",
@@ -305,6 +407,138 @@ fn add(a: Int) -> Int {
             .iter()
             .any(|error| error.get("DeprecatedSyntax").is_some()),
         "expected DeprecatedSyntax error in strict mode"
+    );
+}
+
+#[test]
+fn typeck_json_emits_recursive_borrow_ownership_summary() {
+    let dir = temp_case_dir("typeck_ownership_borrow");
+    let src = dir.join("main.dt");
+    let source = r#"@type {
+    walk: (String, Int) -> Unit
+}
+
+fn walk(text, n) {
+    walk(text, n)
+}
+    "#;
+    fs::write(&src, source).expect("write source");
+
+    let rust_checked = compile_with_rust_typechecker(source);
+    assert!(
+        rust_checked.errors.is_empty(),
+        "rust typechecker errors: {:?}",
+        rust_checked.errors
+    );
+
+    let json = run_stage0(&[
+        "selfhost-stage0",
+        "typeck",
+        "--json",
+        src.to_str().expect("utf8 path"),
+    ]);
+    let result = expect_envelope(
+        &json,
+        "typeck",
+        &src,
+        "selfhost",
+        Some("host_type_json"),
+        rust_checked.errors.is_empty(),
+    );
+    assert_eq!(
+        result["type_errors"],
+        Value::Array(Vec::new()),
+        "unexpected stage0 type errors\n{}",
+        serde_json::to_string_pretty(&json).unwrap_or_else(|_| json.to_string())
+    );
+    let stage0_function = stage0_function(&result["typed_program"], "walk");
+    let stage0_summary = &stage0_function["Fn"]["ownership_summary"];
+    assert!(stage0_summary.is_object(), "expected ownership summary");
+
+    let rust_function = rust_function(&rust_checked, "walk");
+    let rust_summary = rust_function
+        .ownership_summary
+        .as_ref()
+        .expect("rust ownership summary");
+
+    assert_eq!(
+        stage0_summary["returns_owned"].as_bool(),
+        Some(rust_summary.returns_owned),
+        "returns_owned drift"
+    );
+    assert_eq!(
+        stage0_summary["params"][0]["effect"].as_str(),
+        Some(use_effect_name(&rust_summary.params[0].effect)),
+        "parameter effect drift"
+    );
+}
+
+#[test]
+fn typeck_json_emits_recursive_move_ownership_summary() {
+    let dir = temp_case_dir("typeck_ownership_move");
+    let src = dir.join("main.dt");
+    let source = r#"@type {
+    pass_down: (String, Int) -> String
+}
+
+fn pass_down(text, n) {
+    if n == 0 {
+        return text
+    }
+    return pass_down(text, n)
+}
+    "#;
+    fs::write(&src, source).expect("write source");
+
+    let rust_checked = compile_with_rust_typechecker(source);
+    let rust_error_kind = rust_first_ownership_error_kind(&rust_checked);
+
+    let json = run_stage0(&[
+        "selfhost-stage0",
+        "typeck",
+        "--json",
+        src.to_str().expect("utf8 path"),
+    ]);
+    let result = expect_envelope(
+        &json,
+        "typeck",
+        &src,
+        "selfhost",
+        Some("host_type_json"),
+        rust_checked.errors.is_empty(),
+    );
+    assert_eq!(
+        result["type_errors"]
+            .as_array()
+            .expect("stage0 type errors array")
+            .len(),
+        rust_checked.errors.len(),
+        "stage0/rust error count drift"
+    );
+    assert_eq!(
+        stage0_first_error_kind(result),
+        rust_error_kind,
+        "stage0/rust first ownership error drift"
+    );
+    let stage0_function = stage0_function(&result["typed_program"], "pass_down");
+    let stage0_summary = &stage0_function["Fn"]["ownership_summary"];
+    assert!(stage0_summary.is_object(), "expected ownership summary");
+
+    let rust_function = rust_function(&rust_checked, "pass_down");
+    let rust_summary = rust_function
+        .ownership_summary
+        .as_ref()
+        .expect("rust ownership summary");
+
+    assert_eq!(
+        stage0_summary["returns_owned"].as_bool(),
+        Some(rust_summary.returns_owned),
+        "returns_owned drift"
+    );
+    assert_eq!(
+        stage0_summary["params"][0]["effect"].as_str(),
+        Some(use_effect_name(&rust_summary.params[0].effect)),
+        "parameter effect drift"
     );
 }
 

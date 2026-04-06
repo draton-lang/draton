@@ -144,9 +144,15 @@ fn serialize_typed_items(items) {
 }
 
 fn serialize_typed_item(item) {
-    return json_object([
-        json_field("kind", json_quote(typed_item_kind_name(item)))
-    ])
+    let mut fields = []
+    fields.push(json_field("kind", json_quote(typed_item_kind_name(item))))
+    if item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler {
+        if item.fn_def != None {
+            fields.push(json_field("name", json_quote(item.fn_def.name)))
+            fields.push(json_field("ownership_summary", serialize_ownership_summary(item.fn_def.ownership_summary)))
+        }
+    }
+    return json_object(fields)
 }
 
 fn typed_item_kind_name(item) {
@@ -188,4 +194,40 @@ fn serialize_optional_int(value) {
         return "null"
     }
     return value.to_string()
+}
+
+fn serialize_ownership_summary(summary) {
+    if summary == None {
+        return "null"
+    }
+    return json_object([
+        json_field("params", serialize_ownership_params(summary.params)),
+        json_field("returns_owned", summary.returns_owned.to_string())
+    ])
+}
+
+fn serialize_ownership_params(params) {
+    let mut out = []
+    let mut index = 0
+    while index < params.len() {
+        out.push(json_object([
+            json_field("param_index", params[index].param_index.to_string()),
+            json_field("effect", json_quote(serialize_use_effect(params[index].effect)))
+        ]))
+        index = index + 1
+    }
+    return json_array(out)
+}
+
+fn serialize_use_effect(effect) {
+    if effect == Copy {
+        return "Copy"
+    }
+    if effect == BorrowShared {
+        return "BorrowShared"
+    }
+    if effect == BorrowExclusive {
+        return "BorrowExclusive"
+    }
+    return "Move"
 }

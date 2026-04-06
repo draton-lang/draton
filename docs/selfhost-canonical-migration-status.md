@@ -1,6 +1,6 @@
 # Self-Host Canonical Migration Status
 
-Current status date: April 4, 2026
+Current status date: April 5, 2026
 
 This document is the canonical status sheet for the in-tree self-host compiler work.
 
@@ -98,17 +98,19 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
 
 ### Ownership parity
 
-- Current status: not yet proven; ownership logic exists in the self-host tree, and stage0 `typeck` no longer bridges around it through Rust, but parity is still incomplete.
+- Current status: partially real in the self-host tree; stage0 `typeck` now emits self-host ownership summaries for selected functions, but full ownership diagnostics and use-site metadata parity are still incomplete.
 - Source of truth: `crates/draton-typeck/src/ownership.rs` and `docs/runtime/inferred-ownership-spec.md`.
 - What is already real:
   - `compiler/typeck/typed/ownership.dt` exists and establishes where ownership behavior belongs in the self-host tree.
   - Ownership-aware typed data structures already exist alongside the self-host typed-program model.
+  - `compiler/typeck/infer/ownership.dt` now performs a self-host ownership-summary pass after HM inference and writes `ownership_summary` into the typed program for stage0 output.
+  - `compiler/driver/typeck_stage.dt` now serializes function ownership summaries in stage0 JSON so Rust can remain the oracle while the self-host path exposes its own ownership metadata.
 - What still bridges to host Rust:
   - `compiler/driver/pipeline.dt` still routes `build_json` through `host_build_json`, so the production build path still relies on Rust ownership behavior.
   - `crates/draton-runtime/src/lib.rs` still reaches the Rust `drat build` path for production build fallback behavior.
 - Blockers:
-  - `compiler/typeck/infer/items.dt` still leaves `ownership_summary: None`.
-  - `compiler/typeck/typed/exprs.dt` exposes `use_effect`, but the current self-host typechecker path does not yet match Rust ownership effects or diagnostics.
+  - `compiler/typeck/typed/exprs.dt` exposes `use_effect`, but the current self-host typechecker path still does not populate Rust-parity use-site effects.
+  - Ownership diagnostics still come from the Rust authority; the self-host path does not yet match `crates/draton-typeck/src/ownership.rs` on borrow/move error reporting.
   - `crates/draton-runtime/src/lib.rs` remains the production-path bridge through `host_build_json`.
   - `crates/draton-typeck/src/ownership.rs` remains the authoritative ownership implementation that the self-host tree has not yet matched.
   - `docs/runtime/inferred-ownership-spec.md` remains ahead of any proven self-host ownership parity claim.
@@ -183,7 +185,7 @@ These paths exist in-tree but must not be described as production-ready backend 
 
 - Do not claim the self-host compiler is the authoritative implementation.
 - Do not claim full typechecker parity merely because the `host_type_json` bridge is gone; Rust still defines the oracle.
-- Do not claim ownership parity complete while `compiler/typeck/infer/items.dt` still leaves `ownership_summary: None` and Rust remains the ownership authority.
+- Do not claim ownership parity complete while self-host `use_effect` and ownership diagnostics still lag `crates/draton-typeck/src/ownership.rs`, even though summary emission is now partially real.
 - Do not claim backend independence or a production-ready self-host backend while `compiler/driver/pipeline.dt` still calls `host_build_json`.
 - Do not claim `drat selfhost-stage0 build` proves self-host backend completion; today it still goes through Rust fallback infrastructure.
 - Do not claim Rust is optional for bootstrap or recovery.
