@@ -97,14 +97,14 @@ fn unify(a, b, subst) {
         let first = unify(left.key, right.key, subst)
         match first {
             Ok(next_subst) => { return unify(left.value, right.value, next_subst) }
-            Err(error) => { return Err(error) }
+            Err(type_error) => { return Err(type_error) }
         }
     }
     if left.kind == Result && right.kind == Result {
         let first = unify(left.ok, right.ok, subst)
         match first {
             Ok(next_subst) => { return unify(left.err, right.err, next_subst) }
-            Err(error) => { return Err(error) }
+            Err(type_error) => { return Err(type_error) }
         }
     }
     if left.kind == Tuple && right.kind == Tuple {
@@ -137,7 +137,7 @@ fn unify(a, b, subst) {
             let next = unify(left.items[index], right.items[index], current)
             match next {
                 Ok(next_subst) => { current = next_subst }
-                Err(error) => { return Err(error) }
+                Err(type_error) => { return Err(type_error) }
             }
             index = index + 1
         }
@@ -173,7 +173,7 @@ fn unify(a, b, subst) {
             let next = unify(left.params[index], right.params[index], current)
             match next {
                 Ok(next_subst) => { current = next_subst }
-                Err(error) => { return Err(error) }
+                Err(type_error) => { return Err(type_error) }
             }
             index = index + 1
         }
@@ -186,7 +186,7 @@ fn unify(a, b, subst) {
             let next = unify(left.args[index], right.args[index], current)
             match next {
                 Ok(next_subst) => { current = next_subst }
-                Err(error) => { return Err(error) }
+                Err(type_error) => { return Err(type_error) }
             }
             index = index + 1
         }
