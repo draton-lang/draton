@@ -12,39 +12,55 @@ import {
 fn extract_hints(checker, items) {
     let mut index = 0
     while index < items.len() {
-        let item = items[index]
-        if item.kind == TypeBlock && item.type_block != None {
-            collect_type_block_hints(checker, item.type_block, None)
-        } elif item.kind == Class && item.class_def != None {
-            let class_def = item.class_def
-            let mut type_block_index = 0
-            while type_block_index < class_def.type_blocks.len() {
-                collect_type_block_hints(checker, class_def.type_blocks[type_block_index], Some(class_def.name))
-                type_block_index = type_block_index + 1
-            }
-
-            let mut member_index = 0
-            while member_index < class_def.members.len() {
-                let member = class_def.members[member_index]
-                if member.kind == Layer && member.layer_def != None {
-                    let layer = member.layer_def
-                    let mut layer_block_index = 0
-                    while layer_block_index < layer.type_blocks.len() {
-                        collect_type_block_hints(checker, layer.type_blocks[layer_block_index], Some(class_def.name))
-                        layer_block_index = layer_block_index + 1
-                    }
-                }
-                member_index = member_index + 1
-            }
-        } elif item.kind == Interface && item.interface_def != None {
-            let interface_def = item.interface_def
-            let mut type_block_index = 0
-            while type_block_index < interface_def.type_blocks.len() {
-                collect_interface_type_block_hints(checker, interface_def.type_blocks[type_block_index], interface_def.name)
-                type_block_index = type_block_index + 1
-            }
-        }
+        extract_item_hints(checker, items[index])
         index = index + 1
+    }
+}
+
+fn extract_item_hints(checker, item) {
+    if item.kind == TypeBlock && item.type_block != None {
+        collect_type_block_hints(checker, item.type_block, None)
+        return
+    }
+    if item.kind == Class && item.class_def != None {
+        extract_class_hints(checker, item.class_def)
+        return
+    }
+    if item.kind == Interface && item.interface_def != None {
+        extract_interface_hints(checker, item.interface_def)
+    }
+}
+
+fn extract_class_hints(checker, class_def) {
+    let mut type_block_index = 0
+    while type_block_index < class_def.type_blocks.len() {
+        collect_type_block_hints(checker, class_def.type_blocks[type_block_index], Some(class_def.name))
+        type_block_index = type_block_index + 1
+    }
+
+    let mut member_index = 0
+    while member_index < class_def.members.len() {
+        extract_class_member_hints(checker, class_def.members[member_index], class_def.name)
+        member_index = member_index + 1
+    }
+}
+
+fn extract_class_member_hints(checker, member, class_name) {
+    if member.kind == Layer && member.layer_def != None {
+        let layer_def = member.layer_def
+        let mut layer_block_index = 0
+        while layer_block_index < layer_def.type_blocks.len() {
+            collect_type_block_hints(checker, layer_def.type_blocks[layer_block_index], Some(class_name))
+            layer_block_index = layer_block_index + 1
+        }
+    }
+}
+
+fn extract_interface_hints(checker, interface_def) {
+    let mut type_block_index = 0
+    while type_block_index < interface_def.type_blocks.len() {
+        collect_interface_type_block_hints(checker, interface_def.type_blocks[type_block_index], interface_def.name)
+        type_block_index = type_block_index + 1
     }
 }
 

@@ -219,20 +219,20 @@ fn parse_class_def(parser) {
     }
     let type_params = parse_type_param_list(parser)
 
-    let mut extends = None
+    let mut base_class = None
     if parser.match_kind(Extends) {
-        let base = parser.consume_ident("base class")
-        if base != None {
-            extends = base.lexeme
+        let base_name = parser.consume_ident("base class")
+        if base_name != None {
+            base_class = base_name.lexeme
         }
     }
 
-    let mut implements = []
+    let mut interface_names = []
     if parser.match_kind(Implements) {
         while !parser.is_eof() {
             let iface = parser.consume_ident("interface name")
             if iface != None {
-                implements.push(iface.lexeme)
+                interface_names.push(iface.lexeme)
             }
             if !parser.match_kind(Comma) {
                 break
@@ -248,49 +248,7 @@ fn parse_class_def(parser) {
     let mut type_blocks = []
     while !parser.is_eof() && !parser.check(RBrace) {
         parser.skip_doc_comments()
-        if parser.current_kind() == Let {
-            let field = parse_class_field(parser)
-            if field != None {
-                members.push(make_field_member(field))
-            } else {
-                parser.synchronize_stmt()
-            }
-        } elif parser.current_kind() == Fn {
-            let method = parse_fn_def(parser, false, true)
-            if method != None {
-                members.push(make_method_member(method))
-            } else {
-                parser.synchronize_stmt()
-            }
-        } elif parser.current_kind() == Pub {
-            parser.advance()
-            if parser.current_kind() == Fn {
-                let method = parse_fn_def(parser, true, true)
-                if method != None {
-                    members.push(make_method_member(method))
-                } else {
-                    parser.synchronize_stmt()
-                }
-            } elif parser.current_kind() == Let {
-                let field = parse_class_field(parser)
-                if field != None {
-                    members.push(make_field_member(field))
-                } else {
-                    parser.synchronize_stmt()
-                }
-            } else {
-                let token = parser.current_token()
-                parser.error_unexpected(token, "fn or let")
-                parser.synchronize_stmt()
-            }
-        } elif parser.current_kind() == Layer {
-            let layer = parse_layer_def(parser)
-            if layer != None {
-                members.push(make_layer_member(layer))
-            } else {
-                parser.synchronize_stmt()
-            }
-        } elif parser.current_kind() == AtType {
+        if parser.current_kind() == AtType {
             let type_block = parse_type_block(parser)
             if type_block != None {
                 type_blocks.push(type_block)
@@ -298,9 +256,10 @@ fn parse_class_def(parser) {
                 parser.synchronize_stmt()
             }
         } else {
-            let token = parser.current_token()
-            parser.error_unexpected(token, "class member")
-            parser.synchronize_stmt()
+            let member = parse_class_member(parser)
+            if member != None {
+                members.push(member)
+            }
         }
     }
 
@@ -309,12 +268,66 @@ fn parse_class_def(parser) {
     return ClassDef {
         name: name_token.lexeme,
         type_params: type_params,
-        base_class: extends,
-        interfaces: implements,
+        base_class: base_class,
+        interfaces: interface_names,
         members: members,
         type_blocks: type_blocks,
         span: parser.merge_spans(start, end)
     }
+}
+
+fn parse_class_member(parser) {
+    if parser.current_kind() == Let {
+        let field = parse_class_field(parser)
+        if field != None {
+            return make_field_member(field)
+        }
+        parser.synchronize_stmt()
+        return None
+    }
+    if parser.current_kind() == Fn {
+        let method = parse_fn_def(parser, false, true)
+        if method != None {
+            return make_method_member(method)
+        }
+        parser.synchronize_stmt()
+        return None
+    }
+    if parser.current_kind() == Pub {
+        parser.advance()
+        if parser.current_kind() == Fn {
+            let method = parse_fn_def(parser, true, true)
+            if method != None {
+                return make_method_member(method)
+            }
+            parser.synchronize_stmt()
+            return None
+        }
+        if parser.current_kind() == Let {
+            let field = parse_class_field(parser)
+            if field != None {
+                return make_field_member(field)
+            }
+            parser.synchronize_stmt()
+            return None
+        }
+        let token = parser.current_token()
+        parser.error_unexpected(token, "fn or let")
+        parser.synchronize_stmt()
+        return None
+    }
+    if parser.current_kind() == Layer {
+        let layer_def = parse_layer_def(parser)
+        if layer_def != None {
+            return make_layer_member(layer_def)
+        }
+        parser.synchronize_stmt()
+        return None
+    }
+    let token = parser.current_token()
+    parser.error_unexpected(token, "class member")
+    parser.synchronize_stmt()
+    return None
 }
 
 fn parse_acyclic_class_def(parser) {
@@ -927,6 +940,6 @@ fn make_method_member(method) {
     return ClassMember { kind: Method, field: None, method: Some(method), layer_def: None }
 }
 
-fn make_layer_member(layer) {
-    return ClassMember { kind: Layer, field: None, method: None, layer_def: Some(layer) }
+fn make_layer_member(layer_def) {
+    return ClassMember { kind: Layer, field: None, method: None, layer_def: Some(layer_def) }
 }

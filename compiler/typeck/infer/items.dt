@@ -18,31 +18,48 @@ fn check_program(checker, program) {
 fn predeclare_items(checker, items) {
     let mut index = 0
     while index < items.len() {
-        let item = items[index]
-        if (item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler) && item.fn_def != None {
-            let mut params = []
-            let mut param_index = 0
-            while param_index < item.fn_def.params.len() {
-                let param = item.fn_def.params[param_index]
-                let mut ty = checker.fresh_var()
-                if param.type_hint != None {
-                    ty = checker.type_from_annotation(param.type_hint)
-                }
-                params.push(ty)
-                param_index = param_index + 1
-            }
-            let mut ret_ty = Type { kind: Unit }
-            if item.fn_def.ret_type != None {
-                ret_ty = checker.type_from_annotation(item.fn_def.ret_type)
-            }
-            checker.env.define(item.fn_def.name, checker.generalize(FnType { kind: Fn, params: params, ret: ret_ty }))
-        } elif item.kind == Class && item.class_def != None {
-            checker.declared_classes.push(item.class_def.name)
-        } elif item.kind == Enum && item.enum_def != None {
-            checker.enum_defs.push(item.enum_def)
-        }
+        predeclare_item(checker, items[index])
         index = index + 1
     }
+}
+
+fn predeclare_item(checker, item) {
+    if item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler {
+        if item.fn_def != None {
+            predeclare_fn_def(checker, item.fn_def)
+        }
+        return
+    }
+    if item.kind == Class {
+        if item.class_def != None {
+            checker.declared_classes.push(item.class_def.name)
+        }
+        return
+    }
+    if item.kind == Enum {
+        if item.enum_def != None {
+            checker.enum_defs.push(item.enum_def)
+        }
+    }
+}
+
+fn predeclare_fn_def(checker, fn_def) {
+    let mut params = []
+    let mut param_index = 0
+    while param_index < fn_def.params.len() {
+        let param = fn_def.params[param_index]
+        let mut ty = checker.fresh_var()
+        if param.type_hint != None {
+            ty = checker.type_from_annotation(param.type_hint)
+        }
+        params.push(ty)
+        param_index = param_index + 1
+    }
+    let mut ret_ty = Type { kind: Unit }
+    if fn_def.ret_type != None {
+        ret_ty = checker.type_from_annotation(fn_def.ret_type)
+    }
+    checker.env.define(fn_def.name, checker.generalize(FnType { kind: Fn, params: params, ret: ret_ty }))
 }
 
 fn check_item(checker, item) {

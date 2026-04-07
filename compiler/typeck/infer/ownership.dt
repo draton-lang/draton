@@ -113,51 +113,61 @@ fn collect_function_records(program) {
 }
 
 fn collect_item_records(item, records) {
-    if (item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler) && item.fn_def != None {
-        records.push(function_record(item.fn_def.name, item.fn_def, None))
-        return
-    }
-    if item.kind == Class && item.class_def != None {
-        let receiver_ty = NamedType { kind: Named, name: item.class_def.name, args: [] }
-        let mut index = 0
-        while index < item.class_def.methods.len() {
-            let method = item.class_def.methods[index]
-            records.push(function_record(item.class_def.name + "::" + method.name, method, Some(receiver_ty)))
-            index = index + 1
-        }
-        index = 0
-        while index < item.class_def.type_blocks.len() {
-            collect_type_block_records(item.class_def.name, item.class_def.type_blocks[index], Some(receiver_ty), records)
-            index = index + 1
+    if item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler {
+        if item.fn_def != None {
+            records.push(function_record(item.fn_def.name, item.fn_def, None))
         }
         return
     }
-    if item.kind == Interface && item.interface_def != None {
-        let receiver_ty = NamedType { kind: Named, name: item.interface_def.name, args: [] }
-        let mut index = 0
-        while index < item.interface_def.methods.len() {
-            let method = item.interface_def.methods[index]
-            records.push(function_record(item.interface_def.name + "::" + method.name, method, Some(receiver_ty)))
-            index = index + 1
-        }
-        index = 0
-        while index < item.interface_def.type_blocks.len() {
-            collect_type_block_records(item.interface_def.name, item.interface_def.type_blocks[index], Some(receiver_ty), records)
-            index = index + 1
-        }
-        return
-    }
-    if item.kind == Extern && item.extern_block != None {
-        let mut index = 0
-        while index < item.extern_block.functions.len() {
-            let fn_def = item.extern_block.functions[index]
-            records.push(function_record(fn_def.name, fn_def, None))
-            index = index + 1
+    if item.kind == Class {
+        if item.class_def != None {
+            let receiver_ty = NamedType { kind: Named, name: item.class_def.name, args: [] }
+            let mut index = 0
+            while index < item.class_def.methods.len() {
+                let method = item.class_def.methods[index]
+                records.push(function_record(item.class_def.name + "::" + method.name, method, Some(receiver_ty)))
+                index = index + 1
+            }
+            index = 0
+            while index < item.class_def.type_blocks.len() {
+                collect_type_block_records(item.class_def.name, item.class_def.type_blocks[index], Some(receiver_ty), records)
+                index = index + 1
+            }
         }
         return
     }
-    if item.kind == TypeBlock && item.type_block != None {
-        collect_type_block_records("", item.type_block, None, records)
+    if item.kind == Interface {
+        if item.interface_def != None {
+            let receiver_ty = NamedType { kind: Named, name: item.interface_def.name, args: [] }
+            let mut index = 0
+            while index < item.interface_def.methods.len() {
+                let method = item.interface_def.methods[index]
+                records.push(function_record(item.interface_def.name + "::" + method.name, method, Some(receiver_ty)))
+                index = index + 1
+            }
+            index = 0
+            while index < item.interface_def.type_blocks.len() {
+                collect_type_block_records(item.interface_def.name, item.interface_def.type_blocks[index], Some(receiver_ty), records)
+                index = index + 1
+            }
+        }
+        return
+    }
+    if item.kind == Extern {
+        if item.extern_block != None {
+            let mut index = 0
+            while index < item.extern_block.functions.len() {
+                let fn_def = item.extern_block.functions[index]
+                records.push(function_record(fn_def.name, fn_def, None))
+                index = index + 1
+            }
+        }
+        return
+    }
+    if item.kind == TypeBlock {
+        if item.type_block != None {
+            collect_type_block_records("", item.type_block, None, records)
+        }
     }
 }
 
@@ -264,8 +274,10 @@ fn infer_summary_for_record(record, summaries) {
     let mut receiver_effect = None
     if record.receiver_ty != None {
         receiver_effect = Some(Copy)
-        if !is_copy_type(record.receiver_ty) && state.receiver_effect != None {
-            receiver_effect = state.receiver_effect
+        if !is_copy_type(record.receiver_ty) {
+            if state.receiver_effect != None {
+                receiver_effect = state.receiver_effect
+            }
         }
     }
 
@@ -288,85 +300,113 @@ fn visit_block(block, record, summaries, state) {
 }
 
 fn visit_stmt(stmt, record, summaries, state) {
-    if stmt.kind == Let && stmt.let_stmt != None {
-        if stmt.let_stmt.value != None {
-            visit_expr(stmt.let_stmt.value, Move, record, summaries, state)
-        }
-        return
-    }
-    if stmt.kind == LetDestructure && stmt.let_destructure != None {
-        visit_expr(stmt.let_destructure.value, Move, record, summaries, state)
-        return
-    }
-    if stmt.kind == Assign && stmt.assign_stmt != None {
-        visit_expr(stmt.assign_stmt.target, BorrowExclusive, record, summaries, state)
-        if stmt.assign_stmt.value != None {
-            visit_expr(stmt.assign_stmt.value, Move, record, summaries, state)
-        }
-        return
-    }
-    if stmt.kind == Return && stmt.return_stmt != None {
-        if stmt.return_stmt.value != None {
-            visit_expr(stmt.return_stmt.value, Move, record, summaries, state)
-        }
-        return
-    }
-    if stmt.kind == Expr && stmt.expr != None {
-        visit_expr(stmt.expr, BorrowShared, record, summaries, state)
-        return
-    }
-    if stmt.kind == If && stmt.if_stmt != None {
-        visit_expr(stmt.if_stmt.condition, Copy, record, summaries, state)
-        visit_block(stmt.if_stmt.then_branch, record, summaries, state)
-        if stmt.if_stmt.else_branch != None {
-            visit_else_branch(stmt.if_stmt.else_branch, record, summaries, state)
-        }
-        return
-    }
-    if stmt.kind == For && stmt.for_stmt != None {
-        visit_expr(stmt.for_stmt.iter, BorrowShared, record, summaries, state)
-        visit_block(stmt.for_stmt.body, record, summaries, state)
-        return
-    }
-    if stmt.kind == While && stmt.while_stmt != None {
-        visit_expr(stmt.while_stmt.condition, Copy, record, summaries, state)
-        visit_block(stmt.while_stmt.body, record, summaries, state)
-        return
-    }
-    if stmt.kind == Spawn && stmt.spawn_stmt != None {
-        if stmt.spawn_stmt.body.expr != None {
-            visit_expr(stmt.spawn_stmt.body.expr, BorrowShared, record, summaries, state)
-        }
-        return
-    }
-    if (stmt.kind == Block || stmt.kind == UnsafeBlock || stmt.kind == PointerBlock || stmt.kind == ComptimeBlock) && stmt.block != None {
-        visit_block(stmt.block, record, summaries, state)
-        return
-    }
-    if stmt.kind == IfCompile && stmt.if_compile != None {
-        visit_expr(stmt.if_compile.condition, Copy, record, summaries, state)
-        visit_block(stmt.if_compile.body, record, summaries, state)
-        return
-    }
-    if stmt.kind == GcConfig && stmt.gc_config != None {
-        let mut index = 0
-        while index < stmt.gc_config.entries.len() {
-            visit_expr(stmt.gc_config.entries[index].value, BorrowShared, record, summaries, state)
-            index = index + 1
-        }
-        return
-    }
-    if stmt.kind == TypeBlock && stmt.type_block != None {
-        let mut index = 0
-        while index < stmt.type_block.members.len() {
-            let member = stmt.type_block.members[index]
-            if member.name != None && member.ty != None {
-                let effect = effect_contract_from_type(member.ty)
-                if effect != None {
-                    upsert_contract(state.contracts, member.name, effect)
-                }
+    if stmt.kind == Let {
+        if stmt.let_stmt != None {
+            if stmt.let_stmt.value != None {
+                visit_expr(stmt.let_stmt.value, Move, record, summaries, state)
             }
-            index = index + 1
+        }
+        return
+    }
+    if stmt.kind == LetDestructure {
+        if stmt.let_destructure != None {
+            visit_expr(stmt.let_destructure.value, Move, record, summaries, state)
+        }
+        return
+    }
+    if stmt.kind == Assign {
+        if stmt.assign_stmt != None {
+            visit_expr(stmt.assign_stmt.target, BorrowExclusive, record, summaries, state)
+            if stmt.assign_stmt.value != None {
+                visit_expr(stmt.assign_stmt.value, Move, record, summaries, state)
+            }
+        }
+        return
+    }
+    if stmt.kind == Return {
+        if stmt.return_stmt != None {
+            if stmt.return_stmt.value != None {
+                visit_expr(stmt.return_stmt.value, Move, record, summaries, state)
+            }
+        }
+        return
+    }
+    if stmt.kind == Expr {
+        if stmt.expr != None {
+            visit_expr(stmt.expr, BorrowShared, record, summaries, state)
+        }
+        return
+    }
+    if stmt.kind == If {
+        if stmt.if_stmt != None {
+            visit_expr(stmt.if_stmt.condition, Copy, record, summaries, state)
+            visit_block(stmt.if_stmt.then_branch, record, summaries, state)
+            if stmt.if_stmt.else_branch != None {
+                visit_else_branch(stmt.if_stmt.else_branch, record, summaries, state)
+            }
+        }
+        return
+    }
+    if stmt.kind == For {
+        if stmt.for_stmt != None {
+            visit_expr(stmt.for_stmt.iter, BorrowShared, record, summaries, state)
+            visit_block(stmt.for_stmt.body, record, summaries, state)
+        }
+        return
+    }
+    if stmt.kind == While {
+        if stmt.while_stmt != None {
+            visit_expr(stmt.while_stmt.condition, Copy, record, summaries, state)
+            visit_block(stmt.while_stmt.body, record, summaries, state)
+        }
+        return
+    }
+    if stmt.kind == Spawn {
+        if stmt.spawn_stmt != None {
+            if stmt.spawn_stmt.body.expr != None {
+                visit_expr(stmt.spawn_stmt.body.expr, BorrowShared, record, summaries, state)
+            }
+        }
+        return
+    }
+    if stmt.kind == Block || stmt.kind == UnsafeBlock || stmt.kind == PointerBlock || stmt.kind == ComptimeBlock {
+        if stmt.block != None {
+            visit_block(stmt.block, record, summaries, state)
+        }
+        return
+    }
+    if stmt.kind == IfCompile {
+        if stmt.if_compile != None {
+            visit_expr(stmt.if_compile.condition, Copy, record, summaries, state)
+            visit_block(stmt.if_compile.body, record, summaries, state)
+        }
+        return
+    }
+    if stmt.kind == GcConfig {
+        if stmt.gc_config != None {
+            let mut index = 0
+            while index < stmt.gc_config.entries.len() {
+                visit_expr(stmt.gc_config.entries[index].value, BorrowShared, record, summaries, state)
+                index = index + 1
+            }
+        }
+        return
+    }
+    if stmt.kind == TypeBlock {
+        if stmt.type_block != None {
+            let mut index = 0
+            while index < stmt.type_block.members.len() {
+                let member = stmt.type_block.members[index]
+                if member.name != None {
+                    if member.ty != None {
+                        let effect = effect_contract_from_type(member.ty)
+                        if effect != None {
+                            upsert_contract(state.contracts, member.name, effect)
+                        }
+                    }
+                }
+                index = index + 1
+            }
         }
     }
 }
@@ -386,92 +426,114 @@ fn visit_else_branch(else_branch, record, summaries, state) {
 }
 
 fn visit_expr(expr, desired, record, summaries, state) {
-    if expr.kind == Ident && expr.name != None {
-        raise_effect(record, state, expr.name, desired)
-        return
-    }
-    if expr.kind == Call && expr.callee != None {
-        let effects = summary_call_effects(expr.callee, expr.args, summaries, state.contracts)
-        visit_expr(expr.callee, Copy, record, summaries, state)
-        let mut index = 0
-        while expr.args != None && index < expr.args.len() {
-            visit_expr(expr.args[index], effects[index], record, summaries, state)
-            index = index + 1
+    if expr.kind == Ident {
+        if expr.name != None {
+            raise_effect(record, state, expr.name, desired)
         }
         return
     }
-    if expr.kind == MethodCall && expr.target != None {
-        visit_expr(expr.target, method_receiver_effect(expr.target.ty, expr.name, summaries), record, summaries, state)
-        let effects = method_arg_effects(expr.target.ty, expr.name, expr.args, summaries)
-        let mut index = 0
-        while expr.args != None && index < expr.args.len() {
-            visit_expr(expr.args[index], effects[index], record, summaries, state)
-            index = index + 1
+    if expr.kind == Call {
+        if expr.callee != None {
+            let effects = summary_call_effects(expr.callee, expr.args, summaries, state.contracts)
+            visit_expr(expr.callee, Copy, record, summaries, state)
+            let mut index = 0
+            while expr.args != None && index < expr.args.len() {
+                visit_expr(expr.args[index], effects[index], record, summaries, state)
+                index = index + 1
+            }
         }
         return
     }
-    if (expr.kind == Array || expr.kind == Set || expr.kind == Tuple) && expr.items != None {
-        let mut index = 0
-        while index < expr.items.len() {
-            let item = expr.items[index]
-            let mut effect = Move
-            if is_expr_copy(item) {
+    if expr.kind == MethodCall {
+        if expr.target != None {
+            visit_expr(expr.target, method_receiver_effect(expr.target.ty, expr.name, summaries), record, summaries, state)
+            let effects = method_arg_effects(expr.target.ty, expr.name, expr.args, summaries)
+            let mut index = 0
+            while expr.args != None && index < expr.args.len() {
+                visit_expr(expr.args[index], effects[index], record, summaries, state)
+                index = index + 1
+            }
+        }
+        return
+    }
+    if expr.kind == Array || expr.kind == Set || expr.kind == Tuple {
+        if expr.items != None {
+            let mut index = 0
+            while index < expr.items.len() {
+                let item = expr.items[index]
+                let mut effect = Move
+                if is_expr_copy(item) {
+                    effect = Copy
+                }
+                visit_expr(item, effect, record, summaries, state)
+                index = index + 1
+            }
+        }
+        return
+    }
+    if expr.kind == Map {
+        if expr.entries != None {
+            let mut index = 0
+            while index < expr.entries.len() {
+                let entry = expr.entries[index]
+                visit_expr(entry.key, Copy, record, summaries, state)
+                let mut effect = Move
+                if is_expr_copy(entry.value) {
+                    effect = Copy
+                }
+                visit_expr(entry.value, effect, record, summaries, state)
+                index = index + 1
+            }
+        }
+        return
+    }
+    if expr.kind == BinOp || expr.kind == Nullish {
+        if expr.left != None {
+            if expr.right != None {
+                let mut left_effect = BorrowShared
+                if is_expr_copy(expr.left) {
+                    left_effect = Copy
+                }
+                let mut right_effect = BorrowShared
+                if is_expr_copy(expr.right) {
+                    right_effect = Copy
+                }
+                visit_expr(expr.left, left_effect, record, summaries, state)
+                visit_expr(expr.right, right_effect, record, summaries, state)
+            }
+        }
+        return
+    }
+    if expr.kind == UnOp || expr.kind == Cast || expr.kind == Field || expr.kind == Ok || expr.kind == Err {
+        if expr.body != None {
+            let mut effect = desired
+            if is_expr_copy(expr.body) {
                 effect = Copy
             }
-            visit_expr(item, effect, record, summaries, state)
-            index = index + 1
+            visit_expr(expr.body, effect, record, summaries, state)
         }
         return
     }
-    if expr.kind == Map && expr.entries != None {
-        let mut index = 0
-        while index < expr.entries.len() {
-            let entry = expr.entries[index]
-            visit_expr(entry.key, Copy, record, summaries, state)
-            let mut effect = Move
-            if is_expr_copy(entry.value) {
+    if expr.kind == Index {
+        if expr.target != None {
+            let mut effect = desired
+            if is_expr_copy(expr.target) {
                 effect = Copy
             }
-            visit_expr(entry.value, effect, record, summaries, state)
-            index = index + 1
+            visit_expr(expr.target, effect, record, summaries, state)
         }
         return
     }
-    if (expr.kind == BinOp || expr.kind == Nullish) && expr.left != None && expr.right != None {
-        let mut left_effect = BorrowShared
-        if is_expr_copy(expr.left) {
-            left_effect = Copy
+    if expr.kind == Lambda {
+        if expr.body != None {
+            visit_expr(expr.body, BorrowShared, record, summaries, state)
         }
-        let mut right_effect = BorrowShared
-        if is_expr_copy(expr.right) {
-            right_effect = Copy
-        }
-        visit_expr(expr.left, left_effect, record, summaries, state)
-        visit_expr(expr.right, right_effect, record, summaries, state)
         return
     }
-    if (expr.kind == UnOp || expr.kind == Cast || expr.kind == Field || expr.kind == Ok || expr.kind == Err) && expr.body != None {
-        let mut effect = desired
-        if is_expr_copy(expr.body) {
-            effect = Copy
+    if expr.kind == Match {
+        if expr.left != None {
+            visit_expr(expr.left, BorrowShared, record, summaries, state)
         }
-        visit_expr(expr.body, effect, record, summaries, state)
-        return
-    }
-    if expr.kind == Index && expr.target != None {
-        let mut effect = desired
-        if is_expr_copy(expr.target) {
-            effect = Copy
-        }
-        visit_expr(expr.target, effect, record, summaries, state)
-        return
-    }
-    if expr.kind == Lambda && expr.body != None {
-        visit_expr(expr.body, BorrowShared, record, summaries, state)
-        return
-    }
-    if expr.kind == Match && expr.left != None {
-        visit_expr(expr.left, BorrowShared, record, summaries, state)
         let mut index = 0
         while expr.arms != None && index < expr.arms.len() {
             visit_expr(expr.arms[index].pattern, BorrowShared, record, summaries, state)
@@ -518,8 +580,10 @@ fn summary_call_effects(callee, args, summaries, contracts) {
 }
 
 fn direct_callee_summary(callee, summaries) {
-    if callee.kind == Ident && callee.name != None {
-        return lookup_summary_entry(summaries, callee.name)
+    if callee.kind == Ident {
+        if callee.name != None {
+            return lookup_summary_entry(summaries, callee.name)
+        }
     }
     return None
 }
@@ -550,8 +614,10 @@ fn method_receiver_effect(target_ty, name, summaries) {
     }
     if target_ty.kind == Named {
         let summary = lookup_summary_entry(summaries, target_ty.name + "::" + name)
-        if summary != None && summary.receiver_effect != None {
-            return summary.receiver_effect
+        if summary != None {
+            if summary.receiver_effect != None {
+                return summary.receiver_effect
+            }
         }
         return BorrowShared
     }
@@ -564,16 +630,18 @@ fn method_receiver_effect(target_ty, name, summaries) {
 fn method_arg_effects(target_ty, name, args, summaries) {
     let mut effects = []
     let mut index = 0
-    if (target_ty.kind == Array || target_ty.kind == Set || target_ty.kind == Chan) && name == "push" {
-        while args != None && index < args.len() {
-            let mut effect = Move
-            if is_expr_copy(args[index]) {
-                effect = Copy
+    if target_ty.kind == Array || target_ty.kind == Set || target_ty.kind == Chan {
+        if name == "push" {
+            while args != None && index < args.len() {
+                let mut effect = Move
+                if is_expr_copy(args[index]) {
+                    effect = Copy
+                }
+                effects.push(effect)
+                index = index + 1
             }
-            effects.push(effect)
-            index = index + 1
+            return effects
         }
-        return effects
     }
     if target_ty.kind == Named {
         let summary = lookup_summary_entry(summaries, target_ty.name + "::" + name)
@@ -582,8 +650,10 @@ fn method_arg_effects(target_ty, name, args, summaries) {
             let mut effect = BorrowShared
             if is_expr_copy(arg) {
                 effect = Copy
-            } elif summary != None && index < summary.summary.params.len() {
-                effect = summary.summary.params[index].effect
+            } elif summary != None {
+                if index < summary.summary.params.len() {
+                    effect = summary.summary.params[index].effect
+                }
             }
             effects.push(effect)
             index = index + 1
@@ -610,11 +680,15 @@ fn raise_effect(record, state, name, effect) {
         }
         return
     }
-    if name == "self" && record.receiver_ty != None && !is_copy_type(record.receiver_ty) {
-        if state.receiver_effect == None {
-            state.receiver_effect = Some(effect)
-        } else {
-            state.receiver_effect = Some(join_effect(state.receiver_effect, effect))
+    if name == "self" {
+        if record.receiver_ty != None {
+            if !is_copy_type(record.receiver_ty) {
+                if state.receiver_effect == None {
+                    state.receiver_effect = Some(effect)
+                } else {
+                    state.receiver_effect = Some(join_effect(state.receiver_effect, effect))
+                }
+            }
         }
     }
 }
@@ -701,46 +775,56 @@ fn populate_program_use_effects(program, summaries) {
 }
 
 fn populate_item_use_effects(item, summaries) {
-    if (item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler) && item.fn_def != None {
-        populate_function_use_effects(item.fn_def, summaries)
-        return
-    }
-    if item.kind == Class && item.class_def != None {
-        let mut index = 0
-        while index < item.class_def.methods.len() {
-            populate_function_use_effects(item.class_def.methods[index], summaries)
-            index = index + 1
-        }
-        index = 0
-        while index < item.class_def.type_blocks.len() {
-            populate_type_block_use_effects(item.class_def.type_blocks[index], summaries)
-            index = index + 1
+    if item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler {
+        if item.fn_def != None {
+            populate_function_use_effects(item.fn_def, summaries)
         }
         return
     }
-    if item.kind == Interface && item.interface_def != None {
-        let mut index = 0
-        while index < item.interface_def.methods.len() {
-            populate_function_use_effects(item.interface_def.methods[index], summaries)
-            index = index + 1
-        }
-        index = 0
-        while index < item.interface_def.type_blocks.len() {
-            populate_type_block_use_effects(item.interface_def.type_blocks[index], summaries)
-            index = index + 1
-        }
-        return
-    }
-    if item.kind == Extern && item.extern_block != None {
-        let mut index = 0
-        while index < item.extern_block.functions.len() {
-            populate_function_use_effects(item.extern_block.functions[index], summaries)
-            index = index + 1
+    if item.kind == Class {
+        if item.class_def != None {
+            let mut index = 0
+            while index < item.class_def.methods.len() {
+                populate_function_use_effects(item.class_def.methods[index], summaries)
+                index = index + 1
+            }
+            index = 0
+            while index < item.class_def.type_blocks.len() {
+                populate_type_block_use_effects(item.class_def.type_blocks[index], summaries)
+                index = index + 1
+            }
         }
         return
     }
-    if item.kind == TypeBlock && item.type_block != None {
-        populate_type_block_use_effects(item.type_block, summaries)
+    if item.kind == Interface {
+        if item.interface_def != None {
+            let mut index = 0
+            while index < item.interface_def.methods.len() {
+                populate_function_use_effects(item.interface_def.methods[index], summaries)
+                index = index + 1
+            }
+            index = 0
+            while index < item.interface_def.type_blocks.len() {
+                populate_type_block_use_effects(item.interface_def.type_blocks[index], summaries)
+                index = index + 1
+            }
+        }
+        return
+    }
+    if item.kind == Extern {
+        if item.extern_block != None {
+            let mut index = 0
+            while index < item.extern_block.functions.len() {
+                populate_function_use_effects(item.extern_block.functions[index], summaries)
+                index = index + 1
+            }
+        }
+        return
+    }
+    if item.kind == TypeBlock {
+        if item.type_block != None {
+            populate_type_block_use_effects(item.type_block, summaries)
+        }
     }
 }
 
@@ -770,88 +854,116 @@ fn populate_block_use_effects(block, summaries, contracts) {
 }
 
 fn populate_stmt_use_effects(stmt, summaries, contracts) {
-    if stmt.kind == Let && stmt.let_stmt != None {
-        if stmt.let_stmt.value != None {
-            populate_expr_use_effects(stmt.let_stmt.value, Move, summaries, contracts)
-        }
-        return
-    }
-    if stmt.kind == LetDestructure && stmt.let_destructure != None {
-        populate_expr_use_effects(stmt.let_destructure.value, Move, summaries, contracts)
-        return
-    }
-    if stmt.kind == Assign && stmt.assign_stmt != None {
-        populate_expr_use_effects(stmt.assign_stmt.target, BorrowExclusive, summaries, contracts)
-        if stmt.assign_stmt.value != None {
-            populate_expr_use_effects(stmt.assign_stmt.value, Move, summaries, contracts)
-        }
-        return
-    }
-    if stmt.kind == Return && stmt.return_stmt != None {
-        if stmt.return_stmt.value != None {
-            populate_expr_use_effects(stmt.return_stmt.value, Move, summaries, contracts)
-        }
-        return
-    }
-    if stmt.kind == Expr && stmt.expr != None {
-        populate_expr_use_effects(stmt.expr, BorrowShared, summaries, contracts)
-        return
-    }
-    if stmt.kind == If && stmt.if_stmt != None {
-        populate_expr_use_effects(stmt.if_stmt.condition, Copy, summaries, contracts)
-        populate_block_use_effects(stmt.if_stmt.then_branch, summaries, contracts)
-        if stmt.if_stmt.else_branch != None {
-            populate_else_branch_use_effects(stmt.if_stmt.else_branch, summaries, contracts)
-        }
-        return
-    }
-    if stmt.kind == For && stmt.for_stmt != None {
-        populate_expr_use_effects(stmt.for_stmt.iter, BorrowShared, summaries, contracts)
-        populate_block_use_effects(stmt.for_stmt.body, summaries, contracts)
-        return
-    }
-    if stmt.kind == While && stmt.while_stmt != None {
-        populate_expr_use_effects(stmt.while_stmt.condition, Copy, summaries, contracts)
-        populate_block_use_effects(stmt.while_stmt.body, summaries, contracts)
-        return
-    }
-    if stmt.kind == Spawn && stmt.spawn_stmt != None {
-        if stmt.spawn_stmt.body.expr != None {
-            populate_expr_use_effects(stmt.spawn_stmt.body.expr, BorrowShared, summaries, contracts)
-        }
-        if stmt.spawn_stmt.body.block != None {
-            populate_block_use_effects(stmt.spawn_stmt.body.block, summaries, contracts)
-        }
-        return
-    }
-    if (stmt.kind == Block || stmt.kind == UnsafeBlock || stmt.kind == PointerBlock || stmt.kind == ComptimeBlock) && stmt.block != None {
-        populate_block_use_effects(stmt.block, summaries, contracts)
-        return
-    }
-    if stmt.kind == IfCompile && stmt.if_compile != None {
-        populate_expr_use_effects(stmt.if_compile.condition, Copy, summaries, contracts)
-        populate_block_use_effects(stmt.if_compile.body, summaries, contracts)
-        return
-    }
-    if stmt.kind == GcConfig && stmt.gc_config != None {
-        let mut index = 0
-        while index < stmt.gc_config.entries.len() {
-            populate_expr_use_effects(stmt.gc_config.entries[index].value, BorrowShared, summaries, contracts)
-            index = index + 1
-        }
-        return
-    }
-    if stmt.kind == TypeBlock && stmt.type_block != None {
-        let mut index = 0
-        while index < stmt.type_block.members.len() {
-            let member = stmt.type_block.members[index]
-            if member.name != None && member.ty != None {
-                let effect = effect_contract_from_type(member.ty)
-                if effect != None {
-                    upsert_contract(contracts, member.name, effect)
-                }
+    if stmt.kind == Let {
+        if stmt.let_stmt != None {
+            if stmt.let_stmt.value != None {
+                populate_expr_use_effects(stmt.let_stmt.value, Move, summaries, contracts)
             }
-            index = index + 1
+        }
+        return
+    }
+    if stmt.kind == LetDestructure {
+        if stmt.let_destructure != None {
+            populate_expr_use_effects(stmt.let_destructure.value, Move, summaries, contracts)
+        }
+        return
+    }
+    if stmt.kind == Assign {
+        if stmt.assign_stmt != None {
+            populate_expr_use_effects(stmt.assign_stmt.target, BorrowExclusive, summaries, contracts)
+            if stmt.assign_stmt.value != None {
+                populate_expr_use_effects(stmt.assign_stmt.value, Move, summaries, contracts)
+            }
+        }
+        return
+    }
+    if stmt.kind == Return {
+        if stmt.return_stmt != None {
+            if stmt.return_stmt.value != None {
+                populate_expr_use_effects(stmt.return_stmt.value, Move, summaries, contracts)
+            }
+        }
+        return
+    }
+    if stmt.kind == Expr {
+        if stmt.expr != None {
+            populate_expr_use_effects(stmt.expr, BorrowShared, summaries, contracts)
+        }
+        return
+    }
+    if stmt.kind == If {
+        if stmt.if_stmt != None {
+            populate_expr_use_effects(stmt.if_stmt.condition, Copy, summaries, contracts)
+            populate_block_use_effects(stmt.if_stmt.then_branch, summaries, contracts)
+            if stmt.if_stmt.else_branch != None {
+                populate_else_branch_use_effects(stmt.if_stmt.else_branch, summaries, contracts)
+            }
+        }
+        return
+    }
+    if stmt.kind == For {
+        if stmt.for_stmt != None {
+            populate_expr_use_effects(stmt.for_stmt.iter, BorrowShared, summaries, contracts)
+            populate_block_use_effects(stmt.for_stmt.body, summaries, contracts)
+        }
+        return
+    }
+    if stmt.kind == While {
+        if stmt.while_stmt != None {
+            populate_expr_use_effects(stmt.while_stmt.condition, Copy, summaries, contracts)
+            populate_block_use_effects(stmt.while_stmt.body, summaries, contracts)
+        }
+        return
+    }
+    if stmt.kind == Spawn {
+        if stmt.spawn_stmt != None {
+            if stmt.spawn_stmt.body.expr != None {
+                populate_expr_use_effects(stmt.spawn_stmt.body.expr, BorrowShared, summaries, contracts)
+            }
+            if stmt.spawn_stmt.body.block != None {
+                populate_block_use_effects(stmt.spawn_stmt.body.block, summaries, contracts)
+            }
+        }
+        return
+    }
+    if stmt.kind == Block || stmt.kind == UnsafeBlock || stmt.kind == PointerBlock || stmt.kind == ComptimeBlock {
+        if stmt.block != None {
+            populate_block_use_effects(stmt.block, summaries, contracts)
+        }
+        return
+    }
+    if stmt.kind == IfCompile {
+        if stmt.if_compile != None {
+            populate_expr_use_effects(stmt.if_compile.condition, Copy, summaries, contracts)
+            populate_block_use_effects(stmt.if_compile.body, summaries, contracts)
+        }
+        return
+    }
+    if stmt.kind == GcConfig {
+        if stmt.gc_config != None {
+            let mut index = 0
+            while index < stmt.gc_config.entries.len() {
+                populate_expr_use_effects(stmt.gc_config.entries[index].value, BorrowShared, summaries, contracts)
+                index = index + 1
+            }
+        }
+        return
+    }
+    if stmt.kind == TypeBlock {
+        if stmt.type_block != None {
+            let mut index = 0
+            while index < stmt.type_block.members.len() {
+                let member = stmt.type_block.members[index]
+                if member.name != None {
+                    if member.ty != None {
+                        let effect = effect_contract_from_type(member.ty)
+                        if effect != None {
+                            upsert_contract(contracts, member.name, effect)
+                        }
+                    }
+                }
+                index = index + 1
+            }
         }
     }
 }
@@ -879,126 +991,148 @@ fn populate_expr_use_effects(expr, desired, summaries, contracts) {
         expr.use_effect = Some(effect)
         return
     }
-    if expr.kind == Field && expr.target != None {
-        let mut target_effect = BorrowShared
-        if desired == BorrowExclusive {
-            target_effect = BorrowExclusive
-        }
-        populate_expr_use_effects(expr.target, target_effect, summaries, contracts)
-        if is_copy_type(expr.ty) {
-            expr.use_effect = Some(Copy)
-        } else {
-            expr.use_effect = Some(BorrowShared)
-        }
-        return
-    }
-    if expr.kind == Index && expr.target != None {
-        let mut target_effect = BorrowShared
-        if desired == BorrowExclusive {
-            target_effect = BorrowExclusive
-        }
-        populate_expr_use_effects(expr.target, target_effect, summaries, contracts)
-        if expr.index != None {
-            populate_expr_use_effects(expr.index, Copy, summaries, contracts)
-        }
-        if is_copy_type(expr.ty) {
-            expr.use_effect = Some(Copy)
-        } else {
-            expr.use_effect = Some(BorrowShared)
-        }
-        return
-    }
-    if expr.kind == Call && expr.callee != None {
-        let effects = summary_call_effects(expr.callee, expr.args, summaries, contracts)
-        populate_expr_use_effects(expr.callee, Copy, summaries, contracts)
-        let mut index = 0
-        while expr.args != None && index < expr.args.len() {
-            populate_expr_use_effects(expr.args[index], effects[index], summaries, contracts)
-            index = index + 1
-        }
-        if is_expr_copy(expr) {
-            expr.use_effect = Some(Copy)
-        } else {
-            expr.use_effect = Some(desired)
-        }
-        return
-    }
-    if expr.kind == MethodCall && expr.target != None {
-        populate_expr_use_effects(expr.target, method_receiver_effect(expr.target.ty, expr.name, summaries), summaries, contracts)
-        let effects = method_arg_effects(expr.target.ty, expr.name, expr.args, summaries)
-        let mut index = 0
-        while expr.args != None && index < expr.args.len() {
-            populate_expr_use_effects(expr.args[index], effects[index], summaries, contracts)
-            index = index + 1
-        }
-        if is_expr_copy(expr) {
-            expr.use_effect = Some(Copy)
-        } else {
-            expr.use_effect = Some(desired)
-        }
-        return
-    }
-    if (expr.kind == Array || expr.kind == Set || expr.kind == Tuple) && expr.items != None {
-        let mut index = 0
-        while index < expr.items.len() {
-            let mut item_effect = Move
-            if is_expr_copy(expr.items[index]) {
-                item_effect = Copy
+    if expr.kind == Field {
+        if expr.target != None {
+            let mut target_effect = BorrowShared
+            if desired == BorrowExclusive {
+                target_effect = BorrowExclusive
             }
-            populate_expr_use_effects(expr.items[index], item_effect, summaries, contracts)
-            index = index + 1
+            populate_expr_use_effects(expr.target, target_effect, summaries, contracts)
+            if is_copy_type(expr.ty) {
+                expr.use_effect = Some(Copy)
+            } else {
+                expr.use_effect = Some(BorrowShared)
+            }
         }
-        if is_expr_copy(expr) {
-            expr.use_effect = Some(Copy)
-        } else {
+        return
+    }
+    if expr.kind == Index {
+        if expr.target != None {
+            let mut target_effect = BorrowShared
+            if desired == BorrowExclusive {
+                target_effect = BorrowExclusive
+            }
+            populate_expr_use_effects(expr.target, target_effect, summaries, contracts)
+            if expr.index != None {
+                populate_expr_use_effects(expr.index, Copy, summaries, contracts)
+            }
+            if is_copy_type(expr.ty) {
+                expr.use_effect = Some(Copy)
+            } else {
+                expr.use_effect = Some(BorrowShared)
+            }
+        }
+        return
+    }
+    if expr.kind == Call {
+        if expr.callee != None {
+            let effects = summary_call_effects(expr.callee, expr.args, summaries, contracts)
+            populate_expr_use_effects(expr.callee, Copy, summaries, contracts)
+            let mut index = 0
+            while expr.args != None && index < expr.args.len() {
+                populate_expr_use_effects(expr.args[index], effects[index], summaries, contracts)
+                index = index + 1
+            }
+            if is_expr_copy(expr) {
+                expr.use_effect = Some(Copy)
+            } else {
+                expr.use_effect = Some(desired)
+            }
+        }
+        return
+    }
+    if expr.kind == MethodCall {
+        if expr.target != None {
+            populate_expr_use_effects(expr.target, method_receiver_effect(expr.target.ty, expr.name, summaries), summaries, contracts)
+            let effects = method_arg_effects(expr.target.ty, expr.name, expr.args, summaries)
+            let mut index = 0
+            while expr.args != None && index < expr.args.len() {
+                populate_expr_use_effects(expr.args[index], effects[index], summaries, contracts)
+                index = index + 1
+            }
+            if is_expr_copy(expr) {
+                expr.use_effect = Some(Copy)
+            } else {
+                expr.use_effect = Some(desired)
+            }
+        }
+        return
+    }
+    if expr.kind == Array || expr.kind == Set || expr.kind == Tuple {
+        if expr.items != None {
+            let mut index = 0
+            while index < expr.items.len() {
+                let mut item_effect = Move
+                if is_expr_copy(expr.items[index]) {
+                    item_effect = Copy
+                }
+                populate_expr_use_effects(expr.items[index], item_effect, summaries, contracts)
+                index = index + 1
+            }
+            if is_expr_copy(expr) {
+                expr.use_effect = Some(Copy)
+            } else {
+                expr.use_effect = Some(Move)
+            }
+        }
+        return
+    }
+    if expr.kind == Map {
+        if expr.entries != None {
+            let mut index = 0
+            while index < expr.entries.len() {
+                populate_expr_use_effects(expr.entries[index].key, Copy, summaries, contracts)
+                let mut value_effect = Move
+                if is_expr_copy(expr.entries[index].value) {
+                    value_effect = Copy
+                }
+                populate_expr_use_effects(expr.entries[index].value, value_effect, summaries, contracts)
+                index = index + 1
+            }
             expr.use_effect = Some(Move)
         }
         return
     }
-    if expr.kind == Map && expr.entries != None {
-        let mut index = 0
-        while index < expr.entries.len() {
-            populate_expr_use_effects(expr.entries[index].key, Copy, summaries, contracts)
-            let mut value_effect = Move
-            if is_expr_copy(expr.entries[index].value) {
-                value_effect = Copy
+    if expr.kind == BinOp || expr.kind == Nullish {
+        if expr.left != None {
+            if expr.right != None {
+                let mut left_effect = BorrowShared
+                if expr.kind == BinOp {
+                    if binop_moves_left(expr) {
+                        left_effect = Move
+                    } elif is_expr_copy(expr.left) {
+                        left_effect = Copy
+                    }
+                } elif is_expr_copy(expr.left) {
+                    left_effect = Copy
+                }
+                let mut right_effect = BorrowShared
+                if is_expr_copy(expr.right) {
+                    right_effect = Copy
+                }
+                populate_expr_use_effects(expr.left, left_effect, summaries, contracts)
+                populate_expr_use_effects(expr.right, right_effect, summaries, contracts)
+                if is_expr_copy(expr) {
+                    expr.use_effect = Some(Copy)
+                } else {
+                    expr.use_effect = Some(desired)
+                }
             }
-            populate_expr_use_effects(expr.entries[index].value, value_effect, summaries, contracts)
-            index = index + 1
-        }
-        expr.use_effect = Some(Move)
-        return
-    }
-    if (expr.kind == BinOp || expr.kind == Nullish) && expr.left != None && expr.right != None {
-        let mut left_effect = BorrowShared
-        if expr.kind == BinOp && binop_moves_left(expr) {
-            left_effect = Move
-        } elif is_expr_copy(expr.left) {
-            left_effect = Copy
-        }
-        let mut right_effect = BorrowShared
-        if is_expr_copy(expr.right) {
-            right_effect = Copy
-        }
-        populate_expr_use_effects(expr.left, left_effect, summaries, contracts)
-        populate_expr_use_effects(expr.right, right_effect, summaries, contracts)
-        if is_expr_copy(expr) {
-            expr.use_effect = Some(Copy)
-        } else {
-            expr.use_effect = Some(desired)
         }
         return
     }
-    if (expr.kind == UnOp || expr.kind == Cast || expr.kind == Ok || expr.kind == Err) && expr.body != None {
-        let mut body_effect = desired
-        if is_expr_copy(expr.body) {
-            body_effect = Copy
-        }
-        populate_expr_use_effects(expr.body, body_effect, summaries, contracts)
-        if is_expr_copy(expr) {
-            expr.use_effect = Some(Copy)
-        } else {
-            expr.use_effect = Some(desired)
+    if expr.kind == UnOp || expr.kind == Cast || expr.kind == Ok || expr.kind == Err {
+        if expr.body != None {
+            let mut body_effect = desired
+            if is_expr_copy(expr.body) {
+                body_effect = Copy
+            }
+            populate_expr_use_effects(expr.body, body_effect, summaries, contracts)
+            if is_expr_copy(expr) {
+                expr.use_effect = Some(Copy)
+            } else {
+                expr.use_effect = Some(desired)
+            }
         }
         return
     }
@@ -1045,49 +1179,59 @@ fn populate_expr_use_effects(expr, desired, summaries, contracts) {
 }
 
 fn apply_item_summaries(item, records, summaries) {
-    if (item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler) && item.fn_def != None {
-        apply_function_summary(item.fn_def, item.fn_def.name, records, summaries)
-        return
-    }
-    if item.kind == Class && item.class_def != None {
-        let mut index = 0
-        while index < item.class_def.methods.len() {
-            let method = item.class_def.methods[index]
-            apply_function_summary(method, item.class_def.name + "::" + method.name, records, summaries)
-            index = index + 1
-        }
-        index = 0
-        while index < item.class_def.type_blocks.len() {
-            apply_type_block_summaries(item.class_def.name, item.class_def.type_blocks[index], records, summaries)
-            index = index + 1
+    if item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler {
+        if item.fn_def != None {
+            apply_function_summary(item.fn_def, item.fn_def.name, records, summaries)
         }
         return
     }
-    if item.kind == Interface && item.interface_def != None {
-        let mut index = 0
-        while index < item.interface_def.methods.len() {
-            let method = item.interface_def.methods[index]
-            apply_function_summary(method, item.interface_def.name + "::" + method.name, records, summaries)
-            index = index + 1
-        }
-        index = 0
-        while index < item.interface_def.type_blocks.len() {
-            apply_type_block_summaries(item.interface_def.name, item.interface_def.type_blocks[index], records, summaries)
-            index = index + 1
-        }
-        return
-    }
-    if item.kind == Extern && item.extern_block != None {
-        let mut index = 0
-        while index < item.extern_block.functions.len() {
-            let function = item.extern_block.functions[index]
-            apply_function_summary(function, function.name, records, summaries)
-            index = index + 1
+    if item.kind == Class {
+        if item.class_def != None {
+            let mut index = 0
+            while index < item.class_def.methods.len() {
+                let method = item.class_def.methods[index]
+                apply_function_summary(method, item.class_def.name + "::" + method.name, records, summaries)
+                index = index + 1
+            }
+            index = 0
+            while index < item.class_def.type_blocks.len() {
+                apply_type_block_summaries(item.class_def.name, item.class_def.type_blocks[index], records, summaries)
+                index = index + 1
+            }
         }
         return
     }
-    if item.kind == TypeBlock && item.type_block != None {
-        apply_type_block_summaries("", item.type_block, records, summaries)
+    if item.kind == Interface {
+        if item.interface_def != None {
+            let mut index = 0
+            while index < item.interface_def.methods.len() {
+                let method = item.interface_def.methods[index]
+                apply_function_summary(method, item.interface_def.name + "::" + method.name, records, summaries)
+                index = index + 1
+            }
+            index = 0
+            while index < item.interface_def.type_blocks.len() {
+                apply_type_block_summaries(item.interface_def.name, item.interface_def.type_blocks[index], records, summaries)
+                index = index + 1
+            }
+        }
+        return
+    }
+    if item.kind == Extern {
+        if item.extern_block != None {
+            let mut index = 0
+            while index < item.extern_block.functions.len() {
+                let function = item.extern_block.functions[index]
+                apply_function_summary(function, function.name, records, summaries)
+                index = index + 1
+            }
+        }
+        return
+    }
+    if item.kind == TypeBlock {
+        if item.type_block != None {
+            apply_type_block_summaries("", item.type_block, records, summaries)
+        }
     }
 }
 
@@ -1176,8 +1320,10 @@ fn fn_summaries_equal(left, right) {
 }
 
 fn optional_effect_equal(left, right) {
-    if left == None && right == None {
-        return true
+    if left == None {
+        if right == None {
+            return true
+        }
     }
     if left == None || right == None {
         return false
@@ -1213,7 +1359,13 @@ fn is_expr_copy(expr) {
 }
 
 fn binop_moves_left(expr) {
-    if expr.kind != BinOp || expr.left == None || expr.right == None || expr.op == None {
+    if expr.kind != BinOp {
+        return false
+    }
+    if expr.left == None || expr.right == None {
+        return false
+    }
+    if expr.op == None {
         return false
     }
     return expr.op == "+" && expr.left.ty.kind == String && expr.right.ty.kind == String
