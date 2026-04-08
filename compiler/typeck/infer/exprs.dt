@@ -170,7 +170,17 @@ fn infer_expr(checker, expr) {
     }
     if expr.kind == Field {
         let target = infer_expr(checker, expr.target)
-        let mut typed = checker.typed_expr(Field, checker.fresh_var(), expr.span)
+        let resolved_target_ty = checker.apply_subst(target.ty)
+        let mut field_ty = checker.fresh_var()
+        if resolved_target_ty.kind == Named {
+            let named_field_ty = checker.lookup_named_field_ty(resolved_target_ty.name, expr.name)
+            if named_field_ty != None {
+                field_ty = named_field_ty
+            } else {
+                checker.push_no_field(expr.name, resolved_target_ty, expr.span)
+            }
+        }
+        let mut typed = checker.typed_expr(Field, field_ty, expr.span)
         typed.target = Some(target)
         typed.name = Some(expr.name)
         return typed

@@ -65,6 +65,18 @@ class InterfaceBindingHintEntry {
     }
 }
 
+class NamedFieldEntry {
+    let owner_name
+    let field_name
+    let ty
+
+    @type {
+        owner_name: String
+        field_name: String
+        ty: Type
+    }
+}
+
 class TypeChecker {
     let env
     let subst
@@ -86,6 +98,7 @@ class TypeChecker {
     let mut interface_function_hints
     let mut interface_binding_hints
     let mut local_binding_hints
+    let mut named_fields
     let mut current_return
     let mut current_class
     let mut type_param_scopes
@@ -112,6 +125,7 @@ class TypeChecker {
         interface_function_hints: Array[InterfaceFunctionHintEntry]
         interface_binding_hints: Array[InterfaceBindingHintEntry]
         local_binding_hints: Array[TypeBlock]
+        named_fields: Array[NamedFieldEntry]
         current_return: Array[Type]
         current_class: Array[String]
         type_param_scopes: Array[String]
@@ -140,6 +154,7 @@ class TypeChecker {
             interface_function_hints: [],
             interface_binding_hints: [],
             local_binding_hints: [],
+            named_fields: [],
             current_return: [],
             current_class: [],
             type_param_scopes: [],
@@ -273,6 +288,85 @@ class TypeChecker {
         if name == "Map" && args.len() == 2 { return MapType { kind: Map, key: args[0], value: args[1] } }
         if name == "Result" && args.len() == 2 { return ResultType { kind: Result, ok: args[0], err: args[1] } }
         return NamedType { kind: Named, name: name, args: args }
+    }
+
+    fn predeclare_named_field(owner_name, field_name, ty) {
+        let mut index = 0
+        while index < self.named_fields.len() {
+            let entry = self.named_fields[index]
+            if entry.owner_name == owner_name {
+                if entry.field_name == field_name {
+                    self.named_fields[index] = NamedFieldEntry {
+                        owner_name: owner_name,
+                        field_name: field_name,
+                        ty: ty
+                    }
+                    return
+                }
+            }
+            index = index + 1
+        }
+        self.named_fields.push(NamedFieldEntry {
+            owner_name: owner_name,
+            field_name: field_name,
+            ty: ty
+        })
+    }
+
+    fn lookup_named_field_ty(owner_name, field_name) {
+        let mut index = 0
+        while index < self.named_fields.len() {
+            let entry = self.named_fields[index]
+            if entry.owner_name == owner_name {
+                if entry.field_name == field_name {
+                    return Some(entry.ty)
+                }
+            }
+            index = index + 1
+        }
+        return None
+    }
+
+    fn lookup_class_binding_hint(class_name, name) {
+        let mut index = 0
+        while index < self.class_binding_hints.len() {
+            let entry = self.class_binding_hints[index]
+            if entry.class_name == class_name {
+                if entry.name == name {
+                    return Some(entry.type_expr)
+                }
+            }
+            index = index + 1
+        }
+        return None
+    }
+
+    fn push_no_field(field_name, ty, span) {
+        let mut found = ty.kind.to_string()
+        if ty.kind == Named {
+            found = ty.name
+        }
+        self.errors.push(TypeError {
+            kind: NoField,
+            name: None,
+            expected: None,
+            found: Some(found),
+            hint: Some("check field or type of the object"),
+            field: Some(field_name),
+            interface_name: None,
+            class_name: None,
+            method: None,
+            pattern: None,
+            missing: None,
+            syntax: None,
+            replacement: None,
+            expected_count: None,
+            got_count: None,
+            tuple_len: None,
+            pattern_len: None,
+            line: span.line,
+            col: span.col
+        })
     }
 
     fn push_error(type_error) {

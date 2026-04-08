@@ -39,12 +39,14 @@ fn predeclare_item(checker, item) {
         if item.class_def != None {
             checker.declared_classes.push(item.class_def.name)
             predeclare_constructor_name(checker, item.class_def.name)
+            predeclare_class_fields(checker, item.class_def)
         }
         return
     }
     if item.kind == Error {
         if item.error_def != None {
             predeclare_constructor_name(checker, item.error_def.name)
+            predeclare_error_fields(checker, item.error_def)
         }
         return
     }
@@ -98,6 +100,40 @@ fn predeclare_constructor_name(checker, name) {
         params: [checker.fresh_var()],
         ret: NamedType { kind: Named, name: name, args: [] }
     }))
+}
+
+fn predeclare_class_fields(checker, class_def) {
+    let mut index = 0
+    while index < class_def.members.len() {
+        let member = class_def.members[index]
+        if member.kind == Field && member.field != None {
+            let field = member.field
+            let mut field_ty = checker.fresh_var()
+            if field.type_hint != None {
+                field_ty = checker.type_from_annotation(field.type_hint)
+            } else {
+                let hint = checker.lookup_class_binding_hint(class_def.name, field.name)
+                if hint != None {
+                    field_ty = checker.type_from_annotation(hint)
+                }
+            }
+            checker.predeclare_named_field(class_def.name, field.name, field_ty)
+        }
+        index = index + 1
+    }
+}
+
+fn predeclare_error_fields(checker, error_def) {
+    let mut index = 0
+    while index < error_def.fields.len() {
+        let field = error_def.fields[index]
+        let mut field_ty = checker.fresh_var()
+        if field.type_hint != None {
+            field_ty = checker.type_from_annotation(field.type_hint)
+        }
+        checker.predeclare_named_field(error_def.name, field.name, field_ty)
+        index = index + 1
+    }
 }
 
 fn predeclare_fn_def(checker, fn_def) {
