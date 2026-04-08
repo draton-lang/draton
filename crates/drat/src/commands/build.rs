@@ -58,6 +58,18 @@ pub(crate) struct CompiledProject {
     main_return_type: Option<Type>,
 }
 
+#[derive(Debug, Clone)]
+struct ProjectSourceFile {
+    display_path: String,
+    source: String,
+}
+
+#[derive(Debug, Clone)]
+struct LoadedProjectProgram {
+    program: Program,
+    sources: Vec<ProjectSourceFile>,
+}
+
 pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOutput> {
     let config = DratonConfig::load(project_root)?;
     let resolved_target = request
@@ -178,18 +190,18 @@ pub(crate) fn run_file(
 }
 
 pub(crate) fn compile_project(entry_path: &Path, strict_syntax: bool) -> Result<CompiledProject> {
-    let program = load_project_program(entry_path)?;
-    let typed = type_checker_for(strict_syntax).check(program);
+    let loaded = load_project_program(entry_path)?;
+    let typed = type_checker_for(strict_syntax).check(loaded.program);
     if !typed.errors.is_empty() {
         bail!(
             "{}",
-            render_type_errors_without_source(entry_path, &typed.errors)
+            render_type_errors_without_source(entry_path, &typed.errors, &loaded.sources)
         );
     }
     if !typed.warnings.is_empty() {
         eprintln!(
             "{}",
-            render_type_warnings_without_source(entry_path, &typed.warnings)
+            render_type_warnings_without_source(entry_path, &typed.warnings, &loaded.sources)
         );
     }
     let main_return_type = typed
@@ -206,23 +218,223 @@ pub(crate) fn compile_project(entry_path: &Path, strict_syntax: bool) -> Result<
     })
 }
 
-fn render_type_errors_without_source(path: &Path, errors: &[TypeError]) -> String {
+fn render_type_errors_without_source(
+    path: &Path,
+    errors: &[TypeError],
+    sources: &[ProjectSourceFile],
+) -> String {
     errors
         .iter()
-        .map(|error| format!("type error in {}:\n{}", path.display(), error))
+        .map(|error| render_type_error_with_origin(path, error, sources))
         .collect::<Vec<_>>()
         .join("\n\n")
 }
 
-fn render_type_warnings_without_source(path: &Path, warnings: &[TypeError]) -> String {
+fn render_type_warnings_without_source(
+    path: &Path,
+    warnings: &[TypeError],
+    sources: &[ProjectSourceFile],
+) -> String {
     render_limited_warnings(warnings, |warning| {
-        Some(format!("type warning in {}:\n{}", path.display(), warning))
+        Some(render_type_warning_with_origin(path, warning, sources))
     })
 }
 
-fn load_project_program(entry_path: &Path) -> Result<Program> {
+fn render_type_error_with_origin(
+    path: &Path,
+    error: &TypeError,
+    sources: &[ProjectSourceFile],
+) -> String {
+    let mut rendered = format!("type error in {}:\n{}", path.display(), error);
+    let candidates = find_origin_candidates(error, sources);
+    if !candidates.is_empty() {
+        rendered.push_str("\n  likely origin:");
+        for candidate in candidates {
+            rendered.push_str(&format!(
+                "\n    - {}:{}:{}\n      {}",
+                candidate.display_path,
+                candidate.line,
+                candidate.col,
+                candidate.line_text.trim()
+            ));
+        }
+    }
+    rendered
+}
+
+fn render_type_warning_with_origin(
+    path: &Path,
+    warning: &TypeError,
+    sources: &[ProjectSourceFile],
+) -> String {
+    let mut rendered = format!("type warning in {}:\n{}", path.display(), warning);
+    let candidates = find_origin_candidates(warning, sources);
+    if !candidates.is_empty() {
+        rendered.push_str("\n  likely origin:");
+        for candidate in candidates {
+            rendered.push_str(&format!(
+                "\n    - {}:{}:{}\n      {}",
+                candidate.display_path,
+                candidate.line,
+                candidate.col,
+                candidate.line_text.trim()
+            ));
+        }
+    }
+    rendered
+}
+
+#[derive(Debug, Clone)]
+struct OriginCandidate {
+    display_path: String,
+    line: usize,
+    col: usize,
+    line_text: String,
+    score: usize,
+}
+
+fn find_origin_candidates(
+    error: &TypeError,
+    sources: &[ProjectSourceFile],
+) -> Vec<OriginCandidate> {
+    let Some((line, col)) = error_primary_line_col(error) else {
+        return Vec::new();
+    };
+    let terms = error_search_terms(error);
+    let mut candidates = Vec::new();
+    for source in sources {
+        let Some(line_text) = source.source.lines().nth(line.saturating_sub(1)) else {
+            continue;
+        };
+        let mut best_score = 0usize;
+        if terms.is_empty() {
+            best_score = 1;
+        } else {
+            for term in &terms {
+                if let Some(index) = line_text.find(term) {
+                    let candidate_col = index + 1;
+                    let distance = candidate_col.abs_diff(col);
+                    let score = 100usize.saturating_sub(distance) + (term.len() * 2);
+                    if score > best_score {
+                        best_score = score;
+                    }
+                }
+            }
+        }
+        if best_score == 0 {
+            continue;
+        }
+        candidates.push(OriginCandidate {
+            display_path: source.display_path.clone(),
+            line,
+            col,
+            line_text: line_text.to_string(),
+            score: best_score,
+        });
+    }
+    candidates.sort_by(|left, right| {
+        right
+            .score
+            .cmp(&left.score)
+            .then_with(|| left.display_path.cmp(&right.display_path))
+    });
+    if candidates.len() > 3 {
+        candidates.truncate(3);
+    }
+    candidates
+}
+
+fn error_primary_line_col(error: &TypeError) -> Option<(usize, usize)> {
+    match error {
+        TypeError::Mismatch { line, col, .. }
+        | TypeError::UndefinedVar { line, col, .. }
+        | TypeError::UndefinedFn { line, col, .. }
+        | TypeError::NoField { line, col, .. }
+        | TypeError::BadBinOp { line, col, .. }
+        | TypeError::ArgCount { line, col, .. }
+        | TypeError::DestructureArity { line, col, .. }
+        | TypeError::CannotInfer { line, col, .. }
+        | TypeError::InfiniteType { line, col, .. }
+        | TypeError::BadCast { line, col, .. }
+        | TypeError::IncompatibleErrors { line, col, .. }
+        | TypeError::MissingInterfaceMethod { line, col, .. }
+        | TypeError::CircularInheritance { line, col, .. }
+        | TypeError::UndefinedParent { line, col, .. }
+        | TypeError::NonExhaustiveMatch { line, col, .. }
+        | TypeError::RedundantPattern { line, col, .. }
+        | TypeError::DeprecatedSyntax { line, col, .. } => Some((*line, *col)),
+        TypeError::Ownership(error) => match error {
+            draton_typeck::OwnershipError::UseAfterMove { use_span, .. } => {
+                Some((use_span.line, use_span.col))
+            }
+            draton_typeck::OwnershipError::MoveWhileBorrowed { move_span, .. } => {
+                Some((move_span.line, move_span.col))
+            }
+            draton_typeck::OwnershipError::ReadDuringExclusiveBorrow { read_span, .. } => {
+                Some((read_span.line, read_span.col))
+            }
+            draton_typeck::OwnershipError::ExclusiveBorrowDuringRead { modify_span, .. } => {
+                Some((modify_span.line, modify_span.col))
+            }
+            draton_typeck::OwnershipError::PartialMove { span, .. }
+            | draton_typeck::OwnershipError::AmbiguousCallOwnership { span, .. }
+            | draton_typeck::OwnershipError::BorrowedValueEscapes { span, .. }
+            | draton_typeck::OwnershipError::MultipleOwners { span, .. }
+            | draton_typeck::OwnershipError::OwnershipCycle { span }
+            | draton_typeck::OwnershipError::LoopMoveWithoutReinit { span, .. }
+            | draton_typeck::OwnershipError::ExternalBoundaryRejection { span, .. }
+            | draton_typeck::OwnershipError::SafeToRawAliasRejection { span, .. } => {
+                Some((span.line, span.col))
+            }
+        },
+    }
+}
+
+fn error_search_terms(error: &TypeError) -> Vec<String> {
+    match error {
+        TypeError::NoField { field, .. } => {
+            vec![format!(".{}(", field), format!(".{}", field), field.clone()]
+        }
+        TypeError::UndefinedVar { name, .. }
+        | TypeError::UndefinedFn { name, .. }
+        | TypeError::CannotInfer { name, .. }
+        | TypeError::InfiniteType { var: name, .. } => vec![name.clone()],
+        TypeError::Ownership(error) => match error {
+            draton_typeck::OwnershipError::PartialMove { field, base, .. } => {
+                vec![
+                    format!("{}.{}", base, field),
+                    format!(".{}", field),
+                    field.clone(),
+                ]
+            }
+            draton_typeck::OwnershipError::UseAfterMove { name, .. }
+            | draton_typeck::OwnershipError::MoveWhileBorrowed { name, .. }
+            | draton_typeck::OwnershipError::ReadDuringExclusiveBorrow { name, .. }
+            | draton_typeck::OwnershipError::ExclusiveBorrowDuringRead { name, .. }
+            | draton_typeck::OwnershipError::AmbiguousCallOwnership { name, .. }
+            | draton_typeck::OwnershipError::BorrowedValueEscapes { name, .. }
+            | draton_typeck::OwnershipError::MultipleOwners { name, .. }
+            | draton_typeck::OwnershipError::LoopMoveWithoutReinit { name, .. }
+            | draton_typeck::OwnershipError::ExternalBoundaryRejection { name, .. }
+            | draton_typeck::OwnershipError::SafeToRawAliasRejection { name, .. } => {
+                vec![name.clone()]
+            }
+            draton_typeck::OwnershipError::OwnershipCycle { .. } => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
+fn load_project_program(entry_path: &Path) -> Result<LoadedProjectProgram> {
     let mut items = Vec::new();
-    items.extend(load_bundled_stdlib_items()?);
+    let mut sources = Vec::new();
+    let (stdlib_items, stdlib_sources) = load_bundled_stdlib_items()?;
+    items.extend(stdlib_items);
+    sources.extend(stdlib_sources);
+    let src_root = entry_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
     let files = collect_project_sources(entry_path)?;
     for path in files {
         let source = fs::read_to_string(&path)
@@ -235,9 +447,20 @@ fn load_project_program(entry_path: &Path) -> Result<Program> {
         if !parsed.errors.is_empty() {
             bail!("{}", render_parse_errors(&path, &source, &parsed.errors));
         }
+        let display_path = path
+            .strip_prefix(&src_root)
+            .map(|value| value.display().to_string())
+            .unwrap_or_else(|_| path.display().to_string());
+        sources.push(ProjectSourceFile {
+            display_path,
+            source: source.clone(),
+        });
         items.extend(parsed.program.items);
     }
-    Ok(Program { items })
+    Ok(LoadedProjectProgram {
+        program: Program { items },
+        sources,
+    })
 }
 
 fn collect_project_sources(entry_path: &Path) -> Result<Vec<PathBuf>> {
@@ -377,7 +600,7 @@ fn collect_dt_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> 
 
 pub(crate) fn compile_snippet(source: &str) -> Result<CompiledProject> {
     let synthetic = PathBuf::from("<repl>");
-    let mut items = load_bundled_stdlib_items()?;
+    let (mut items, _) = load_bundled_stdlib_items()?;
     let lexed = Lexer::new(source).tokenize();
     if !lexed.errors.is_empty() {
         bail!("{}", render_lex_errors(&synthetic, source, &lexed.errors));
@@ -423,8 +646,9 @@ fn type_checker_for(strict_syntax: bool) -> TypeChecker {
     TypeChecker::new().with_deprecated_syntax_mode(mode)
 }
 
-fn load_bundled_stdlib_items() -> Result<Vec<draton_ast::Item>> {
+fn load_bundled_stdlib_items() -> Result<(Vec<draton_ast::Item>, Vec<ProjectSourceFile>)> {
     let mut items = Vec::new();
+    let mut sources = Vec::new();
     for module in bundled_stdlib_modules() {
         if !matches!(module.name, "math" | "string" | "io" | "collections") {
             continue;
@@ -451,9 +675,13 @@ fn load_bundled_stdlib_items() -> Result<Vec<draton_ast::Item>> {
                 )
             );
         }
+        sources.push(ProjectSourceFile {
+            display_path: format!("<stdlib:{}>", module.name),
+            source: module.source.to_string(),
+        });
         items.extend(parsed.program.items);
     }
-    Ok(items)
+    Ok((items, sources))
 }
 
 pub(crate) fn build_module<'ctx>(
