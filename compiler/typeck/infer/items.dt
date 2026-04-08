@@ -1,6 +1,6 @@
 import { TypedProgram } from typeck.typed.program
 import { TypedItem, TypedFnDef, TypedParam, TypedFieldDef, TypedTypeMember, TypedTypeBlock, TypedClassDef, TypedInterfaceDef, TypedEnumDef, TypedErrorDef, TypedConstDef, TypedImportDef, TypedImportItem, TypedExternBlock } from typeck.typed.items
-import { Type, FnType } from typeck.types.ty
+import { Type, FnType, NamedType } from typeck.types.ty
 import { infer_block, infer_stmt } from typeck.infer.stmts
 import { infer_expr } from typeck.infer.exprs
 
@@ -21,6 +21,11 @@ fn predeclare_items(checker, items) {
         predeclare_item(checker, items[index])
         index = index + 1
     }
+    index = 0
+    while index < items.len() {
+        predeclare_item_values(checker, items[index], items)
+        index = index + 1
+    }
 }
 
 fn predeclare_item(checker, item) {
@@ -33,6 +38,13 @@ fn predeclare_item(checker, item) {
     if item.kind == Class {
         if item.class_def != None {
             checker.declared_classes.push(item.class_def.name)
+            predeclare_constructor_name(checker, item.class_def.name)
+        }
+        return
+    }
+    if item.kind == Error {
+        if item.error_def != None {
+            predeclare_constructor_name(checker, item.error_def.name)
         }
         return
     }
@@ -41,6 +53,51 @@ fn predeclare_item(checker, item) {
             checker.enum_defs.push(item.enum_def)
         }
     }
+}
+
+fn predeclare_item_values(checker, item, items) {
+    if item.kind != Enum || item.enum_def == None {
+        return
+    }
+    let enum_def = item.enum_def
+    let mut index = 0
+    while index < enum_def.variants.len() {
+        let variant = enum_def.variants[index]
+        if enum_variant_is_unique(items, variant) {
+            checker.env.define(variant, checker.generalize(NamedType { kind: Named, name: enum_def.name, args: [] }))
+        }
+        index = index + 1
+    }
+}
+
+fn enum_variant_is_unique(items, variant_name) {
+    let mut matches = 0
+    let mut item_index = 0
+    while item_index < items.len() {
+        let item = items[item_index]
+        if item.kind == Enum && item.enum_def != None {
+            let mut variant_index = 0
+            while variant_index < item.enum_def.variants.len() {
+                if item.enum_def.variants[variant_index] == variant_name {
+                    matches = matches + 1
+                    if matches > 1 {
+                        return false
+                    }
+                }
+                variant_index = variant_index + 1
+            }
+        }
+        item_index = item_index + 1
+    }
+    return matches == 1
+}
+
+fn predeclare_constructor_name(checker, name) {
+    checker.env.define(name, checker.generalize(FnType {
+        kind: Fn,
+        params: [checker.fresh_var()],
+        ret: NamedType { kind: Named, name: name, args: [] }
+    }))
 }
 
 fn predeclare_fn_def(checker, fn_def) {
