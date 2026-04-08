@@ -7,7 +7,6 @@
 [![Build](https://img.shields.io/github/actions/workflow/status/draton-lang/draton/ci.yml?branch=main&style=flat-square)](https://github.com/draton-lang/draton/actions)
 [![Docs](https://img.shields.io/github/actions/workflow/status/draton-lang/draton/docs.yml?branch=main&label=docs&style=flat-square)](https://github.com/draton-lang/draton/actions/workflows/docs.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
-[![Crates.io](https://img.shields.io/crates/v/drat?style=flat-square)](https://crates.io/crates/drat)
 
 </div>
 
