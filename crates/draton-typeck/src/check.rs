@@ -2448,8 +2448,9 @@ impl TypeChecker {
         match self.apply_subst(target_ty.clone()) {
             Type::Array(inner) => self.builtin_array_method(name, *inner),
             Type::String => self.builtin_string_method(name),
-            Type::Int | Type::Float | Type::Bool => self.builtin_scalar_method(name),
+            Type::Int | Type::Float | Type::Bool | Type::Char => self.builtin_scalar_method(name),
             Type::Chan(inner) => self.builtin_chan_method(name, *inner),
+            Type::Var(_) => self.builtin_unknown_receiver_method(name),
             Type::Named(class_name, type_args) => self
                 .lookup_method_in_class_hierarchy(&class_name, name)
                 .map(|scheme| {
@@ -2466,6 +2467,13 @@ impl TypeChecker {
                     self.interface_methods
                         .get(&class_name)
                         .and_then(|methods| methods.get(name).cloned())
+                })
+                .or_else(|| {
+                    if self.enum_defs.contains_key(&class_name) {
+                        self.builtin_scalar_method(name)
+                    } else {
+                        None
+                    }
                 })
                 .or_else(|| {
                     self.errors.push(TypeError::NoField {
@@ -2599,13 +2607,42 @@ impl TypeChecker {
                 quantified: Vec::new(),
                 ty: Type::Fn(vec![Type::String, Type::String], Box::new(Type::String)),
             }),
+            "to_string" | "toString" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(Vec::new(), Box::new(Type::String)),
+            }),
             _ => None,
         }
     }
 
     fn builtin_scalar_method(&self, name: &str) -> Option<Scheme> {
         match name {
-            "toString" => Some(Scheme {
+            "toString" | "to_string" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(Vec::new(), Box::new(Type::String)),
+            }),
+            _ => None,
+        }
+    }
+
+    fn builtin_unknown_receiver_method(&mut self, name: &str) -> Option<Scheme> {
+        match name {
+            "len" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(Vec::new(), Box::new(Type::Int)),
+            }),
+            "slice" => Some(Scheme {
+                quantified: Vec::new(),
+                ty: Type::Fn(vec![Type::Int, Type::Int], Box::new(Type::String)),
+            }),
+            "push" => {
+                let item_ty = self.fresh_var();
+                Some(Scheme {
+                    quantified: free_type_vars(&item_ty).into_iter().collect(),
+                    ty: Type::Fn(vec![item_ty], Box::new(Type::Unit)),
+                })
+            }
+            "toString" | "to_string" => Some(Scheme {
                 quantified: Vec::new(),
                 ty: Type::Fn(Vec::new(), Box::new(Type::String)),
             }),

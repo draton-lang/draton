@@ -341,6 +341,47 @@ class TypeChecker {
         return None
     }
 
+    fn is_enum_name(name) {
+        let mut index = 0
+        while index < self.enum_defs.len() {
+            if self.enum_defs[index].name == name {
+                return true
+            }
+            index = index + 1
+        }
+        return false
+    }
+
+    fn builtin_method_return_type(target_ty, name) {
+        let resolved_target_ty = self.apply_subst(target_ty)
+        if name == "len" {
+            if resolved_target_ty.kind == Array || resolved_target_ty.kind == String || resolved_target_ty.kind == Var {
+                return Some(Type { kind: Int })
+            }
+        }
+        if name == "slice" {
+            if resolved_target_ty.kind == String || resolved_target_ty.kind == Var {
+                return Some(Type { kind: String })
+            }
+        }
+        if name == "push" {
+            if resolved_target_ty.kind == Array || resolved_target_ty.kind == Var {
+                return Some(Type { kind: Unit })
+            }
+        }
+        if name == "to_string" || name == "toString" {
+            if resolved_target_ty.kind == Int || resolved_target_ty.kind == Float || resolved_target_ty.kind == Bool || resolved_target_ty.kind == Char || resolved_target_ty.kind == String || resolved_target_ty.kind == Var {
+                return Some(Type { kind: String })
+            }
+            if resolved_target_ty.kind == Named {
+                if self.is_enum_name(resolved_target_ty.name) {
+                    return Some(Type { kind: String })
+                }
+            }
+        }
+        return None
+    }
+
     fn push_no_field(field_name, ty, span) {
         let mut found = ty.kind.to_string()
         if ty.kind == Named {
