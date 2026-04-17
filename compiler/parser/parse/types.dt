@@ -1,4 +1,19 @@
 import { NamedTypeExpr, GenericTypeExpr, FnTypeExpr, PointerTypeExpr, InferTypeExpr } from ast.types
+import { Parser } from parser.parser
+import { TypeExpr } from ast.types
+import { Span } from ast.span
+import { Token } from lexer.token
+
+@type {
+    copy_span: (Span) -> Span
+    parse_type_expr: (Parser) -> Option[TypeExpr]
+    parse_fn_type_expr: (Parser, Span) -> Option[TypeExpr]
+    parse_paren_type_expr: (Parser, Span) -> Option[TypeExpr]
+}
+
+fn copy_span(span) {
+    return Span { start: span.start, end: span.end, line: span.line, col: span.col }
+}
 
 fn parse_type_expr(parser) {
     parser.skip_doc_comments()
@@ -7,22 +22,25 @@ fn parse_type_expr(parser) {
 
     if token.kind == Fn {
         parser.advance()
-        ty = parse_fn_type_expr(parser, parser.convert_span(token.span))
+        ty = parse_fn_type_expr(parser, copy_span(token.span))
     } elif token.kind == LParen {
-        ty = parse_paren_type_expr(parser, parser.convert_span(token.span))
+        ty = parse_paren_type_expr(parser, copy_span(token.span))
     } elif token.kind == AtPointer {
         parser.advance()
-        ty = PointerTypeExpr { kind: Pointer, span: parser.convert_span(token.span) }
+        ty = PointerTypeExpr { kind: Pointer, span: copy_span(token.span) }
     } elif token.kind == Ident {
         parser.advance()
-        let name = token.lexeme
-        let start = parser.convert_span(token.span)
+        let name = token.lexeme.slice(0, token.lexeme.len())
+        let named = token.lexeme.slice(0, token.lexeme.len())
+        let start = copy_span(token.span)
         if parser.match_kind(LBracket) {
             let mut args = []
             while !parser.is_eof() && !parser.check(RBracket) {
-                let arg = parse_type_expr(parser)
-                if arg != None {
-                    args.push(arg)
+                match parse_type_expr(parser) {
+                    Some(arg) => {
+                        args.push(arg)
+                    }
+                    None => { }
                 }
                 if !parser.match_kind(Comma) {
                     break
@@ -36,13 +54,17 @@ fn parse_type_expr(parser) {
                 name: name,
                 args: args
             }
-        } elif name == "_" {
+        } elif named == "_" {
             ty = InferTypeExpr { kind: Infer, span: start }
         } else {
-            ty = NamedTypeExpr { kind: Named, span: start, name: name }
+            ty = NamedTypeExpr { kind: Named, span: start, name: named.slice(0, named.len()) }
         }
     } else {
-        parser.error_unexpected(token, "type expression")
+        parser.error_unexpected(Token {
+            kind: token.kind,
+            lexeme: token.lexeme.slice(0, token.lexeme.len()),
+            span: copy_span(token.span)
+        }, "type expression")
         return None
     }
 
@@ -63,9 +85,11 @@ fn parse_fn_type_expr(parser, start) {
     parser.expect(LParen, "(")
     let mut params = []
     while !parser.is_eof() && !parser.check(RParen) {
-        let param = parse_type_expr(parser)
-        if param != None {
-            params.push(param)
+        match parse_type_expr(parser) {
+            Some(param) => {
+                params.push(param)
+            }
+            None => { }
         }
         if !parser.match_kind(Comma) {
             break
@@ -77,9 +101,10 @@ fn parse_fn_type_expr(parser, start) {
     if ret == None {
         return None
     }
+    let ret_span = copy_span(ret.span)
     return FnTypeExpr {
         kind: Fn,
-        span: parser.merge_spans(start, ret.span),
+        span: parser.merge_spans(start, ret_span),
         params: params,
         ret: ret
     }
@@ -89,9 +114,11 @@ fn parse_paren_type_expr(parser, start) {
     parser.expect(LParen, "(")
     let mut params = []
     while !parser.is_eof() && !parser.check(RParen) {
-        let param = parse_type_expr(parser)
-        if param != None {
-            params.push(param)
+        match parse_type_expr(parser) {
+            Some(param) => {
+                params.push(param)
+            }
+            None => { }
         }
         if !parser.match_kind(Comma) {
             break
@@ -103,15 +130,13 @@ fn parse_paren_type_expr(parser, start) {
         if ret == None {
             return None
         }
+        let ret_span = copy_span(ret.span)
         return FnTypeExpr {
             kind: Fn,
-            span: parser.merge_spans(start, ret.span),
+            span: parser.merge_spans(start, ret_span),
             params: params,
             ret: ret
         }
-    }
-    if params.len() == 1 {
-        return params[0]
     }
     let token = parser.current_token()
     parser.error_unexpected(token, "-> after parenthesized parameter types")

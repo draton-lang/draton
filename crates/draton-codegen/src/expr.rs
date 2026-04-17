@@ -8,6 +8,106 @@ use crate::error::CodeGenError;
 use crate::mangle::mangle_class;
 
 impl<'ctx> CodeGen<'ctx> {
+    fn windows_indirect_string_abi() -> bool {
+        cfg!(all(target_os = "windows", target_arch = "x86_64"))
+    }
+
+    fn runtime_string_arg_ptr(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        name: &str,
+    ) -> Result<PointerValue<'ctx>, CodeGenError> {
+        let function = self.current_function()?;
+        let slot = self.create_entry_alloca(function, self.string_type.into(), name)?;
+        self.build_store(slot, value)?;
+        Ok(slot)
+    }
+
+    fn runtime_string_out_slot(&self, name: &str) -> Result<PointerValue<'ctx>, CodeGenError> {
+        let function = self.current_function()?;
+        self.create_entry_alloca(function, self.string_type.into(), name)
+    }
+
+    fn runtime_call_string_result(
+        &mut self,
+        function: inkwell::values::FunctionValue<'ctx>,
+        string_args: &[BasicValueEnum<'ctx>],
+        scalar_args: &[BasicValueEnum<'ctx>],
+        name: &str,
+    ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
+        if !Self::windows_indirect_string_abi() {
+            let args = string_args
+                .iter()
+                .chain(scalar_args.iter())
+                .copied()
+                .map(BasicMetadataValueEnum::from)
+                .collect::<Vec<_>>();
+            let call = self
+                .builder
+                .build_call(function, &args, name)
+                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+            return call.try_as_basic_value().basic().ok_or_else(|| {
+                CodeGenError::Llvm(format!("{name} returned no value under direct ABI"))
+            });
+        }
+
+        let out = self.runtime_string_out_slot(&format!("{name}.out"))?;
+        let mut args = vec![out.into()];
+        for (index, value) in string_args.iter().copied().enumerate() {
+            args.push(
+                self.runtime_string_arg_ptr(value, &format!("{name}.arg.{index}"))?
+                    .into(),
+            );
+        }
+        args.extend(
+            scalar_args
+                .iter()
+                .copied()
+                .map(BasicMetadataValueEnum::from),
+        );
+        let _ = self
+            .builder
+            .build_call(function, &args, name)
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        self.build_load(out, &format!("{name}.value"))
+    }
+
+    fn runtime_call_scalar_with_string_args(
+        &mut self,
+        function: inkwell::values::FunctionValue<'ctx>,
+        string_args: &[BasicValueEnum<'ctx>],
+        scalar_args: &[BasicValueEnum<'ctx>],
+        name: &str,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, CodeGenError> {
+        let mut args = Vec::new();
+        if Self::windows_indirect_string_abi() {
+            for (index, value) in string_args.iter().copied().enumerate() {
+                args.push(
+                    self.runtime_string_arg_ptr(value, &format!("{name}.arg.{index}"))?
+                        .into(),
+                );
+            }
+        } else {
+            args.extend(
+                string_args
+                    .iter()
+                    .copied()
+                    .map(BasicMetadataValueEnum::from),
+            );
+        }
+        args.extend(
+            scalar_args
+                .iter()
+                .copied()
+                .map(BasicMetadataValueEnum::from),
+        );
+        let call = self
+            .builder
+            .build_call(function, &args, name)
+            .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+        Ok(call.try_as_basic_value().basic())
+    }
+
     pub(crate) fn emit_const_expr(
         &mut self,
         expr: &TypedExpr,
@@ -52,6 +152,13 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             TypedExprKind::Ident(name) => {
+                if let Type::Named(enum_name, type_args) = &expr.ty {
+                    if type_args.is_empty() {
+                        if let Some(tag) = self.enum_variant_tag(enum_name, name) {
+                            return Ok(Some(self.context.i64_type().const_int(tag, false).into()));
+                        }
+                    }
+                }
                 if let Some(ptr) = self.lookup_local(name) {
                     self.build_typed_load(ptr, self.llvm_basic_type(&expr.ty)?, name)
                         .map(Some)
@@ -187,13 +294,8 @@ impl<'ctx> CodeGen<'ctx> {
                 TypedFStrPart::Literal(text) => self.emit_string_literal(text)?,
                 TypedFStrPart::Interp(expr) => self.emit_coerce_to_string(expr)?,
             };
-            let call = self
-                .builder
-                .build_call(concat, &[rendered.into(), piece.into()], "fstr.concat")
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-            rendered = call.try_as_basic_value().basic().ok_or_else(|| {
-                CodeGenError::UnsupportedExpr("str_concat returned no value".to_string())
-            })?;
+            rendered =
+                self.runtime_call_string_result(concat, &[rendered, piece], &[], "fstr.concat")?;
         }
         Ok(rendered)
     }
@@ -296,19 +398,16 @@ impl<'ctx> CodeGen<'ctx> {
                 .get_function("draton_str_eq")
                 .ok_or_else(|| CodeGenError::MissingSymbol("draton_str_eq".to_string()))?;
             let equal = self
-                .builder
-                .build_call(
+                .runtime_call_scalar_with_string_args(
                     function,
-                    &[lhs_value.into(), rhs_value.into()],
+                    &[lhs_value, rhs_value],
+                    &[],
                     if op == BinOp::Eq {
                         "str.eq"
                     } else {
                         "str.ne.eq"
                     },
-                )
-                .map_err(|err| CodeGenError::Llvm(err.to_string()))?
-                .try_as_basic_value()
-                .basic()
+                )?
                 .ok_or_else(|| CodeGenError::Llvm("draton_str_eq returned void".to_string()))?
                 .into_int_value();
             let value = if op == BinOp::Eq {
@@ -667,9 +766,16 @@ impl<'ctx> CodeGen<'ctx> {
                 .module
                 .get_function(runtime_symbol)
                 .ok_or_else(|| CodeGenError::MissingSymbol(runtime_symbol.to_string()))?;
+            let call_args = if Self::windows_indirect_string_abi() {
+                vec![self
+                    .runtime_string_arg_ptr(value, &format!("{runtime_symbol}.arg"))?
+                    .into()]
+            } else {
+                vec![value.into()]
+            };
             let _ = self
                 .builder
-                .build_call(function, &[value.into()], runtime_symbol)
+                .build_call(function, &call_args, runtime_symbol)
                 .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
             return Ok(None);
         }
@@ -973,19 +1079,13 @@ impl<'ctx> CodeGen<'ctx> {
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let call = self
-                    .builder
-                    .build_call(
-                        function,
-                        &values
-                            .iter()
-                            .copied()
-                            .map(BasicMetadataValueEnum::from)
-                            .collect::<Vec<_>>(),
-                        "str.slice",
-                    )
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                let result = self.runtime_call_string_result(
+                    function,
+                    &[values[0]],
+                    &values[1..],
+                    "str.slice",
+                )?;
+                Ok(Some(Some(result)))
             }
             "str_concat" => {
                 let function = self
@@ -1002,19 +1102,9 @@ impl<'ctx> CodeGen<'ctx> {
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let call = self
-                    .builder
-                    .build_call(
-                        function,
-                        &values
-                            .iter()
-                            .copied()
-                            .map(BasicMetadataValueEnum::from)
-                            .collect::<Vec<_>>(),
-                        "str.concat",
-                    )
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                let result =
+                    self.runtime_call_string_result(function, &values, &[], "str.concat")?;
+                Ok(Some(Some(result)))
             }
             "int_to_string" => {
                 let function = self
@@ -1032,11 +1122,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("int_to_string arg missing value".to_string())
                     })?;
-                let call = self
-                    .builder
-                    .build_call(function, &[value.into()], "int.to_string")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                let result =
+                    self.runtime_call_string_result(function, &[], &[value], "int.to_string")?;
+                Ok(Some(Some(result)))
             }
             "ascii_char" => {
                 let function = self
@@ -1052,11 +1140,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("ascii_char arg missing value".to_string())
                     })?;
-                let call = self
-                    .builder
-                    .build_call(function, &[value.into()], "ascii.char")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                let result =
+                    self.runtime_call_string_result(function, &[], &[value], "ascii.char")?;
+                Ok(Some(Some(result)))
             }
             "read_file" => {
                 let function = self
@@ -1070,11 +1156,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("read_file arg missing value".to_string())
                     })?;
-                let call = self
-                    .builder
-                    .build_call(function, &[value.into()], "read.file")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                let result =
+                    self.runtime_call_string_result(function, &[value], &[], "read.file")?;
+                Ok(Some(Some(result)))
             }
             "string_parse_int" => {
                 let function = self
@@ -1094,11 +1178,13 @@ impl<'ctx> CodeGen<'ctx> {
                             "string_parse_int arg missing value".to_string(),
                         )
                     })?;
-                let call = self
-                    .builder
-                    .build_call(function, &[value.into()], "string.parse_int")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                let result = self.runtime_call_scalar_with_string_args(
+                    function,
+                    &[value],
+                    &[],
+                    "string.parse_int",
+                )?;
+                Ok(Some(result))
             }
             "string_parse_int_radix" => {
                 let function = self
@@ -1117,19 +1203,13 @@ impl<'ctx> CodeGen<'ctx> {
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let call = self
-                    .builder
-                    .build_call(
-                        function,
-                        &values
-                            .iter()
-                            .copied()
-                            .map(BasicMetadataValueEnum::from)
-                            .collect::<Vec<_>>(),
-                        "string.parse_int_radix",
-                    )
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                let result = self.runtime_call_scalar_with_string_args(
+                    function,
+                    &[values[0]],
+                    &values[1..],
+                    "string.parse_int_radix",
+                )?;
+                Ok(Some(result))
             }
             "string_parse_float" => {
                 let function = self
@@ -1149,11 +1229,13 @@ impl<'ctx> CodeGen<'ctx> {
                             "string_parse_float arg missing value".to_string(),
                         )
                     })?;
-                let call = self
-                    .builder
-                    .build_call(function, &[value.into()], "string.parse_float")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                let result = self.runtime_call_scalar_with_string_args(
+                    function,
+                    &[value],
+                    &[],
+                    "string.parse_float",
+                )?;
+                Ok(Some(result))
             }
             "cli_argc" => {
                 let function = self
@@ -1178,11 +1260,21 @@ impl<'ctx> CodeGen<'ctx> {
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("cli_arg arg missing value".to_string())
                     })?;
-                let call = self
-                    .builder
-                    .build_call(function, &[value.into()], "cli.arg")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                if Self::windows_indirect_string_abi() {
+                    let out = self.runtime_string_out_slot("cli.arg.out")?;
+                    let _ = self
+                        .builder
+                        .build_call(function, &[out.into(), value.into()], "cli.arg")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    let result = self.build_load(out, "cli.arg.value")?;
+                    Ok(Some(Some(result)))
+                } else {
+                    let call = self
+                        .builder
+                        .build_call(function, &[value.into()], "cli.arg")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    Ok(Some(call.try_as_basic_value().basic()))
+                }
             }
             "host_ast_dump" => {
                 let function = self
@@ -1200,11 +1292,22 @@ impl<'ctx> CodeGen<'ctx> {
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("host_ast_dump arg missing value".to_string())
                     })?;
-                let call = self
-                    .builder
-                    .build_call(function, &[value.into()], "host.ast_dump")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                if Self::windows_indirect_string_abi() {
+                    let out = self.runtime_string_out_slot("host.ast_dump.out")?;
+                    let path = self.runtime_string_arg_ptr(value, "host.ast_dump.arg")?;
+                    let _ = self
+                        .builder
+                        .build_call(function, &[out.into(), path.into()], "host.ast_dump")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    let result = self.build_load(out, "host.ast_dump.value")?;
+                    Ok(Some(Some(result)))
+                } else {
+                    let call = self
+                        .builder
+                        .build_call(function, &[value.into()], "host.ast_dump")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    Ok(Some(call.try_as_basic_value().basic()))
+                }
             }
             "host_type_dump" => {
                 let function = self
@@ -1224,11 +1327,22 @@ impl<'ctx> CodeGen<'ctx> {
                             "host_type_dump arg missing value".to_string(),
                         )
                     })?;
-                let call = self
-                    .builder
-                    .build_call(function, &[value.into()], "host.type_dump")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                if Self::windows_indirect_string_abi() {
+                    let out = self.runtime_string_out_slot("host.type_dump.out")?;
+                    let path = self.runtime_string_arg_ptr(value, "host.type_dump.arg")?;
+                    let _ = self
+                        .builder
+                        .build_call(function, &[out.into(), path.into()], "host.type_dump")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    let result = self.build_load(out, "host.type_dump.value")?;
+                    Ok(Some(Some(result)))
+                } else {
+                    let call = self
+                        .builder
+                        .build_call(function, &[value.into()], "host.type_dump")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    Ok(Some(call.try_as_basic_value().basic()))
+                }
             }
             "host_lex_json" => {
                 let function = self
@@ -1246,11 +1360,22 @@ impl<'ctx> CodeGen<'ctx> {
                     .ok_or_else(|| {
                         CodeGenError::UnsupportedExpr("host_lex_json arg missing value".to_string())
                     })?;
-                let call = self
-                    .builder
-                    .build_call(function, &[value.into()], "host.lex_json")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                if Self::windows_indirect_string_abi() {
+                    let out = self.runtime_string_out_slot("host.lex_json.out")?;
+                    let path = self.runtime_string_arg_ptr(value, "host.lex_json.arg")?;
+                    let _ = self
+                        .builder
+                        .build_call(function, &[out.into(), path.into()], "host.lex_json")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    let result = self.build_load(out, "host.lex_json.value")?;
+                    Ok(Some(Some(result)))
+                } else {
+                    let call = self
+                        .builder
+                        .build_call(function, &[value.into()], "host.lex_json")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    Ok(Some(call.try_as_basic_value().basic()))
+                }
             }
             "host_parse_json" => {
                 let function = self
@@ -1270,11 +1395,22 @@ impl<'ctx> CodeGen<'ctx> {
                             "host_parse_json arg missing value".to_string(),
                         )
                     })?;
-                let call = self
-                    .builder
-                    .build_call(function, &[value.into()], "host.parse_json")
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                if Self::windows_indirect_string_abi() {
+                    let out = self.runtime_string_out_slot("host.parse_json.out")?;
+                    let path = self.runtime_string_arg_ptr(value, "host.parse_json.arg")?;
+                    let _ = self
+                        .builder
+                        .build_call(function, &[out.into(), path.into()], "host.parse_json")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    let result = self.build_load(out, "host.parse_json.value")?;
+                    Ok(Some(Some(result)))
+                } else {
+                    let call = self
+                        .builder
+                        .build_call(function, &[value.into()], "host.parse_json")
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    Ok(Some(call.try_as_basic_value().basic()))
+                }
             }
             "host_type_json" => {
                 let function = self
@@ -1293,19 +1429,34 @@ impl<'ctx> CodeGen<'ctx> {
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let call = self
-                    .builder
-                    .build_call(
-                        function,
-                        &values
-                            .iter()
-                            .copied()
-                            .map(BasicMetadataValueEnum::from)
-                            .collect::<Vec<_>>(),
-                        "host.type_json",
-                    )
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                if Self::windows_indirect_string_abi() {
+                    let out = self.runtime_string_out_slot("host.type_json.out")?;
+                    let path = self.runtime_string_arg_ptr(values[0], "host.type_json.path")?;
+                    let _ = self
+                        .builder
+                        .build_call(
+                            function,
+                            &[out.into(), path.into(), values[1].into()],
+                            "host.type_json",
+                        )
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    let result = self.build_load(out, "host.type_json.value")?;
+                    Ok(Some(Some(result)))
+                } else {
+                    let call = self
+                        .builder
+                        .build_call(
+                            function,
+                            &values
+                                .iter()
+                                .copied()
+                                .map(BasicMetadataValueEnum::from)
+                                .collect::<Vec<_>>(),
+                            "host.type_json",
+                        )
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    Ok(Some(call.try_as_basic_value().basic()))
+                }
             }
             "host_build_json" => {
                 let function = self
@@ -1324,19 +1475,47 @@ impl<'ctx> CodeGen<'ctx> {
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
-                let call = self
-                    .builder
-                    .build_call(
-                        function,
-                        &values
-                            .iter()
-                            .copied()
-                            .map(BasicMetadataValueEnum::from)
-                            .collect::<Vec<_>>(),
-                        "host.build_json",
-                    )
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(Some(call.try_as_basic_value().basic()))
+                if Self::windows_indirect_string_abi() {
+                    let out = self.runtime_string_out_slot("host.build_json.out")?;
+                    let source =
+                        self.runtime_string_arg_ptr(values[0], "host.build_json.source")?;
+                    let output =
+                        self.runtime_string_arg_ptr(values[1], "host.build_json.output")?;
+                    let mode = self.runtime_string_arg_ptr(values[2], "host.build_json.mode")?;
+                    let target =
+                        self.runtime_string_arg_ptr(values[4], "host.build_json.target")?;
+                    let _ = self
+                        .builder
+                        .build_call(
+                            function,
+                            &[
+                                out.into(),
+                                source.into(),
+                                output.into(),
+                                mode.into(),
+                                values[3].into(),
+                                target.into(),
+                            ],
+                            "host.build_json",
+                        )
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    let result = self.build_load(out, "host.build_json.value")?;
+                    Ok(Some(Some(result)))
+                } else {
+                    let call = self
+                        .builder
+                        .build_call(
+                            function,
+                            &values
+                                .iter()
+                                .copied()
+                                .map(BasicMetadataValueEnum::from)
+                                .collect::<Vec<_>>(),
+                            "host.build_json",
+                        )
+                        .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
+                    Ok(Some(call.try_as_basic_value().basic()))
+                }
             }
             _ => Ok(None),
         }
@@ -1476,15 +1655,13 @@ impl<'ctx> CodeGen<'ctx> {
                             "String.slice end arg missing value".to_string(),
                         )
                     })?;
-                let call = self
-                    .builder
-                    .build_call(
-                        function,
-                        &[target_value.into(), start.into(), end.into()],
-                        "str.slice",
-                    )
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(call.try_as_basic_value().basic())
+                let result = self.runtime_call_string_result(
+                    function,
+                    &[target_value.into()],
+                    &[start, end],
+                    "str.slice",
+                )?;
+                Ok(Some(result))
             }
             "contains" => {
                 let function =
@@ -1502,15 +1679,12 @@ impl<'ctx> CodeGen<'ctx> {
                             "String.contains arg missing value".to_string(),
                         )
                     })?;
-                let call = self
-                    .builder
-                    .build_call(
-                        function,
-                        &[target_value.into(), needle.into()],
-                        "str.contains",
-                    )
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(call.try_as_basic_value().basic())
+                self.runtime_call_scalar_with_string_args(
+                    function,
+                    &[target_value.into(), needle],
+                    &[],
+                    "str.contains",
+                )
             }
             "starts_with" => {
                 let function = self
@@ -1530,15 +1704,12 @@ impl<'ctx> CodeGen<'ctx> {
                             "String.starts_with arg missing value".to_string(),
                         )
                     })?;
-                let call = self
-                    .builder
-                    .build_call(
-                        function,
-                        &[target_value.into(), prefix.into()],
-                        "str.starts",
-                    )
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(call.try_as_basic_value().basic())
+                self.runtime_call_scalar_with_string_args(
+                    function,
+                    &[target_value.into(), prefix],
+                    &[],
+                    "str.starts",
+                )
             }
             "replace" => {
                 let function = self
@@ -1563,15 +1734,13 @@ impl<'ctx> CodeGen<'ctx> {
                             "String.replace to arg missing value".to_string(),
                         )
                     })?;
-                let call = self
-                    .builder
-                    .build_call(
-                        function,
-                        &[target_value.into(), from.into(), to.into()],
-                        "str.replace",
-                    )
-                    .map_err(|err| CodeGenError::Llvm(err.to_string()))?;
-                Ok(call.try_as_basic_value().basic())
+                let result = self.runtime_call_string_result(
+                    function,
+                    &[target_value.into(), from, to],
+                    &[],
+                    "str.replace",
+                )?;
+                Ok(Some(result))
             }
             _ => Err(CodeGenError::UnsupportedExpr(format!(
                 "unsupported string method {method}"
@@ -1705,6 +1874,13 @@ impl<'ctx> CodeGen<'ctx> {
         field: &str,
         field_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>, CodeGenError> {
+        if let Type::Named(enum_name, type_args) = &target.ty {
+            if type_args.is_empty() {
+                if let Some(tag) = self.enum_variant_tag(enum_name, field) {
+                    return Ok(self.context.i64_type().const_int(tag, false).into());
+                }
+            }
+        }
         let ptr = self.emit_field_ptr(target, field)?;
         self.build_typed_load(ptr, self.llvm_basic_type(field_ty)?, field)
     }

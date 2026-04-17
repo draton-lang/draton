@@ -13,7 +13,11 @@ pub mod stmt;
 pub mod types;
 pub mod vtable;
 
-#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+#[cfg(all(
+    target_os = "windows",
+    target_arch = "x86_64",
+    feature = "windows-target-stubs"
+))]
 mod windows_target_stubs;
 
 pub use codegen::{BuildMode, CodeGen};

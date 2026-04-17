@@ -9,25 +9,13 @@ enum MatchArmBodyKind {
 
 class MatchArmBody {
     let kind
-
-    @type {
-        kind: MatchArmBodyKind
-    }
-}
-
-class ExprMatchArmBody extends MatchArmBody {
     let expr
-
-    @type {
-        expr: Expr
-    }
-}
-
-class BlockMatchArmBody extends MatchArmBody {
     let block
 
     @type {
-        block: Block
+        kind: MatchArmBodyKind
+        expr: Option[Expr]
+        block: Option[Block]
     }
 }
 

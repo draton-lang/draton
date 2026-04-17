@@ -1,161 +1,259 @@
-import { Expr, IntLitExpr, FloatLitExpr, StrLitExpr, FStrLitExpr, BoolLitExpr, NoneLitExpr, IdentExpr, ArrayExpr, MapExpr, MapEntry, SetExpr, TupleExpr, BinOpExpr, UnOpExpr, CallExpr, MethodCallExpr, FieldExpr, IndexExpr, LambdaExpr, CastExpr, MatchExpr, OkExpr, ErrExpr, NullishExpr, ChanExpr } from ast.expr.expr
+import { Expr, ExprKind, MapEntry } from ast.expr.expr
 import { BinOp, UnOp } from ast.expr.ops
-import { LiteralFStrPart, InterpFStrPart } from ast.expr.fstr
-import { MatchArm, ExprMatchArmBody, BlockMatchArmBody } from ast.expr.matching
+import { FStrPart, FStrPartKind } from ast.expr.fstr
+import { MatchArm, MatchArmBody, MatchArmBodyKind } from ast.expr.matching
 import { ParseError } from parser.errors
 import { Lexer } from lexer.lexer
+import { Token } from lexer.token
 import { Parser } from parser.parser
+import { Span } from ast.span
+
+@type {
+    blank_expr: (ExprKind, Span) -> Expr
+    blank_fstr_part: (FStrPartKind) -> FStrPart
+    blank_match_arm_body: (MatchArmBodyKind) -> MatchArmBody
+    copy_span: (Span) -> Span
+    copy_token: (Token) -> Token
+    merge_span_bounds: (Span, Span) -> Span
+    parse_expr: (Parser) -> Option[Expr]
+    parse_nullish: (Parser) -> Option[Expr]
+    parse_or: (Parser) -> Option[Expr]
+    parse_and: (Parser) -> Option[Expr]
+    parse_equality: (Parser) -> Option[Expr]
+    parse_comparison: (Parser) -> Option[Expr]
+    parse_range: (Parser) -> Option[Expr]
+    parse_bit_or_xor: (Parser) -> Option[Expr]
+    parse_bit_and: (Parser) -> Option[Expr]
+    parse_shift: (Parser) -> Option[Expr]
+    parse_additive: (Parser) -> Option[Expr]
+    parse_multiplicative: (Parser) -> Option[Expr]
+    parse_cast: (Parser) -> Option[Expr]
+    parse_unary: (Parser) -> Option[Expr]
+    parse_postfix: (Parser) -> Option[Expr]
+    looks_like_class_literal: (Parser) -> Bool
+    looks_like_type_arg_list: (Parser) -> Bool
+    attach_type_arg_suffix: (Parser, Expr) -> Option[Expr]
+    parse_class_literal: (Parser, Expr) -> Option[Expr]
+    parse_argument_list: (Parser) -> Option[Array[Expr]]
+    parse_primary: (Parser) -> Option[Expr]
+    parse_int_literal: (Parser, Token) -> Option[Expr]
+    parse_radix_int_literal: (Parser, Token, Int, Int) -> Option[Expr]
+    parse_float_literal: (Parser, Token) -> Option[Expr]
+    parse_string_literal: (Parser, Token) -> Option[Expr]
+    parse_fstring_literal: (Parser, Token) -> Option[Expr]
+    parse_bool_literal: (Parser, Token) -> Option[Expr]
+    parse_array_literal: (Parser) -> Option[Expr]
+    parse_brace_literal: (Parser) -> Option[Expr]
+    parse_paren_expr_or_tuple: (Parser) -> Option[Expr]
+    parse_lambda_expr: (Parser) -> Option[Expr]
+    parse_match_expr: (Parser) -> Option[Expr]
+    parse_chan_expr: (Parser) -> Option[Expr]
+    push_invalid_expr: (Parser, Int, Int) -> Unit
+    parse_int_base: (String, Int, Int) -> Option[Int]
+    parse_decimal_float: (String) -> Option[Float]
+    digit_value: (String) -> Int
+    is_uppercase_ident: (String) -> Bool
+    string_char_at: (String, Int) -> String
+}
+
+fn copy_span(span) {
+    return Span { start: span.start, end: span.end, line: span.line, col: span.col }
+}
+
+fn copy_token(token) {
+    return Token {
+        kind: token.kind,
+        lexeme: token.lexeme.slice(0, token.lexeme.len()),
+        span: copy_span(token.span)
+    }
+}
+
+fn merge_span_bounds(start, end) {
+    return Span { start: start.start, end: end.end, line: start.line, col: start.col }
+}
+
+fn blank_expr(kind, span) {
+    return Expr {
+        kind: kind,
+        span: span,
+        int_value: None,
+        float_value: None,
+        string_value: None,
+        bool_value: None,
+        parts: None,
+        name: None,
+        items: None,
+        entries: None,
+        left: None,
+        op: None,
+        right: None,
+        expr: None,
+        callee: None,
+        args: None,
+        target: None,
+        index: None,
+        params: None,
+        ty: None,
+        subject: None,
+        arms: None,
+        value: None
+    }
+}
+
+fn blank_fstr_part(kind) {
+    return FStrPart {
+        kind: kind,
+        literal: None,
+        expr: None
+    }
+}
+
+fn blank_match_arm_body(kind) {
+    return MatchArmBody {
+        kind: kind,
+        expr: None,
+        block: None
+    }
+}
 
 fn parse_expr(parser) {
     return parse_nullish(parser)
 }
 
 fn parse_nullish(parser) {
-    let mut expr = parse_or(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_or(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.match_kind(QuestionQuestion) {
-        let rhs = parse_or(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_or(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = NullishExpr {
-            kind: Nullish,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            right: rhs
-        }
+        let mut next = blank_expr(Nullish, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_or(parser) {
-    let mut expr = parse_and(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_and(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.current_kind() == PipePipe {
         parser.advance()
-        let rhs = parse_and(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_and(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = BinOpExpr {
-            kind: BinOp,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            op: Or,
-            right: rhs
-        }
+        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.op = Some(Or)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_and(parser) {
-    let mut expr = parse_equality(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_equality(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.current_kind() == AmpAmp {
         parser.advance()
-        let rhs = parse_equality(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_equality(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = BinOpExpr {
-            kind: BinOp,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            op: And,
-            right: rhs
-        }
+        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.op = Some(And)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_equality(parser) {
-    let mut expr = parse_comparison(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_comparison(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.current_kind() == EqEq || parser.current_kind() == BangEq {
-        let mut op = Eq
+        let mut op = CmpEq
         if parser.current_kind() == BangEq {
-            op = Ne
+            op = CmpNe
         }
         parser.advance()
-        let rhs = parse_comparison(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_comparison(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = BinOpExpr {
-            kind: BinOp,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            op: op,
-            right: rhs
-        }
+        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.op = Some(op)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_comparison(parser) {
-    let mut expr = parse_range(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_range(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.current_kind() == Lt || parser.current_kind() == LtEq || parser.current_kind() == Gt || parser.current_kind() == GtEq {
-        let mut op = Lt
+        let mut op = CmpLt
         if parser.current_kind() == LtEq {
-            op = Le
+            op = CmpLe
         } elif parser.current_kind() == Gt {
-            op = Gt
+            op = CmpGt
         } elif parser.current_kind() == GtEq {
-            op = Ge
+            op = CmpGe
         }
         parser.advance()
-        let rhs = parse_range(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_range(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = BinOpExpr {
-            kind: BinOp,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            op: op,
-            right: rhs
-        }
+        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.op = Some(op)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_range(parser) {
-    let mut expr = parse_bit_or_xor(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_bit_or_xor(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.current_kind() == DotDot {
         parser.advance()
-        let rhs = parse_bit_or_xor(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_bit_or_xor(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = BinOpExpr {
-            kind: BinOp,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            op: Range,
-            right: rhs
-        }
+        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.op = Some(RangeOp)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_bit_or_xor(parser) {
-    let mut expr = parse_bit_and(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_bit_and(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.current_kind() == Pipe || parser.current_kind() == Caret {
         let mut op = BitOr
@@ -163,47 +261,43 @@ fn parse_bit_or_xor(parser) {
             op = BitXor
         }
         parser.advance()
-        let rhs = parse_bit_and(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_bit_and(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = BinOpExpr {
-            kind: BinOp,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            op: op,
-            right: rhs
-        }
+        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.op = Some(op)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_bit_and(parser) {
-    let mut expr = parse_shift(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_shift(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.current_kind() == Amp {
         parser.advance()
-        let rhs = parse_shift(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_shift(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = BinOpExpr {
-            kind: BinOp,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            op: BitAnd,
-            right: rhs
-        }
+        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.op = Some(BitAnd)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_shift(parser) {
-    let mut expr = parse_additive(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_additive(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.current_kind() == LtLt || parser.current_kind() == GtGt {
         let mut op = Shl
@@ -211,25 +305,23 @@ fn parse_shift(parser) {
             op = Shr
         }
         parser.advance()
-        let rhs = parse_additive(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_additive(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = BinOpExpr {
-            kind: BinOp,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            op: op,
-            right: rhs
-        }
+        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.op = Some(op)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_additive(parser) {
-    let mut expr = parse_multiplicative(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_multiplicative(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.current_kind() == Plus || parser.current_kind() == Minus {
         let mut op = Add
@@ -237,25 +329,23 @@ fn parse_additive(parser) {
             op = Sub
         }
         parser.advance()
-        let rhs = parse_multiplicative(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_multiplicative(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = BinOpExpr {
-            kind: BinOp,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            op: op,
-            right: rhs
-        }
+        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.op = Some(op)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_multiplicative(parser) {
-    let mut expr = parse_cast(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_cast(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.current_kind() == Star || parser.current_kind() == Slash || parser.current_kind() == Percent {
         let mut op = Mul
@@ -265,48 +355,44 @@ fn parse_multiplicative(parser) {
             op = Mod
         }
         parser.advance()
-        let rhs = parse_cast(parser)
-        if rhs == None {
-            return None
+        let rhs = match parse_cast(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = BinOpExpr {
-            kind: BinOp,
-            span: parser.merge_spans(expr.span, rhs.span),
-            left: expr,
-            op: op,
-            right: rhs
-        }
+        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        next.left = Some(expr)
+        next.op = Some(op)
+        next.right = Some(rhs)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_cast(parser) {
-    let mut expr = parse_unary(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_unary(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     while parser.match_kind(As) {
-        let ty = parser.parse_type_expr()
-        if ty == None {
-            return None
+        let ty = match parser.parse_type_expr() {
+            Some(value) => { value }
+            None => { return None }
         }
-        expr = CastExpr {
-            kind: Cast,
-            span: parser.merge_spans(expr.span, ty.span),
-            expr: expr,
-            ty: ty
-        }
+        let mut next = blank_expr(Cast, parser.merge_spans(expr.span, ty.span))
+        next.expr = Some(expr)
+        next.ty = Some(ty)
+        expr = next
     }
-    return expr
+    return Some(expr)
 }
 
 fn parse_unary(parser) {
     let token = parser.current_token()
     if token.kind == Minus || token.kind == Bang || token.kind == Tilde || token.kind == Amp || token.kind == Star {
         parser.advance()
-        let expr = parse_unary(parser)
-        if expr == None {
-            return None
+        let expr = match parse_unary(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
         let mut op = Neg
         if token.kind == Bang {
@@ -318,103 +404,102 @@ fn parse_unary(parser) {
         } elif token.kind == Star {
             op = Deref
         }
-        return UnOpExpr {
-            kind: UnOp,
-            span: parser.merge_spans(parser.convert_span(token.span), expr.span),
-            op: op,
-            expr: expr
-        }
+        let mut out = blank_expr(UnOp, parser.merge_spans(parser.convert_span(token.span), expr.span))
+        out.op = Some(op)
+        out.expr = Some(expr)
+        return Some(out)
     }
     return parse_postfix(parser)
 }
 
 fn parse_postfix(parser) {
-    let mut expr = parse_primary(parser)
-    if expr == None {
-        return None
+    let mut expr = match parse_primary(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
-
     while true {
-        if expr.kind == Ident && is_uppercase_ident(expr.name) && parser.check(LBracket) && looks_like_type_arg_list(parser) {
-            expr = attach_type_arg_suffix(parser, expr)
-            if expr == None {
-                return None
+        let mut progressed = false
+        if expr.kind == ExprIdent && is_uppercase_ident(expr.name) && parser.check(LBracket) && looks_like_type_arg_list(parser) {
+            expr = match attach_type_arg_suffix(parser, expr) {
+                Some(value) => { value }
+                None => { return None }
             }
-            continue
+            progressed = true
         }
 
-        if expr.kind == Ident && looks_like_class_literal(parser) {
-            expr = parse_class_literal(parser, expr)
-            if expr == None {
-                return None
+        if !progressed && expr.kind == ExprIdent && looks_like_class_literal(parser) {
+            expr = match parse_class_literal(parser, expr) {
+                Some(value) => { value }
+                None => { return None }
             }
-            continue
+            progressed = true
         }
 
-        if parser.match_kind(LParen) {
-            let args = parse_argument_list(parser)
-            if args == None {
-                return None
+        if !progressed && parser.match_kind(LParen) {
+            let args = match parse_argument_list(parser) {
+                Some(value) => { value }
+                None => { return None }
             }
             let mut end = expr.span
             let prev = parser.previous_token()
-            if prev != None {
-                end = parser.convert_span(prev.span)
-            }
+            end = parser.convert_span(prev.span)
             let span = parser.merge_spans(expr.span, end)
 
-            if expr.kind == Field {
-                expr = MethodCallExpr {
-                    kind: MethodCall,
-                    span: span,
-                    target: expr.target,
-                    name: expr.name,
-                    args: args
-                }
-            } elif expr.kind == Ident && expr.name == "Ok" && args.len() == 1 {
-                expr = OkExpr { kind: Ok, span: span, value: args[0] }
-            } elif expr.kind == Ident && expr.name == "Err" && args.len() == 1 {
-                expr = ErrExpr { kind: Err, span: span, value: args[0] }
+            if expr.kind == ExprField {
+                let mut next = blank_expr(MethodCall, span)
+                next.target = expr.target
+                next.name = expr.name
+                next.args = Some(args)
+                expr = next
+            } elif expr.kind == ExprIdent && expr.name == "Ok" && args.len() == 1 {
+                let mut next = blank_expr(Ok, span)
+                next.value = Some(args[0])
+                expr = next
+            } elif expr.kind == ExprIdent && expr.name == "Err" && args.len() == 1 {
+                let mut next = blank_expr(Err, span)
+                next.value = Some(args[0])
+                expr = next
             } else {
-                expr = CallExpr { kind: Call, span: span, callee: expr, args: args }
+                let mut next = blank_expr(Call, span)
+                next.callee = Some(expr)
+                next.args = Some(args)
+                expr = next
             }
-            continue
+            progressed = true
         }
 
-        if parser.match_kind(Dot) {
-            let name_token = parser.consume_ident("field or method name")
-            if name_token == None {
-                return None
+        if !progressed && parser.match_kind(Dot) {
+            let name_token = match parser.consume_ident("field or method name") {
+                Some(value) => { value }
+                None => { return None }
             }
-            expr = FieldExpr {
-                kind: Field,
-                span: parser.merge_spans(expr.span, name_token.span),
-                target: expr,
-                name: name_token.lexeme
-            }
-            continue
+            let mut next = blank_expr(ExprField, parser.merge_spans(expr.span, name_token.span))
+            next.target = Some(expr)
+            next.name = Some(name_token.lexeme)
+            expr = next
+            progressed = true
         }
 
-        if parser.match_kind(LBracket) {
-            let index = parse_expr(parser)
-            if index == None {
-                return None
+        if !progressed && parser.match_kind(LBracket) {
+            let index = match parse_expr(parser) {
+                Some(value) => { value }
+                None => { return None }
             }
             let end = parser.token_span()
             parser.expect(RBracket, "]")
-            expr = IndexExpr {
-                kind: Index,
-                span: parser.merge_spans(expr.span, end),
-                target: expr,
-                index: index
-            }
-            continue
+            let mut next = blank_expr(Index, parser.merge_spans(expr.span, end))
+            next.target = Some(expr)
+            next.index = Some(index)
+            expr = next
+            progressed = true
         }
 
-        break
+        if !progressed {
+            break
+        }
     }
 
-    return expr
+    return Some(expr)
 }
 
 fn looks_like_class_literal(parser) {
@@ -441,14 +526,15 @@ fn looks_like_type_arg_list(parser) {
     let mut index = parser.pos + 1
     let mut depth = 1
     while index < parser.tokens.len() {
-        let token = parser.tokens[index]
-        if token.kind == LBracket {
+        let token_kind = parser.tokens[index].kind
+        if token_kind == LBracket {
             depth = depth + 1
-        } elif token.kind == RBracket {
+        } elif token_kind == RBracket {
             depth = depth - 1
             if depth == 0 {
                 if index + 1 < parser.tokens.len() {
-                    return parser.tokens[index + 1].kind == LBrace
+                    let next_kind = parser.tokens[index + 1].kind
+                    return next_kind == LBrace
                 }
                 return false
             }
@@ -459,52 +545,51 @@ fn looks_like_type_arg_list(parser) {
 }
 
 fn attach_type_arg_suffix(parser, ident) {
-    if ident.kind != Ident {
-        return ident
+    if ident.kind != ExprIdent {
+        return Some(ident)
     }
+    let ident_span = copy_span(ident.span)
+    let ident_name = ident.name.slice(0, ident.name.len())
     parser.expect(LBracket, "[")
     let mut suffix = "["
     let mut depth = 1
     while !parser.is_eof() && depth > 0 {
         if parser.current_kind() == LBracket {
             depth = depth + 1
-            suffix = suffix + "["
+            suffix = str_concat(suffix, "[")
             parser.advance()
         } elif parser.current_kind() == RBracket {
             depth = depth - 1
-            suffix = suffix + "]"
+            suffix = str_concat(suffix, "]")
             parser.advance()
         } else {
-            suffix = suffix + parser.current_token().lexeme
+            suffix = str_concat(suffix, parser.current_token().lexeme)
             parser.advance()
         }
     }
-    return IdentExpr {
-        kind: Ident,
-        span: ident.span,
-        name: ident.name + suffix
-    }
+    let mut next = blank_expr(ExprIdent, ident_span)
+    next.name = Some(str_concat(ident_name, suffix))
+    return Some(next)
 }
 
 fn parse_class_literal(parser, ident) {
-    let start = ident.span
+    let start = copy_span(ident.span)
     parser.expect(LBrace, "{")
     let mut entries = []
     while !parser.is_eof() && !parser.check(RBrace) {
-        let name_token = parser.consume_ident("field name")
-        if name_token == None {
-            return None
+        let name_token = match parser.consume_ident("field name") {
+            Some(value) => { value }
+            None => { return None }
         }
         parser.expect(Colon, ":")
-        let value = parse_expr(parser)
-        if value == None {
-            return None
+        let value = match parse_expr(parser) {
+            Some(expr) => { expr }
+            None => { return None }
         }
-        let key = StrLitExpr {
-            kind: StrLit,
-            span: name_token.span,
-            value: name_token.lexeme
-        }
+        let key_span = copy_span(name_token.span)
+        let key_name = name_token.lexeme.slice(0, name_token.lexeme.len())
+        let mut key = blank_expr(StrLit, key_span)
+        key.string_value = Some(key_name)
         entries.push(MapEntry { key: key, value: value })
         if !parser.match_kind(Comma) {
             break
@@ -512,25 +597,21 @@ fn parse_class_literal(parser, ident) {
     }
     let end = parser.token_span()
     parser.expect(RBrace, "}")
-    let map = MapExpr {
-        kind: Map,
-        span: parser.merge_spans(start, end),
-        entries: entries
-    }
-    return CallExpr {
-        kind: Call,
-        span: parser.merge_spans(start, end),
-        callee: ident,
-        args: [map]
-    }
+    let merged_span = merge_span_bounds(start, end)
+    let mut map = blank_expr(Map, copy_span(merged_span))
+    map.entries = Some(entries)
+    let mut call = blank_expr(Call, merged_span)
+    call.callee = Some(ident)
+    call.args = Some([map])
+    return Some(call)
 }
 
 fn parse_argument_list(parser) {
     let mut args = []
     while !parser.is_eof() && !parser.check(RParen) {
-        let arg = parse_expr(parser)
-        if arg == None {
-            return None
+        let arg = match parse_expr(parser) {
+            Some(expr) => { expr }
+            None => { return None }
         }
         args.push(arg)
         if !parser.match_kind(Comma) {
@@ -543,7 +624,7 @@ fn parse_argument_list(parser) {
 
 fn parse_primary(parser) {
     parser.skip_doc_comments()
-    let token = parser.current_token()
+    let token = copy_token(parser.current_token())
 
     if token.kind == IntLit {
         return parse_int_literal(parser, token)
@@ -561,10 +642,12 @@ fn parse_primary(parser) {
         return parse_bool_literal(parser, token)
     } elif token.kind == NoneLit {
         parser.advance()
-        return NoneLitExpr { kind: NoneLit, span: parser.convert_span(token.span) }
+        return Some(blank_expr(NoneLit, copy_span(token.span)))
     } elif token.kind == Ident {
         parser.advance()
-        return IdentExpr { kind: Ident, span: parser.convert_span(token.span), name: token.lexeme }
+        let mut ident = blank_expr(ExprIdent, copy_span(token.span))
+        ident.name = Some(token.lexeme.slice(0, token.lexeme.len()))
+        return Some(ident)
     } elif token.kind == LBracket {
         return parse_array_literal(parser)
     } elif token.kind == LBrace {
@@ -590,7 +673,9 @@ fn parse_int_literal(parser, token) {
         push_invalid_expr(parser, token.span.line, token.span.col)
         return None
     }
-    return IntLitExpr { kind: IntLit, span: parser.convert_span(token.span), value: value }
+    let mut expr = blank_expr(IntLit, parser.convert_span(token.span))
+    expr.int_value = Some(value)
+    return Some(expr)
 }
 
 fn parse_radix_int_literal(parser, token, radix, prefix_len) {
@@ -600,7 +685,9 @@ fn parse_radix_int_literal(parser, token, radix, prefix_len) {
         push_invalid_expr(parser, token.span.line, token.span.col)
         return None
     }
-    return IntLitExpr { kind: IntLit, span: parser.convert_span(token.span), value: value }
+    let mut expr = blank_expr(IntLit, parser.convert_span(token.span))
+    expr.int_value = Some(value)
+    return Some(expr)
 }
 
 fn parse_float_literal(parser, token) {
@@ -610,20 +697,24 @@ fn parse_float_literal(parser, token) {
         push_invalid_expr(parser, token.span.line, token.span.col)
         return None
     }
-    return FloatLitExpr { kind: FloatLit, span: parser.convert_span(token.span), value: value }
+    let mut expr = blank_expr(FloatLit, parser.convert_span(token.span))
+    expr.float_value = Some(value)
+    return Some(expr)
 }
 
 fn parse_string_literal(parser, token) {
     parser.advance()
-    let raw = token.lexeme
+    let raw = token.lexeme.slice(0, token.lexeme.len())
     let text = raw.slice(1, raw.len() - 1)
-    return StrLitExpr { kind: StrLit, span: parser.convert_span(token.span), value: text }
+    let mut expr = blank_expr(StrLit, copy_span(token.span))
+    expr.string_value = Some(text)
+    return Some(expr)
 }
 
 fn parse_fstring_literal(parser, token) {
     parser.advance()
-    let span = parser.convert_span(token.span)
-    let raw = token.lexeme
+    let span = copy_span(token.span)
+    let raw = token.lexeme.slice(0, token.lexeme.len())
     let inner = raw.slice(2, raw.len() - 1)
     let mut parts = []
     let mut buffer = ""
@@ -633,7 +724,9 @@ fn parse_fstring_literal(parser, token) {
         let ch = string_char_at(inner, index)
         if ch == "{" {
             if buffer != "" {
-                parts.push(LiteralFStrPart { kind: Literal, value: buffer })
+                let mut part = blank_fstr_part(Literal)
+                part.literal = Some(buffer)
+                parts.push(part)
                 buffer = ""
             }
 
@@ -652,13 +745,16 @@ fn parse_fstring_literal(parser, token) {
 
             if depth != 0 {
                 push_invalid_expr(parser, span.line, span.col)
-                return FStrLitExpr { kind: FStrLit, span: span, parts: parts }
+                let mut expr = blank_expr(FStrLit, span)
+                expr.parts = Some(parts)
+                return Some(expr)
             }
 
             let expr_src = inner.slice(start, index - 1)
             let inner_lexer = Lexer { source: expr_src, position: 0, line: 1, col: 1 }
             let lexed = inner_lexer.tokenize()
-            let inner_parser = Parser { tokens: lexed.tokens, pos: 0, errors: [], warnings: [] }
+            let inner_tokens = lexed.tokens
+            let inner_parser = Parser { tokens: inner_tokens, pos: 0, errors: [], warnings: [] }
             let expr = inner_parser.parse_expression()
             inner_parser.skip_doc_comments()
             if !inner_parser.is_eof() {
@@ -668,30 +764,37 @@ fn parse_fstring_literal(parser, token) {
             for err in inner_parser.errors {
                 parser.errors.push(err)
             }
-            if expr != None {
-                parts.push(InterpFStrPart { kind: Interp, expr: expr })
+            match expr {
+                Some(value) => {
+                    let mut part = blank_fstr_part(Interp)
+                    part.expr = Some(value)
+                    parts.push(part)
+                }
+                None => { }
             }
             continue
         }
 
-        buffer = buffer + ch
+        buffer = str_concat(buffer, ch)
         index = index + 1
     }
 
     if buffer != "" {
-        parts.push(LiteralFStrPart { kind: Literal, value: buffer })
+        let mut part = blank_fstr_part(Literal)
+        part.literal = Some(buffer)
+        parts.push(part)
     }
 
-    return FStrLitExpr { kind: FStrLit, span: span, parts: parts }
+    let mut expr = blank_expr(FStrLit, span)
+    expr.parts = Some(parts)
+    return Some(expr)
 }
 
 fn parse_bool_literal(parser, token) {
     parser.advance()
-    return BoolLitExpr {
-        kind: BoolLit,
-        span: parser.convert_span(token.span),
-        value: token.lexeme == "true"
-    }
+    let mut expr = blank_expr(BoolLit, copy_span(token.span))
+    expr.bool_value = Some(token.lexeme == "true")
+    return Some(expr)
 }
 
 fn parse_array_literal(parser) {
@@ -699,9 +802,9 @@ fn parse_array_literal(parser) {
     parser.expect(LBracket, "[")
     let mut items = []
     while !parser.is_eof() && !parser.check(RBracket) {
-        let item = parse_expr(parser)
-        if item == None {
-            return None
+        let item = match parse_expr(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
         items.push(item)
         if !parser.match_kind(Comma) {
@@ -710,54 +813,52 @@ fn parse_array_literal(parser) {
     }
     let end = parser.token_span()
     parser.expect(RBracket, "]")
-    return ArrayExpr {
-        kind: Array,
-        span: parser.merge_spans(start, end),
-        items: items
-    }
+    let mut expr = blank_expr(Array, merge_span_bounds(start, end))
+    expr.items = Some(items)
+    return Some(expr)
 }
 
 fn parse_brace_literal(parser) {
     let start = parser.token_span()
     parser.expect(LBrace, "{")
     if parser.match_kind(RBrace) {
-        return MapExpr { kind: Map, span: start, entries: [] }
+        let mut expr = blank_expr(Map, copy_span(start))
+        expr.entries = Some([])
+        return Some(expr)
     }
 
-    let first = parse_expr(parser)
-    if first == None {
-        return None
+    let first = match parse_expr(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
 
     if parser.match_kind(Colon) {
         let mut entries = []
-        let value = parse_expr(parser)
-        if value == None {
-            return None
+        let value = match parse_expr(parser) {
+            Some(expr) => { expr }
+            None => { return None }
         }
         entries.push(MapEntry { key: first, value: value })
         while parser.match_kind(Comma) {
             if parser.check(RBrace) {
                 break
             }
-            let key = parse_expr(parser)
-            if key == None {
-                return None
+            let key = match parse_expr(parser) {
+                Some(expr) => { expr }
+                None => { return None }
             }
             parser.expect(Colon, ":")
-            let value = parse_expr(parser)
-            if value == None {
-                return None
+            let value = match parse_expr(parser) {
+                Some(expr) => { expr }
+                None => { return None }
             }
             entries.push(MapEntry { key: key, value: value })
         }
         let end = parser.token_span()
         parser.expect(RBrace, "}")
-        return MapExpr {
-            kind: Map,
-            span: parser.merge_spans(start, end),
-            entries: entries
-        }
+        let mut expr = blank_expr(Map, merge_span_bounds(start, end))
+        expr.entries = Some(entries)
+        return Some(expr)
     }
 
     let mut items = [first]
@@ -765,37 +866,37 @@ fn parse_brace_literal(parser) {
         if parser.check(RBrace) {
             break
         }
-        let item = parse_expr(parser)
-        if item == None {
-            return None
+        let item = match parse_expr(parser) {
+            Some(expr) => { expr }
+            None => { return None }
         }
         items.push(item)
     }
     let end = parser.token_span()
     parser.expect(RBrace, "}")
-    return SetExpr {
-        kind: Set,
-        span: parser.merge_spans(start, end),
-        items: items
-    }
+        let mut expr = blank_expr(Set, merge_span_bounds(start, end))
+    expr.items = Some(items)
+    return Some(expr)
 }
 
 fn parse_paren_expr_or_tuple(parser) {
     let start = parser.token_span()
     parser.expect(LParen, "(")
     if parser.match_kind(RParen) {
-        return TupleExpr { kind: Tuple, span: start, items: [] }
+        let mut expr = blank_expr(Tuple, copy_span(start))
+        expr.items = Some([])
+        return Some(expr)
     }
-    let first = parse_expr(parser)
-    if first == None {
-        return None
+    let first = match parse_expr(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     if parser.match_kind(Comma) {
         let mut items = [first]
         while !parser.is_eof() && !parser.check(RParen) {
-            let item = parse_expr(parser)
-            if item == None {
-                return None
+            let item = match parse_expr(parser) {
+                Some(expr) => { expr }
+                None => { return None }
             }
             items.push(item)
             if !parser.match_kind(Comma) {
@@ -804,11 +905,9 @@ fn parse_paren_expr_or_tuple(parser) {
         }
         let end = parser.token_span()
         parser.expect(RParen, ")")
-        return TupleExpr {
-            kind: Tuple,
-            span: parser.merge_spans(start, end),
-            items: items
-        }
+        let mut expr = blank_expr(Tuple, merge_span_bounds(start, end))
+        expr.items = Some(items)
+        return Some(expr)
     }
     parser.expect(RParen, ")")
     return first
@@ -819,34 +918,33 @@ fn parse_lambda_expr(parser) {
     parser.expect(Lambda, "lambda")
     let mut params = []
     while !parser.is_eof() && !parser.check(FatArrow) {
-        let name_token = parser.consume_ident("lambda parameter")
-        if name_token == None {
-            return None
+        let name_token = match parser.consume_ident("lambda parameter") {
+            Some(value) => { value }
+            None => { return None }
         }
-        params.push(name_token.lexeme)
+        params.push(name_token.lexeme.slice(0, name_token.lexeme.len()))
         if !parser.match_kind(Comma) {
             break
         }
     }
     parser.expect(FatArrow, "=>")
-    let body = parse_expr(parser)
-    if body == None {
-        return None
+    let body = match parse_expr(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
-    return LambdaExpr {
-        kind: Lambda,
-        span: parser.merge_spans(start, body.span),
-        params: params,
-        body: body
-    }
+    let body_span = copy_span(body.span)
+    let mut expr = blank_expr(Lambda, merge_span_bounds(start, body_span))
+    expr.params = Some(params)
+    expr.expr = Some(body)
+    return Some(expr)
 }
 
 fn parse_match_expr(parser) {
     let start = parser.token_span()
     parser.expect(Match, "match")
-    let subject = parse_expr(parser)
-    if subject == None {
-        return None
+    let subject = match parse_expr(parser) {
+        Some(value) => { value }
+        None => { return None }
     }
     if !parser.expect(LBrace, "{") {
         return None
@@ -855,62 +953,60 @@ fn parse_match_expr(parser) {
     let mut arms = []
     while !parser.is_eof() && !parser.check(RBrace) {
         let arm_start = parser.token_span()
-        let pattern = parse_expr(parser)
-        if pattern == None {
-            return None
+        let pattern = match parse_expr(parser) {
+            Some(value) => { value }
+            None => { return None }
         }
         parser.expect(FatArrow, "=>")
 
         let mut body = None
-        let mut end = arm_start
+        let mut end = copy_span(arm_start)
         if parser.check(LBrace) {
-            let block = parser.parse_block()
-            if block == None {
-                return None
+            let block = match parser.parse_block() {
+                Some(value) => { value }
+                None => { return None }
             }
-            body = BlockMatchArmBody { kind: Block, block: block }
-            end = block.span
+            body = blank_match_arm_body(Block)
+            body.block = Some(block)
+            end = copy_span(block.span)
         } else {
-            let expr = parse_expr(parser)
-            if expr == None {
-                return None
+            let expr = match parse_expr(parser) {
+                Some(value) => { value }
+                None => { return None }
             }
-            body = ExprMatchArmBody { kind: Expr, expr: expr }
-            end = expr.span
+            body = blank_match_arm_body(Expr)
+            body.expr = Some(expr)
+            end = copy_span(expr.span)
         }
         arms.push(MatchArm {
             pattern: pattern,
             body: body,
-            span: parser.merge_spans(arm_start, end)
+            span: merge_span_bounds(arm_start, end)
         })
         parser.match_kind(Comma)
     }
 
     let end = parser.token_span()
     parser.expect(RBrace, "}")
-    return MatchExpr {
-        kind: Match,
-        span: parser.merge_spans(start, end),
-        subject: subject,
-        arms: arms
-    }
+    let mut expr = blank_expr(Match, parser.merge_spans(start, end))
+    expr.subject = Some(subject)
+    expr.arms = Some(arms)
+    return Some(expr)
 }
 
 fn parse_chan_expr(parser) {
     let start = parser.token_span()
     parser.expect(Chan, "chan")
     parser.expect(LBracket, "[")
-    let ty = parser.parse_type_expr()
-    if ty == None {
-        return None
+    let ty = match parser.parse_type_expr() {
+        Some(value) => { value }
+        None => { return None }
     }
     let end = parser.token_span()
     parser.expect(RBracket, "]")
-    return ChanExpr {
-        kind: Chan,
-        span: parser.merge_spans(start, end),
-        ty: ty
-    }
+    let mut expr = blank_expr(Chan, parser.merge_spans(start, end))
+    expr.ty = Some(ty)
+    return Some(expr)
 }
 
 fn push_invalid_expr(parser, line, col) {

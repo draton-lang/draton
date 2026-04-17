@@ -4,12 +4,12 @@ enum BinOp {
     Mul,
     Div,
     Mod,
-    Eq,
-    Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
+    CmpEq,
+    CmpNe,
+    CmpLt,
+    CmpLe,
+    CmpGt,
+    CmpGe,
     And,
     Or,
     BitAnd,
@@ -17,7 +17,7 @@ enum BinOp {
     BitXor,
     Shl,
     Shr,
-    Range
+    RangeOp
 }
 
 enum UnOp {

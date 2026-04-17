@@ -3,7 +3,7 @@ import { emit_builtin_call } from codegen.emit.builtins
 import { emit_closure } from codegen.emit.closures
 
 fn emit_expr(cg, expr) {
-    if expr.kind == Call && expr.callee != None && expr.callee.kind == Ident {
+    if expr.kind == Call && expr.callee != None && expr.callee.kind == ExprIdent {
         return emit_builtin_call(cg, expr.callee.name, expr.args)
     }
     if expr.kind == Lambda {

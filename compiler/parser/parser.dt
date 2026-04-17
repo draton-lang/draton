@@ -1,6 +1,10 @@
 import { Program } from ast.item.item
+import { Item } from ast.item.item
 import { Span } from ast.span
 import { Expr } from ast.expr.expr
+import { TypeExpr } from ast.types
+import { Block, Stmt } from ast.stmt.stmt
+import { TypeBlock } from ast.item.type_block
 import { Token, TokenKind } from lexer.token
 import { ParseError, ParseWarning } from parser.errors
 import { parse_program, parse_item, parse_type_block } from parser.parse.items
@@ -44,107 +48,313 @@ class Parser {
         pos: Int
         errors: Array[ParseError]
         warnings: Array[ParseWarning]
-        peek: (Parser) -> Token
-        at: (Parser, TokenKind) -> Bool
-        sync_to: (Parser, Array[TokenKind]) -> Unit
+        clone_string: (String) -> String
+        current_token: () -> Token
+        current_kind: () -> TokenKind
+        previous_token: () -> Token
+        is_eof: () -> Bool
+        skip_doc_comments: () -> Unit
+        advance: () -> Token
+        match_kind: (TokenKind) -> Bool
+        check: (TokenKind) -> Bool
+        expect: (TokenKind, String) -> Bool
+        consume_ident: (String) -> Option[Token]
+        error_unexpected: (Token, String) -> Unit
+        push_deprecated_warning: (String, String, Span) -> Unit
+        convert_span: (Span) -> Span
+        merge_spans: (Span, Span) -> Span
+        token_span: () -> Span
+        optional_semicolon: () -> Unit
+        parse_block: () -> Option[Block]
+        parse_expression: () -> Option[Expr]
+        parse_type_block: () -> Option[TypeBlock]
+        parse_type_expr: () -> Option[TypeExpr]
+        synchronize_stmt: () -> Unit
+        synchronize_top_level: () -> Unit
     }
 
-    fn current_token() {
-        let mut idx = self.pos
-        if self.tokens.len() == 0 {
+    fn clone_string(self, value) {
+        return value.slice(0, value.len())
+    }
+
+    fn clone_token(self, token) {
+        return Token {
+            kind: token.kind,
+            lexeme: token.lexeme.slice(0, token.lexeme.len()),
+            span: Span { start: token.span.start, end: token.span.end, line: token.span.line, col: token.span.col }
+        }
+    }
+
+    fn copy_errors(self) {
+        let mut errors = []
+        let mut index = 0
+        while index < self.errors.len() {
+            let entry = self.errors[index]
+            let mut found = None
+            if entry.found != None {
+                found = Some(entry.found.slice(0, entry.found.len()))
+            }
+            let mut expected = None
+            if entry.expected != None {
+                expected = Some(entry.expected.slice(0, entry.expected.len()))
+            }
+            errors.push(ParseError {
+                kind: entry.kind,
+                found: found,
+                expected: expected,
+                line: entry.line,
+                col: entry.col
+            })
+            index = index + 1
+        }
+        return errors
+    }
+
+    fn copy_warnings(self) {
+        let mut warnings = []
+        let mut index = 0
+        while index < self.warnings.len() {
+            let warning = self.warnings[index]
+            warnings.push(ParseWarning {
+                kind: warning.kind,
+                syntax: warning.syntax.slice(0, warning.syntax.len()),
+                replacement: warning.replacement.slice(0, warning.replacement.len()),
+                line: warning.line,
+                col: warning.col
+            })
+            index = index + 1
+        }
+        return warnings
+    }
+
+    fn current_token(self) {
+        let len = self.tokens.len()
+        if len == 0 {
             return Token { kind: Eof, lexeme: "", span: Span { start: 0, end: 0, line: 1, col: 1 } }
         }
-        if idx >= self.tokens.len() {
-            idx = self.tokens.len() - 1
+        let mut idx = self.pos
+        if idx >= len {
+            idx = len - 1
         }
         return self.tokens[idx]
     }
 
-    fn current_kind() {
-        return self.current_token().kind
+    fn current_kind(self) {
+        let len = self.tokens.len()
+        if len == 0 {
+            return Eof
+        }
+        let mut idx = self.pos
+        if idx >= len {
+            idx = len - 1
+        }
+        return self.tokens[idx].kind
     }
 
-    fn previous_token() {
+    fn previous_token(self) {
+        let len = self.tokens.len()
+        if len == 0 {
+            return Token { kind: Eof, lexeme: "", span: Span { start: 0, end: 0, line: 1, col: 1 } }
+        }
         if self.pos == 0 {
-            return self.current_token()
+            return self.tokens[0]
         }
         return self.tokens[self.pos - 1]
     }
 
-    fn is_eof() {
-        return self.current_kind() == Eof
+    fn is_eof(self) {
+        let len = self.tokens.len()
+        if len == 0 {
+            return true
+        }
+        let mut idx = self.pos
+        if idx >= len {
+            idx = len - 1
+        }
+        return self.tokens[idx].kind == Eof
     }
 
-    fn skip_doc_comments() {
-        while self.current_kind() == DocComment {
-            self.advance()
+    fn skip_doc_comments(self) {
+        let mut len = self.tokens.len()
+        while len > 0 {
+            let mut idx = self.pos
+            if idx >= len {
+                idx = len - 1
+            }
+            if self.tokens[idx].kind != DocComment {
+                return
+            }
+            let next_pos = self.pos + 1
+            if next_pos < len {
+                self.pos = next_pos
+            } else {
+                return
+            }
+            len = self.tokens.len()
         }
     }
 
-    fn advance() {
-        let token = self.current_token()
-        if self.pos + 1 < self.tokens.len() {
-            self.pos = self.pos + 1
+    fn advance(self) {
+        let len = self.tokens.len()
+        if len == 0 {
+            return Token { kind: Eof, lexeme: "", span: Span { start: 0, end: 0, line: 1, col: 1 } }
+        }
+        let mut idx = self.pos
+        if idx >= len {
+            idx = len - 1
+        }
+        let raw = self.tokens[idx]
+        let token = Token {
+            kind: raw.kind,
+            lexeme: raw.lexeme.slice(0, raw.lexeme.len()),
+            span: Span { start: raw.span.start, end: raw.span.end, line: raw.span.line, col: raw.span.col }
+        }
+        let next_pos = self.pos + 1
+        if next_pos < len {
+            self.pos = next_pos
         }
         return token
     }
 
-    fn match_kind(kind) {
+    fn match_kind(self, kind) {
         self.skip_doc_comments()
-        if self.current_kind() == kind {
+        let len = self.tokens.len()
+        let mut idx = self.pos
+        if len == 0 {
+            idx = 0
+        } elif idx >= len {
+            idx = len - 1
+        }
+        let mut current = Eof
+        if len > 0 {
+            current = self.tokens[idx].kind
+        }
+        if current == kind {
             self.advance()
             return true
         }
         return false
     }
 
-    fn check(kind) {
-        return self.current_kind() == kind
+    fn check(self, kind) {
+        let len = self.tokens.len()
+        if len == 0 {
+            return Eof == kind
+        }
+        let mut idx = self.pos
+        if idx >= len {
+            idx = len - 1
+        }
+        let current = self.tokens[idx].kind
+        return current == kind
     }
 
-    fn expect(kind, expected) {
+    fn expect(self, kind, expected) {
         self.skip_doc_comments()
-        if self.current_kind() == kind {
+        let len = self.tokens.len()
+        if len == 0 {
+            self.errors.push(ParseError {
+                kind: UnexpectedEof,
+                found: None,
+                expected: Some(expected.slice(0, expected.len())),
+                line: 1,
+                col: 1
+            })
+            return false
+        }
+        let mut idx = self.pos
+        if idx >= len {
+            idx = len - 1
+        }
+        let token = self.tokens[idx]
+        if token.kind == kind {
             self.advance()
             return true
         }
-        let token = self.current_token()
-        self.error_unexpected(token, expected)
-        return false
-    }
-
-    fn consume_ident(expected) {
-        self.skip_doc_comments()
-        let token = self.current_token()
-        if token.kind == Ident {
-            self.advance()
-            return token
-        }
-        self.error_unexpected(token, expected)
-        return None
-    }
-
-    fn error_unexpected(token, expected) {
+        let span = Span { start: token.span.start, end: token.span.end, line: token.span.line, col: token.span.col }
+        let found = token.lexeme.slice(0, token.lexeme.len())
         if token.kind == Eof {
             self.errors.push(ParseError {
                 kind: UnexpectedEof,
                 found: None,
-                expected: Some(expected),
-                line: token.span.line,
-                col: token.span.col
+                expected: Some(expected.slice(0, expected.len())),
+                line: span.line,
+                col: span.col
             })
         } else {
             self.errors.push(ParseError {
                 kind: UnexpectedToken,
-                found: Some(token.lexeme),
-                expected: Some(expected),
-                line: token.span.line,
-                col: token.span.col
+                found: Some(found),
+                expected: Some(expected.slice(0, expected.len())),
+                line: span.line,
+                col: span.col
+            })
+        }
+        return false
+    }
+
+    fn consume_ident(self, expected) {
+        self.skip_doc_comments()
+        let len = self.tokens.len()
+        if len == 0 {
+            self.errors.push(ParseError {
+                kind: UnexpectedEof,
+                found: None,
+                expected: Some(expected.slice(0, expected.len())),
+                line: 1,
+                col: 1
+            })
+            return None
+        }
+        let mut idx = self.pos
+        if idx >= len {
+            idx = len - 1
+        }
+        let token = self.tokens[idx]
+        if token.kind == Ident {
+            let ident = Token {
+                kind: token.kind,
+                lexeme: token.lexeme.slice(0, token.lexeme.len()),
+                span: Span { start: token.span.start, end: token.span.end, line: token.span.line, col: token.span.col }
+            }
+            self.advance()
+            return ident
+        }
+        let span = Span { start: token.span.start, end: token.span.end, line: token.span.line, col: token.span.col }
+        let found = token.lexeme.slice(0, token.lexeme.len())
+        self.errors.push(ParseError {
+            kind: UnexpectedToken,
+            found: Some(found),
+            expected: Some(expected.slice(0, expected.len())),
+            line: span.line,
+            col: span.col
+        })
+        return None
+    }
+
+    fn error_unexpected(self, token, expected) {
+        let span = Span { start: token.span.start, end: token.span.end, line: token.span.line, col: token.span.col }
+        if token.kind == Eof {
+            self.errors.push(ParseError {
+                kind: UnexpectedEof,
+                found: None,
+                expected: Some(expected.slice(0, expected.len())),
+                line: span.line,
+                col: span.col
+            })
+        } else {
+            let found = token.lexeme.slice(0, token.lexeme.len())
+            self.errors.push(ParseError {
+                kind: UnexpectedToken,
+                found: Some(found),
+                expected: Some(expected.slice(0, expected.len())),
+                line: span.line,
+                col: span.col
             })
         }
     }
 
-    fn push_deprecated_warning(syntax, replacement, span) {
+    fn push_deprecated_warning(self, syntax, replacement, span) {
         self.warnings.push(ParseWarning {
             kind: DeprecatedSyntax,
             syntax: syntax,
@@ -154,122 +364,255 @@ class Parser {
         })
     }
 
-    fn convert_span(span) {
+    fn convert_span(self, span) {
         return Span { start: span.start, end: span.end, line: span.line, col: span.col }
     }
 
-    fn merge_spans(start, end) {
+    fn merge_spans(self, start, end) {
         return Span { start: start.start, end: end.end, line: start.line, col: start.col }
     }
 
-    fn token_span() {
-        return self.current_token().span
+    fn token_span(self) {
+        let len = self.tokens.len()
+        if len == 0 {
+            return Span { start: 0, end: 0, line: 1, col: 1 }
+        }
+        let mut idx = self.pos
+        if idx >= len {
+            idx = len - 1
+        }
+        let token = self.tokens[idx]
+        return Span { start: token.span.start, end: token.span.end, line: token.span.line, col: token.span.col }
     }
 
-    fn optional_semicolon() {
+    fn optional_semicolon(self) {
         self.match_kind(Semicolon)
     }
 
-    fn parse() {
-        let program = parse_program(self)
+    fn parse(self) {
+        let mut program = Program { items: [] }
+        while !self.is_eof() {
+            self.skip_doc_comments()
+            if self.is_eof() {
+                break
+            }
+            let before = self.pos
+            match parse_item(self) {
+                Some(item) => {
+                    program.items.push(item)
+                }
+                None => {
+                    if self.pos == before {
+                        self.synchronize_top_level()
+                    }
+                }
+            }
+        }
+        let mut errors = []
+        let mut error_index = 0
+        while error_index < self.errors.len() {
+            let entry = self.errors[error_index]
+            let mut found = None
+            if entry.found != None {
+                found = Some(entry.found.slice(0, entry.found.len()))
+            }
+            let mut expected = None
+            if entry.expected != None {
+                expected = Some(entry.expected.slice(0, entry.expected.len()))
+            }
+            errors.push(ParseError {
+                kind: entry.kind,
+                found: found,
+                expected: expected,
+                line: entry.line,
+                col: entry.col
+            })
+            error_index = error_index + 1
+        }
+        let mut warnings = []
+        let mut warning_index = 0
+        while warning_index < self.warnings.len() {
+            let warning = self.warnings[warning_index]
+            warnings.push(ParseWarning {
+                kind: warning.kind,
+                syntax: warning.syntax.slice(0, warning.syntax.len()),
+                replacement: warning.replacement.slice(0, warning.replacement.len()),
+                line: warning.line,
+                col: warning.col
+            })
+            warning_index = warning_index + 1
+        }
         return ParseResult {
             program: program,
-            errors: self.errors,
-            warnings: self.warnings
+            errors: errors,
+            warnings: warnings
         }
     }
 
-    fn parse_expression_only() {
+    fn parse_expression_only(self) {
         self.skip_doc_comments()
-        let expr = self.parse_expression()
+        let expr = parse_expr(self)
         self.skip_doc_comments()
-        if !self.is_eof() {
-            let token = self.current_token()
-            self.error_unexpected(token, "end of expression")
+        let len = self.tokens.len()
+        let mut eof = true
+        if len > 0 {
+            let mut idx = self.pos
+            if idx >= len {
+                idx = len - 1
+            }
+            eof = self.tokens[idx].kind == Eof
+        }
+        if !eof {
+            let mut idx = self.pos
+            if idx >= len {
+                idx = len - 1
+            }
+            let token = self.tokens[idx]
+            let span = Span { start: token.span.start, end: token.span.end, line: token.span.line, col: token.span.col }
+            let found = token.lexeme.slice(0, token.lexeme.len())
+            self.errors.push(ParseError {
+                kind: UnexpectedToken,
+                found: Some(found),
+                expected: Some("end of expression"),
+                line: span.line,
+                col: span.col
+            })
+        }
+        let mut errors = []
+        let mut error_index = 0
+        while error_index < self.errors.len() {
+            let entry = self.errors[error_index]
+            let mut found = None
+            if entry.found != None {
+                found = Some(entry.found.slice(0, entry.found.len()))
+            }
+            let mut expected = None
+            if entry.expected != None {
+                expected = Some(entry.expected.slice(0, entry.expected.len()))
+            }
+            errors.push(ParseError {
+                kind: entry.kind,
+                found: found,
+                expected: expected,
+                line: entry.line,
+                col: entry.col
+            })
+            error_index = error_index + 1
+        }
+        let mut warnings = []
+        let mut warning_index = 0
+        while warning_index < self.warnings.len() {
+            let warning = self.warnings[warning_index]
+            warnings.push(ParseWarning {
+                kind: warning.kind,
+                syntax: warning.syntax.slice(0, warning.syntax.len()),
+                replacement: warning.replacement.slice(0, warning.replacement.len()),
+                line: warning.line,
+                col: warning.col
+            })
+            warning_index = warning_index + 1
         }
         return ParseExpressionOnlyResult {
             expr: expr,
-            errors: self.errors,
-            warnings: self.warnings
+            errors: errors,
+            warnings: warnings
         }
     }
 
-    fn parse_item() {
+    fn parse_item(self) {
         return parse_item(self)
     }
 
-    fn parse_type_block() {
+    fn parse_type_block(self) {
         return parse_type_block(self)
     }
 
-    fn parse_block() {
+    fn parse_block(self) {
         return parse_block(self)
     }
 
-    fn parse_stmt() {
+    fn parse_stmt(self) {
         return parse_stmt(self)
     }
 
-    fn parse_expression() {
+    fn parse_expression(self) {
         return parse_expr(self)
     }
 
-    fn parse_type_expr() {
+    fn parse_type_expr(self) {
         return parse_type_expr(self)
     }
 
-    fn parse_pattern() {
+    fn parse_pattern(self) {
         return parse_pattern(self)
     }
 
-    fn synchronize_top_level() {
+    fn synchronize_top_level(self) {
         while !self.is_eof() {
-            if self.current_kind() == Fn ||
-               self.current_kind() == Class ||
-               self.current_kind() == Interface ||
-               self.current_kind() == Enum ||
-               self.current_kind() == Error ||
-               self.current_kind() == Const ||
-               self.current_kind() == Import ||
-               self.current_kind() == Pub ||
-               self.current_kind() == AtType ||
-               self.current_kind() == AtAcyclic ||
-               self.current_kind() == AtExtern ||
-               self.current_kind() == AtPanicHandler ||
-               self.current_kind() == AtOomHandler {
+            let len = self.tokens.len()
+            let mut idx = self.pos
+            if idx >= len && len > 0 {
+                idx = len - 1
+            }
+            let mut kind = Eof
+            if len > 0 {
+                kind = self.tokens[idx].kind
+            }
+            if kind == Fn ||
+               kind == Class ||
+               kind == Interface ||
+               kind == Enum ||
+               kind == Error ||
+               kind == Const ||
+               kind == Import ||
+               kind == Pub ||
+               kind == AtType ||
+               kind == AtAcyclic ||
+               kind == AtExtern ||
+               kind == AtPanicHandler ||
+               kind == AtOomHandler {
                 return
             }
             self.advance()
         }
     }
 
-    fn synchronize_stmt() {
+    fn synchronize_stmt(self) {
         while !self.is_eof() {
-            if self.current_kind() == Semicolon {
+            let len = self.tokens.len()
+            let mut idx = self.pos
+            if idx >= len && len > 0 {
+                idx = len - 1
+            }
+            let mut kind = Eof
+            if len > 0 {
+                kind = self.tokens[idx].kind
+            }
+            if kind == Semicolon {
                 self.advance()
                 return
             }
-            if self.current_kind() == RBrace ||
-               self.current_kind() == Let ||
-               self.current_kind() == Return ||
-               self.current_kind() == If ||
-               self.current_kind() == Elif ||
-               self.current_kind() == For ||
-               self.current_kind() == While ||
-               self.current_kind() == Spawn ||
-               self.current_kind() == AtUnsafe ||
-               self.current_kind() == AtPointer ||
-               self.current_kind() == AtAsm ||
-               self.current_kind() == AtComptime ||
-               self.current_kind() == AtIf ||
-               self.current_kind() == AtGcConfig {
+            if kind == RBrace ||
+               kind == Let ||
+               kind == Return ||
+               kind == If ||
+               kind == Elif ||
+               kind == For ||
+               kind == While ||
+               kind == Spawn ||
+               kind == AtUnsafe ||
+               kind == AtPointer ||
+               kind == AtAsm ||
+               kind == AtComptime ||
+               kind == AtIf ||
+               kind == AtGcConfig {
                 return
             }
             self.advance()
         }
     }
 
-    fn peek() {
+    fn peek(self) {
         let mut idx = self.pos + 1
         if self.tokens.len() == 0 {
             return Token { kind: Eof, lexeme: "", span: Span { start: 0, end: 0, line: 1, col: 1 } }
@@ -280,16 +623,34 @@ class Parser {
         return self.tokens[idx]
     }
 
-    fn at(kind) {
+    fn at(self, kind) {
         self.skip_doc_comments()
-        return self.current_kind() == kind
+        let len = self.tokens.len()
+        if len == 0 {
+            return Eof == kind
+        }
+        let mut idx = self.pos
+        if idx >= len {
+            idx = len - 1
+        }
+        let current = self.tokens[idx].kind
+        return current == kind
     }
 
-    fn sync_to(recovery_set) {
+    fn sync_to(self, recovery_set) {
         while !self.is_eof() {
             let mut index = 0
+            let len = self.tokens.len()
+            let mut idx = self.pos
+            if idx >= len && len > 0 {
+                idx = len - 1
+            }
+            let mut current = Eof
+            if len > 0 {
+                current = self.tokens[idx].kind
+            }
             while index < recovery_set.len() {
-                if self.current_kind() == recovery_set[index] {
+                if current == recovery_set[index] {
                     return
                 }
                 index = index + 1

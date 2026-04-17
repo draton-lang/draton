@@ -102,6 +102,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .closure_record_type
                 .ptr_type(AddressSpace::default())
                 .into()),
+            Type::Named(name, args) if args.is_empty() && self.is_enum_type_name(name) => {
+                Ok(self.context.i64_type().into())
+            }
             Type::Named(name, args) if args.is_empty() && self.is_interface_type_name(name) => self
                 .fat_pointer_types
                 .get(name)

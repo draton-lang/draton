@@ -7,24 +7,12 @@ enum FStrPartKind {
 
 class FStrPart {
     let kind
-
-    @type {
-        kind: FStrPartKind
-    }
-}
-
-class LiteralFStrPart extends FStrPart {
-    let value
-
-    @type {
-        value: String
-    }
-}
-
-class InterpFStrPart extends FStrPart {
+    let literal
     let expr
 
     @type {
-        expr: Expr
+        kind: FStrPartKind
+        literal: Option[String]
+        expr: Option[Expr]
     }
 }

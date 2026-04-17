@@ -18,11 +18,25 @@ pub struct HostedPlatform;
 #[cfg(feature = "std-io")]
 impl DratonPlatform for HostedPlatform {
     fn write_stdout(&self, bytes: &[u8]) {
-        write_fd(libc::STDOUT_FILENO, bytes);
+        #[cfg(unix)]
+        {
+            write_fd(libc::STDOUT_FILENO, bytes);
+        }
+        #[cfg(windows)]
+        {
+            write_fd(1, bytes);
+        }
     }
 
     fn write_stderr(&self, bytes: &[u8]) {
-        write_fd(libc::STDERR_FILENO, bytes);
+        #[cfg(unix)]
+        {
+            write_fd(libc::STDERR_FILENO, bytes);
+        }
+        #[cfg(windows)]
+        {
+            write_fd(2, bytes);
+        }
     }
 
     fn read_line(&self) -> Vec<u8> {
@@ -53,9 +67,35 @@ fn write_fd(fd: libc::c_int, bytes: &[u8]) {
     if bytes.is_empty() {
         return;
     }
-    // SAFETY: `bytes` is a valid buffer for the duration of the syscall.
-    unsafe {
-        let _ = libc::write(fd, bytes.as_ptr().cast::<libc::c_void>(), bytes.len());
+    #[cfg(unix)]
+    {
+        // SAFETY: `bytes` is a valid buffer for the duration of the syscall.
+        unsafe {
+            let _ = libc::write(fd, bytes.as_ptr().cast::<libc::c_void>(), bytes.len());
+        }
+    }
+    #[cfg(windows)]
+    {
+        unsafe extern "C" {
+            fn _write(
+                fd: libc::c_int,
+                buffer: *const libc::c_void,
+                count: libc::c_uint,
+            ) -> libc::c_int;
+        }
+
+        let mut written = 0usize;
+        while written < bytes.len() {
+            let remaining = bytes.len() - written;
+            let chunk = remaining.min(libc::c_uint::MAX as usize);
+            let ptr = unsafe { bytes.as_ptr().add(written) }.cast::<libc::c_void>();
+            // SAFETY: `ptr` points into `bytes`, and `chunk` is clamped to the CRT API width.
+            let result = unsafe { _write(fd, ptr, chunk as libc::c_uint) };
+            if result <= 0 {
+                break;
+            }
+            written += result as usize;
+        }
     }
 }
 

@@ -389,7 +389,7 @@ fn serialize_typed_expr(expr) {
     } else {
         fields.push(json_field("use_effect", json_quote(serialize_use_effect(expr.use_effect))))
     }
-    if expr.kind == Ident && expr.name != None {
+    if expr.kind == ExprIdent && expr.name != None {
         fields.push(json_field("name", json_quote(expr.name)))
     } elif expr.kind == StrLit && expr.string_value != None {
         fields.push(json_field("value", json_quote(expr.string_value)))
@@ -419,7 +419,7 @@ fn serialize_typed_expr(expr) {
         fields.push(json_field("target", serialize_optional_typed_expr(expr.target)))
         fields.push(json_field("name", serialize_optional_string(expr.name)))
         fields.push(json_field("args", serialize_typed_exprs(expr.args)))
-    } elif expr.kind == Field {
+    } elif expr.kind == ExprField {
         fields.push(json_field("target", serialize_optional_typed_expr(expr.target)))
         fields.push(json_field("name", serialize_optional_string(expr.name)))
     } elif expr.kind == Index {
@@ -453,7 +453,7 @@ fn typed_expr_kind_name(expr) {
     if expr.kind == NoneLit {
         return "NoneLit"
     }
-    if expr.kind == Ident {
+    if expr.kind == ExprIdent {
         return "Ident"
     }
     if expr.kind == Array {
@@ -480,7 +480,7 @@ fn typed_expr_kind_name(expr) {
     if expr.kind == MethodCall {
         return "MethodCall"
     }
-    if expr.kind == Field {
+    if expr.kind == ExprField {
         return "Field"
     }
     if expr.kind == Index {

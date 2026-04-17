@@ -426,7 +426,7 @@ fn visit_else_branch(else_branch, record, summaries, state) {
 }
 
 fn visit_expr(expr, desired, record, summaries, state) {
-    if expr.kind == Ident {
+    if expr.kind == ExprIdent {
         if expr.name != None {
             raise_effect(record, state, expr.name, desired)
         }
@@ -504,7 +504,7 @@ fn visit_expr(expr, desired, record, summaries, state) {
         }
         return
     }
-    if expr.kind == UnOp || expr.kind == Cast || expr.kind == Field || expr.kind == Ok || expr.kind == Err {
+    if expr.kind == UnOp || expr.kind == Cast || expr.kind == ExprField || expr.kind == Ok || expr.kind == Err {
         if expr.body != None {
             let mut effect = desired
             if is_expr_copy(expr.body) {
@@ -580,7 +580,7 @@ fn summary_call_effects(callee, args, summaries, contracts) {
 }
 
 fn direct_callee_summary(callee, summaries) {
-    if callee.kind == Ident {
+    if callee.kind == ExprIdent {
         if callee.name != None {
             return lookup_summary_entry(summaries, callee.name)
         }
@@ -589,7 +589,7 @@ fn direct_callee_summary(callee, summaries) {
 }
 
 fn contract_effect(callee, contracts) {
-    if callee.kind != Ident || callee.name == None {
+    if callee.kind != ExprIdent || callee.name == None {
         return None
     }
     let mut index = 0
@@ -983,7 +983,7 @@ fn populate_else_branch_use_effects(else_branch, summaries, contracts) {
 }
 
 fn populate_expr_use_effects(expr, desired, summaries, contracts) {
-    if expr.kind == Ident {
+    if expr.kind == ExprIdent {
         let mut effect = desired
         if is_copy_type(expr.ty) {
             effect = Copy
@@ -991,7 +991,7 @@ fn populate_expr_use_effects(expr, desired, summaries, contracts) {
         expr.use_effect = Some(effect)
         return
     }
-    if expr.kind == Field {
+    if expr.kind == ExprField {
         if expr.target != None {
             let mut target_effect = BorrowShared
             if desired == BorrowExclusive {

@@ -13,6 +13,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<(), CodeGenError> {
         for item in &program.items {
             if let TypedItem::Class(class_def) = item {
+                self.trace(format!("predeclare:class-opaque {}", class_def.name));
                 if self.generic_classes.contains_key(&class_def.name) {
                     continue;
                 }
@@ -31,6 +32,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         for item in &program.items {
             if let TypedItem::Class(class_def) = item {
+                self.trace(format!("predeclare:class-body {}", class_def.name));
                 if self.generic_classes.contains_key(&class_def.name) {
                     continue;
                 }
@@ -78,6 +80,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 TypedItem::Class(class_def) => {
+                    self.trace(format!("predeclare:class-runtime {}", class_def.name));
                     if self.generic_classes.contains_key(&class_def.name) {
                         continue;
                     }
@@ -164,6 +167,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedItem::Fn(function)
             | TypedItem::PanicHandler(function)
             | TypedItem::OomHandler(function) => {
+                self.trace(format!("emit:function {}", function.name));
                 if self.generic_functions.contains_key(&function.name) {
                     Ok(())
                 } else {
@@ -171,6 +175,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             TypedItem::Class(class_def) => {
+                self.trace(format!("emit:class {}", class_def.name));
                 if self.generic_classes.contains_key(&class_def.name) {
                     return Ok(());
                 }

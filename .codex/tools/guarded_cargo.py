@@ -58,13 +58,18 @@ def resolve_cargo() -> str:
         candidate = Path(explicit).expanduser()
         if candidate.exists():
             return str(candidate)
-    for candidate in (
+    candidates = [
         Path.home() / ".cargo" / "bin" / "cargo",
+        Path.home() / ".cargo" / "bin" / "cargo.exe",
         Path("/home/lehungquangminh/.cargo/bin/cargo"),
-    ):
+    ]
+    for candidate in candidates:
         if candidate.exists():
             return str(candidate)
     found = shutil.which("cargo")
+    if found:
+        return found
+    found = shutil.which("cargo.exe")
     if found:
         return found
     raise SystemExit("cargo executable not found; set CARGO or install cargo in PATH")
@@ -85,6 +90,8 @@ def preset_env(preset_name: str | None, cwd: str) -> list[tuple[str, str]]:
     return [
         ("CARGO_TARGET_DIR", str(target_dir)),
         ("TMPDIR", str(tmp_dir)),
+        ("TMP", str(tmp_dir)),
+        ("TEMP", str(tmp_dir)),
     ]
 
 

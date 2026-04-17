@@ -3,6 +3,10 @@ name = "draton-codegen"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+windows-target-stubs = []
+
 [dependencies]
 draton-ast = { path = "../draton-ast" }
 draton-typeck = { path = "../draton-typeck" }

@@ -80,26 +80,28 @@ impl<'ctx> CodeGen<'ctx> {
         if self.module.get_function("draton_print").is_some() {
             return Ok(());
         }
-        let print_fn = self.module.add_function(
-            "draton_print",
+        let print_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+            self.context.void_type().fn_type(
+                &[self.context.ptr_type(AddressSpace::default()).into()],
+                false,
+            )
+        } else {
             self.context
                 .void_type()
-                .fn_type(&[self.string_type.into()], false),
-            None,
-        );
-        let println_fn = self.module.add_function(
-            "draton_println",
-            self.context
-                .void_type()
-                .fn_type(&[self.string_type.into()], false),
-            None,
-        );
-        let write_fn = self
-            .module
-            .get_function(Self::output_write_symbol())
-            .ok_or_else(|| CodeGenError::MissingSymbol(Self::output_write_symbol().to_string()))?;
-        self.build_print_fallback(print_fn, write_fn, false)?;
-        self.build_print_fallback(println_fn, write_fn, true)?;
+                .fn_type(&[self.string_type.into()], false)
+        };
+        let print_fn = self.module.add_function("draton_print", print_ty, None);
+        let println_fn = self.module.add_function("draton_println", print_ty, None);
+        if Self::should_emit_runtime_fallbacks() {
+            let write_fn = self
+                .module
+                .get_function(Self::output_write_symbol())
+                .ok_or_else(|| {
+                    CodeGenError::MissingSymbol(Self::output_write_symbol().to_string())
+                })?;
+            self.build_print_fallback(print_fn, write_fn, false)?;
+            self.build_print_fallback(println_fn, write_fn, true)?;
+        }
         Ok(())
     }
 
@@ -107,11 +109,18 @@ impl<'ctx> CodeGen<'ctx> {
         if self.module.get_function("draton_input").is_some() {
             return Ok(());
         }
-        self.module.add_function(
-            "draton_input",
-            self.string_type.fn_type(&[self.string_type.into()], false),
-            None,
-        );
+        let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+            self.context.void_type().fn_type(
+                &[
+                    self.context.ptr_type(AddressSpace::default()).into(),
+                    self.context.ptr_type(AddressSpace::default()).into(),
+                ],
+                false,
+            )
+        } else {
+            self.string_type.fn_type(&[self.string_type.into()], false)
+        };
+        self.module.add_function("draton_input", function_ty, None);
         Ok(())
     }
 
@@ -222,8 +231,17 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn declare_string_runtime(&mut self) -> Result<(), CodeGenError> {
         if self.module.get_function("draton_str_slice").is_none() {
-            self.module.add_function(
-                "draton_str_slice",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.i64_type().into(),
+                        self.context.i64_type().into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.string_type.fn_type(
                     &[
                         self.string_type.into(),
@@ -231,48 +249,90 @@ impl<'ctx> CodeGen<'ctx> {
                         self.context.i64_type().into(),
                     ],
                     false,
-                ),
-                None,
-            );
+                )
+            };
+            self.module
+                .add_function("draton_str_slice", function_ty, None);
         }
         if self.module.get_function("draton_str_concat").is_none() {
-            self.module.add_function(
-                "draton_str_concat",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.string_type
-                    .fn_type(&[self.string_type.into(), self.string_type.into()], false),
-                None,
-            );
+                    .fn_type(&[self.string_type.into(), self.string_type.into()], false)
+            };
+            self.module
+                .add_function("draton_str_concat", function_ty, None);
         }
         if self.module.get_function("draton_str_contains").is_none() {
-            self.module.add_function(
-                "draton_str_contains",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.bool_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.context
                     .bool_type()
-                    .fn_type(&[self.string_type.into(), self.string_type.into()], false),
-                None,
-            );
+                    .fn_type(&[self.string_type.into(), self.string_type.into()], false)
+            };
+            self.module
+                .add_function("draton_str_contains", function_ty, None);
         }
         if self.module.get_function("draton_str_starts_with").is_none() {
-            self.module.add_function(
-                "draton_str_starts_with",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.bool_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.context
                     .bool_type()
-                    .fn_type(&[self.string_type.into(), self.string_type.into()], false),
-                None,
-            );
+                    .fn_type(&[self.string_type.into(), self.string_type.into()], false)
+            };
+            self.module
+                .add_function("draton_str_starts_with", function_ty, None);
         }
         if self.module.get_function("draton_str_eq").is_none() {
-            self.module.add_function(
-                "draton_str_eq",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.bool_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.context
                     .bool_type()
-                    .fn_type(&[self.string_type.into(), self.string_type.into()], false),
-                None,
-            );
+                    .fn_type(&[self.string_type.into(), self.string_type.into()], false)
+            };
+            self.module.add_function("draton_str_eq", function_ty, None);
         }
         if self.module.get_function("draton_str_replace").is_none() {
-            self.module.add_function(
-                "draton_str_replace",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.string_type.fn_type(
                     &[
                         self.string_type.into(),
@@ -280,72 +340,115 @@ impl<'ctx> CodeGen<'ctx> {
                         self.string_type.into(),
                     ],
                     false,
-                ),
-                None,
-            );
+                )
+            };
+            self.module
+                .add_function("draton_str_replace", function_ty, None);
         }
         if self.module.get_function("draton_int_to_string").is_none() {
-            self.module.add_function(
-                "draton_int_to_string",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.i64_type().into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.string_type
-                    .fn_type(&[self.context.i64_type().into()], false),
-                None,
-            );
+                    .fn_type(&[self.context.i64_type().into()], false)
+            };
+            self.module
+                .add_function("draton_int_to_string", function_ty, None);
         }
         if self.module.get_function("draton_ascii_char").is_none() {
-            self.module.add_function(
-                "draton_ascii_char",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.i64_type().into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.string_type
-                    .fn_type(&[self.context.i64_type().into()], false),
-                None,
-            );
+                    .fn_type(&[self.context.i64_type().into()], false)
+            };
+            self.module
+                .add_function("draton_ascii_char", function_ty, None);
         }
         if self.module.get_function("draton_read_file").is_none() {
-            self.module.add_function(
-                "draton_read_file",
-                self.string_type.fn_type(&[self.string_type.into()], false),
-                None,
-            );
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
+                self.string_type.fn_type(&[self.string_type.into()], false)
+            };
+            self.module
+                .add_function("draton_read_file", function_ty, None);
         }
         if self
             .module
             .get_function("draton_string_parse_int")
             .is_none()
         {
-            self.module.add_function(
-                "draton_string_parse_int",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.i64_type().fn_type(
+                    &[self.context.ptr_type(AddressSpace::default()).into()],
+                    false,
+                )
+            } else {
                 self.context
                     .i64_type()
-                    .fn_type(&[self.string_type.into()], false),
-                None,
-            );
+                    .fn_type(&[self.string_type.into()], false)
+            };
+            self.module
+                .add_function("draton_string_parse_int", function_ty, None);
         }
         if self
             .module
             .get_function("draton_string_parse_int_radix")
             .is_none()
         {
-            self.module.add_function(
-                "draton_string_parse_int_radix",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.i64_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.i64_type().into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.context.i64_type().fn_type(
                     &[self.string_type.into(), self.context.i64_type().into()],
                     false,
-                ),
-                None,
-            );
+                )
+            };
+            self.module
+                .add_function("draton_string_parse_int_radix", function_ty, None);
         }
         if self
             .module
             .get_function("draton_string_parse_float")
             .is_none()
         {
-            self.module.add_function(
-                "draton_string_parse_float",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.f64_type().fn_type(
+                    &[self.context.ptr_type(AddressSpace::default()).into()],
+                    false,
+                )
+            } else {
                 self.context
                     .f64_type()
-                    .fn_type(&[self.string_type.into()], false),
-                None,
-            );
+                    .fn_type(&[self.string_type.into()], false)
+            };
+            self.module
+                .add_function("draton_string_parse_float", function_ty, None);
         }
         Ok(())
     }
@@ -370,54 +473,114 @@ impl<'ctx> CodeGen<'ctx> {
             );
         }
         if self.module.get_function("draton_cli_arg").is_none() {
-            self.module.add_function(
-                "draton_cli_arg",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.i64_type().into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.string_type
-                    .fn_type(&[self.context.i64_type().into()], false),
-                None,
-            );
+                    .fn_type(&[self.context.i64_type().into()], false)
+            };
+            self.module
+                .add_function("draton_cli_arg", function_ty, None);
         }
         if self.module.get_function("draton_host_ast_dump").is_none() {
-            self.module.add_function(
-                "draton_host_ast_dump",
-                self.string_type.fn_type(&[self.string_type.into()], false),
-                None,
-            );
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
+                self.string_type.fn_type(&[self.string_type.into()], false)
+            };
+            self.module
+                .add_function("draton_host_ast_dump", function_ty, None);
         }
         if self.module.get_function("draton_host_type_dump").is_none() {
-            self.module.add_function(
-                "draton_host_type_dump",
-                self.string_type.fn_type(&[self.string_type.into()], false),
-                None,
-            );
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
+                self.string_type.fn_type(&[self.string_type.into()], false)
+            };
+            self.module
+                .add_function("draton_host_type_dump", function_ty, None);
         }
         if self.module.get_function("draton_host_lex_json").is_none() {
-            self.module.add_function(
-                "draton_host_lex_json",
-                self.string_type.fn_type(&[self.string_type.into()], false),
-                None,
-            );
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
+                self.string_type.fn_type(&[self.string_type.into()], false)
+            };
+            self.module
+                .add_function("draton_host_lex_json", function_ty, None);
         }
         if self.module.get_function("draton_host_parse_json").is_none() {
-            self.module.add_function(
-                "draton_host_parse_json",
-                self.string_type.fn_type(&[self.string_type.into()], false),
-                None,
-            );
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
+                self.string_type.fn_type(&[self.string_type.into()], false)
+            };
+            self.module
+                .add_function("draton_host_parse_json", function_ty, None);
         }
         if self.module.get_function("draton_host_type_json").is_none() {
-            self.module.add_function(
-                "draton_host_type_json",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.i64_type().into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.string_type.fn_type(
                     &[self.string_type.into(), self.context.i64_type().into()],
                     false,
-                ),
-                None,
-            );
+                )
+            };
+            self.module
+                .add_function("draton_host_type_json", function_ty, None);
         }
         if self.module.get_function("draton_host_build_json").is_none() {
-            self.module.add_function(
-                "draton_host_build_json",
+            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+                self.context.void_type().fn_type(
+                    &[
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                        self.context.i64_type().into(),
+                        self.context.ptr_type(AddressSpace::default()).into(),
+                    ],
+                    false,
+                )
+            } else {
                 self.string_type.fn_type(
                     &[
                         self.string_type.into(),
@@ -427,9 +590,10 @@ impl<'ctx> CodeGen<'ctx> {
                         self.string_type.into(),
                     ],
                     false,
-                ),
-                None,
-            );
+                )
+            };
+            self.module
+                .add_function("draton_host_build_json", function_ty, None);
         }
         Ok(())
     }

@@ -2,16 +2,23 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
 import os
-import resource
 import shlex
 import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+if os.name == "nt":
+    import msvcrt
+    import ctypes
+
+    resource = None
+else:
+    import fcntl
+    import resource
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -25,6 +32,9 @@ DEFAULT_CONCURRENCY = 2
 DEFAULT_MEMORY_MB = 2048
 DEFAULT_CPU_SECONDS = 600
 DEFAULT_FILE_SIZE_MB = 64
+
+if os.name == "nt":
+    LOCK_BYTES = 1
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,6 +81,13 @@ def ensure_state_dir() -> None:
 
 
 def pid_alive(pid: int) -> bool:
+    if os.name == "nt":
+        # PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+        if handle == 0:
+            return False
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return True
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -97,6 +114,34 @@ def save_slots(slots: list[dict[str, object]]) -> None:
     SLOTS_PATH.write_text(json.dumps(slots, indent=2) + "\n", encoding="utf-8")
 
 
+class FileLock:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.handle = None
+
+    def __enter__(self):
+        self.handle = self.path.open("a+", encoding="ascii")
+        if os.name == "nt":
+            self.handle.seek(0)
+            msvcrt.locking(self.handle.fileno(), msvcrt.LK_LOCK, LOCK_BYTES)
+        else:
+            fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
+        return self.handle
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self.handle is None:
+            return
+        try:
+            if os.name == "nt":
+                self.handle.seek(0)
+                msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, LOCK_BYTES)
+            else:
+                fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            self.handle.close()
+            self.handle = None
+
+
 class SlotClaim:
     def __init__(self, token: dict[str, object]) -> None:
         self.token = token
@@ -106,12 +151,10 @@ class SlotClaim:
         if not self.active:
             return
         ensure_state_dir()
-        with LOCK_PATH.open("a+", encoding="ascii") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        with FileLock(LOCK_PATH):
             slots = load_slots()
             slots = [item for item in slots if item != self.token]
             save_slots(slots)
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         self.active = False
 
 
@@ -125,15 +168,12 @@ def acquire_slot(concurrency: int, wait_sec: int, cwd: str, command: list[str]) 
         "command": " ".join(shlex.quote(part) for part in command),
     }
     while True:
-        with LOCK_PATH.open("a+", encoding="ascii") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        with FileLock(LOCK_PATH):
             slots = load_slots()
             if len(slots) < concurrency:
                 slots.append(token)
                 save_slots(slots)
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
                 return SlotClaim(token)
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         if time.time() >= deadline:
             raise TimeoutError(
                 f"timed out waiting for a free guarded slot after {wait_sec}s"
@@ -161,6 +201,8 @@ def make_preexec(memory_mb: int, cpu_seconds: int, file_size_mb: int, nice_value
             os.nice(nice_value)
         except OSError:
             pass
+        if resource is None:
+            return
         resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
         resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
         resource.setrlimit(resource.RLIMIT_FSIZE, (file_size_bytes, file_size_bytes))
@@ -170,6 +212,22 @@ def make_preexec(memory_mb: int, cpu_seconds: int, file_size_mb: int, nice_value
 
 
 def kill_process_group(proc: subprocess.Popen[str]) -> None:
+    if os.name == "nt":
+        try:
+            proc.terminate()
+        except ProcessLookupError:
+            return
+        except OSError:
+            return
+        time.sleep(0.2)
+        if proc.poll() is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            except OSError:
+                pass
+        return
     try:
         os.killpg(proc.pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -188,17 +246,23 @@ def main() -> int:
     started = time.time()
     try:
         env = build_env(args.env)
+        popen_kwargs: dict[str, object] = {
+            "cwd": cwd,
+            "env": env,
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": True,
+        }
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs["preexec_fn"] = make_preexec(
+                args.memory_mb, args.cpu_seconds, args.file_size_mb, args.nice
+            )
         proc = subprocess.Popen(
             args.command,
-            cwd=cwd,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            preexec_fn=make_preexec(
-                args.memory_mb, args.cpu_seconds, args.file_size_mb, args.nice
-            ),
+            **popen_kwargs,
         )
         timed_out = False
         try:

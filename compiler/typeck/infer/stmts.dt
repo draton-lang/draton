@@ -15,19 +15,19 @@ fn infer_block(checker, block) {
 
 fn infer_stmt(checker, stmt) {
     if stmt.kind == Let {
-        return infer_let(checker, stmt.value)
+        return infer_let(checker, stmt.let_stmt)
     }
     if stmt.kind == LetDestructure {
-        return infer_let_destructure(checker, stmt.value)
+        return infer_let_destructure(checker, stmt.let_destructure)
     }
     if stmt.kind == Assign {
-        return infer_assign(checker, stmt.value)
+        return infer_assign(checker, stmt.assign_stmt)
     }
     if stmt.kind == Return {
-        return infer_return(checker, stmt.value)
+        return infer_return(checker, stmt.return_stmt)
     }
     if stmt.kind == Expr {
-        let expr = infer_expr(checker, stmt.value)
+        let expr = infer_expr(checker, stmt.expr)
         return TypedStmt {
             kind: Expr,
             let_stmt: None,
@@ -48,23 +48,23 @@ fn infer_stmt(checker, stmt) {
         }
     }
     if stmt.kind == If {
-        let typed_if = infer_if(checker, stmt.value)
+        let typed_if = infer_if(checker, stmt.if_stmt)
         return wrap_if_stmt(typed_if, stmt.span)
     }
     if stmt.kind == For {
-        let typed_for = infer_for(checker, stmt.value)
+        let typed_for = infer_for(checker, stmt.for_stmt)
         return wrap_for_stmt(typed_for, stmt.span)
     }
     if stmt.kind == While {
-        let typed_while = infer_while(checker, stmt.value)
+        let typed_while = infer_while(checker, stmt.while_stmt)
         return wrap_while_stmt(typed_while, stmt.span)
     }
     if stmt.kind == Spawn {
-        let typed_spawn = infer_spawn(checker, stmt.value)
+        let typed_spawn = infer_spawn(checker, stmt.spawn_stmt)
         return wrap_spawn_stmt(typed_spawn, stmt.span)
     }
     if stmt.kind == Block || stmt.kind == UnsafeBlock || stmt.kind == PointerBlock || stmt.kind == ComptimeBlock {
-        let block = infer_block(checker, stmt.value)
+        let block = infer_block(checker, stmt.block)
         return TypedStmt {
             kind: stmt.kind,
             let_stmt: None,
@@ -97,7 +97,7 @@ fn infer_stmt(checker, stmt) {
             while_stmt: None,
             spawn_stmt: None,
             block: None,
-            asm_text: Some(stmt.value),
+            asm_text: stmt.asm_text,
             if_compile: None,
             gc_config: None,
             type_block: None,
@@ -105,8 +105,8 @@ fn infer_stmt(checker, stmt) {
         }
     }
     if stmt.kind == IfCompile {
-        let condition = infer_expr(checker, stmt.value.condition)
-        let body = infer_block(checker, stmt.value.body)
+        let condition = infer_expr(checker, stmt.if_compile.condition)
+        let body = infer_block(checker, stmt.if_compile.body)
         return TypedStmt {
             kind: IfCompile,
             let_stmt: None,
@@ -130,8 +130,8 @@ fn infer_stmt(checker, stmt) {
         checker.push_deprecated_syntax("@gc_config has no effect", "Draton uses Inferred Ownership and has no GC runtime", stmt.span)
         let mut entries = []
         let mut index = 0
-        while index < stmt.value.entries.len() {
-            let entry = stmt.value.entries[index]
+        while index < stmt.gc_config.entries.len() {
+            let entry = stmt.gc_config.entries[index]
             entries.push(TypedGcConfigEntry { key: entry.key, value: infer_expr(checker, entry.value), span: entry.span })
             index = index + 1
         }
@@ -170,7 +170,7 @@ fn infer_stmt(checker, stmt) {
             asm_text: None,
             if_compile: None,
             gc_config: None,
-            type_block: Some(TypedTypeBlock { members: [], span: stmt.value.span }),
+            type_block: Some(TypedTypeBlock { members: [], span: stmt.type_block.span }),
             span: stmt.span
         }
     }

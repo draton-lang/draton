@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 
 use crate::commands::build::{self, BuildRequest, Profile};
 
-const STAGE0_CACHE_ABI: &str = "selfhost-stage0-cache-v2";
+const STAGE0_CACHE_ABI: &str = "selfhost-stage0-cache-v3";
 
 #[derive(Debug, Clone)]
 pub(crate) enum SelfhostStage0Command {
@@ -320,7 +320,7 @@ fn stage0_bridge(command: &SelfhostStage0Command) -> Value {
         }),
         SelfhostStage0Command::Parse { .. } => json!({
             "kind": "selfhost",
-            "builtin": "host_parse_json",
+            "builtin": Value::Null,
         }),
         SelfhostStage0Command::Typeck { .. } => json!({
             "kind": "selfhost",
@@ -402,7 +402,7 @@ fn stage0_layout(command: &SelfhostStage0Command) -> Stage0Layout {
         },
         SelfhostStage0Command::Parse { .. } => Stage0Layout {
             cache_key: "parse",
-            entries: &[],
+            entries: &["ast", "lexer", "parser", "driver/parse_stage.dt"],
         },
         SelfhostStage0Command::Typeck { .. } => Stage0Layout {
             cache_key: "typeck",
@@ -618,12 +618,20 @@ fn write_stage0_entry(temp_root: &Path, command: &SelfhostStage0Command) -> Resu
 }
 
 fn stage0_entry_source(command: &SelfhostStage0Command) -> String {
+    let imports = match command {
+        SelfhostStage0Command::Lex { .. } => "import { lex_json } from driver.pipeline\n\n",
+        SelfhostStage0Command::Parse { .. } => {
+            "import { parse_stage_json } from driver.parse_stage\n\n"
+        }
+        SelfhostStage0Command::Typeck { .. } => "",
+        SelfhostStage0Command::Build { .. } => "import { build_json } from driver.pipeline\n\n",
+    };
     let dispatch = match command {
         SelfhostStage0Command::Lex { .. } => {
             "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(lex_json(path))\n"
         }
         SelfhostStage0Command::Parse { .. } => {
-            "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(host_parse_json(path))\n"
+            "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(parse_stage_json(path))\n"
         }
         SelfhostStage0Command::Typeck { .. } => {
             "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(host_type_json(path, int_arg(2)))\n"
@@ -634,7 +642,7 @@ fn stage0_entry_source(command: &SelfhostStage0Command) -> String {
     };
 
     format!(
-        "@type {{\n    arg_or_empty: (Int) -> String\n    bool_arg: (Int) -> Bool\n    int_arg: (Int) -> Int\n    emit_payload: (String) -> Int\n    emit_error: (String) -> Int\n    main: () -> Int\n}}\n\nfn arg_or_empty(index) {{\n    if index < cli_argc() {{\n        return cli_arg(index)\n    }}\n    return \"\"\n}}\n\nfn bool_arg(index) {{\n    return arg_or_empty(index) == \"1\"\n}}\n\nfn int_arg(index) {{\n    if bool_arg(index) {{\n        return 1\n    }}\n    return 0\n}}\n\nfn emit_payload(payload) {{\n    println(payload)\n    return 0\n}}\n\nfn emit_error(message) {{\n    let prefix = \"{{\\\"ok\\\":false,\\\"error\\\":\\\"\"\n    let body = str_concat(prefix, message)\n    println(str_concat(body, \"\\\"}}\"))\n    return 1\n}}\n\nfn main() {{\n{dispatch}}}\n"
+        "{imports}@type {{\n    arg_or_empty: (Int) -> String\n    bool_arg: (Int) -> Bool\n    int_arg: (Int) -> Int\n    emit_payload: (String) -> Int\n    emit_error: (String) -> Int\n    main: () -> Int\n}}\n\nfn arg_or_empty(index) {{\n    if index < cli_argc() {{\n        return cli_arg(index)\n    }}\n    return \"\"\n}}\n\nfn bool_arg(index) {{\n    return arg_or_empty(index) == \"1\"\n}}\n\nfn int_arg(index) {{\n    if bool_arg(index) {{\n        return 1\n    }}\n    return 0\n}}\n\nfn emit_payload(payload) {{\n    println(payload)\n    return 0\n}}\n\nfn emit_error(message) {{\n    let prefix = \"{{\\\"ok\\\":false,\\\"error\\\":\\\"\"\n    let body = str_concat(prefix, message)\n    println(str_concat(body, \"\\\"}}\"))\n    return 1\n}}\n\nfn main() {{\n{dispatch}}}\n"
     )
 }
 

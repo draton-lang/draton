@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
@@ -29,6 +30,18 @@ const HOST_TARGET: &str = if cfg!(target_os = "linux") && cfg!(target_arch = "x8
     "unknown"
 };
 const MAX_RENDERED_TYPE_WARNINGS: usize = 64;
+
+fn build_trace_enabled() -> bool {
+    env::var("DRATON_BUILD_TRACE").is_ok_and(|value| value != "0")
+}
+
+fn build_trace(message: impl AsRef<str>) {
+    if build_trace_enabled() {
+        let mut stderr = std::io::stderr().lock();
+        let _ = writeln!(stderr, "[drat-build] {}", message.as_ref());
+        let _ = stderr.flush();
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Profile {
@@ -71,6 +84,7 @@ struct LoadedProjectProgram {
 }
 
 pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOutput> {
+    build_trace(format!("run:start root={}", project_root.display()));
     let config = DratonConfig::load(project_root)?;
     let resolved_target = request
         .target
@@ -84,14 +98,20 @@ pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOu
     let old_multi_defs = env::var_os("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS");
     env::set_var("DRATON_ALLOW_MULTIPLE_RUNTIME_DEFS", "1");
     let built = (|| {
+        build_trace(format!(
+            "run:compile-project entry={}",
+            entry_path.display()
+        ));
         let compiled = compile_project(&entry_path, request.strict_syntax)?;
         let Some(main_return_type) = compiled.main_return_type.clone() else {
             bail!("no fn main found in {}", entry_path.display());
         };
+        build_trace("run:codegen-create-context");
         let context = LlvmContext::create();
         let module = CodeGen::new(&context, request.profile.to_codegen_mode())
             .emit(&compiled.typed_program)
             .map_err(|error| anyhow!(error.to_string()))?;
+        build_trace("run:wrap-main");
         wrap_main_for_binary(&context, &module, &main_return_type)?;
 
         let build_dir = project_root
@@ -107,8 +127,11 @@ pub(crate) fn run(project_root: &Path, request: &BuildRequest) -> Result<BuildOu
         let ir_path = build_dir.join(format!("{}.ll", config.project.name));
         let object_path = build_dir.join(format!("{}.o", config.project.name));
         let binary_path = build_dir.join(exe_name);
+        build_trace("run:write-ir");
         CodeGen::write_ir(&module, &ir_path)?;
+        build_trace("run:write-object");
         CodeGen::write_object(&module, &object_path)?;
+        build_trace("run:link-binary");
         link_binary(
             request.profile,
             &object_path,
@@ -190,8 +213,14 @@ pub(crate) fn run_file(
 }
 
 pub(crate) fn compile_project(entry_path: &Path, strict_syntax: bool) -> Result<CompiledProject> {
+    build_trace(format!(
+        "compile-project:start entry={}",
+        entry_path.display()
+    ));
     let loaded = load_project_program(entry_path)?;
+    build_trace("compile-project:loaded-project");
     let typed = type_checker_for(strict_syntax).check(loaded.program);
+    build_trace("compile-project:typecheck-finished");
     if !typed.errors.is_empty() {
         bail!(
             "{}",
@@ -426,6 +455,7 @@ fn error_search_terms(error: &TypeError) -> Vec<String> {
 }
 
 fn load_project_program(entry_path: &Path) -> Result<LoadedProjectProgram> {
+    build_trace(format!("load-project:start entry={}", entry_path.display()));
     let mut items = Vec::new();
     let mut sources = Vec::new();
     let (stdlib_items, stdlib_sources) = load_bundled_stdlib_items()?;
@@ -436,7 +466,12 @@ fn load_project_program(entry_path: &Path) -> Result<LoadedProjectProgram> {
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
     let files = collect_project_sources(entry_path)?;
+    build_trace(format!(
+        "load-project:collected-files count={}",
+        files.len()
+    ));
     for path in files {
+        build_trace(format!("load-project:file {}", path.display()));
         let source = fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
         let lexed = Lexer::new(&source).tokenize();
@@ -444,6 +479,7 @@ fn load_project_program(entry_path: &Path) -> Result<LoadedProjectProgram> {
             bail!("{}", render_lex_errors(&path, &source, &lexed.errors));
         }
         let parsed = Parser::new(lexed.tokens).parse();
+        build_trace(format!("load-project:parsed {}", path.display()));
         if !parsed.errors.is_empty() {
             bail!("{}", render_parse_errors(&path, &source, &parsed.errors));
         }
@@ -797,7 +833,8 @@ fn link_binary(
         ensure_supported_target(target)?;
     }
     let mut command = linker_command()?;
-    if bundled_lld_usable() {
+    let uses_windows_linker = windows_native_linker(&command);
+    if bundled_lld_usable() && !uses_windows_linker {
         command.arg("-fuse-ld=lld");
     }
     command.arg(object_path);
@@ -805,7 +842,19 @@ fn link_binary(
         let runtime_lib = ensure_runtime_staticlib(profile)?;
         command.arg(&runtime_lib);
     }
-    command.arg("-o").arg(binary_path);
+    if cfg!(target_os = "windows") && uses_windows_linker {
+        command.arg(format!("/OUT:{}", binary_path.display()));
+        command.args([
+            "/NOLOGO",
+            "/FORCE:MULTIPLE",
+            "advapi32.lib",
+            "bcrypt.lib",
+            "userenv.lib",
+            "ntdll.lib",
+        ]);
+    } else {
+        command.arg("-o").arg(binary_path);
+    }
     if cfg!(target_os = "linux") {
         // Generated binaries still carry a small runtime shim surface, so Linux
         // links must tolerate duplicate runtime symbols when the bundled static
@@ -823,7 +872,7 @@ fn link_binary(
     } else if cfg!(target_os = "macos") {
         command.arg("-Wl,-multiply_defined,suppress");
         command.args(["-ldl", "-lpthread", "-lm", "-lc++"]);
-    } else if cfg!(target_os = "windows") {
+    } else if cfg!(target_os = "windows") && !uses_windows_linker {
         command.args([
             "-static-libgcc",
             "-static-libstdc++",
@@ -836,7 +885,14 @@ fn link_binary(
         .output()
         .with_context(|| "failed to run linker driver".to_string())?;
     if !output.status.success() {
-        bail!("link failed:\n{}", String::from_utf8_lossy(&output.stderr));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "link failed via {}:\nstdout:\n{}\nstderr:\n{}",
+            command.get_program().to_string_lossy(),
+            stdout,
+            stderr
+        );
     }
     copy_windows_runtime_dlls(binary_path)?;
     Ok(())
@@ -995,6 +1051,17 @@ fn linker_command() -> Result<Command> {
                 return Ok(command);
             }
         }
+        if let Some(toolchain) = windows_msvc_toolchain() {
+            let mut command = Command::new(&toolchain.linker);
+            prepend_path(&mut command, &toolchain.bin_dir);
+            let lib_refs = toolchain
+                .lib_paths
+                .iter()
+                .map(|path| path.as_path())
+                .collect::<Vec<_>>();
+            prepend_search_path_env(&mut command, "LIB", &lib_refs);
+            return Ok(command);
+        }
     }
     if let Some((driver, root)) = bundled_llvm_driver() {
         if bundled_driver_usable(&driver) {
@@ -1073,6 +1140,124 @@ fn bundled_llvm_driver() -> Option<(PathBuf, PathBuf)> {
         .map(|driver| (driver, root))
 }
 
+struct WindowsMsvcToolchain {
+    linker: PathBuf,
+    bin_dir: PathBuf,
+    lib_paths: Vec<PathBuf>,
+}
+
+fn windows_msvc_toolchain() -> Option<WindowsMsvcToolchain> {
+    if !cfg!(windows) {
+        return None;
+    }
+
+    let tools_root = windows_msvc_tools_root()?;
+    let bin_dir = tools_root.join("bin").join("Hostx64").join("x64");
+    let linker = bin_dir.join("link.exe");
+    let vc_lib = tools_root.join("lib").join("x64");
+    if !linker.exists() || !vc_lib.exists() {
+        return None;
+    }
+
+    let sdk_root = windows_sdk_root()?;
+    let sdk_version = windows_sdk_version(&sdk_root)?;
+    let ucrt_lib = sdk_root.join(&sdk_version).join("ucrt").join("x64");
+    let um_lib = sdk_root.join(&sdk_version).join("um").join("x64");
+    if !ucrt_lib.exists() || !um_lib.exists() {
+        return None;
+    }
+
+    Some(WindowsMsvcToolchain {
+        linker,
+        bin_dir,
+        lib_paths: vec![vc_lib, ucrt_lib, um_lib],
+    })
+}
+
+fn windows_msvc_tools_root() -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    if let Some(root) = env::var_os("VCToolsInstallDir") {
+        let path = PathBuf::from(root);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    let base = PathBuf::from(r"C:\Program Files\Microsoft Visual Studio");
+    let years = ["2022", "2019", "2017"];
+    let editions = ["Community", "Professional", "Enterprise", "BuildTools"];
+    for year in years {
+        for edition in editions {
+            let tools_dir = base
+                .join(year)
+                .join(edition)
+                .join("VC")
+                .join("Tools")
+                .join("MSVC");
+            if let Some(version) = latest_child_dir(&tools_dir) {
+                return Some(version);
+            }
+        }
+    }
+    None
+}
+
+fn windows_sdk_root() -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    if let Some(root) = env::var_os("WindowsSdkDir") {
+        let path = PathBuf::from(root).join("Lib");
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    let path = PathBuf::from(r"C:\Program Files (x86)\Windows Kits\10\Lib");
+    path.exists().then_some(path)
+}
+
+fn windows_sdk_version(root: &Path) -> Option<String> {
+    if !cfg!(windows) {
+        return None;
+    }
+    if let Some(version) = env::var_os("WindowsSDKVersion") {
+        let text = version
+            .to_string_lossy()
+            .trim_end_matches(['\\', '/'])
+            .to_string();
+        if root.join(&text).exists() {
+            return Some(text);
+        }
+    }
+    latest_child_dir(root).and_then(|path| {
+        path.file_name()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_string())
+    })
+}
+
+fn latest_child_dir(root: &Path) -> Option<PathBuf> {
+    let mut entries = fs::read_dir(root)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    entries.sort();
+    entries.pop()
+}
+
+fn windows_native_linker(command: &Command) -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+    let Some(program) = command.get_program().to_str() else {
+        return false;
+    };
+    program.ends_with("link.exe") || program.ends_with("lld-link.exe")
+}
+
 fn packaged_llvm_root() -> Option<PathBuf> {
     if let Some(root) =
         env::var_os("DRATON_LLVM_BUNDLE_PREFIX").or_else(|| env::var_os("LLVM_PATH"))
@@ -1106,13 +1291,7 @@ fn packaged_windows_gnu_root() -> Option<PathBuf> {
 }
 
 fn prepend_path(command: &mut Command, entry: &Path) {
-    let mut path_entries = vec![entry.to_path_buf()];
-    if let Some(existing) = env::var_os("PATH") {
-        path_entries.extend(env::split_paths(&existing));
-    }
-    if let Ok(path) = env::join_paths(path_entries) {
-        command.env("PATH", path);
-    }
+    prepend_search_path_env(command, "PATH", &[entry]);
 }
 
 fn path_has_executable(name: &str) -> bool {
@@ -1135,11 +1314,18 @@ fn prepend_library_search_path(command: &mut Command, entry: &Path) {
     } else {
         "LD_LIBRARY_PATH"
     };
-    let mut entries = vec![entry.to_path_buf()];
+    prepend_search_path_env(command, key, &[entry]);
+}
+
+fn prepend_search_path_env(command: &mut Command, key: &str, entries: &[&Path]) {
+    let mut joined = entries
+        .iter()
+        .map(|entry| entry.to_path_buf())
+        .collect::<Vec<_>>();
     if let Some(existing) = env::var_os(key) {
-        entries.extend(env::split_paths(&existing));
+        joined.extend(env::split_paths(&existing));
     }
-    if let Ok(path) = env::join_paths(entries) {
+    if let Ok(path) = env::join_paths(joined) {
         command.env(key, path);
     }
 }

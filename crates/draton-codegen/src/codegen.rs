@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::io::Write;
 use std::path::Path;
 
 use draton_typeck::{OwnershipChecker, Type, TypedProgram};
@@ -70,6 +71,7 @@ pub struct CodeGen<'ctx> {
     pub(crate) vtable_types: HashMap<String, StructType<'ctx>>,
     pub(crate) fat_pointer_types: HashMap<String, StructType<'ctx>>,
     pub(crate) vtable_globals: HashMap<(String, String), GlobalValue<'ctx>>,
+    pub(crate) enum_variants: HashMap<String, HashMap<String, u64>>,
     pub(crate) closure_counter: usize,
     pub(crate) closure_type_descriptor_id: u16,
     pub(crate) pending_ctors: Vec<FunctionValue<'ctx>>,
@@ -81,6 +83,18 @@ pub struct CodeGen<'ctx> {
 }
 
 impl<'ctx> CodeGen<'ctx> {
+    pub(crate) fn trace_enabled() -> bool {
+        env::var("DRATON_CODEGEN_TRACE").is_ok_and(|value| value != "0")
+    }
+
+    pub(crate) fn trace(&self, message: impl AsRef<str>) {
+        if Self::trace_enabled() {
+            let mut stderr = std::io::stderr().lock();
+            let _ = writeln!(stderr, "[draton-codegen] {}", message.as_ref());
+            let _ = stderr.flush();
+        }
+    }
+
     /// Creates a new LLVM module builder for the requested build mode.
     pub fn new(context: &'ctx Context, mode: BuildMode) -> Self {
         let module = context.create_module("draton");
@@ -113,6 +127,7 @@ impl<'ctx> CodeGen<'ctx> {
             vtable_types: HashMap::new(),
             fat_pointer_types: HashMap::new(),
             vtable_globals: HashMap::new(),
+            enum_variants: HashMap::new(),
             closure_counter: 0,
             closure_type_descriptor_id: 0,
             pending_ctors: Vec::new(),
@@ -125,6 +140,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Emits LLVM IR for a typed Draton program.
     pub fn emit(mut self, program: &TypedProgram) -> Result<Module<'ctx>, CodeGenError> {
+        self.trace("emit:start");
         let mut program = program.clone();
         let mut ownership_checker = OwnershipChecker::new();
         let ownership_errors = ownership_checker.check_program(&mut program);
@@ -140,21 +156,33 @@ impl<'ctx> CodeGen<'ctx> {
             .collect();
 
         self.index_generic_items(&program);
+        self.trace("emit:index-generic-items");
+        self.index_enum_items(&program);
+        self.trace("emit:index-enum-items");
         self.mono = MonoCollector::new().collect(&program);
+        self.trace("emit:collect-mono");
         self.iface_registry = InterfaceRegistry::build(&program);
+        self.trace("emit:build-interfaces");
         self.emit_interface_runtime_types()?;
+        self.trace("emit:interface-runtime-types");
         self.declare_runtime()?;
+        self.trace("emit:declare-runtime");
         self.ensure_closure_runtime_metadata()?;
+        self.trace("emit:closure-runtime");
         self.predeclare_program_items(&program)?;
+        self.trace("emit:predeclare-program-items");
         for item in &program.items {
             self.emit_item(item)?;
         }
+        self.trace("emit:emit-items");
         self.emit_mono_items()?;
+        self.trace("emit:emit-mono-items");
         self.normalize_global_ctors()?;
         self.apply_optimizations();
         self.module
             .verify()
             .map_err(|err| CodeGenError::Verify(err.to_string()))?;
+        self.trace("emit:verify");
         Ok(self.module)
     }
 
@@ -563,6 +591,29 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn apply_optimizations(&self) {
         let _ = self.mode;
+    }
+
+    pub(crate) fn index_enum_items(&mut self, program: &TypedProgram) {
+        self.enum_variants.clear();
+        for item in &program.items {
+            if let draton_typeck::TypedItem::Enum(enum_def) = item {
+                let mut variants = HashMap::new();
+                for (index, variant) in enum_def.variants.iter().enumerate() {
+                    variants.insert(variant.clone(), index as u64);
+                }
+                self.enum_variants.insert(enum_def.name.clone(), variants);
+            }
+        }
+    }
+
+    pub(crate) fn is_enum_type_name(&self, name: &str) -> bool {
+        self.enum_variants.contains_key(name)
+    }
+
+    pub(crate) fn enum_variant_tag(&self, enum_name: &str, variant: &str) -> Option<u64> {
+        self.enum_variants
+            .get(enum_name)
+            .and_then(|variants| variants.get(variant).copied())
     }
 }
 

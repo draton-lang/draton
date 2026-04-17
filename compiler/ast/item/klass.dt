@@ -19,7 +19,7 @@ class FieldDef {
 }
 
 enum ClassMemberKind {
-    Field,
+    MemberField,
     Method,
     Layer
 }

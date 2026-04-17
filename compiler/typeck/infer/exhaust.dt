@@ -205,7 +205,7 @@ fn classify_subject(ty, enum_defs) {
 }
 
 fn extract_pattern(expr) {
-    if expr.kind == Ident {
+    if expr.kind == ExprIdent {
         return empty_pattern(Wildcard)
     }
     if expr.kind == IntLit {
@@ -231,7 +231,7 @@ fn extract_pattern(expr) {
     if expr.kind == NoneLit {
         return empty_pattern(LiteralNone)
     }
-    if expr.kind == Field && expr.target != None && expr.target.kind == Ident && expr.target.name != None && expr.name != None {
+    if expr.kind == ExprField && expr.target != None && expr.target.kind == ExprIdent && expr.target.name != None && expr.name != None {
         let mut pattern = empty_pattern(EnumVariant)
         pattern.enum_name = expr.target.name
         pattern.str_value = expr.name
@@ -258,7 +258,7 @@ fn extract_pattern(expr) {
         pattern.named_name = Some("Err")
         return pattern
     }
-    if expr.kind == Call && expr.callee != None && expr.callee.kind == Ident && expr.callee.name != None {
+    if expr.kind == Call && expr.callee != None && expr.callee.kind == ExprIdent && expr.callee.name != None {
         let mut pattern = empty_pattern(Named)
         pattern.named_name = expr.callee.name
         return pattern

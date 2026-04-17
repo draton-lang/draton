@@ -1,4 +1,4 @@
-import { Item, Program } from ast.item.item
+import { Item, ItemKind, Program } from ast.item.item
 import { FnDef, Param } from ast.item.func
 import { ClassDef, ClassMember, FieldDef } from ast.item.klass
 import { LayerDef } from ast.item.layers
@@ -10,7 +10,55 @@ import { ImportDef, ImportItem } from ast.item.imports
 import { ExternBlock } from ast.item.extern
 import { TypeBlock, TypeMember } from ast.item.type_block
 import { NamedTypeExpr } from ast.types
+import { Span } from ast.span
 import { ParseError } from parser.errors
+import { Parser } from parser.parser
+
+@type {
+    copy_span: (Span) -> Span
+    merge_span_bounds: (Span, Span) -> Span
+    parse_program: (Parser) -> Program
+    parse_item: (Parser) -> Option[Item]
+    parse_panic_handler: (Parser) -> Option[FnDef]
+    parse_oom_handler: (Parser) -> Option[FnDef]
+    parse_fn_def: (Parser, Bool, Bool) -> Option[FnDef]
+    parse_param_list: (Parser) -> Option[Array[Param]]
+    parse_class_def: (Parser) -> Option[ClassDef]
+    parse_class_member: (Parser) -> Option[ClassMember]
+    parse_acyclic_class_def: (Parser) -> Option[ClassDef]
+    parse_class_field: (Parser) -> Option[FieldDef]
+    parse_type_param_list: (Parser) -> Option[Array[String]]
+    parse_layer_def: (Parser) -> Option[LayerDef]
+    skip_layer_block: (Parser) -> Unit
+    parse_interface_def: (Parser, Bool) -> Option[InterfaceDef]
+    parse_enum_def: (Parser, Bool) -> Option[EnumDef]
+    parse_error_def: (Parser, Bool) -> Option[ErrorDef]
+    parse_const_def: (Parser, Bool) -> Option[ConstDef]
+    parse_import_def: (Parser) -> Option[ImportDef]
+    parse_extern_block: (Parser) -> Option[ExternBlock]
+    parse_type_block: (Parser) -> Option[TypeBlock]
+    parse_module_path: (Parser) -> Option[Array[String]]
+    make_fn_item: (FnDef, ItemKind) -> Item
+    make_class_item: (ClassDef) -> Item
+    make_interface_item: (InterfaceDef) -> Item
+    make_enum_item: (EnumDef) -> Item
+    make_error_item: (ErrorDef) -> Item
+    make_const_item: (ConstDef) -> Item
+    make_import_item: (ImportDef) -> Item
+    make_extern_item: (ExternBlock) -> Item
+    make_type_block_item: (TypeBlock) -> Item
+    make_field_member: (FieldDef) -> ClassMember
+    make_method_member: (FnDef) -> ClassMember
+    make_layer_member: (LayerDef) -> ClassMember
+}
+
+fn copy_span(span) {
+    return Span { start: span.start, end: span.end, line: span.line, col: span.col }
+}
+
+fn merge_span_bounds(start, end) {
+    return Span { start: start.start, end: end.end, line: start.line, col: start.col }
+}
 
 fn parse_program(parser) {
     let mut program = Program { items: [] }
@@ -20,13 +68,16 @@ fn parse_program(parser) {
             break
         }
         let before = parser.pos
-        let item = parse_item(parser)
-        if item != None {
-            program.items.push(item)
-            continue
-        }
-        if parser.pos == before {
-            parser.synchronize_top_level()
+        match parse_item(parser) {
+            Some(item) => {
+                program.items.push(item)
+                continue
+            }
+            None => {
+                if parser.pos == before {
+                    parser.synchronize_top_level()
+                }
+            }
         }
     }
     return program
@@ -37,19 +88,25 @@ fn parse_item(parser) {
     let is_pub = parser.match_kind(Pub)
 
     if parser.current_kind() == Fn {
-        let fn_def = parse_fn_def(parser, is_pub, true)
-        if fn_def != None {
-            return make_fn_item(fn_def, Fn)
+        match parse_fn_def(parser, is_pub, true) {
+            Some(fn_def) => {
+                return make_fn_item(fn_def, Fn)
+            }
+            None => { }
         }
     } elif parser.current_kind() == Class {
-        let class_def = parse_class_def(parser)
-        if class_def != None {
-            return make_class_item(class_def)
+        match parse_class_def(parser) {
+            Some(class_def) => {
+                return make_class_item(class_def)
+            }
+            None => { }
         }
     } elif parser.current_kind() == AtAcyclic {
-        let class_def = parse_acyclic_class_def(parser)
-        if class_def != None {
-            return make_class_item(class_def)
+        match parse_acyclic_class_def(parser) {
+            Some(class_def) => {
+                return make_class_item(class_def)
+            }
+            None => { }
         }
     } elif parser.current_kind() == Layer {
         let token = parser.current_token()
@@ -63,49 +120,67 @@ fn parse_item(parser) {
         skip_layer_block(parser)
         return None
     } elif parser.current_kind() == Interface {
-        let iface = parse_interface_def(parser, is_pub)
-        if iface != None {
-            return make_interface_item(iface)
+        match parse_interface_def(parser, is_pub) {
+            Some(iface) => {
+                return make_interface_item(iface)
+            }
+            None => { }
         }
     } elif parser.current_kind() == Enum {
-        let enum_def = parse_enum_def(parser, is_pub)
-        if enum_def != None {
-            return make_enum_item(enum_def)
+        match parse_enum_def(parser, is_pub) {
+            Some(enum_def) => {
+                return make_enum_item(enum_def)
+            }
+            None => { }
         }
     } elif parser.current_kind() == Error {
-        let error_def = parse_error_def(parser, is_pub)
-        if error_def != None {
-            return make_error_item(error_def)
+        match parse_error_def(parser, is_pub) {
+            Some(error_def) => {
+                return make_error_item(error_def)
+            }
+            None => { }
         }
     } elif parser.current_kind() == Const {
-        let const_def = parse_const_def(parser, is_pub)
-        if const_def != None {
-            return make_const_item(const_def)
+        match parse_const_def(parser, is_pub) {
+            Some(const_def) => {
+                return make_const_item(const_def)
+            }
+            None => { }
         }
     } elif parser.current_kind() == Import {
-        let import_def = parse_import_def(parser)
-        if import_def != None {
-            return make_import_item(import_def)
+        match parse_import_def(parser) {
+            Some(import_def) => {
+                return make_import_item(import_def)
+            }
+            None => { }
         }
     } elif parser.current_kind() == AtType {
-        let type_block = parse_type_block(parser)
-        if type_block != None {
-            return make_type_block_item(type_block)
+        match parse_type_block(parser) {
+            Some(type_block) => {
+                return make_type_block_item(type_block)
+            }
+            None => { }
         }
     } elif parser.current_kind() == AtExtern {
-        let extern_block = parse_extern_block(parser)
-        if extern_block != None {
-            return make_extern_item(extern_block)
+        match parse_extern_block(parser) {
+            Some(extern_block) => {
+                return make_extern_item(extern_block)
+            }
+            None => { }
         }
     } elif parser.current_kind() == AtPanicHandler {
-        let fn_def = parse_panic_handler(parser)
-        if fn_def != None {
-            return make_fn_item(fn_def, PanicHandler)
+        match parse_panic_handler(parser) {
+            Some(fn_def) => {
+                return make_fn_item(fn_def, PanicHandler)
+            }
+            None => { }
         }
     } elif parser.current_kind() == AtOomHandler {
-        let fn_def = parse_oom_handler(parser)
-        if fn_def != None {
-            return make_fn_item(fn_def, OomHandler)
+        match parse_oom_handler(parser) {
+            Some(fn_def) => {
+                return make_fn_item(fn_def, OomHandler)
+            }
+            None => { }
         }
     } else {
         let token = parser.current_token()
@@ -156,23 +231,26 @@ fn parse_fn_def(parser, is_pub, allow_body) {
         body = parser.parse_block()
     }
 
-    let mut end = start
+    let mut end = copy_span(start)
     if body != None {
-        end = body.span
+        end = copy_span(body.span)
     } elif ret_type != None {
-        end = ret_type.span
+        end = copy_span(ret_type.span)
     } elif params.len() > 0 {
-        end = params[params.len() - 1].span
+        let last_param = params[params.len() - 1]
+        end = copy_span(last_param.span)
     }
+    let fn_name = name_token.lexeme.slice(0, name_token.lexeme.len())
+    let start_span = copy_span(start)
 
     return FnDef {
         is_pub: is_pub,
-        name: name_token.lexeme,
+        name: fn_name,
         type_params: type_params,
         params: params,
         ret_type: ret_type,
         body: body,
-        span: parser.merge_spans(start, end)
+        span: merge_span_bounds(start_span, end)
     }
 }
 
@@ -191,14 +269,16 @@ fn parse_param_list(parser) {
         if parser.match_kind(Colon) {
             type_hint = parser.parse_type_expr()
         }
-        let mut end = start
+        let mut end = copy_span(start)
         if type_hint != None {
-            end = type_hint.span
+            end = copy_span(type_hint.span)
         }
+        let param_name = name_token.lexeme.slice(0, name_token.lexeme.len())
+        let start_span = copy_span(start)
         params.push(Param {
-            name: name_token.lexeme,
+            name: param_name,
             type_hint: type_hint,
-            span: parser.merge_spans(start, end)
+            span: merge_span_bounds(start_span, end)
         })
         if !parser.match_kind(Comma) {
             break
@@ -223,7 +303,7 @@ fn parse_class_def(parser) {
     if parser.match_kind(Extends) {
         let base_name = parser.consume_ident("base class")
         if base_name != None {
-            base_class = base_name.lexeme
+            base_class = base_name.lexeme.slice(0, base_name.lexeme.len())
         }
     }
 
@@ -232,7 +312,7 @@ fn parse_class_def(parser) {
         while !parser.is_eof() {
             let iface = parser.consume_ident("interface name")
             if iface != None {
-                interface_names.push(iface.lexeme)
+                interface_names.push(iface.lexeme.slice(0, iface.lexeme.len()))
             }
             if !parser.match_kind(Comma) {
                 break
@@ -249,46 +329,55 @@ fn parse_class_def(parser) {
     while !parser.is_eof() && !parser.check(RBrace) {
         parser.skip_doc_comments()
         if parser.current_kind() == AtType {
-            let type_block = parse_type_block(parser)
-            if type_block != None {
-                type_blocks.push(type_block)
-            } else {
-                parser.synchronize_stmt()
+            match parse_type_block(parser) {
+                Some(type_block) => {
+                    type_blocks.push(type_block)
+                }
+                None => {
+                    parser.synchronize_stmt()
+                }
             }
         } else {
-            let member = parse_class_member(parser)
-            if member != None {
-                members.push(member)
+            match parse_class_member(parser) {
+                Some(member) => {
+                    members.push(member)
+                }
+                None => { }
             }
         }
     }
 
     let end = parser.token_span()
     parser.expect(RBrace, "}")
+    let class_name = name_token.lexeme.slice(0, name_token.lexeme.len())
     return ClassDef {
-        name: name_token.lexeme,
+        name: class_name,
         type_params: type_params,
         base_class: base_class,
         interfaces: interface_names,
         members: members,
         type_blocks: type_blocks,
-        span: parser.merge_spans(start, end)
+        span: merge_span_bounds(start, end)
     }
 }
 
 fn parse_class_member(parser) {
     if parser.current_kind() == Let {
-        let field = parse_class_field(parser)
-        if field != None {
-            return make_field_member(field)
+        match parse_class_field(parser) {
+            Some(field) => {
+                return make_field_member(field)
+            }
+            None => { }
         }
         parser.synchronize_stmt()
         return None
     }
     if parser.current_kind() == Fn {
-        let method = parse_fn_def(parser, false, true)
-        if method != None {
-            return make_method_member(method)
+        match parse_fn_def(parser, false, true) {
+            Some(method) => {
+                return make_method_member(method)
+            }
+            None => { }
         }
         parser.synchronize_stmt()
         return None
@@ -296,17 +385,21 @@ fn parse_class_member(parser) {
     if parser.current_kind() == Pub {
         parser.advance()
         if parser.current_kind() == Fn {
-            let method = parse_fn_def(parser, true, true)
-            if method != None {
-                return make_method_member(method)
+            match parse_fn_def(parser, true, true) {
+                Some(method) => {
+                    return make_method_member(method)
+                }
+                None => { }
             }
             parser.synchronize_stmt()
             return None
         }
         if parser.current_kind() == Let {
-            let field = parse_class_field(parser)
-            if field != None {
-                return make_field_member(field)
+            match parse_class_field(parser) {
+                Some(field) => {
+                    return make_field_member(field)
+                }
+                None => { }
             }
             parser.synchronize_stmt()
             return None
@@ -317,9 +410,11 @@ fn parse_class_member(parser) {
         return None
     }
     if parser.current_kind() == Layer {
-        let layer_def = parse_layer_def(parser)
-        if layer_def != None {
-            return make_layer_member(layer_def)
+        match parse_layer_def(parser) {
+            Some(layer_def) => {
+                return make_layer_member(layer_def)
+            }
+            None => { }
         }
         parser.synchronize_stmt()
         return None
@@ -347,14 +442,14 @@ fn parse_acyclic_class_def(parser) {
                 name: Some("@acyclic"),
                 type_expr: Some(NamedTypeExpr {
                     kind: Named,
-                    span: annotation_span,
+                    span: copy_span(annotation_span),
                     name: "Unit"
                 }),
                 function: None,
-                span: annotation_span
+                span: copy_span(annotation_span)
             }
         ],
-        span: annotation_span
+        span: copy_span(annotation_span)
     }
 
     let mut type_blocks = [synthetic]
@@ -362,14 +457,15 @@ fn parse_acyclic_class_def(parser) {
         type_blocks.push(block)
     }
 
+    let class_span = copy_span(class_def.span)
     return ClassDef {
-        name: class_def.name,
+        name: class_def.name.slice(0, class_def.name.len()),
         type_params: class_def.type_params,
         base_class: class_def.base_class,
         interfaces: class_def.interfaces,
         members: class_def.members,
         type_blocks: type_blocks,
-        span: class_def.span
+        span: class_span
     }
 }
 
@@ -386,15 +482,17 @@ fn parse_class_field(parser) {
         type_hint = parser.parse_type_expr()
     }
     parser.optional_semicolon()
-    let mut end = start
+    let mut end = copy_span(start)
     if type_hint != None {
-        end = type_hint.span
+        end = copy_span(type_hint.span)
     }
+    let field_name = name_token.lexeme.slice(0, name_token.lexeme.len())
+    let start_span = copy_span(start)
     return FieldDef {
         is_mut: is_mut,
-        name: name_token.lexeme,
+        name: field_name,
         type_hint: type_hint,
-        span: parser.merge_spans(start, end)
+        span: parser.merge_spans(start_span, end)
     }
 }
 
@@ -405,11 +503,14 @@ fn parse_type_param_list(parser) {
     parser.expect(LBracket, "[")
     let mut params = []
     while !parser.is_eof() && !parser.check(RBracket) {
-        let name_token = parser.consume_ident("type parameter")
-        if name_token == None {
-            return None
+        match parser.consume_ident("type parameter") {
+            Some(name_token) => {
+                params.push(name_token.lexeme.slice(0, name_token.lexeme.len()))
+            }
+            None => {
+                return None
+            }
         }
-        params.push(name_token.lexeme)
         if !parser.match_kind(Comma) {
             break
         }
@@ -435,19 +536,23 @@ fn parse_layer_def(parser) {
     while !parser.is_eof() && !parser.check(RBrace) {
         parser.skip_doc_comments()
         if parser.current_kind() == Fn {
-            let method = parse_fn_def(parser, false, true)
-            if method != None {
-                methods.push(method)
-            } else {
-                parser.synchronize_stmt()
+            match parse_fn_def(parser, false, true) {
+                Some(method) => {
+                    methods.push(method)
+                }
+                None => {
+                    parser.synchronize_stmt()
+                }
             }
         } elif parser.current_kind() == Pub {
             parser.advance()
-            let method = parse_fn_def(parser, true, true)
-            if method != None {
-                methods.push(method)
-            } else {
-                parser.synchronize_stmt()
+            match parse_fn_def(parser, true, true) {
+                Some(method) => {
+                    methods.push(method)
+                }
+                None => {
+                    parser.synchronize_stmt()
+                }
             }
         } elif parser.current_kind() == Layer {
             let token = parser.current_token()
@@ -460,11 +565,13 @@ fn parse_layer_def(parser) {
             })
             skip_layer_block(parser)
         } elif parser.current_kind() == AtType {
-            let type_block = parse_type_block(parser)
-            if type_block != None {
-                type_blocks.push(type_block)
-            } else {
-                parser.synchronize_stmt()
+            match parse_type_block(parser) {
+                Some(type_block) => {
+                    type_blocks.push(type_block)
+                }
+                None => {
+                    parser.synchronize_stmt()
+                }
             }
         } else {
             let token = parser.current_token()
@@ -474,11 +581,12 @@ fn parse_layer_def(parser) {
     }
     let end = parser.token_span()
     parser.expect(RBrace, "}")
+    let layer_name = name_token.lexeme.slice(0, name_token.lexeme.len())
     return LayerDef {
-        name: name_token.lexeme,
+        name: layer_name,
         methods: methods,
         type_blocks: type_blocks,
-        span: parser.merge_spans(start, end)
+        span: merge_span_bounds(start, end)
     }
 }
 
@@ -523,19 +631,23 @@ fn parse_interface_def(parser, is_pub) {
     while !parser.is_eof() && !parser.check(RBrace) {
         parser.skip_doc_comments()
         if parser.current_kind() == Fn {
-            let method = parse_fn_def(parser, false, false)
-            if method != None {
-                methods.push(method)
-                parser.optional_semicolon()
-            } else {
-                parser.synchronize_stmt()
+            match parse_fn_def(parser, false, false) {
+                Some(method) => {
+                    methods.push(method)
+                    parser.optional_semicolon()
+                }
+                None => {
+                    parser.synchronize_stmt()
+                }
             }
         } elif parser.current_kind() == AtType {
-            let type_block = parse_type_block(parser)
-            if type_block != None {
-                type_blocks.push(type_block)
-            } else {
-                parser.synchronize_stmt()
+            match parse_type_block(parser) {
+                Some(type_block) => {
+                    type_blocks.push(type_block)
+                }
+                None => {
+                    parser.synchronize_stmt()
+                }
             }
         } else {
             let token = parser.current_token()
@@ -545,11 +657,12 @@ fn parse_interface_def(parser, is_pub) {
     }
     let end = parser.token_span()
     parser.expect(RBrace, "}")
+    let interface_name = name_token.lexeme.slice(0, name_token.lexeme.len())
     return InterfaceDef {
-        name: name_token.lexeme,
+        name: interface_name,
         methods: methods,
         type_blocks: type_blocks,
-        span: parser.merge_spans(start, end)
+        span: merge_span_bounds(start, end)
     }
 }
 
@@ -569,7 +682,7 @@ fn parse_enum_def(parser, is_pub) {
     while !parser.is_eof() && !parser.check(RBrace) {
         let variant = parser.consume_ident("enum variant")
         if variant != None {
-            variants.push(variant.lexeme)
+            variants.push(variant.lexeme.slice(0, variant.lexeme.len()))
         }
         if !parser.match_kind(Comma) {
             break
@@ -577,10 +690,11 @@ fn parse_enum_def(parser, is_pub) {
     }
     let end = parser.token_span()
     parser.expect(RBrace, "}")
+    let enum_name = name_token.lexeme.slice(0, name_token.lexeme.len())
     return EnumDef {
-        name: name_token.lexeme,
+        name: enum_name,
         variants: variants,
-        span: parser.merge_spans(start, end)
+        span: merge_span_bounds(start, end)
     }
 }
 
@@ -597,12 +711,14 @@ fn parse_error_def(parser, is_pub) {
     if fields == None {
         return None
     }
-    let mut end = start
+    let mut end = copy_span(start)
     if fields.len() > 0 {
-        end = fields[fields.len() - 1].span
+        let last_field = fields[fields.len() - 1]
+        end = copy_span(last_field.span)
     }
+    let error_name = name_token.lexeme.slice(0, name_token.lexeme.len())
     return ErrorDef {
-        name: name_token.lexeme,
+        name: error_name,
         fields: fields,
         span: parser.merge_spans(start, end)
     }
@@ -623,10 +739,12 @@ fn parse_const_def(parser, is_pub) {
         return None
     }
     parser.optional_semicolon()
+    let const_name = name_token.lexeme.slice(0, name_token.lexeme.len())
+    let value_span = parser.convert_span(value.span)
     return ConstDef {
-        name: name_token.lexeme,
+        name: const_name,
         value: value,
-        span: parser.merge_spans(start, value.span)
+        span: parser.merge_spans(start, value_span)
     }
 }
 
@@ -649,18 +767,17 @@ fn parse_import_def(parser) {
         if parser.match_kind(As) {
             let alias_token = parser.consume_ident("import alias")
             if alias_token != None {
-                alias = alias_token.lexeme
+                alias = alias_token.lexeme.slice(0, alias_token.lexeme.len())
             }
         }
-        let mut item_end = item_start
         let prev = parser.previous_token()
-        if prev != None {
-            item_end = parser.convert_span(prev.span)
-        }
+        let item_end = copy_span(prev.span)
+        let item_name = name_token.lexeme.slice(0, name_token.lexeme.len())
+        let item_start_span = copy_span(item_start)
         items.push(ImportItem {
-            name: name_token.lexeme,
+            name: item_name,
             alias: alias,
-            span: parser.merge_spans(item_start, item_end)
+            span: merge_span_bounds(item_start_span, item_end)
         })
         parser.match_kind(Comma)
     }
@@ -673,7 +790,7 @@ fn parse_import_def(parser) {
     return ImportDef {
         module: module,
         items: items,
-        span: parser.merge_spans(start, end)
+        span: merge_span_bounds(start, end)
     }
 }
 
@@ -701,20 +818,22 @@ fn parse_extern_block(parser) {
     }
     let mut functions = []
     while !parser.is_eof() && !parser.check(RBrace) {
-        let function = parse_fn_def(parser, false, false)
-        if function != None {
-            functions.push(function)
-            parser.optional_semicolon()
-        } else {
-            parser.synchronize_stmt()
+        match parse_fn_def(parser, false, false) {
+            Some(function) => {
+                functions.push(function)
+                parser.optional_semicolon()
+            }
+            None => {
+                parser.synchronize_stmt()
+            }
         }
     }
     let end = parser.token_span()
     parser.expect(RBrace, "}")
     return ExternBlock {
-        abi: abi_expr.value,
+        abi: abi_expr.value.slice(0, abi_expr.value.len()),
         functions: functions,
-        span: parser.merge_spans(start, end)
+        span: merge_span_bounds(start, end)
     }
 }
 
@@ -731,12 +850,13 @@ fn parse_type_block(parser) {
         if parser.current_kind() == Fn {
             let signature = parse_fn_def(parser, false, false)
             if signature != None {
+                let signature_span = parser.convert_span(signature.span)
                 members.push(TypeMember {
                     kind: Function,
                     name: None,
                     type_expr: None,
                     function: Some(signature),
-                    span: signature.span
+                    span: signature_span
                 })
             } else {
                 parser.synchronize_stmt()
@@ -748,12 +868,14 @@ fn parse_type_block(parser) {
                 parser.expect(Colon, ":")
                 let type_expr = parser.parse_type_expr()
                 if type_expr != None {
+                    let binding_name = name_token.lexeme.slice(0, name_token.lexeme.len())
+                    let type_expr_span = parser.convert_span(type_expr.span)
                     members.push(TypeMember {
                         kind: Binding,
-                        name: Some(name_token.lexeme),
+                        name: Some(binding_name),
                         type_expr: Some(type_expr),
                         function: None,
-                        span: parser.merge_spans(member_start, type_expr.span)
+                    span: merge_span_bounds(member_start, type_expr_span)
                     })
                 }
             }
@@ -768,7 +890,7 @@ fn parse_type_block(parser) {
     parser.expect(RBrace, "}")
     return TypeBlock {
         members: members,
-        span: parser.merge_spans(start, end)
+        span: merge_span_bounds(start, end)
     }
 }
 
@@ -777,18 +899,19 @@ fn parse_module_path(parser) {
     if first == None {
         return None
     }
-    let mut module = [first.lexeme]
+    let mut module = [first.lexeme.slice(0, first.lexeme.len())]
     while parser.match_kind(Dot) {
         let segment = parser.consume_ident("module path segment")
         if segment == None {
             return None
         }
-        module.push(segment.lexeme)
+        module.push(segment.lexeme.slice(0, segment.lexeme.len()))
     }
     return module
 }
 
 fn make_fn_item(fn_def, kind) {
+    let span = copy_span(fn_def.span)
     return Item {
         kind: kind,
         fn_def: Some(fn_def),
@@ -800,11 +923,12 @@ fn make_fn_item(fn_def, kind) {
         import_def: None,
         extern_block: None,
         type_block: None,
-        span: fn_def.span
+        span: span
     }
 }
 
 fn make_class_item(class_def) {
+    let span = copy_span(class_def.span)
     return Item {
         kind: Class,
         fn_def: None,
@@ -816,11 +940,12 @@ fn make_class_item(class_def) {
         import_def: None,
         extern_block: None,
         type_block: None,
-        span: class_def.span
+        span: span
     }
 }
 
 fn make_interface_item(interface_def) {
+    let span = copy_span(interface_def.span)
     return Item {
         kind: Interface,
         fn_def: None,
@@ -832,11 +957,12 @@ fn make_interface_item(interface_def) {
         import_def: None,
         extern_block: None,
         type_block: None,
-        span: interface_def.span
+        span: span
     }
 }
 
 fn make_enum_item(enum_def) {
+    let span = copy_span(enum_def.span)
     return Item {
         kind: Enum,
         fn_def: None,
@@ -848,11 +974,12 @@ fn make_enum_item(enum_def) {
         import_def: None,
         extern_block: None,
         type_block: None,
-        span: enum_def.span
+        span: span
     }
 }
 
 fn make_error_item(error_def) {
+    let span = copy_span(error_def.span)
     return Item {
         kind: Error,
         fn_def: None,
@@ -864,11 +991,12 @@ fn make_error_item(error_def) {
         import_def: None,
         extern_block: None,
         type_block: None,
-        span: error_def.span
+        span: span
     }
 }
 
 fn make_const_item(const_def) {
+    let span = copy_span(const_def.span)
     return Item {
         kind: Const,
         fn_def: None,
@@ -880,11 +1008,12 @@ fn make_const_item(const_def) {
         import_def: None,
         extern_block: None,
         type_block: None,
-        span: const_def.span
+        span: span
     }
 }
 
 fn make_import_item(import_def) {
+    let span = copy_span(import_def.span)
     return Item {
         kind: Import,
         fn_def: None,
@@ -896,11 +1025,12 @@ fn make_import_item(import_def) {
         import_def: Some(import_def),
         extern_block: None,
         type_block: None,
-        span: import_def.span
+        span: span
     }
 }
 
 fn make_extern_item(extern_block) {
+    let span = copy_span(extern_block.span)
     return Item {
         kind: Extern,
         fn_def: None,
@@ -912,11 +1042,12 @@ fn make_extern_item(extern_block) {
         import_def: None,
         extern_block: Some(extern_block),
         type_block: None,
-        span: extern_block.span
+        span: span
     }
 }
 
 fn make_type_block_item(type_block) {
+    let span = copy_span(type_block.span)
     return Item {
         kind: TypeBlock,
         fn_def: None,
@@ -928,12 +1059,12 @@ fn make_type_block_item(type_block) {
         import_def: None,
         extern_block: None,
         type_block: Some(type_block),
-        span: type_block.span
+        span: span
     }
 }
 
 fn make_field_member(field) {
-    return ClassMember { kind: Field, field: Some(field), method: None, layer_def: None }
+    return ClassMember { kind: MemberField, field: Some(field), method: None, layer_def: None }
 }
 
 fn make_method_member(method) {

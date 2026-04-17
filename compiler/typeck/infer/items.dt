@@ -106,7 +106,7 @@ fn predeclare_class_fields(checker, class_def) {
     let mut index = 0
     while index < class_def.members.len() {
         let member = class_def.members[index]
-        if member.kind == Field && member.field != None {
+    if member.kind == MemberField && member.field != None {
             let field = member.field
             let mut field_ty = checker.fresh_var()
             if field.type_hint != None {
@@ -233,7 +233,7 @@ fn check_class_def(checker, class_def) {
     let mut index = 0
     while index < class_def.members.len() {
         let member = class_def.members[index]
-        if member.kind == Field {
+    if member.kind == MemberField {
             fields.push(TypedFieldDef { is_mut: member.field.is_mut, name: member.field.name, ty: checker.type_from_annotation(member.field.type_hint), span: member.field.span })
         } elif member.kind == Method {
             methods.push(check_fn_def(checker, member.method))

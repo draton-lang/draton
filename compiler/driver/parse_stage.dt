@@ -174,31 +174,31 @@ fn serialize_item(item) {
 }
 
 fn item_kind_name(item) {
-    if item.kind == Fn {
+    if item.fn_def != None {
         return "Fn"
     }
-    if item.kind == Class {
+    if item.class_def != None {
         return "Class"
     }
-    if item.kind == Interface {
+    if item.interface_def != None {
         return "Interface"
     }
-    if item.kind == Enum {
+    if item.enum_def != None {
         return "Enum"
     }
-    if item.kind == Error {
+    if item.error_def != None {
         return "Error"
     }
-    if item.kind == Const {
+    if item.const_def != None {
         return "Const"
     }
-    if item.kind == Import {
+    if item.import_def != None {
         return "Import"
     }
-    if item.kind == Extern {
+    if item.extern_block != None {
         return "Extern"
     }
-    if item.kind == TypeBlock {
+    if item.type_block != None {
         return "TypeBlock"
     }
     if item.kind == PanicHandler {
@@ -220,22 +220,26 @@ fn tagged_object(tag, fields) {
 }
 
 fn serialize_optional_string(value) {
-    if value == None {
-        return "null"
+    let mut text = "null"
+    match value {
+        Some(found_text) => {
+            text = json_quote(found_text)
+        }
+        None => { }
     }
-    return json_quote(value)
+    return text
 }
 
 fn json_field(name, value) {
-    return json_quote(name) + ":" + value
+    return str_concat(json_quote(name), str_concat(":", value))
 }
 
 fn json_object(fields) {
-    return "{" + join_json_items(fields) + "}"
+    return str_concat("{", str_concat(join_json_items(fields), "}"))
 }
 
 fn json_array(items) {
-    return "[" + join_json_items(items) + "]"
+    return str_concat("[", str_concat(join_json_items(items), "]"))
 }
 
 fn join_json_items(items) {
@@ -243,9 +247,9 @@ fn join_json_items(items) {
     let mut index = 0
     while index < items.len() {
         if index > 0 {
-            out = out + ","
+            out = str_concat(out, ",")
         }
-        out = out + items[index]
+        out = str_concat(out, items[index])
         index = index + 1
     }
     return out
@@ -253,7 +257,7 @@ fn join_json_items(items) {
 
 fn json_quote(value) {
     let quote = ascii_char(34)
-    return quote + json_escape(value) + quote
+    return str_concat(quote, str_concat(json_escape(value), quote))
 }
 
 fn json_escape(value) {
@@ -262,17 +266,17 @@ fn json_escape(value) {
     while index < value.len() {
         let byte = byte_at(value, index)
         if byte == 92 {
-            out = out + ascii_char(92) + ascii_char(92)
+            out = str_concat(out, str_concat(ascii_char(92), ascii_char(92)))
         } elif byte == 34 {
-            out = out + ascii_char(92) + ascii_char(34)
+            out = str_concat(out, str_concat(ascii_char(92), ascii_char(34)))
         } elif byte == 10 {
-            out = out + ascii_char(92) + "n"
+            out = str_concat(out, str_concat(ascii_char(92), "n"))
         } elif byte == 13 {
-            out = out + ascii_char(92) + "r"
+            out = str_concat(out, str_concat(ascii_char(92), "r"))
         } elif byte == 9 {
-            out = out + ascii_char(92) + "t"
+            out = str_concat(out, str_concat(ascii_char(92), "t"))
         } else {
-            out = out + ascii_char(byte)
+            out = str_concat(out, ascii_char(byte))
         }
         index = index + 1
     }

@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use draton_lexer::Lexer;
@@ -32,6 +33,11 @@ fn describe_output(output: &std::process::Output) -> String {
 }
 
 fn run_stage0(args: &[&str]) -> Value {
+    static STAGE0_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let _guard = STAGE0_TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("lock selfhost stage0 test execution");
     let output = Command::new(env!("CARGO_BIN_EXE_drat"))
         .args(args)
         .output()
@@ -729,9 +735,14 @@ fn main() {
 
     let built = Command::new(&out).output().expect("run built binary");
     assert!(built.status.success(), "built binary failed");
+    let expected_stdout = if cfg!(windows) {
+        "hello, selfhost!\r\n"
+    } else {
+        "hello, selfhost!\n"
+    };
     assert_eq!(
         String::from_utf8_lossy(&built.stdout),
-        "hello, selfhost!\n",
+        expected_stdout,
         "unexpected built binary stdout"
     );
 }
