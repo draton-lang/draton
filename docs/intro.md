@@ -72,3 +72,9 @@ Draton has stabilized its canonical syntax and ships an early tooling preview wi
 - strict syntax enforcement
 
 The Rust frontend/tooling path remains the authoritative compiler implementation. An in-tree self-host rewrite now exists under `compiler/`, but it is still a parity and bootstrap track rather than the public toolchain path.
+
+## Sponsors
+
+| Name | Promoted project | Sponsorship |
+|---|---|---|
+| `binxgtl` | [claude-ship](https://github.com/binxgtl/claude-ship) | `Subscriptions Codex x20` |

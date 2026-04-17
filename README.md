@@ -102,6 +102,12 @@ The docs deployment workflow publishes the built site to GitHub Pages for `docs.
 | **Low-level escape hatches** | `unsafe`, `@pointer`, inline `asm`, and comptime blocks |
 | **Integrated toolchain** | Format, lint, test, doc, REPL, LSP — all via a single `drat` binary |
 
+## Sponsors
+
+| Name | Promoted project | Sponsorship |
+|---|---|---|
+| `binxgtl` | [claude-ship](https://github.com/binxgtl/claude-ship) | `Subscriptions Codex x20` |
+
 ## Quick Start
 
 ### Prerequisites
