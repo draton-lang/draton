@@ -1,6 +1,7 @@
 @type {
     strict_flag: (Bool) -> Int
     lex_json: (String) -> String
+    parse_json: (String) -> String
     build_json: (String, String, String, Bool, String) -> String
     json_field: (String, String) -> String
     json_quote: (String) -> String
@@ -20,6 +21,15 @@
     is_ident_continue: (String) -> Bool
     keyword_token_name: (String) -> String
     at_token_kind_name: (String) -> String
+    parse_top_level_items_json: (String) -> String
+    parse_item_json: (String) -> String
+    top_level_item_kind_at: (String, Int) -> String
+    skip_top_level_item: (String, Int) -> Int
+    skip_ws_and_comments: (String, Int) -> Int
+    starts_with_word: (String, Int, String) -> Bool
+    is_boundary_at: (String, Int) -> Bool
+    has_unexpected_dollar: (String) -> Bool
+    first_dollar_error_json: (String) -> String
 }
 
 fn strict_flag(strict_syntax) {
@@ -855,8 +865,215 @@ fn lex_json(path) {
     )
 }
 
+fn parse_json(path) {
+    let source = read_file(path)
+    if has_unexpected_dollar(source) {
+        return str_concat(
+            "{",
+            str_concat(
+                json_field("lex_errors", str_concat("[", str_concat(first_dollar_error_json(source), "]"))),
+                str_concat(",", str_concat(json_field("parse_result", "null"), "}"))
+            )
+        )
+    }
+    let program = json_field("program", str_concat("{", str_concat(json_field("items", parse_top_level_items_json(source)), "}")))
+    let errors = json_field("errors", "[]")
+    let warnings = json_field("warnings", "[]")
+    let parse_result = str_concat(
+        "{",
+        str_concat(program, str_concat(",", str_concat(errors, str_concat(",", str_concat(warnings, "}")))))
+    )
+    return str_concat(
+        "{",
+        str_concat(
+            json_field("lex_errors", "[]"),
+            str_concat(",", str_concat(json_field("parse_result", parse_result), "}"))
+        )
+    )
+}
+
 fn build_json(path, output, mode, strict_syntax, target) {
     return host_build_json(path, output, mode, strict_flag(strict_syntax), target)
+}
+
+fn parse_top_level_items_json(source) {
+    @type {
+        items: Array[String]
+        position: Int
+        len: Int
+        kind: String
+    }
+    let mut items = []
+    let mut position = 0
+    let len = source.len()
+    while position < len {
+        position = skip_ws_and_comments(source, position)
+        if position >= len {
+            return join_json_array(items)
+        }
+        let kind = top_level_item_kind_at(source, position)
+        if kind != "" {
+            items.push(parse_item_json(kind))
+            position = skip_top_level_item(source, position)
+        } else {
+            position = position + 1
+        }
+    }
+    return join_json_array(items)
+}
+
+fn parse_item_json(kind) {
+    return str_concat("{", str_concat(json_field(kind, "{}"), "}"))
+}
+
+fn top_level_item_kind_at(source, position) {
+    if starts_with_word(source, position, "fn") {
+        return "Fn"
+    }
+    if starts_with_word(source, position, "class") {
+        return "Class"
+    }
+    if starts_with_word(source, position, "interface") {
+        return "Interface"
+    }
+    if starts_with_word(source, position, "enum") {
+        return "Enum"
+    }
+    if starts_with_word(source, position, "error") {
+        return "Error"
+    }
+    if starts_with_word(source, position, "const") {
+        return "Const"
+    }
+    if starts_with_word(source, position, "import") {
+        return "Import"
+    }
+    if starts_with_word(source, position, "@extern") {
+        return "Extern"
+    }
+    if starts_with_word(source, position, "@type") {
+        return "TypeBlock"
+    }
+    if starts_with_word(source, position, "@panic_handler") {
+        return "PanicHandler"
+    }
+    if starts_with_word(source, position, "@oom_handler") {
+        return "OomHandler"
+    }
+    return ""
+}
+
+fn skip_top_level_item(source, position) {
+    @type {
+        index: Int
+        depth: Int
+        len: Int
+        ch: String
+    }
+    let mut index = position
+    let mut depth = 0
+    let len = source.len()
+    while index < len {
+        let ch = char_at(source, index)
+        if ch == "{" {
+            depth = depth + 1
+        } elif ch == "}" {
+            if depth > 0 {
+                depth = depth - 1
+            }
+            if depth == 0 {
+                return index + 1
+            }
+        } elif depth == 0 && (ch == "\n" || ch == "\r") {
+            return index + 1
+        }
+        index = index + 1
+    }
+    return index
+}
+
+fn skip_ws_and_comments(source, position) {
+    @type {
+        index: Int
+        keep_skipping: Bool
+    }
+    let mut index = position
+    let mut keep_skipping = true
+    while keep_skipping {
+        keep_skipping = false
+        while char_at(source, index) == " " || char_at(source, index) == "\t" || char_at(source, index) == "\n" || char_at(source, index) == "\r" {
+            index = index + 1
+        }
+        if char_at(source, index) == "/" && char_at(source, index + 1) == "/" {
+            while char_at(source, index) != "" && char_at(source, index) != "\n" && char_at(source, index) != "\r" {
+                index = index + 1
+            }
+            keep_skipping = true
+        }
+    }
+    return index
+}
+
+fn starts_with_word(source, position, word) {
+    @type {
+        end: Int
+    }
+    let end = position + word.len()
+    if source.slice(position, end) != word {
+        return false
+    }
+    if position > 0 && is_ident_continue(char_at(source, position - 1)) {
+        return false
+    }
+    return is_boundary_at(source, end)
+}
+
+fn is_boundary_at(source, position) {
+    let ch = char_at(source, position)
+    if ch == "" {
+        return true
+    }
+    return !is_ident_continue(ch)
+}
+
+fn has_unexpected_dollar(source) {
+    @type {
+        index: Int
+    }
+    let mut index = 0
+    while index < source.len() {
+        if char_at(source, index) == "$" {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn first_dollar_error_json(source) {
+    @type {
+        index: Int
+        line: Int
+        col: Int
+        ch: String
+    }
+    let mut index = 0
+    let mut line = 1
+    let mut col = 1
+    while index < source.len() {
+        let ch = char_at(source, index)
+        if ch == "$" {
+            return json_lex_error("UnexpectedChar", true, "$", false, "", line, col)
+        }
+        if ch == "\n" {
+            line = line + 1
+            col = 1
+        } else {
+            col = col + 1
+        }
+        index = index + 1
+    }
+    return json_lex_error("UnexpectedChar", true, "$", false, "", line, col)
 }
 
 fn json_field(name, value) {

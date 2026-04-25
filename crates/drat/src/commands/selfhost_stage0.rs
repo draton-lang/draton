@@ -402,7 +402,7 @@ fn stage0_layout(command: &SelfhostStage0Command) -> Stage0Layout {
         },
         SelfhostStage0Command::Parse { .. } => Stage0Layout {
             cache_key: "parse",
-            entries: &["ast", "lexer", "parser", "driver/parse_stage.dt"],
+            entries: &["driver/pipeline.dt"],
         },
         SelfhostStage0Command::Typeck { .. } => Stage0Layout {
             cache_key: "typeck",
@@ -620,9 +620,7 @@ fn write_stage0_entry(temp_root: &Path, command: &SelfhostStage0Command) -> Resu
 fn stage0_entry_source(command: &SelfhostStage0Command) -> String {
     let imports = match command {
         SelfhostStage0Command::Lex { .. } => "import { lex_json } from driver.pipeline\n\n",
-        SelfhostStage0Command::Parse { .. } => {
-            "import { parse_stage_json } from driver.parse_stage\n\n"
-        }
+        SelfhostStage0Command::Parse { .. } => "import { parse_json } from driver.pipeline\n\n",
         SelfhostStage0Command::Typeck { .. } => "",
         SelfhostStage0Command::Build { .. } => "import { build_json } from driver.pipeline\n\n",
     };
@@ -631,7 +629,7 @@ fn stage0_entry_source(command: &SelfhostStage0Command) -> String {
             "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(lex_json(path))\n"
         }
         SelfhostStage0Command::Parse { .. } => {
-            "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(parse_stage_json(path))\n"
+            "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(parse_json(path))\n"
         }
         SelfhostStage0Command::Typeck { .. } => {
             "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(host_type_json(path, int_arg(2)))\n"

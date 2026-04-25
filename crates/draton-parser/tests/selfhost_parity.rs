@@ -14,7 +14,7 @@ struct ParseFixture {
 }
 
 #[test]
-#[ignore = "blocked until hidden stage0 parse stops bridging through host_parse_json and compiler/parser selfhost tree typechecks under stage0 again"]
+#[ignore = "blocked until the self-host parse payload reaches full Rust parser parity; hidden stage0 parse is bridge-free but still uses a lightweight staging parser"]
 fn parser_selfhost_parity_on_representative_fixtures() {
     let repo_root = repo_root();
     let fixtures = [
@@ -285,7 +285,7 @@ fn extract_parse_payload<'a>(
     );
     assert_eq!(
         json["bridge"]["builtin"],
-        Value::String("host_parse_json".to_string()),
+        Value::Null,
         "parser parity contract break for fixture {}: unexpected bridge builtin",
         fixture_name
     );

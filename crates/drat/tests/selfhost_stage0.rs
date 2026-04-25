@@ -318,7 +318,7 @@ fn main() {
         "parse",
         &src,
         "selfhost",
-        Some("host_parse_json"),
+        None,
         true,
     );
     assert!(result["lex_errors"].is_array(), "expected lex_errors array");

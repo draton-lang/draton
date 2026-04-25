@@ -220,10 +220,10 @@ Exit criteria:
 - `selfhost-stage0 typeck` uses no host typechecker bridge
 - parser and typechecker parity suites pass against representative repository fixtures
 
-Current status on April 11, 2026:
+Current status on April 25, 2026:
 
-- Hidden `selfhost-stage0 parse` still bridges through `host_parse_json` in `D:/draton/crates/drat/src/commands/selfhost_stage0.rs` because the current self-host parser path is not yet stage0-clean.
-- `D:/draton/crates/draton-parser/tests/selfhost_parity.rs` now contains representative parser parity fixtures, but that suite remains blocked until the self-host parser/typecheck errors in `D:/draton/compiler/driver/parse_stage.dt`, `D:/draton/compiler/parser/parser.dt`, `D:/draton/compiler/parser/parse/stmts.dt`, and `D:/draton/compiler/parser/parse/types.dt` are fixed.
+- Hidden `selfhost-stage0 parse` no longer bridges through `host_parse_json`; it now dispatches to bridge-free Draton code in `D:/draton/compiler/driver/pipeline.dt` and reports `bridge.kind = "selfhost"` with `bridge.builtin = null`.
+- `D:/draton/crates/draton-parser/tests/selfhost_parity.rs` now contains representative parser parity fixtures, but that suite remains blocked until the bridge-free parser payload reaches the Rust oracle. The next implementation choice is either expanding `D:/draton/compiler/driver/pipeline.dt` or repairing the full parser path in `D:/draton/compiler/driver/parse_stage.dt`, `D:/draton/compiler/parser/parser.dt`, `D:/draton/compiler/parser/parse/stmts.dt`, and `D:/draton/compiler/parser/parse/types.dt`.
 - Hidden `selfhost-stage0 typeck` still bridges through `host_type_json`, so the Phase 2 typechecker host-bridge removal work is also not yet complete.
 - Rust remains the parity oracle, and ownership parity still belongs to Phase 3.
 
