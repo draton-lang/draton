@@ -14,7 +14,6 @@ struct ParseFixture {
 }
 
 #[test]
-#[ignore = "blocked until the self-host parse payload reaches full Rust parser parity; hidden stage0 parse is bridge-free but still uses a lightweight staging parser"]
 fn parser_selfhost_parity_on_representative_fixtures() {
     let repo_root = repo_root();
     let fixtures = [

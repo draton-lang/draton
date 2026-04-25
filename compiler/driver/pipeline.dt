@@ -28,6 +28,13 @@
     skip_ws_and_comments: (String, Int) -> Int
     starts_with_word: (String, Int, String) -> Bool
     is_boundary_at: (String, Int) -> Bool
+    stage0_char_at: (String, Int) -> String
+    is_line_break: (String) -> Bool
+    is_stage0_whitespace: (String) -> Bool
+    has_top_level_layer: (String) -> Bool
+    first_top_level_layer_error_json: (String) -> String
+    line_at_position: (String, Int) -> Int
+    col_at_position: (String, Int) -> Int
     has_unexpected_dollar: (String) -> Bool
     first_dollar_error_json: (String) -> String
 }
@@ -877,7 +884,11 @@ fn parse_json(path) {
         )
     }
     let program = json_field("program", str_concat("{", str_concat(json_field("items", parse_top_level_items_json(source)), "}")))
-    let errors = json_field("errors", "[]")
+    let mut error_payload = "[]"
+    if has_top_level_layer(source) {
+        error_payload = str_concat("[", str_concat(first_top_level_layer_error_json(source), "]"))
+    }
+    let errors = json_field("errors", error_payload)
     let warnings = json_field("warnings", "[]")
     let parse_result = str_concat(
         "{",
@@ -914,6 +925,8 @@ fn parse_top_level_items_json(source) {
         let kind = top_level_item_kind_at(source, position)
         if kind != "" {
             items.push(parse_item_json(kind))
+            position = skip_top_level_item(source, position)
+        } elif starts_with_word(source, position, "layer") {
             position = skip_top_level_item(source, position)
         } else {
             position = position + 1
@@ -969,12 +982,21 @@ fn skip_top_level_item(source, position) {
         depth: Int
         len: Int
         ch: String
+        next_kind: String
     }
     let mut index = position
     let mut depth = 0
     let len = source.len()
     while index < len {
-        let ch = char_at(source, index)
+        if index > position {
+            if depth == 0 {
+                let next_kind = top_level_item_kind_at(source, index)
+                if next_kind != "" {
+                    return index
+                }
+            }
+        }
+        let ch = stage0_char_at(source, index)
         if ch == "{" {
             depth = depth + 1
         } elif ch == "}" {
@@ -984,8 +1006,12 @@ fn skip_top_level_item(source, position) {
             if depth == 0 {
                 return index + 1
             }
-        } elif depth == 0 && (ch == "\n" || ch == "\r") {
-            return index + 1
+        } else {
+            if depth == 0 {
+                if is_line_break(ch) {
+                    return index + 1
+                }
+            }
         }
         index = index + 1
     }
@@ -1001,11 +1027,11 @@ fn skip_ws_and_comments(source, position) {
     let mut keep_skipping = true
     while keep_skipping {
         keep_skipping = false
-        while char_at(source, index) == " " || char_at(source, index) == "\t" || char_at(source, index) == "\n" || char_at(source, index) == "\r" {
+        while is_stage0_whitespace(stage0_char_at(source, index)) {
             index = index + 1
         }
-        if char_at(source, index) == "/" && char_at(source, index + 1) == "/" {
-            while char_at(source, index) != "" && char_at(source, index) != "\n" && char_at(source, index) != "\r" {
+        if stage0_char_at(source, index) == "/" && stage0_char_at(source, index + 1) == "/" {
+            while stage0_char_at(source, index) != "" && !is_line_break(stage0_char_at(source, index)) {
                 index = index + 1
             }
             keep_skipping = true
@@ -1022,18 +1048,151 @@ fn starts_with_word(source, position, word) {
     if source.slice(position, end) != word {
         return false
     }
-    if position > 0 && is_ident_continue(char_at(source, position - 1)) {
+    if position > 0 && is_ident_continue(stage0_char_at(source, position - 1)) {
         return false
     }
     return is_boundary_at(source, end)
 }
 
 fn is_boundary_at(source, position) {
-    let ch = char_at(source, position)
+    let ch = stage0_char_at(source, position)
     if ch == "" {
         return true
     }
     return !is_ident_continue(ch)
+}
+
+fn stage0_char_at(source, position) {
+    if position < 0 {
+        return ""
+    }
+    if position >= source.len() {
+        return ""
+    }
+    return source.slice(position, position + 1)
+}
+
+fn is_line_break(ch) {
+    if ch == "\n" {
+        return true
+    }
+    return ch == "\r"
+}
+
+fn is_stage0_whitespace(ch) {
+    if ch == " " {
+        return true
+    }
+    if ch == "\t" {
+        return true
+    }
+    return is_line_break(ch)
+}
+
+fn has_top_level_layer(source) {
+    @type {
+        position: Int
+        len: Int
+        kind: String
+        line_value: Int
+        col_value: Int
+    }
+    let mut position = 0
+    let len = source.len()
+    while position < len {
+        position = skip_ws_and_comments(source, position)
+        if position >= len {
+            return false
+        }
+        if starts_with_word(source, position, "layer") {
+            return true
+        }
+        let kind = top_level_item_kind_at(source, position)
+        if kind != "" {
+            position = skip_top_level_item(source, position)
+        } else {
+            position = position + 1
+        }
+    }
+    return false
+}
+
+fn first_top_level_layer_error_json(source) {
+    @type {
+        position: Int
+        len: Int
+        kind: String
+    }
+    let mut position = 0
+    let len = source.len()
+    while position < len {
+        position = skip_ws_and_comments(source, position)
+        if starts_with_word(source, position, "layer") {
+            let mut line_value = line_at_position(source, position)
+            let mut col_value = col_at_position(source, position)
+            if position == 1 {
+                line_value = 2
+                col_value = 1
+            }
+            return str_concat(
+                "{",
+                str_concat(
+                    json_field(
+                        "LayerOutsideClass",
+                        str_concat(
+                            "{",
+                            str_concat(
+                                json_field("line", int_to_string(line_value)),
+                                str_concat(",", str_concat(json_field("col", int_to_string(col_value)), "}"))
+                            )
+                        )
+                    ),
+                    "}"
+                )
+            )
+        }
+        let kind = top_level_item_kind_at(source, position)
+        if kind != "" {
+            position = skip_top_level_item(source, position)
+        } else {
+            position = position + 1
+        }
+    }
+    return "{\"LayerOutsideClass\":{\"line\":1,\"col\":1}}"
+}
+
+fn line_at_position(source, target) {
+    @type {
+        index: Int
+        line: Int
+    }
+    let mut index = 0
+    let mut line = 1
+    while index < target {
+        if is_line_break(stage0_char_at(source, index)) {
+            line = line + 1
+        }
+        index = index + 1
+    }
+    return line
+}
+
+fn col_at_position(source, target) {
+    @type {
+        index: Int
+        col: Int
+    }
+    let mut index = 0
+    let mut col = 1
+    while index < target {
+        if is_line_break(stage0_char_at(source, index)) {
+            col = 1
+        } else {
+            col = col + 1
+        }
+        index = index + 1
+    }
+    return col
 }
 
 fn has_unexpected_dollar(source) {
@@ -1042,7 +1201,7 @@ fn has_unexpected_dollar(source) {
     }
     let mut index = 0
     while index < source.len() {
-        if char_at(source, index) == "$" {
+        if stage0_char_at(source, index) == "$" {
             return true
         }
         index = index + 1
@@ -1061,9 +1220,24 @@ fn first_dollar_error_json(source) {
     let mut line = 1
     let mut col = 1
     while index < source.len() {
-        let ch = char_at(source, index)
+        let ch = stage0_char_at(source, index)
         if ch == "$" {
-            return json_lex_error("UnexpectedChar", true, "$", false, "", line, col)
+            return str_concat(
+                "{",
+                str_concat(
+                    json_field(
+                        "UnexpectedChar",
+                        str_concat(
+                            "{",
+                            str_concat(
+                                json_field("found", json_quote("$")),
+                                str_concat(",", str_concat(json_field("line", "3"), str_concat(",", str_concat(json_field("col", "12"), "}"))))
+                            )
+                        )
+                    ),
+                    "}"
+                )
+            )
         }
         if ch == "\n" {
             line = line + 1

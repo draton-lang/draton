@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       parse_slice:
-        description: "Run the heavier self-host parser slice in stage0"
+        description: "Emit the heavier self-host parser artifact in stage0"
         required: false
         default: false
         type: boolean
@@ -34,7 +34,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run focused parser/typecheck tests
-        run: cargo test -p draton-parser --test items -p draton-typeck --test errors
+        shell: bash
+        run: |
+          cargo test -p draton-parser --test items
+          cargo test -p draton-parser --test selfhost_parity -- --nocapture
+          cargo test -p draton-typeck --test errors
 
   strict-syntax-smoke:
     name: strict-syntax-smoke
@@ -118,6 +122,7 @@ jobs:
         shell: bash
         run: |
           cargo test -p draton-parser --test items
+          cargo test -p draton-parser --test selfhost_parity -- --nocapture
           cargo test -p draton-typeck --test errors
           cargo test -p drat --test selfhost_stage0 -- --nocapture
 
@@ -140,7 +145,6 @@ jobs:
           DRATON_SELFHOST_STAGE0_PARSE_SLICE: "1"
         run: |
           timeout 20m cargo run -p drat -- selfhost-stage0 parse --json examples/hello.dt | tee .artifacts/selfhost-phase1/parse.json
-          timeout 20m cargo test -p draton-parser --test selfhost_parity -- --ignored --nocapture
 
       - name: Run packaged release smoke
         if: ${{ inputs.release_smoke }}

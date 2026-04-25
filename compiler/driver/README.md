@@ -8,7 +8,7 @@ Current boundary:
 - the current executable stage0 implementation lives in the hidden Rust command `drat selfhost-stage0`
 - `compiler/main.dt` dispatches the stage0 subcommands into this directory
 - `pipeline.dt` currently implements `lex_json`, `parse_json`, and `typeck_json` in Draton
-- `pipeline.dt` owns the current bridge-free stage0 parse payload; `parse_stage.dt` remains the planned full self-host parser payload path and must keep parser JSON aligned with the Rust oracle contract before promotion
+- `pipeline.dt` owns the current bridge-free stage0 parse payload and representative parser parity surface; `parse_stage.dt` remains the planned full self-host parser payload path and must keep parser JSON aligned with the Rust oracle contract before promotion
 - `typeck_stage.dt` owns the planned self-host typechecker stage0 payload path and keeps typed-program JSON aligned with the Rust oracle contract
 - `pipeline.dt` still routes `build_json` through `host_build_json`
 - the hidden Rust stage0 wrapper now dispatches `parse` to bridge-free Draton code in `pipeline.dt`; `typeck` still calls `host_type_json` because the full typechecker stage0 binary does not yet fit the local verification envelope
