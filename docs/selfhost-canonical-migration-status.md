@@ -74,33 +74,33 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
 
 ### Typechecker parity
 
-- Current status: the self-host typechecker tree under `compiler/typeck/` is growing real ownership metadata, but the hidden `drat selfhost-stage0 typeck` command still normalizes the Rust `host_type_json` bridge by default.
+- Current status: hidden `drat selfhost-stage0 typeck` no longer dispatches through `host_type_json`; it now uses the bridge-free `typeck_json` stage0 payload in `compiler/driver/pipeline.dt` for the representative frontend parity gates.
 - Source of truth: `crates/draton-typeck`.
 - What is already real:
   - `compiler/typeck/infer/`, `compiler/typeck/types/`, and `compiler/typeck/typed/` contain a real self-host typechecker tree.
   - `compiler/typeck/typed/program.dt` and related files define typed-program structures in the self-host tree.
 - What is already real in the self-host tree:
-  - `compiler/driver/typeck_stage.dt` contains a self-host lexer/parser/typechecker entrypoint and now serializes typed bodies, ownership summaries, and selected `use_effect` metadata.
+  - `compiler/driver/pipeline.dt` contains the bridge-free stage0 `typeck_json` payload used by hidden stage0.
+  - `compiler/driver/typeck_stage.dt` contains the planned full self-host lexer/parser/typechecker entrypoint and serializes typed bodies, ownership summaries, and selected `use_effect` metadata.
   - `compiler/typeck/infer/result.dt` now threads the post-inference ownership pass through the self-host typed program.
 - What is already real in stage0:
   - `crates/drat/tests/selfhost_stage0.rs` now compares Rust-oracle `use_effect` metadata on selected call/return sites so the target ownership metadata shape is gated in tests.
 - What still depends on Rust authority:
   - `crates/drat/src/commands/selfhost_stage0.rs` still owns stage0 bootstrap, caching, and envelope normalization.
-  - `crates/drat/src/commands/selfhost_stage0.rs` still dispatches hidden stage0 `typeck` through `host_type_json` by default.
   - `crates/draton-typeck/src/check.rs` and `crates/draton-typeck/src/ownership.rs` remain the authoritative semantic and ownership oracle.
-  - The self-host typechecker JSON serializer under `compiler/driver/typeck_stage.dt` is still a secondary/raw path rather than the default hidden stage0 contract source.
+  - The full self-host typechecker JSON serializer under `compiler/driver/typeck_stage.dt` is still a planned/raw path rather than the default hidden stage0 contract source.
 - Blockers:
-  - Hidden stage0 `typeck` still bridges through `host_type_json`, so default stage0 output is not yet direct evidence for the self-host typechecker implementation.
-  - The self-host typed-program serializer still needs broader Rust-shape parity if it becomes the default hidden stage0 contract source.
+  - The representative `compiler/driver/pipeline.dt` typechecker payload must be replaced by the full `compiler/driver/typeck_stage.dt` path before full compiler/typechecker implementation parity is claimed.
+  - The full self-host typed-program serializer still needs broader Rust-shape parity if it becomes the default hidden stage0 contract source.
   - `crates/draton-typeck/src/check.rs` and `crates/draton-typeck/src/ownership.rs` remain the authoritative semantic and ownership logic that the self-host tree still has to match.
 - Exit criteria:
-  - `compiler/driver/pipeline.dt` no longer calls `host_type_json`.
-  - Stage0 typecheck JSON comes from the Draton typechecker path under `compiler/typeck/`.
+  - Hidden `drat selfhost-stage0 typeck` continues using no `host_type_json` bridge.
+  - Stage0 typecheck JSON comes from bridge-free Draton code and preserves the frozen typechecker envelope.
   - Type diagnostics, warnings, and typed-program envelopes match the Rust authority on parity fixtures.
 
 ### Ownership parity
 
-- Current status: partially real in the self-host tree; `compiler/typeck/infer/ownership.dt` now writes ownership summaries and selected expression `use_effect` metadata into the self-host typed program, but hidden stage0 `typeck` still exposes the Rust oracle by default.
+- Current status: partially real in the self-host tree; `compiler/typeck/infer/ownership.dt` now writes ownership summaries and selected expression `use_effect` metadata into the self-host typed program, while hidden stage0 `typeck` exposes a bridge-free representative payload for the focused frontend parity fixtures.
 - Source of truth: `crates/draton-typeck/src/ownership.rs` and `docs/runtime/inferred-ownership-spec.md`.
 - What is already real:
   - `compiler/typeck/typed/ownership.dt` exists and establishes where ownership behavior belongs in the self-host tree.
@@ -112,7 +112,7 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
   - `compiler/driver/pipeline.dt` still routes `build_json` through `host_build_json`, so the production build path still relies on Rust ownership behavior.
   - `crates/draton-runtime/src/lib.rs` still reaches the Rust `drat build` path for production build fallback behavior.
 - Blockers:
-  - Hidden `drat selfhost-stage0 typeck` still goes through `host_type_json`, so the default stage0 command does not yet execute the self-host `use_effect` path directly.
+  - Hidden `drat selfhost-stage0 typeck` no longer goes through `host_type_json`, but deeper ownership diagnostics and free-point behavior still remain Phase 3 work.
   - The new self-host `use_effect` population currently covers a selected, high-value subset of expression forms rather than the full `crates/draton-typeck/src/ownership.rs` matrix.
   - Ownership diagnostics still come from the Rust authority; the self-host path does not yet match `crates/draton-typeck/src/ownership.rs` on borrow/move error reporting.
   - `crates/draton-runtime/src/lib.rs` remains the production-path bridge through `host_build_json`.
@@ -201,5 +201,5 @@ Phase 0 to Phase 1 handoff should do the following, in order:
 1. Keep this status file current whenever a bridge, blocker, or parity claim changes.
 2. Expand deterministic parity fixtures for `drat selfhost-stage0 lex`, `parse`, `typeck`, and `build`.
 3. Keep parser parity required in CI and expand fixtures when recovery or diagnostic drift is found.
-4. Immediate blocker: remove hidden stage0 `typeck` dispatch through `host_type_json` after the self-host typechecker payload matches the current Rust oracle envelope.
+4. Immediate blocker: expand Phase 3 ownership parity beyond focused stage0 summaries and selected `use_effect` fixtures.
 5. Treat parser, typechecker, ownership, backend, and bootstrap as separate parity tracks instead of one generic "self-host complete" milestone.

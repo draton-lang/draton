@@ -367,7 +367,7 @@ fn main() {
         "typeck",
         &src,
         "selfhost",
-        Some("host_type_json"),
+        None,
         true,
     );
     assert!(result["lex_errors"].is_array(), "expected lex_errors array");
@@ -419,7 +419,7 @@ fn add(a: Int) -> Int {
         "typeck",
         &src,
         "selfhost",
-        Some("host_type_json"),
+        None,
         true,
     );
     assert_eq!(
@@ -448,7 +448,7 @@ fn add(a: Int) -> Int {
         "typeck",
         &src,
         "selfhost",
-        Some("host_type_json"),
+        None,
         false,
     );
     assert!(
@@ -493,7 +493,7 @@ fn walk(text, n) {
         "typeck",
         &src,
         "selfhost",
-        Some("host_type_json"),
+        None,
         rust_checked.errors.is_empty(),
     );
     assert_eq!(
@@ -555,7 +555,7 @@ fn pass_down(text, n) {
         "typeck",
         &src,
         "selfhost",
-        Some("host_type_json"),
+        None,
         rust_checked.errors.is_empty(),
     );
     assert_eq!(
@@ -620,7 +620,7 @@ fn main() {
         "typeck",
         &src,
         "selfhost",
-        Some("host_type_json"),
+        None,
         true,
     );
     assert_eq!(

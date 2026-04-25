@@ -324,7 +324,7 @@ fn stage0_bridge(command: &SelfhostStage0Command) -> Value {
         }),
         SelfhostStage0Command::Typeck { .. } => json!({
             "kind": "selfhost",
-            "builtin": "host_type_json",
+            "builtin": Value::Null,
         }),
         SelfhostStage0Command::Build { .. } => json!({
             "kind": "host",
@@ -406,7 +406,7 @@ fn stage0_layout(command: &SelfhostStage0Command) -> Stage0Layout {
         },
         SelfhostStage0Command::Typeck { .. } => Stage0Layout {
             cache_key: "typeck",
-            entries: &[],
+            entries: &["driver/pipeline.dt"],
         },
         SelfhostStage0Command::Build { .. } => Stage0Layout {
             cache_key: "build",
@@ -621,7 +621,9 @@ fn stage0_entry_source(command: &SelfhostStage0Command) -> String {
     let imports = match command {
         SelfhostStage0Command::Lex { .. } => "import { lex_json } from driver.pipeline\n\n",
         SelfhostStage0Command::Parse { .. } => "import { parse_json } from driver.pipeline\n\n",
-        SelfhostStage0Command::Typeck { .. } => "",
+        SelfhostStage0Command::Typeck { .. } => {
+            "import { typeck_json } from driver.pipeline\n\n"
+        }
         SelfhostStage0Command::Build { .. } => "import { build_json } from driver.pipeline\n\n",
     };
     let dispatch = match command {
@@ -632,7 +634,7 @@ fn stage0_entry_source(command: &SelfhostStage0Command) -> String {
             "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(parse_json(path))\n"
         }
         SelfhostStage0Command::Typeck { .. } => {
-            "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(host_type_json(path, int_arg(2)))\n"
+            "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(typeck_json(path, bool_arg(2)))\n"
         }
         SelfhostStage0Command::Build { .. } => {
             "    let path = arg_or_empty(1)\n    if path == \"\" {\n        return emit_error(\"missing input path\")\n    }\n    return emit_payload(build_json(path, arg_or_empty(2), arg_or_empty(3), bool_arg(4), arg_or_empty(5)))\n"

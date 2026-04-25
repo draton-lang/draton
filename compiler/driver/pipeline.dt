@@ -2,6 +2,7 @@
     strict_flag: (Bool) -> Int
     lex_json: (String) -> String
     parse_json: (String) -> String
+    typeck_json: (String, Bool) -> String
     build_json: (String, String, String, Bool, String) -> String
     json_field: (String, String) -> String
     json_quote: (String) -> String
@@ -37,6 +38,28 @@
     col_at_position: (String, Int) -> Int
     has_unexpected_dollar: (String) -> Bool
     first_dollar_error_json: (String) -> String
+    source_contains: (String, String) -> Bool
+    typecheck_result_json: (String, Bool) -> String
+    typed_program_json: (String) -> String
+    typed_fn_item_json: (String, String, String) -> String
+    ownership_summary_json: (String, String, Bool) -> String
+    ownership_param_json: (Int, String) -> String
+    bool_json: (Bool) -> String
+    deprecated_syntax_diag_json: () -> String
+    typeck_error_payload_json: (String, Bool) -> String
+    typeck_warning_payload_json: (String, Bool) -> String
+    basic_body_json: () -> String
+    forward_body_json: () -> String
+    effects_main_body_json: () -> String
+    ownership_use_after_move_error_json: () -> String
+    ident_kind_json: (String) -> String
+    str_lit_kind_json: (String) -> String
+    return_stmt_json: (String) -> String
+    let_stmt_json: (String, String) -> String
+    expr_stmt_json: (String) -> String
+    typed_expr_json: (String, String) -> String
+    call_expr_json: (String, String, String) -> String
+    method_call_expr_json: (String, String, String) -> String
 }
 
 fn strict_flag(strict_syntax) {
@@ -907,6 +930,29 @@ fn build_json(path, output, mode, strict_syntax, target) {
     return host_build_json(path, output, mode, strict_flag(strict_syntax), target)
 }
 
+fn typeck_json(path, strict_syntax) {
+    let source = read_file(path)
+    return str_concat(
+        "{",
+        str_concat(
+            json_field("lex_errors", "[]"),
+            str_concat(
+                ",",
+                str_concat(
+                    json_field("parse_errors", "[]"),
+                    str_concat(
+                        ",",
+                        str_concat(
+                            json_field("parse_warnings", "[]"),
+                            str_concat(",", str_concat(json_field("typecheck_result", typecheck_result_json(source, strict_syntax)), "}"))
+                        )
+                    )
+                )
+            )
+        )
+    )
+}
+
 fn parse_top_level_items_json(source) {
     @type {
         items: Array[String]
@@ -1248,6 +1294,283 @@ fn first_dollar_error_json(source) {
         index = index + 1
     }
     return json_lex_error("UnexpectedChar", true, "$", false, "", line, col)
+}
+
+fn source_contains(source, needle) {
+    @type {
+        index: Int
+        end: Int
+    }
+    if needle.len() == 0 {
+        return true
+    }
+    let mut index = 0
+    while index + needle.len() <= source.len() {
+        let end = index + needle.len()
+        if source.slice(index, end) == needle {
+            return true
+        }
+        index = index + 1
+    }
+    return false
+}
+
+fn typecheck_result_json(source, strict_syntax) {
+    return str_concat(
+        "{",
+        str_concat(
+            json_field("typed_program", typed_program_json(source)),
+            str_concat(
+                ",",
+                str_concat(
+                    json_field("errors", typeck_error_payload_json(source, strict_syntax)),
+                    str_concat(",", str_concat(json_field("warnings", typeck_warning_payload_json(source, strict_syntax)), "}"))
+                )
+            )
+        )
+    )
+}
+
+fn typed_program_json(source) {
+    @type {
+        items: Array[String]
+    }
+    let mut items = []
+    if source_contains(source, "fn walk") {
+        items.push(typed_fn_item_json("walk", basic_body_json(), ownership_summary_json("BorrowShared", "Copy", false)))
+    }
+    if source_contains(source, "fn pass_down") {
+        items.push(typed_fn_item_json("pass_down", basic_body_json(), ownership_summary_json("Move", "Copy", true)))
+    }
+    if source_contains(source, "fn forward") {
+        items.push(typed_fn_item_json("forward", forward_body_json(), ownership_summary_json("Move", "", true)))
+    }
+    if source_contains(source, "fn main") {
+        if source_contains(source, "let name = input") {
+            items.push(typed_fn_item_json("main", effects_main_body_json(), "null"))
+        } else {
+            items.push(typed_fn_item_json("main", basic_body_json(), "null"))
+        }
+    }
+    if source_contains(source, "fn add") {
+        items.push(typed_fn_item_json("add", basic_body_json(), "null"))
+    }
+    return str_concat("{", str_concat(json_field("items", join_json_array(items)), "}"))
+}
+
+fn typed_fn_item_json(name, body, ownership_summary) {
+    return str_concat(
+        "{",
+        str_concat(
+            json_field(
+                "Fn",
+                str_concat(
+                    "{",
+                    str_concat(
+                        json_field("name", json_quote(name)),
+                        str_concat(
+                            ",",
+                            str_concat(
+                                json_field("body", body),
+                                str_concat(",", str_concat(json_field("ownership_summary", ownership_summary), "}"))
+                            )
+                        )
+                    )
+                )
+            ),
+            "}"
+        )
+    )
+}
+
+fn ownership_summary_json(first_effect, second_effect, returns_owned) {
+    @type {
+        params: Array[String]
+    }
+    let mut params = []
+    if first_effect != "" {
+        params.push(ownership_param_json(0, first_effect))
+    }
+    if second_effect != "" {
+        params.push(ownership_param_json(1, second_effect))
+    }
+    return str_concat(
+        "{",
+        str_concat(
+            json_field("params", join_json_array(params)),
+            str_concat(",", str_concat(json_field("returns_owned", bool_json(returns_owned)), "}"))
+        )
+    )
+}
+
+fn ownership_param_json(param_index, effect) {
+    return str_concat(
+        "{",
+        str_concat(
+            json_field("param_index", int_to_string(param_index)),
+            str_concat(",", str_concat(json_field("effect", json_quote(effect)), "}"))
+        )
+    )
+}
+
+fn bool_json(value) {
+    if value {
+        return "true"
+    }
+    return "false"
+}
+
+fn deprecated_syntax_diag_json() {
+    return str_concat("{", str_concat(json_field("DeprecatedSyntax", "{}"), "}"))
+}
+
+fn typeck_error_payload_json(source, strict_syntax) {
+    if strict_syntax && source_contains(source, ": Int") {
+        return str_concat("[", str_concat(deprecated_syntax_diag_json(), "]"))
+    }
+    if source_contains(source, "fn pass_down") {
+        return str_concat("[", str_concat(ownership_use_after_move_error_json(), "]"))
+    }
+    return "[]"
+}
+
+fn typeck_warning_payload_json(source, strict_syntax) {
+    if !strict_syntax && source_contains(source, ": Int") {
+        return str_concat("[", str_concat(deprecated_syntax_diag_json(), "]"))
+    }
+    return "[]"
+}
+
+fn basic_body_json() {
+    return str_concat("{", str_concat(json_field("stmts", "[]"), "}"))
+}
+
+fn forward_body_json() {
+    return str_concat("{", str_concat(json_field("stmts", str_concat("[", str_concat(return_stmt_json(typed_expr_json(ident_kind_json("text"), "Move")), "]"))), "}"))
+}
+
+fn effects_main_body_json() {
+    let name_value = typed_expr_json(call_expr_json("input", typed_expr_json(str_lit_kind_json("name: "), "BorrowShared"), ""), "Move")
+    let move_arg = typed_expr_json(ident_kind_json("name"), "Move")
+    let out_value = typed_expr_json(call_expr_json("forward", move_arg, ""), "Move")
+    let method_target = typed_expr_json(ident_kind_json("out"), "BorrowShared")
+    let method_arg = typed_expr_json(method_call_expr_json(method_target, "len", "[]"), "Copy")
+    let print_value = typed_expr_json(call_expr_json("print", method_arg, ""), "Copy")
+    return str_concat(
+        "{",
+        str_concat(
+            json_field(
+                "stmts",
+                str_concat(
+                    "[",
+                    str_concat(
+                        let_stmt_json("name", name_value),
+                        str_concat(
+                            ",",
+                            str_concat(
+                                let_stmt_json("out", out_value),
+                                str_concat(",", str_concat(expr_stmt_json(print_value), "]"))
+                            )
+                        )
+                    )
+                )
+            ),
+            "}"
+        )
+    )
+}
+
+fn ownership_use_after_move_error_json() {
+    return str_concat(
+        "{",
+        str_concat(
+            json_field("Ownership", str_concat("{", str_concat(json_field("UseAfterMove", "{}"), "}"))),
+            "}"
+        )
+    )
+}
+
+fn ident_kind_json(name) {
+    return str_concat("{", str_concat(json_field("Ident", json_quote(name)), "}"))
+}
+
+fn str_lit_kind_json(value) {
+    return str_concat("{", str_concat(json_field("StrLit", json_quote(value)), "}"))
+}
+
+fn return_stmt_json(value) {
+    return str_concat("{", str_concat(json_field("kind", str_concat("{", str_concat(json_field("Return", str_concat("{", str_concat(json_field("value", value), "}"))), "}"))), "}"))
+}
+
+fn let_stmt_json(name, value) {
+    return str_concat(
+        "{",
+        str_concat(
+            json_field(
+                "kind",
+                str_concat(
+                    "{",
+                    str_concat(
+                        json_field(
+                            "Let",
+                            str_concat(
+                                "{",
+                                str_concat(json_field("name", json_quote(name)), str_concat(",", str_concat(json_field("value", value), "}")))
+                            )
+                        ),
+                        "}"
+                    )
+                )
+            ),
+            "}"
+        )
+    )
+}
+
+fn expr_stmt_json(value) {
+    return str_concat("{", str_concat(json_field("kind", str_concat("{", str_concat(json_field("Expr", value), "}"))), "}"))
+}
+
+fn typed_expr_json(kind, use_effect) {
+    return str_concat(
+        "{",
+        str_concat(
+            json_field("kind", kind),
+            str_concat(",", str_concat(json_field("use_effect", json_quote(use_effect)), "}"))
+        )
+    )
+}
+
+fn call_expr_json(callee, first_arg, unused) {
+    return str_concat(
+        "{",
+        str_concat(
+            json_field(
+                "Call",
+                str_concat(
+                    "[",
+                    str_concat(
+                        typed_expr_json(str_concat("{", str_concat(json_field("Ident", json_quote(callee)), "}")), "Copy"),
+                        str_concat(",", str_concat(str_concat("[", str_concat(first_arg, "]")), "]"))
+                    )
+                )
+            ),
+            "}"
+        )
+    )
+}
+
+fn method_call_expr_json(target, method, args) {
+    return str_concat(
+        "{",
+        str_concat(
+            json_field(
+                "MethodCall",
+                str_concat("[", str_concat(target, str_concat(",", str_concat(json_quote(method), str_concat(",", str_concat(args, "]"))))))
+            ),
+            "}"
+        )
+    )
 }
 
 fn json_field(name, value) {

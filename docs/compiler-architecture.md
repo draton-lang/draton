@@ -218,7 +218,7 @@ Current boundary:
 - `compiler/main.dt` and `compiler/driver/pipeline.dt` are the live stage0 entrypoints
 - `compiler/driver/pipeline.dt` currently implements `lex_json`, `parse_json`, and `typeck_json` in Draton, while `build_json` still bridges through `host_build_json`
 - `compiler/driver/pipeline.dt` owns the current bridge-free stage0 parse payload; `compiler/driver/parse_stage.dt` remains the planned full self-host parser payload path and must keep the frozen stage0 parse contract aligned with Rust-shaped JSON before promotion
-- `compiler/driver/typeck_stage.dt` now contains a raw self-host typechecker payload path with typed-body and `use_effect` serialization, but the hidden `drat selfhost-stage0 typeck` command still defaults to the Rust `host_type_json` oracle path
+- `compiler/driver/pipeline.dt` now owns the hidden bridge-free stage0 `typeck_json` payload, while `compiler/driver/typeck_stage.dt` remains the planned full self-host typechecker payload path with typed-body and `use_effect` serialization
 - `compiler/typeck/infer/ownership.dt` now adds self-host ownership-summary inference plus selected expression `use_effect` population, but ownership diagnostics and lowering semantics still remain Rust-authoritative
 - `crates/drat/src/commands/selfhost_stage0.rs` now freezes the hidden stage0 oracle output into the versioned envelope `draton.selfhost.stage0/v1`; this improves parity gating, but it does not move authority away from the Rust crates or remove the remaining host bridges
 

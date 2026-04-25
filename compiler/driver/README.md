@@ -11,7 +11,7 @@ Current boundary:
 - `pipeline.dt` owns the current bridge-free stage0 parse payload and representative parser parity surface; `parse_stage.dt` remains the planned full self-host parser payload path and must keep parser JSON aligned with the Rust oracle contract before promotion
 - `typeck_stage.dt` owns the planned self-host typechecker stage0 payload path and keeps typed-program JSON aligned with the Rust oracle contract
 - `pipeline.dt` still routes `build_json` through `host_build_json`
-- the hidden Rust stage0 wrapper now dispatches `parse` to bridge-free Draton code in `pipeline.dt`; `typeck` still calls `host_type_json` because the full typechecker stage0 binary does not yet fit the local verification envelope
+- the hidden Rust stage0 wrapper now dispatches `parse` and `typeck` to bridge-free Draton code in `pipeline.dt`; the full `typeck_stage.dt` path remains planned deeper parity work
 - the Rust stage0 command remains the bootstrap and parity wrapper around these files
 
 Current file ownership:

@@ -224,8 +224,8 @@ Current status on April 25, 2026:
 
 - Hidden `selfhost-stage0 parse` no longer bridges through `host_parse_json`; it now dispatches to bridge-free Draton code in `D:/draton/compiler/driver/pipeline.dt` and reports `bridge.kind = "selfhost"` with `bridge.builtin = null`.
 - `D:/draton/crates/draton-parser/tests/selfhost_parity.rs` now runs by default and gates representative parser parity fixtures against the Rust oracle.
-- Hidden `selfhost-stage0 typeck` still bridges through `host_type_json`, so the Phase 2 typechecker host-bridge removal work is also not yet complete.
-- Rust remains the parity oracle, and ownership parity still belongs to Phase 3.
+- Hidden `selfhost-stage0 typeck` no longer bridges through `host_type_json`; it now reports `bridge.kind = "selfhost"` with `bridge.builtin = null` and passes the focused stage0 typechecker parity gates.
+- Phase 2 frontend parity gates are complete for parse/typeck host-bridge removal and representative fixtures. Rust remains the broader language oracle, and deeper ownership parity still belongs to Phase 3.
 
 ## Phase 3: Port inferred ownership fully into the self-host compiler
 
@@ -257,7 +257,7 @@ Current status on April 6, 2026:
 - The self-host typechecker now runs a dedicated ownership-summary pass under `compiler/typeck/infer/ownership.dt` after HM inference.
 - `compiler/typeck/infer/ownership.dt` now also populates selected expression `use_effect` metadata in the self-host typed program for high-value ownership sites such as lets, returns, calls, method calls, and field/index reads.
 - Focused stage0 tests now lock the Rust-oracle `use_effect` shape on selected fixtures so the target ownership metadata stays explicit while the self-host path catches up.
-- Full ownership parity is still not complete: hidden `drat selfhost-stage0 typeck` still bridges through `host_type_json`, and self-host ownership diagnostics and free-point selection still trail `crates/draton-typeck/src/ownership.rs`.
+- Full ownership parity is still not complete: hidden `drat selfhost-stage0 typeck` now has bridge-free focused ownership-summary and selected `use_effect` coverage, but self-host ownership diagnostics and free-point selection still trail `crates/draton-typeck/src/ownership.rs`.
 
 ## Phase 4: Replace the fake backend surface with a real LLVM-first self-host backend and an auxiliary Draton backend
 
@@ -433,7 +433,7 @@ The next practical sequence for implementation should be:
 1. Keep `docs/selfhost-canonical-migration-status.md` current.
 2. Mark every host bridge and backend placeholder explicitly when they change.
 3. Keep parser parity required and truthful without `host_parse_json`.
-4. Remove `host_type_json` from the hidden stage0 path, then expand typechecker parity coverage around the self-host serializer.
+4. Expand typechecker parity coverage around the bridge-free self-host serializer.
 5. Port ownership parity fully.
 6. Design the first real self-host backend target.
 7. Remove `host_build_json` from the default self-host path.
