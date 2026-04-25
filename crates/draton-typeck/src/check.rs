@@ -3371,20 +3371,6 @@ impl TypeChecker {
             },
         );
         self.env.define(
-            "host_parse_json",
-            Scheme {
-                quantified: Vec::new(),
-                ty: Type::Fn(vec![Type::String], Box::new(Type::String)),
-            },
-        );
-        self.env.define(
-            "host_type_json",
-            Scheme {
-                quantified: Vec::new(),
-                ty: Type::Fn(vec![Type::String, Type::Int], Box::new(Type::String)),
-            },
-        );
-        self.env.define(
             "host_build_json",
             Scheme {
                 quantified: Vec::new(),

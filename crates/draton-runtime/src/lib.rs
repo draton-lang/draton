@@ -29,10 +29,10 @@ use coop_scheduler::RawChan;
 #[cfg(feature = "host-compiler")]
 use draton_lexer::{LexResult, Lexer};
 #[cfg(feature = "host-compiler")]
-use draton_parser::{ParseResult, ParseWarning, Parser};
+use draton_parser::Parser;
 use draton_stdlib as stdlib;
 #[cfg(feature = "host-compiler")]
-use draton_typeck::{DeprecatedSyntaxMode, TypeCheckResult, TypeChecker};
+use draton_typeck::TypeChecker;
 use platform::DratonPlatform;
 #[cfg(feature = "scheduler")]
 use scheduler::channel::RawChan;
@@ -284,52 +284,6 @@ pub fn host_lex_json_path(path: &Path) -> Result<String, String> {
     let lexed = host_lex_result(path)?;
     serde_json::to_string(&lexed)
         .map_err(|error| format!("failed to serialize lex result: {error}"))
-}
-
-#[cfg(feature = "host-compiler")]
-pub fn host_parse_json_path(path: &Path) -> Result<String, String> {
-    let lexed = host_lex_result(path)?;
-    let parse_result: Option<ParseResult> = if lexed.errors.is_empty() {
-        Some(Parser::new(lexed.tokens.clone()).parse())
-    } else {
-        None
-    };
-    serde_json::to_string(&json!({
-        "lex_errors": lexed.errors,
-        "parse_result": parse_result,
-    }))
-    .map_err(|error| format!("failed to serialize parse result: {error}"))
-}
-
-#[cfg(feature = "host-compiler")]
-pub fn host_type_json_path(path: &Path, strict_syntax: bool) -> Result<String, String> {
-    let lexed = host_lex_result(path)?;
-    let mut parse_errors = Vec::new();
-    let mut parse_warnings: Vec<ParseWarning> = Vec::new();
-    let mut typecheck_result: Option<TypeCheckResult> = None;
-    if lexed.errors.is_empty() {
-        let parsed = Parser::new(lexed.tokens.clone()).parse();
-        parse_errors = parsed.errors.clone();
-        parse_warnings = parsed.warnings.clone();
-        if parse_errors.is_empty() {
-            typecheck_result = Some(
-                TypeChecker::new()
-                    .with_deprecated_syntax_mode(if strict_syntax {
-                        DeprecatedSyntaxMode::Deny
-                    } else {
-                        DeprecatedSyntaxMode::Warn
-                    })
-                    .check(parsed.program),
-            );
-        }
-    }
-    serde_json::to_string(&json!({
-        "lex_errors": lexed.errors,
-        "parse_errors": parse_errors,
-        "parse_warnings": parse_warnings,
-        "typecheck_result": typecheck_result,
-    }))
-    .map_err(|error| format!("failed to serialize typecheck result: {error}"))
 }
 
 #[cfg(feature = "host-compiler")]
@@ -663,23 +617,6 @@ pub extern "C" fn draton_host_build_source(
 pub extern "C" fn draton_host_lex_json(path: DratonString) -> DratonString {
     let path = draton_string_to_owned(path);
     let output = host_lex_json_path(Path::new(&path)).unwrap_or_else(|message| message);
-    owned_string(output.into_bytes())
-}
-
-#[cfg(feature = "host-compiler")]
-#[no_mangle]
-pub extern "C" fn draton_host_parse_json(path: DratonString) -> DratonString {
-    let path = draton_string_to_owned(path);
-    let output = host_parse_json_path(Path::new(&path)).unwrap_or_else(|message| message);
-    owned_string(output.into_bytes())
-}
-
-#[cfg(feature = "host-compiler")]
-#[no_mangle]
-pub extern "C" fn draton_host_type_json(path: DratonString, strict_syntax: i64) -> DratonString {
-    let path = draton_string_to_owned(path);
-    let output =
-        host_type_json_path(Path::new(&path), strict_syntax != 0).unwrap_or_else(|message| message);
     owned_string(output.into_bytes())
 }
 

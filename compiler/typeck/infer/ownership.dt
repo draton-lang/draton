@@ -211,8 +211,6 @@ fn seed_builtin_summaries(summaries) {
     insert_builtin_summary(summaries, "host_ast_dump", [BorrowShared], true)
     insert_builtin_summary(summaries, "host_type_dump", [BorrowShared], true)
     insert_builtin_summary(summaries, "host_lex_json", [BorrowShared], true)
-    insert_builtin_summary(summaries, "host_parse_json", [BorrowShared], true)
-    insert_builtin_summary(summaries, "host_type_json", [BorrowShared, Copy], true)
     insert_builtin_summary(summaries, "host_build_json", [BorrowShared, BorrowShared, BorrowShared, Copy, BorrowShared], true)
     insert_builtin_summary(summaries, "string_parse_int", [BorrowShared], false)
     insert_builtin_summary(summaries, "string_parse_int_radix", [BorrowShared, Copy], false)

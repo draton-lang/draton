@@ -533,40 +533,6 @@ impl<'ctx> CodeGen<'ctx> {
             self.module
                 .add_function("draton_host_lex_json", function_ty, None);
         }
-        if self.module.get_function("draton_host_parse_json").is_none() {
-            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-                self.context.void_type().fn_type(
-                    &[
-                        self.context.ptr_type(AddressSpace::default()).into(),
-                        self.context.ptr_type(AddressSpace::default()).into(),
-                    ],
-                    false,
-                )
-            } else {
-                self.string_type.fn_type(&[self.string_type.into()], false)
-            };
-            self.module
-                .add_function("draton_host_parse_json", function_ty, None);
-        }
-        if self.module.get_function("draton_host_type_json").is_none() {
-            let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-                self.context.void_type().fn_type(
-                    &[
-                        self.context.ptr_type(AddressSpace::default()).into(),
-                        self.context.ptr_type(AddressSpace::default()).into(),
-                        self.context.i64_type().into(),
-                    ],
-                    false,
-                )
-            } else {
-                self.string_type.fn_type(
-                    &[self.string_type.into(), self.context.i64_type().into()],
-                    false,
-                )
-            };
-            self.module
-                .add_function("draton_host_type_json", function_ty, None);
-        }
         if self.module.get_function("draton_host_build_json").is_none() {
             let function_ty = if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
                 self.context.void_type().fn_type(
