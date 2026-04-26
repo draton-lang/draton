@@ -742,6 +742,41 @@ fn main() {
 }
 
 #[test]
+fn typeck_json_matches_rust_higher_order_and_cycle_diagnostic_kinds() {
+    assert_stage0_ownership_diagnostic_matches_rust(
+        "typeck_ownership_ambiguous_call",
+        "AmbiguousCallOwnership",
+        r#"fn run(op, text) {
+    op(text)
+    print(text.len())
+}
+"#,
+    );
+    assert_stage0_ownership_diagnostic_matches_rust(
+        "typeck_ownership_multiple_owners",
+        "MultipleOwners",
+        r#"fn main() {
+    let name = input("name: ")
+    return [lambda => name.len(), lambda => name.len()]
+}
+"#,
+    );
+    assert_stage0_ownership_diagnostic_matches_rust(
+        "typeck_ownership_cycle",
+        "OwnershipCycle",
+        r#"@acyclic
+class Node {
+    let next
+
+    @type {
+        next: Node??
+    }
+}
+"#,
+    );
+}
+
+#[test]
 fn typeck_json_emits_use_effect_metadata() {
     let dir = temp_case_dir("typeck_use_effects");
     let src = dir.join("main.dt");

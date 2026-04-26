@@ -108,7 +108,7 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
   - `compiler/typeck/infer/ownership.dt` now performs a self-host ownership-summary pass after HM inference and writes `ownership_summary` into the typed program for stage0 output.
   - `compiler/typeck/infer/ownership.dt` now also populates selected `use_effect` metadata on typed expressions using self-host desired-effect rules for lets, returns, calls, method calls, field/index reads, and common container literals.
   - `compiler/driver/typeck_stage.dt` now serializes typed function bodies and per-expression `use_effect` metadata on its raw self-host typecheck path.
-  - `crates/drat/tests/selfhost_stage0.rs` now gates representative Rust-oracle ownership diagnostic kinds through hidden bridge-free stage0 typeck: `MoveWhileBorrowed`, `ReadDuringExclusiveBorrow`, `ExclusiveBorrowDuringRead`, `PartialMove`, `LoopMoveWithoutReinit`, and `SafeToRawAliasRejection`.
+  - `crates/drat/tests/selfhost_stage0.rs` now gates representative Rust-oracle ownership diagnostic kinds through hidden bridge-free stage0 typeck: `MoveWhileBorrowed`, `ReadDuringExclusiveBorrow`, `ExclusiveBorrowDuringRead`, `PartialMove`, `LoopMoveWithoutReinit`, `SafeToRawAliasRejection`, `AmbiguousCallOwnership`, `MultipleOwners`, and `OwnershipCycle`.
 - What still bridges to host Rust:
   - `compiler/driver/pipeline.dt` still routes `build_json` through `host_build_json`, so the production build path still relies on Rust ownership behavior.
   - `crates/draton-runtime/src/lib.rs` still reaches the Rust `drat build` path for production build fallback behavior.

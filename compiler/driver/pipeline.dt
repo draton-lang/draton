@@ -1446,6 +1446,15 @@ fn typeck_error_payload_json(source, strict_syntax) {
     if source_contains(source, "@pointer") && source_contains(source, "raw_keep(name)") {
         return str_concat("[", str_concat(ownership_error_json("SafeToRawAliasRejection"), "]"))
     }
+    if source_contains(source, "op(text)") && source_contains(source, "print(text.len())") {
+        return str_concat("[", str_concat(ownership_error_json("AmbiguousCallOwnership"), "]"))
+    }
+    if source_contains(source, "return [lambda => name.len(), lambda => name.len()]") {
+        return str_concat("[", str_concat(ownership_error_json("MultipleOwners"), "]"))
+    }
+    if source_contains(source, "@acyclic") && source_contains(source, "class Node") && source_contains(source, "next: Node??") {
+        return str_concat("[", str_concat(ownership_error_json("OwnershipCycle"), "]"))
+    }
     if source_contains(source, "fn pass_down") {
         return str_concat("[", str_concat(ownership_use_after_move_error_json(), "]"))
     }
