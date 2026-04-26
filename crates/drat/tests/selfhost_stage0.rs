@@ -594,6 +594,53 @@ fn pass_down(text, n) {
 }
 
 #[test]
+fn typeck_json_matches_rust_move_while_borrowed_diagnostic_kind() {
+    let dir = temp_case_dir("typeck_ownership_move_while_borrowed");
+    let src = dir.join("main.dt");
+    let source = r#"fn forward(text) {
+    return text
+}
+
+fn main() {
+    let name = input("name: ")
+    let reader = lambda => name.len()
+    let out = forward(name)
+    print(reader())
+    print(out.len())
+}
+"#;
+    fs::write(&src, source).expect("write source");
+
+    let rust_checked = compile_with_rust_typechecker(source);
+    assert_eq!(
+        rust_first_ownership_error_kind(&rust_checked),
+        Some("MoveWhileBorrowed"),
+        "rust oracle fixture changed"
+    );
+
+    let json = run_stage0(&[
+        "selfhost-stage0",
+        "typeck",
+        "--json",
+        src.to_str().expect("utf8 path"),
+    ]);
+    let result = expect_envelope(
+        &json,
+        "typeck",
+        &src,
+        "selfhost",
+        None,
+        rust_checked.errors.is_empty(),
+    );
+
+    assert_eq!(
+        stage0_first_error_kind(result),
+        rust_first_ownership_error_kind(&rust_checked),
+        "stage0/rust first ownership error drift"
+    );
+}
+
+#[test]
 fn typeck_json_emits_use_effect_metadata() {
     let dir = temp_case_dir("typeck_use_effects");
     let src = dir.join("main.dt");

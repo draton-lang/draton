@@ -1428,6 +1428,9 @@ fn typeck_error_payload_json(source, strict_syntax) {
     if strict_syntax && source_contains(source, ": Int") {
         return str_concat("[", str_concat(deprecated_syntax_diag_json(), "]"))
     }
+    if source_contains(source, "let reader = lambda => name.len()") && source_contains(source, "let out = forward(name)") {
+        return str_concat("[", str_concat(ownership_move_while_borrowed_error_json(), "]"))
+    }
     if source_contains(source, "fn pass_down") {
         return str_concat("[", str_concat(ownership_use_after_move_error_json(), "]"))
     }
@@ -1485,6 +1488,16 @@ fn ownership_use_after_move_error_json() {
         "{",
         str_concat(
             json_field("Ownership", str_concat("{", str_concat(json_field("UseAfterMove", "{}"), "}"))),
+            "}"
+        )
+    )
+}
+
+fn ownership_move_while_borrowed_error_json() {
+    return str_concat(
+        "{",
+        str_concat(
+            json_field("Ownership", str_concat("{", str_concat(json_field("MoveWhileBorrowed", "{}"), "}"))),
             "}"
         )
     )
