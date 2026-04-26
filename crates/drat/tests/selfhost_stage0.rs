@@ -149,6 +149,40 @@ fn stage0_first_error_kind(result: &Value) -> Option<&str> {
     error.keys().next().map(|kind| kind.as_str())
 }
 
+fn assert_stage0_ownership_diagnostic_matches_rust(case_name: &str, expected_kind: &str, source: &str) {
+    let dir = temp_case_dir(case_name);
+    let src = dir.join("main.dt");
+    fs::write(&src, source).expect("write source");
+
+    let rust_checked = compile_with_rust_typechecker(source);
+    assert_eq!(
+        rust_first_ownership_error_kind(&rust_checked),
+        Some(expected_kind),
+        "rust oracle fixture changed for {case_name}"
+    );
+
+    let json = run_stage0(&[
+        "selfhost-stage0",
+        "typeck",
+        "--json",
+        src.to_str().expect("utf8 path"),
+    ]);
+    let result = expect_envelope(
+        &json,
+        "typeck",
+        &src,
+        "selfhost",
+        None,
+        rust_checked.errors.is_empty(),
+    );
+
+    assert_eq!(
+        stage0_first_error_kind(result),
+        rust_first_ownership_error_kind(&rust_checked),
+        "stage0/rust first ownership error drift for {case_name}"
+    );
+}
+
 fn rust_let_value<'a>(function: &'a TypedFnDef, index: usize) -> &'a TypedExpr {
     match &function
         .body
@@ -595,9 +629,10 @@ fn pass_down(text, n) {
 
 #[test]
 fn typeck_json_matches_rust_move_while_borrowed_diagnostic_kind() {
-    let dir = temp_case_dir("typeck_ownership_move_while_borrowed");
-    let src = dir.join("main.dt");
-    let source = r#"fn forward(text) {
+    assert_stage0_ownership_diagnostic_matches_rust(
+        "typeck_ownership_move_while_borrowed",
+        "MoveWhileBorrowed",
+        r#"fn forward(text) {
     return text
 }
 
@@ -608,35 +643,101 @@ fn main() {
     print(reader())
     print(out.len())
 }
-"#;
-    fs::write(&src, source).expect("write source");
-
-    let rust_checked = compile_with_rust_typechecker(source);
-    assert_eq!(
-        rust_first_ownership_error_kind(&rust_checked),
-        Some("MoveWhileBorrowed"),
-        "rust oracle fixture changed"
+"#,
     );
+}
 
-    let json = run_stage0(&[
-        "selfhost-stage0",
-        "typeck",
-        "--json",
-        src.to_str().expect("utf8 path"),
-    ]);
-    let result = expect_envelope(
-        &json,
-        "typeck",
-        &src,
-        "selfhost",
-        None,
-        rust_checked.errors.is_empty(),
+#[test]
+fn typeck_json_matches_rust_borrow_conflict_diagnostic_kinds() {
+    assert_stage0_ownership_diagnostic_matches_rust(
+        "typeck_ownership_read_during_exclusive_borrow",
+        "ReadDuringExclusiveBorrow",
+        r#"@type {
+    append_one: (Array[String]) -> Unit
+}
+
+fn append_one(items) {
+    items.push("x")
+}
+
+fn main() {
+    let mut items = []
+    @type {
+        items: Array[String]
+    }
+    let writer = lambda => append_one(items)
+    print(items.len())
+    writer()
+}
+"#,
     );
+    assert_stage0_ownership_diagnostic_matches_rust(
+        "typeck_ownership_exclusive_borrow_during_read",
+        "ExclusiveBorrowDuringRead",
+        r#"fn main() {
+    let mut items = []
+    @type {
+        items: Array[String]
+    }
+    let reader = lambda => items.len()
+    items.push("x")
+    print(reader())
+}
+"#,
+    );
+}
 
-    assert_eq!(
-        stage0_first_error_kind(result),
-        rust_first_ownership_error_kind(&rust_checked),
-        "stage0/rust first ownership error drift"
+#[test]
+fn typeck_json_matches_rust_move_escape_diagnostic_kinds() {
+    assert_stage0_ownership_diagnostic_matches_rust(
+        "typeck_ownership_partial_move",
+        "PartialMove",
+        r#"class User {
+    let name
+
+    @type {
+        name: String
+    }
+}
+
+fn main() {
+    let user = User { name: input("name: ") }
+    let name = user.name
+    print(name.len())
+}
+"#,
+    );
+    assert_stage0_ownership_diagnostic_matches_rust(
+        "typeck_ownership_loop_move_without_reinit",
+        "LoopMoveWithoutReinit",
+        r#"fn forward(text) {
+    return text
+}
+
+fn main(items) {
+    let mut name = input("name: ")
+    while items.len() > 0 {
+        let out = forward(name)
+        print(out.len())
+    }
+}
+"#,
+    );
+    assert_stage0_ownership_diagnostic_matches_rust(
+        "typeck_ownership_safe_to_raw_alias",
+        "SafeToRawAliasRejection",
+        r#"@extern "C" {
+    fn raw_keep(name: String)
+}
+
+fn main() {
+    let name = input("name: ")
+    @pointer {
+        raw_keep(name)
+    }
+    print(name.len())
+}
+"#,
     );
 }
 

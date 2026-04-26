@@ -108,14 +108,14 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
   - `compiler/typeck/infer/ownership.dt` now performs a self-host ownership-summary pass after HM inference and writes `ownership_summary` into the typed program for stage0 output.
   - `compiler/typeck/infer/ownership.dt` now also populates selected `use_effect` metadata on typed expressions using self-host desired-effect rules for lets, returns, calls, method calls, field/index reads, and common container literals.
   - `compiler/driver/typeck_stage.dt` now serializes typed function bodies and per-expression `use_effect` metadata on its raw self-host typecheck path.
-  - `crates/drat/tests/selfhost_stage0.rs` now gates the first Rust-oracle `MoveWhileBorrowed` ownership diagnostic kind through hidden bridge-free stage0 typeck.
+  - `crates/drat/tests/selfhost_stage0.rs` now gates representative Rust-oracle ownership diagnostic kinds through hidden bridge-free stage0 typeck: `MoveWhileBorrowed`, `ReadDuringExclusiveBorrow`, `ExclusiveBorrowDuringRead`, `PartialMove`, `LoopMoveWithoutReinit`, and `SafeToRawAliasRejection`.
 - What still bridges to host Rust:
   - `compiler/driver/pipeline.dt` still routes `build_json` through `host_build_json`, so the production build path still relies on Rust ownership behavior.
   - `crates/draton-runtime/src/lib.rs` still reaches the Rust `drat build` path for production build fallback behavior.
 - Blockers:
   - Hidden `drat selfhost-stage0 typeck` no longer goes through `host_type_json`, but deeper ownership diagnostics and free-point behavior still remain Phase 3 work.
   - The new self-host `use_effect` population currently covers a selected, high-value subset of expression forms rather than the full `crates/draton-typeck/src/ownership.rs` matrix.
-  - Ownership diagnostic parity is still representative rather than complete; `MoveWhileBorrowed` is now gated, while the rest of the `crates/draton-typeck/src/ownership.rs` diagnostic matrix remains open.
+  - Ownership diagnostic parity is still representative rather than complete; the focused borrow/move/raw-alias cases are now gated, while the rest of the `crates/draton-typeck/src/ownership.rs` diagnostic matrix remains open.
   - `crates/draton-runtime/src/lib.rs` remains the production-path bridge through `host_build_json`.
   - `crates/draton-typeck/src/ownership.rs` remains the authoritative ownership implementation that the self-host tree has not yet matched.
   - `docs/runtime/inferred-ownership-spec.md` remains ahead of any proven self-host ownership parity claim.

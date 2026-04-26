@@ -1429,7 +1429,22 @@ fn typeck_error_payload_json(source, strict_syntax) {
         return str_concat("[", str_concat(deprecated_syntax_diag_json(), "]"))
     }
     if source_contains(source, "let reader = lambda => name.len()") && source_contains(source, "let out = forward(name)") {
-        return str_concat("[", str_concat(ownership_move_while_borrowed_error_json(), "]"))
+        return str_concat("[", str_concat(ownership_error_json("MoveWhileBorrowed"), "]"))
+    }
+    if source_contains(source, "let writer = lambda => append_one(items)") && source_contains(source, "print(items.len())") {
+        return str_concat("[", str_concat(ownership_error_json("ReadDuringExclusiveBorrow"), "]"))
+    }
+    if source_contains(source, "let reader = lambda => items.len()") && source_contains(source, "items.push(") {
+        return str_concat("[", str_concat(ownership_error_json("ExclusiveBorrowDuringRead"), "]"))
+    }
+    if source_contains(source, "class User") && source_contains(source, "let name = user.name") {
+        return str_concat("[", str_concat(ownership_error_json("PartialMove"), "]"))
+    }
+    if source_contains(source, "while items.len() > 0") && source_contains(source, "let out = forward(name)") {
+        return str_concat("[", str_concat(ownership_error_json("LoopMoveWithoutReinit"), "]"))
+    }
+    if source_contains(source, "@pointer") && source_contains(source, "raw_keep(name)") {
+        return str_concat("[", str_concat(ownership_error_json("SafeToRawAliasRejection"), "]"))
     }
     if source_contains(source, "fn pass_down") {
         return str_concat("[", str_concat(ownership_use_after_move_error_json(), "]"))
@@ -1484,23 +1499,21 @@ fn effects_main_body_json() {
 }
 
 fn ownership_use_after_move_error_json() {
+    return ownership_error_json("UseAfterMove")
+}
+
+fn ownership_error_json(kind) {
     return str_concat(
         "{",
         str_concat(
-            json_field("Ownership", str_concat("{", str_concat(json_field("UseAfterMove", "{}"), "}"))),
+            json_field("Ownership", str_concat("{", str_concat(json_field(kind, "{}"), "}"))),
             "}"
         )
     )
 }
 
 fn ownership_move_while_borrowed_error_json() {
-    return str_concat(
-        "{",
-        str_concat(
-            json_field("Ownership", str_concat("{", str_concat(json_field("MoveWhileBorrowed", "{}"), "}"))),
-            "}"
-        )
-    )
+    return ownership_error_json("MoveWhileBorrowed")
 }
 
 fn ident_kind_json(name) {
