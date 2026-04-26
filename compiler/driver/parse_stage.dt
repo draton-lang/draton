@@ -62,20 +62,21 @@ fn serialize_lex_errors(errors) {
 }
 
 fn serialize_lex_error(diag) {
-    if diag.kind == UnexpectedChar {
+    let kind = diag.kind.to_string()
+    if kind == "UnexpectedChar" {
         return tagged_object("UnexpectedChar", [
             json_field("found", serialize_optional_string(diag.found)),
             json_field("line", diag.line.to_string()),
             json_field("col", diag.col.to_string())
         ])
     }
-    if diag.kind == UnterminatedString {
+    if kind == "UnterminatedString" {
         return tagged_object("UnterminatedString", [
             json_field("line", diag.line.to_string()),
             json_field("col", diag.col.to_string())
         ])
     }
-    if diag.kind == UnterminatedBlockComment {
+    if kind == "UnterminatedBlockComment" {
         return tagged_object("UnterminatedBlockComment", [
             json_field("line", diag.line.to_string()),
             json_field("col", diag.col.to_string())
@@ -99,7 +100,8 @@ fn serialize_parse_errors(errors) {
 }
 
 fn serialize_parse_error(diag) {
-    if diag.kind == UnexpectedToken {
+    let kind = diag.kind.to_string()
+    if kind == "UnexpectedToken" {
         return tagged_object("UnexpectedToken", [
             json_field("found", serialize_optional_string(diag.found)),
             json_field("expected", serialize_optional_string(diag.expected)),
@@ -107,20 +109,20 @@ fn serialize_parse_error(diag) {
             json_field("col", diag.col.to_string())
         ])
     }
-    if diag.kind == UnexpectedEof {
+    if kind == "UnexpectedEof" {
         return tagged_object("UnexpectedEof", [
             json_field("expected", serialize_optional_string(diag.expected)),
             json_field("line", diag.line.to_string()),
             json_field("col", diag.col.to_string())
         ])
     }
-    if diag.kind == InvalidExpr {
+    if kind == "InvalidExpr" {
         return tagged_object("InvalidExpr", [
             json_field("line", diag.line.to_string()),
             json_field("col", diag.col.to_string())
         ])
     }
-    if diag.kind == NestedLayerNotAllowed {
+    if kind == "NestedLayerNotAllowed" {
         return tagged_object("NestedLayerNotAllowed", [
             json_field("line", diag.line.to_string()),
             json_field("col", diag.col.to_string())
@@ -174,6 +176,7 @@ fn serialize_item(item) {
 }
 
 fn item_kind_name(item) {
+    let kind = item.kind.to_string()
     if item.fn_def != None {
         return "Fn"
     }
@@ -201,7 +204,7 @@ fn item_kind_name(item) {
     if item.type_block != None {
         return "TypeBlock"
     }
-    if item.kind == PanicHandler {
+    if kind == "PanicHandler" {
         return "PanicHandler"
     }
     return "OomHandler"

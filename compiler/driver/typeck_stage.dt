@@ -394,7 +394,32 @@ fn serialize_typed_expr(expr) {
 }
 
 fn typed_expr_kind_name(expr) {
-    return expr.kind.to_string()
+    let kind = expr.kind.to_string()
+    if kind == "TypedIntLit" { return "IntLit" }
+    if kind == "TypedFloatLit" { return "FloatLit" }
+    if kind == "TypedStrLit" { return "StrLit" }
+    if kind == "TypedFStrLit" { return "FStrLit" }
+    if kind == "TypedBoolLit" { return "BoolLit" }
+    if kind == "TypedNoneLit" { return "NoneLit" }
+    if kind == "TypedIdent" { return "Ident" }
+    if kind == "TypedArray" { return "Array" }
+    if kind == "TypedMap" { return "Map" }
+    if kind == "TypedSet" { return "Set" }
+    if kind == "TypedTuple" { return "Tuple" }
+    if kind == "TypedBinOp" { return "BinOp" }
+    if kind == "TypedUnOp" { return "UnOp" }
+    if kind == "TypedCall" { return "Call" }
+    if kind == "TypedMethodCall" { return "MethodCall" }
+    if kind == "TypedField" { return "Field" }
+    if kind == "TypedIndex" { return "Index" }
+    if kind == "TypedLambda" { return "Lambda" }
+    if kind == "TypedCast" { return "Cast" }
+    if kind == "TypedMatch" { return "Match" }
+    if kind == "TypedOk" { return "Ok" }
+    if kind == "TypedErr" { return "Err" }
+    if kind == "TypedNullish" { return "Nullish" }
+    if kind == "TypedChan" { return "Chan" }
+    return kind
 }
 
 fn serialize_typed_exprs(exprs) {

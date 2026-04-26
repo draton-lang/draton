@@ -205,39 +205,39 @@ fn classify_subject(ty, enum_defs) {
 }
 
 fn extract_pattern(expr) {
-    if expr.kind == ExprIdent {
+    if expr.kind == TypedIdent {
         return empty_pattern(Wildcard)
     }
-    if expr.kind == IntLit {
+    if expr.kind == TypedIntLit {
         let mut pattern = empty_pattern(LiteralInt)
         pattern.int_value = expr.int_value
         return pattern
     }
-    if expr.kind == FloatLit {
+    if expr.kind == TypedFloatLit {
         let mut pattern = empty_pattern(LiteralFloat)
         pattern.float_value = expr.float_value
         return pattern
     }
-    if expr.kind == BoolLit {
+    if expr.kind == TypedBoolLit {
         let mut pattern = empty_pattern(LiteralBool)
         pattern.bool_value = expr.bool_value
         return pattern
     }
-    if expr.kind == StrLit {
+    if expr.kind == TypedStrLit {
         let mut pattern = empty_pattern(LiteralStr)
         pattern.str_value = expr.string_value
         return pattern
     }
-    if expr.kind == NoneLit {
+    if expr.kind == TypedNoneLit {
         return empty_pattern(LiteralNone)
     }
-    if expr.kind == ExprField && expr.target != None && expr.target.kind == ExprIdent && expr.target.name != None && expr.name != None {
+    if expr.kind == TypedField && expr.target != None && expr.target.kind == TypedIdent && expr.target.name != None && expr.name != None {
         let mut pattern = empty_pattern(EnumVariant)
         pattern.enum_name = expr.target.name
         pattern.str_value = expr.name
         return pattern
     }
-    if expr.kind == Tuple && expr.items != None {
+    if expr.kind == TypedTuple && expr.items != None {
         let mut items = []
         let mut index = 0
         while index < expr.items.len() {
@@ -248,17 +248,17 @@ fn extract_pattern(expr) {
         pattern.items = Some(items)
         return pattern
     }
-    if expr.kind == Ok {
+    if expr.kind == TypedOk {
         let mut pattern = empty_pattern(Named)
         pattern.named_name = Some("Ok")
         return pattern
     }
-    if expr.kind == Err {
+    if expr.kind == TypedErr {
         let mut pattern = empty_pattern(Named)
         pattern.named_name = Some("Err")
         return pattern
     }
-    if expr.kind == Call && expr.callee != None && expr.callee.kind == ExprIdent && expr.callee.name != None {
+    if expr.kind == TypedCall && expr.callee != None && expr.callee.kind == TypedIdent && expr.callee.name != None {
         let mut pattern = empty_pattern(Named)
         pattern.named_name = expr.callee.name
         return pattern

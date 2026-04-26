@@ -130,7 +130,7 @@ fn parse_nullish(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(Nullish, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprNullish, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.right = Some(rhs)
         expr = next
@@ -149,7 +149,7 @@ fn parse_or(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprBinOp, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.op = Some(Or)
         next.right = Some(rhs)
@@ -169,7 +169,7 @@ fn parse_and(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprBinOp, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.op = Some(And)
         next.right = Some(rhs)
@@ -193,7 +193,7 @@ fn parse_equality(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprBinOp, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.op = Some(op)
         next.right = Some(rhs)
@@ -221,7 +221,7 @@ fn parse_comparison(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprBinOp, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.op = Some(op)
         next.right = Some(rhs)
@@ -241,7 +241,7 @@ fn parse_range(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprBinOp, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.op = Some(RangeOp)
         next.right = Some(rhs)
@@ -265,7 +265,7 @@ fn parse_bit_or_xor(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprBinOp, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.op = Some(op)
         next.right = Some(rhs)
@@ -285,7 +285,7 @@ fn parse_bit_and(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprBinOp, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.op = Some(BitAnd)
         next.right = Some(rhs)
@@ -309,7 +309,7 @@ fn parse_shift(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprBinOp, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.op = Some(op)
         next.right = Some(rhs)
@@ -333,7 +333,7 @@ fn parse_additive(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprBinOp, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.op = Some(op)
         next.right = Some(rhs)
@@ -359,7 +359,7 @@ fn parse_multiplicative(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(BinOp, parser.merge_spans(expr.span, rhs.span))
+        let mut next = blank_expr(ExprBinOp, parser.merge_spans(expr.span, rhs.span))
         next.left = Some(expr)
         next.op = Some(op)
         next.right = Some(rhs)
@@ -378,7 +378,7 @@ fn parse_cast(parser) {
             Some(value) => { value }
             None => { return None }
         }
-        let mut next = blank_expr(Cast, parser.merge_spans(expr.span, ty.span))
+        let mut next = blank_expr(ExprCast, parser.merge_spans(expr.span, ty.span))
         next.expr = Some(expr)
         next.ty = Some(ty)
         expr = next
@@ -404,7 +404,7 @@ fn parse_unary(parser) {
         } elif token.kind == Star {
             op = Deref
         }
-        let mut out = blank_expr(UnOp, parser.merge_spans(parser.convert_span(token.span), expr.span))
+        let mut out = blank_expr(ExprUnOp, parser.merge_spans(parser.convert_span(token.span), expr.span))
         out.op = Some(op)
         out.expr = Some(expr)
         return Some(out)
@@ -446,21 +446,21 @@ fn parse_postfix(parser) {
             let span = parser.merge_spans(expr.span, end)
 
             if expr.kind == ExprField {
-                let mut next = blank_expr(MethodCall, span)
+                let mut next = blank_expr(ExprMethodCall, span)
                 next.target = expr.target
                 next.name = expr.name
                 next.args = Some(args)
                 expr = next
             } elif expr.kind == ExprIdent && expr.name == "Ok" && args.len() == 1 {
-                let mut next = blank_expr(Ok, span)
+                let mut next = blank_expr(ExprOk, span)
                 next.value = Some(args[0])
                 expr = next
             } elif expr.kind == ExprIdent && expr.name == "Err" && args.len() == 1 {
-                let mut next = blank_expr(Err, span)
+                let mut next = blank_expr(ExprErr, span)
                 next.value = Some(args[0])
                 expr = next
             } else {
-                let mut next = blank_expr(Call, span)
+                let mut next = blank_expr(ExprCall, span)
                 next.callee = Some(expr)
                 next.args = Some(args)
                 expr = next
@@ -487,7 +487,7 @@ fn parse_postfix(parser) {
             }
             let end = parser.token_span()
             parser.expect(RBracket, "]")
-            let mut next = blank_expr(Index, parser.merge_spans(expr.span, end))
+            let mut next = blank_expr(ExprIndex, parser.merge_spans(expr.span, end))
             next.target = Some(expr)
             next.index = Some(index)
             expr = next
@@ -588,7 +588,7 @@ fn parse_class_literal(parser, ident) {
         }
         let key_span = copy_span(name_token.span)
         let key_name = name_token.lexeme.slice(0, name_token.lexeme.len())
-        let mut key = blank_expr(StrLit, key_span)
+        let mut key = blank_expr(ExprStrLit, key_span)
         key.string_value = Some(key_name)
         entries.push(MapEntry { key: key, value: value })
         if !parser.match_kind(Comma) {
@@ -598,9 +598,9 @@ fn parse_class_literal(parser, ident) {
     let end = parser.token_span()
     parser.expect(RBrace, "}")
     let merged_span = merge_span_bounds(start, end)
-    let mut map = blank_expr(Map, copy_span(merged_span))
+    let mut map = blank_expr(ExprMap, copy_span(merged_span))
     map.entries = Some(entries)
-    let mut call = blank_expr(Call, merged_span)
+    let mut call = blank_expr(ExprCall, merged_span)
     call.callee = Some(ident)
     call.args = Some([map])
     return Some(call)
@@ -642,7 +642,7 @@ fn parse_primary(parser) {
         return parse_bool_literal(parser, token)
     } elif token.kind == NoneLit {
         parser.advance()
-        return Some(blank_expr(NoneLit, copy_span(token.span)))
+        return Some(blank_expr(ExprNoneLit, copy_span(token.span)))
     } elif token.kind == Ident {
         parser.advance()
         let mut ident = blank_expr(ExprIdent, copy_span(token.span))
@@ -673,7 +673,7 @@ fn parse_int_literal(parser, token) {
         push_invalid_expr(parser, token.span.line, token.span.col)
         return None
     }
-    let mut expr = blank_expr(IntLit, parser.convert_span(token.span))
+    let mut expr = blank_expr(ExprIntLit, parser.convert_span(token.span))
     expr.int_value = Some(value)
     return Some(expr)
 }
@@ -685,7 +685,7 @@ fn parse_radix_int_literal(parser, token, radix, prefix_len) {
         push_invalid_expr(parser, token.span.line, token.span.col)
         return None
     }
-    let mut expr = blank_expr(IntLit, parser.convert_span(token.span))
+    let mut expr = blank_expr(ExprIntLit, parser.convert_span(token.span))
     expr.int_value = Some(value)
     return Some(expr)
 }
@@ -697,7 +697,7 @@ fn parse_float_literal(parser, token) {
         push_invalid_expr(parser, token.span.line, token.span.col)
         return None
     }
-    let mut expr = blank_expr(FloatLit, parser.convert_span(token.span))
+    let mut expr = blank_expr(ExprFloatLit, parser.convert_span(token.span))
     expr.float_value = Some(value)
     return Some(expr)
 }
@@ -706,7 +706,7 @@ fn parse_string_literal(parser, token) {
     parser.advance()
     let raw = token.lexeme.slice(0, token.lexeme.len())
     let text = raw.slice(1, raw.len() - 1)
-    let mut expr = blank_expr(StrLit, copy_span(token.span))
+    let mut expr = blank_expr(ExprStrLit, copy_span(token.span))
     expr.string_value = Some(text)
     return Some(expr)
 }
@@ -745,7 +745,7 @@ fn parse_fstring_literal(parser, token) {
 
             if depth != 0 {
                 push_invalid_expr(parser, span.line, span.col)
-                let mut expr = blank_expr(FStrLit, span)
+                let mut expr = blank_expr(ExprFStrLit, span)
                 expr.parts = Some(parts)
                 return Some(expr)
             }
@@ -785,14 +785,14 @@ fn parse_fstring_literal(parser, token) {
         parts.push(part)
     }
 
-    let mut expr = blank_expr(FStrLit, span)
+    let mut expr = blank_expr(ExprFStrLit, span)
     expr.parts = Some(parts)
     return Some(expr)
 }
 
 fn parse_bool_literal(parser, token) {
     parser.advance()
-    let mut expr = blank_expr(BoolLit, copy_span(token.span))
+    let mut expr = blank_expr(ExprBoolLit, copy_span(token.span))
     expr.bool_value = Some(token.lexeme == "true")
     return Some(expr)
 }
@@ -813,7 +813,7 @@ fn parse_array_literal(parser) {
     }
     let end = parser.token_span()
     parser.expect(RBracket, "]")
-    let mut expr = blank_expr(Array, merge_span_bounds(start, end))
+    let mut expr = blank_expr(ExprArray, merge_span_bounds(start, end))
     expr.items = Some(items)
     return Some(expr)
 }
@@ -822,7 +822,7 @@ fn parse_brace_literal(parser) {
     let start = parser.token_span()
     parser.expect(LBrace, "{")
     if parser.match_kind(RBrace) {
-        let mut expr = blank_expr(Map, copy_span(start))
+        let mut expr = blank_expr(ExprMap, copy_span(start))
         expr.entries = Some([])
         return Some(expr)
     }
@@ -856,7 +856,7 @@ fn parse_brace_literal(parser) {
         }
         let end = parser.token_span()
         parser.expect(RBrace, "}")
-        let mut expr = blank_expr(Map, merge_span_bounds(start, end))
+        let mut expr = blank_expr(ExprMap, merge_span_bounds(start, end))
         expr.entries = Some(entries)
         return Some(expr)
     }
@@ -874,7 +874,7 @@ fn parse_brace_literal(parser) {
     }
     let end = parser.token_span()
     parser.expect(RBrace, "}")
-        let mut expr = blank_expr(Set, merge_span_bounds(start, end))
+        let mut expr = blank_expr(ExprSet, merge_span_bounds(start, end))
     expr.items = Some(items)
     return Some(expr)
 }
@@ -883,7 +883,7 @@ fn parse_paren_expr_or_tuple(parser) {
     let start = parser.token_span()
     parser.expect(LParen, "(")
     if parser.match_kind(RParen) {
-        let mut expr = blank_expr(Tuple, copy_span(start))
+        let mut expr = blank_expr(ExprTuple, copy_span(start))
         expr.items = Some([])
         return Some(expr)
     }
@@ -905,7 +905,7 @@ fn parse_paren_expr_or_tuple(parser) {
         }
         let end = parser.token_span()
         parser.expect(RParen, ")")
-        let mut expr = blank_expr(Tuple, merge_span_bounds(start, end))
+        let mut expr = blank_expr(ExprTuple, merge_span_bounds(start, end))
         expr.items = Some(items)
         return Some(expr)
     }
@@ -933,7 +933,7 @@ fn parse_lambda_expr(parser) {
         None => { return None }
     }
     let body_span = copy_span(body.span)
-    let mut expr = blank_expr(Lambda, merge_span_bounds(start, body_span))
+    let mut expr = blank_expr(ExprLambda, merge_span_bounds(start, body_span))
     expr.params = Some(params)
     expr.expr = Some(body)
     return Some(expr)
@@ -988,7 +988,7 @@ fn parse_match_expr(parser) {
 
     let end = parser.token_span()
     parser.expect(RBrace, "}")
-    let mut expr = blank_expr(Match, parser.merge_spans(start, end))
+    let mut expr = blank_expr(ExprMatch, parser.merge_spans(start, end))
     expr.subject = Some(subject)
     expr.arms = Some(arms)
     return Some(expr)
@@ -1004,7 +1004,7 @@ fn parse_chan_expr(parser) {
     }
     let end = parser.token_span()
     parser.expect(RBracket, "]")
-    let mut expr = blank_expr(Chan, parser.merge_spans(start, end))
+    let mut expr = blank_expr(ExprChan, parser.merge_spans(start, end))
     expr.ty = Some(ty)
     return Some(expr)
 }

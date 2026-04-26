@@ -5,22 +5,22 @@ import { Type, ArrayType, MapType, SetType, TupleType, OptionType, ResultType, C
 import { check_match } from typeck.infer.exhaust
 
 fn infer_expr(checker, expr) {
-    if expr.kind == IntLit {
-        let mut typed = checker.typed_expr(IntLit, Type { kind: Int }, expr.span)
+    if expr.kind == ExprIntLit {
+        let mut typed = checker.typed_expr(TypedIntLit, Type { kind: Int }, expr.span)
         typed.int_value = expr.int_value
         return typed
     }
-    if expr.kind == FloatLit {
-        let mut typed = checker.typed_expr(FloatLit, Type { kind: Float }, expr.span)
+    if expr.kind == ExprFloatLit {
+        let mut typed = checker.typed_expr(TypedFloatLit, Type { kind: Float }, expr.span)
         typed.float_value = expr.float_value
         return typed
     }
-    if expr.kind == StrLit {
-        let mut typed = checker.typed_expr(StrLit, Type { kind: String }, expr.span)
+    if expr.kind == ExprStrLit {
+        let mut typed = checker.typed_expr(TypedStrLit, Type { kind: String }, expr.span)
         typed.string_value = expr.string_value
         return typed
     }
-    if expr.kind == FStrLit {
+    if expr.kind == ExprFStrLit {
         let mut index = 0
         while expr.parts != None && index < expr.parts.len() {
             let part = expr.parts[index]
@@ -29,18 +29,18 @@ fn infer_expr(checker, expr) {
             }
             index = index + 1
         }
-        let mut typed = checker.typed_expr(FStrLit, Type { kind: String }, expr.span)
+        let mut typed = checker.typed_expr(TypedFStrLit, Type { kind: String }, expr.span)
         typed.string_value = Some("")
         return typed
     }
-    if expr.kind == BoolLit {
-        let mut typed = checker.typed_expr(BoolLit, Type { kind: Bool }, expr.span)
+    if expr.kind == ExprBoolLit {
+        let mut typed = checker.typed_expr(TypedBoolLit, Type { kind: Bool }, expr.span)
         typed.bool_value = expr.bool_value
         return typed
     }
-    if expr.kind == NoneLit {
+    if expr.kind == ExprNoneLit {
         let inner = checker.fresh_var()
-        return checker.typed_expr(NoneLit, OptionType { kind: Option, inner: inner }, expr.span)
+        return checker.typed_expr(TypedNoneLit, OptionType { kind: Option, inner: inner }, expr.span)
     }
     if expr.kind == ExprIdent {
         let mut ty = checker.fresh_var()
@@ -48,11 +48,11 @@ fn infer_expr(checker, expr) {
         if scheme != None {
             ty = checker.instantiate(scheme)
         }
-        let mut typed = checker.typed_expr(Ident, ty, expr.span)
+        let mut typed = checker.typed_expr(TypedIdent, ty, expr.span)
         typed.name = expr.name
         return typed
     }
-    if expr.kind == Array {
+    if expr.kind == ExprArray {
         let mut items = []
         let mut item_ty = checker.fresh_var()
         let mut index = 0
@@ -64,11 +64,11 @@ fn infer_expr(checker, expr) {
         if items.len() > 0 {
             item_ty = items[0].ty
         }
-        let mut typed = checker.typed_expr(Array, ArrayType { kind: Array, inner: item_ty }, expr.span)
+        let mut typed = checker.typed_expr(TypedArray, ArrayType { kind: Array, inner: item_ty }, expr.span)
         typed.items = Some(items)
         return typed
     }
-    if expr.kind == Set {
+    if expr.kind == ExprSet {
         let mut items = []
         let mut item_ty = checker.fresh_var()
         let mut index = 0
@@ -80,11 +80,11 @@ fn infer_expr(checker, expr) {
         if items.len() > 0 {
             item_ty = items[0].ty
         }
-        let mut typed = checker.typed_expr(Set, SetType { kind: Set, inner: item_ty }, expr.span)
+        let mut typed = checker.typed_expr(TypedSet, SetType { kind: Set, inner: item_ty }, expr.span)
         typed.items = Some(items)
         return typed
     }
-    if expr.kind == Tuple {
+    if expr.kind == ExprTuple {
         let mut items = []
         let mut tys = []
         let mut index = 0
@@ -94,11 +94,11 @@ fn infer_expr(checker, expr) {
             items.push(typed_item)
             index = index + 1
         }
-        let mut typed = checker.typed_expr(Tuple, TupleType { kind: Tuple, items: tys }, expr.span)
+        let mut typed = checker.typed_expr(TypedTuple, TupleType { kind: Tuple, items: tys }, expr.span)
         typed.items = Some(items)
         return typed
     }
-    if expr.kind == Map {
+    if expr.kind == ExprMap {
         let mut entries = []
         let mut key_ty = checker.fresh_var()
         let mut value_ty = checker.fresh_var()
@@ -114,14 +114,14 @@ fn infer_expr(checker, expr) {
             entries.push(TypedMapEntry { key: typed_key, value: typed_value })
             index = index + 1
         }
-        let mut typed = checker.typed_expr(Map, MapType { kind: Map, key: key_ty, value: value_ty }, expr.span)
+        let mut typed = checker.typed_expr(TypedMap, MapType { kind: Map, key: key_ty, value: value_ty }, expr.span)
         typed.entries = Some(entries)
         return typed
     }
-    if expr.kind == BinOp {
+    if expr.kind == ExprBinOp {
         let left = infer_expr(checker, expr.left)
         let right = infer_expr(checker, expr.right)
-        let mut typed = checker.typed_expr(BinOp, left.ty, expr.span)
+        let mut typed = checker.typed_expr(TypedBinOp, left.ty, expr.span)
         typed.left = Some(left)
         typed.right = Some(right)
         if expr.op != None {
@@ -129,16 +129,16 @@ fn infer_expr(checker, expr) {
         }
         return typed
     }
-    if expr.kind == UnOp {
+    if expr.kind == ExprUnOp {
         let inner = infer_expr(checker, expr.expr)
-        let mut typed = checker.typed_expr(UnOp, inner.ty, expr.span)
+        let mut typed = checker.typed_expr(TypedUnOp, inner.ty, expr.span)
         if expr.op != None {
             typed.op = Some(expr.op.to_string())
         }
         typed.body = Some(inner)
         return typed
     }
-    if expr.kind == Call {
+    if expr.kind == ExprCall {
         let callee = infer_expr(checker, expr.callee)
         let mut args = []
         let mut params = []
@@ -153,12 +153,12 @@ fn infer_expr(checker, expr) {
         if callee.ty.kind == Fn {
             ret_ty = callee.ty.ret
         }
-        let mut typed = checker.typed_expr(Call, ret_ty, expr.span)
+        let mut typed = checker.typed_expr(TypedCall, ret_ty, expr.span)
         typed.callee = Some(callee)
         typed.args = Some(args)
         return typed
     }
-    if expr.kind == MethodCall {
+    if expr.kind == ExprMethodCall {
         let target = infer_expr(checker, expr.target)
         let mut args = []
         let mut index = 0
@@ -171,7 +171,7 @@ fn infer_expr(checker, expr) {
         if builtin_ret_ty != None {
             ret_ty = builtin_ret_ty
         }
-        let mut typed = checker.typed_expr(MethodCall, ret_ty, expr.span)
+        let mut typed = checker.typed_expr(TypedMethodCall, ret_ty, expr.span)
         typed.target = Some(target)
         typed.name = expr.name
         typed.args = Some(args)
@@ -189,24 +189,24 @@ fn infer_expr(checker, expr) {
                 checker.push_no_field(expr.name, resolved_target_ty, expr.span)
             }
         }
-        let mut typed = checker.typed_expr(Field, field_ty, expr.span)
+        let mut typed = checker.typed_expr(TypedField, field_ty, expr.span)
         typed.target = Some(target)
         typed.name = expr.name
         return typed
     }
-    if expr.kind == Index {
+    if expr.kind == ExprIndex {
         let target = infer_expr(checker, expr.target)
         let index_expr = infer_expr(checker, expr.index)
         let mut item_ty = checker.fresh_var()
         if target.ty.kind == Array || target.ty.kind == Set || target.ty.kind == Option || target.ty.kind == Chan || target.ty.kind == Pointer {
             item_ty = target.ty.inner
         }
-        let mut typed = checker.typed_expr(Index, item_ty, expr.span)
+        let mut typed = checker.typed_expr(TypedIndex, item_ty, expr.span)
         typed.target = Some(target)
         typed.index = Some(index_expr)
         return typed
     }
-    if expr.kind == Lambda {
+    if expr.kind == ExprLambda {
         let mut params = []
         let mut param_tys = []
         let mut index = 0
@@ -218,20 +218,20 @@ fn infer_expr(checker, expr) {
         }
         let body = infer_expr(checker, expr.expr)
         let fn_ty = FnType { kind: Fn, params: param_tys, ret: body.ty }
-        let mut typed = checker.typed_expr(Lambda, fn_ty, expr.span)
+        let mut typed = checker.typed_expr(TypedLambda, fn_ty, expr.span)
         typed.params = Some(params)
         typed.body = Some(body)
         return typed
     }
-    if expr.kind == Cast {
+    if expr.kind == ExprCast {
         let inner = infer_expr(checker, expr.expr)
         let cast_ty = checker.type_from_annotation(expr.ty)
-        let mut typed = checker.typed_expr(Cast, cast_ty, expr.span)
+        let mut typed = checker.typed_expr(TypedCast, cast_ty, expr.span)
         typed.body = Some(inner)
         typed.cast_type = Some(cast_ty)
         return typed
     }
-    if expr.kind == Match {
+    if expr.kind == ExprMatch {
         let subject = infer_expr(checker, expr.subject)
         let mut arms = []
         let mut result_ty = checker.fresh_var()
@@ -253,36 +253,36 @@ fn infer_expr(checker, expr) {
             index = index + 1
         }
         check_match(checker, subject.ty, arms)
-        let mut typed = checker.typed_expr(Match, result_ty, expr.span)
+        let mut typed = checker.typed_expr(TypedMatch, result_ty, expr.span)
         typed.left = Some(subject)
         typed.arms = Some(arms)
         return typed
     }
-    if expr.kind == Ok {
+    if expr.kind == ExprOk {
         let value = infer_expr(checker, expr.value)
-        let mut typed = checker.typed_expr(Ok, ResultType { kind: Result, ok: value.ty, err: checker.fresh_var() }, expr.span)
+        let mut typed = checker.typed_expr(TypedOk, ResultType { kind: Result, ok: value.ty, err: checker.fresh_var() }, expr.span)
         typed.body = Some(value)
         return typed
     }
-    if expr.kind == Err {
+    if expr.kind == ExprErr {
         let value = infer_expr(checker, expr.value)
-        let mut typed = checker.typed_expr(Err, ResultType { kind: Result, ok: checker.fresh_var(), err: value.ty }, expr.span)
+        let mut typed = checker.typed_expr(TypedErr, ResultType { kind: Result, ok: checker.fresh_var(), err: value.ty }, expr.span)
         typed.body = Some(value)
         return typed
     }
-    if expr.kind == Nullish {
+    if expr.kind == ExprNullish {
         let left = infer_expr(checker, expr.left)
         let right = infer_expr(checker, expr.right)
-        let mut typed = checker.typed_expr(Nullish, right.ty, expr.span)
+        let mut typed = checker.typed_expr(TypedNullish, right.ty, expr.span)
         typed.left = Some(left)
         typed.right = Some(right)
         return typed
     }
-    if expr.kind == Chan {
+    if expr.kind == ExprChan {
         let inner = checker.type_from_annotation(expr.ty)
-        let mut typed = checker.typed_expr(Chan, ChanType { kind: Chan, inner: inner }, expr.span)
+        let mut typed = checker.typed_expr(TypedChan, ChanType { kind: Chan, inner: inner }, expr.span)
         typed.chan_type = Some(inner)
         return typed
     }
-    return checker.typed_expr(Ident, checker.fresh_var(), expr.span)
+    return checker.typed_expr(TypedIdent, checker.fresh_var(), expr.span)
 }

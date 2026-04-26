@@ -803,7 +803,7 @@ fn parse_extern_block(parser) {
     if abi_expr == None {
         return None
     }
-    if abi_expr.kind != StrLit {
+    if abi_expr.kind != ExprStrLit {
         parser.errors.push(ParseError {
             kind: InvalidExpr,
             found: None,
