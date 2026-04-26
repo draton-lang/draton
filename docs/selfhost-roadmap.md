@@ -252,12 +252,13 @@ Exit criteria:
 - self-host typecheck plus ownership matches Rust on selected programs
 - no safe-code lowering path depends on Rust-only ownership behavior
 
-Current status on April 6, 2026:
+Current status on April 26, 2026:
 
 - The self-host typechecker now runs a dedicated ownership-summary pass under `compiler/typeck/infer/ownership.dt` after HM inference.
 - `compiler/typeck/infer/ownership.dt` now also populates selected expression `use_effect` metadata in the self-host typed program for high-value ownership sites such as lets, returns, calls, method calls, and field/index reads.
 - Focused stage0 tests now lock the Rust-oracle `use_effect` shape on selected fixtures so the target ownership metadata stays explicit while the self-host path catches up.
-- Full ownership parity is still not complete: hidden `drat selfhost-stage0 typeck` now has bridge-free focused ownership-summary and selected `use_effect` coverage, but self-host ownership diagnostics and free-point selection still trail `crates/draton-typeck/src/ownership.rs`.
+- Hidden `drat selfhost-stage0 typeck` now gates representative Rust-oracle ownership diagnostic kinds for move, borrow-conflict, partial-move, loop-move, raw-alias, higher-order, multi-owner, and acyclic-cycle cases through bridge-free Draton code.
+- Full ownership parity is still not complete: hidden `drat selfhost-stage0 typeck` now has bridge-free focused ownership-summary, selected `use_effect`, and representative diagnostic coverage, but full self-host ownership state tracking and free-point selection still trail `crates/draton-typeck/src/ownership.rs`.
 
 ## Phase 4: Replace the fake backend surface with a real LLVM-first self-host backend and an auxiliary Draton backend
 
@@ -434,7 +435,7 @@ The next practical sequence for implementation should be:
 2. Mark every host bridge and backend placeholder explicitly when they change.
 3. Keep parser parity required and truthful without `host_parse_json`.
 4. Expand typechecker parity coverage around the bridge-free self-host serializer.
-5. Port ownership parity fully.
+5. Port ownership free-point selection and remaining full-matrix ownership behavior into the self-host typechecker.
 6. Design the first real self-host backend target.
 7. Remove `host_build_json` from the default self-host path.
 8. Add D1 -> D2 bootstrap verification.
