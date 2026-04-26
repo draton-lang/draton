@@ -109,11 +109,12 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
   - `compiler/typeck/infer/ownership.dt` now also populates selected `use_effect` metadata on typed expressions using self-host desired-effect rules for lets, returns, calls, method calls, field/index reads, and common container literals.
   - `compiler/driver/typeck_stage.dt` now serializes typed function bodies and per-expression `use_effect` metadata on its raw self-host typecheck path.
   - `crates/drat/tests/selfhost_stage0.rs` now gates representative Rust-oracle ownership diagnostic kinds through hidden bridge-free stage0 typeck: `MoveWhileBorrowed`, `ReadDuringExclusiveBorrow`, `ExclusiveBorrowDuringRead`, `PartialMove`, `LoopMoveWithoutReinit`, `SafeToRawAliasRejection`, `AmbiguousCallOwnership`, `MultipleOwners`, and `OwnershipCycle`.
+  - Hidden stage0 typeck now exposes representative `ownership_free_points` keys and gates them against `crates/draton-typeck/src/ownership.rs` for straight-line and branch-local frees.
 - What still bridges to host Rust:
   - `compiler/driver/pipeline.dt` still routes `build_json` through `host_build_json`, so the production build path still relies on Rust ownership behavior.
   - `crates/draton-runtime/src/lib.rs` still reaches the Rust `drat build` path for production build fallback behavior.
 - Blockers:
-  - Hidden `drat selfhost-stage0 typeck` no longer goes through `host_type_json`, but deeper ownership diagnostics and free-point behavior still remain Phase 3 work.
+  - Hidden `drat selfhost-stage0 typeck` no longer goes through `host_type_json`, but full ownership state tracking and complete free-point behavior still remain Phase 3 work.
   - The new self-host `use_effect` population currently covers a selected, high-value subset of expression forms rather than the full `crates/draton-typeck/src/ownership.rs` matrix.
   - Ownership diagnostic parity is still representative rather than complete; the focused borrow/move/raw-alias cases are now gated, while the rest of the `crates/draton-typeck/src/ownership.rs` diagnostic matrix remains open.
   - `crates/draton-runtime/src/lib.rs` remains the production-path bridge through `host_build_json`.

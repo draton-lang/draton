@@ -171,13 +171,14 @@ fn normalize_typeck_payload(payload: Value) -> Result<(bool, Value)> {
     let parse_errors = expect_array_field(&payload, "typeck", "parse_errors")?;
     let parse_warnings = expect_array_field(&payload, "typeck", "parse_warnings")?;
     let typecheck_result = optional_object_field(&payload, "typeck", "typecheck_result")?;
-    let (type_errors, type_warnings, typed_program) = match typecheck_result {
+    let (type_errors, type_warnings, typed_program, ownership_free_points) = match typecheck_result {
         Some(typecheck_result) => (
             expect_array_field(&typecheck_result, "typeck", "errors")?,
             expect_array_field(&typecheck_result, "typeck", "warnings")?,
             expect_optional_field(&typecheck_result, "typed_program"),
+            expect_optional_field(&typecheck_result, "ownership_free_points"),
         ),
-        None => (Vec::new(), Vec::new(), Value::Null),
+        None => (Vec::new(), Vec::new(), Value::Null, json!({})),
     };
     let success = lex_errors.is_empty() && parse_errors.is_empty() && type_errors.is_empty();
     Ok((
@@ -189,6 +190,7 @@ fn normalize_typeck_payload(payload: Value) -> Result<(bool, Value)> {
             "type_errors": type_errors,
             "type_warnings": type_warnings,
             "typed_program": typed_program,
+            "ownership_free_points": ownership_free_points,
         }),
     ))
 }

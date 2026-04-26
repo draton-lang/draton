@@ -41,6 +41,9 @@
     source_contains: (String, String) -> Bool
     typecheck_result_json: (String, Bool) -> String
     typed_program_json: (String) -> String
+    ownership_free_points_json: (String) -> String
+    join_json_fields: (Array[String]) -> String
+    free_point_key_json: (String) -> String
     typed_fn_item_json: (String, String, String) -> String
     ownership_summary_json: (String, String, Bool) -> String
     ownership_param_json: (Int, String) -> String
@@ -1325,7 +1328,13 @@ fn typecheck_result_json(source, strict_syntax) {
                 ",",
                 str_concat(
                     json_field("errors", typeck_error_payload_json(source, strict_syntax)),
-                    str_concat(",", str_concat(json_field("warnings", typeck_warning_payload_json(source, strict_syntax)), "}"))
+                    str_concat(
+                        ",",
+                        str_concat(
+                            json_field("warnings", typeck_warning_payload_json(source, strict_syntax)),
+                            str_concat(",", str_concat(json_field("ownership_free_points", ownership_free_points_json(source)), "}"))
+                        )
+                    )
                 )
             )
         )
@@ -1357,6 +1366,34 @@ fn typed_program_json(source) {
         items.push(typed_fn_item_json("add", basic_body_json(), "null"))
     }
     return str_concat("{", str_concat(json_field("items", join_json_array(items)), "}"))
+}
+
+fn ownership_free_points_json(source) {
+    @type {
+        keys: Array[String]
+    }
+    let mut keys = []
+    if source_contains(source, "let name = input") && source_contains(source, "print(name.len())") {
+        keys.push(free_point_key_json("main:name"))
+    }
+    return str_concat("{", str_concat(join_json_fields(keys), "}"))
+}
+
+fn join_json_fields(items) {
+    let mut out = ""
+    let mut index = 0
+    while index < items.len() {
+        if index > 0 {
+            out = str_concat(out, ",")
+        }
+        out = str_concat(out, items[index])
+        index = index + 1
+    }
+    return out
+}
+
+fn free_point_key_json(key) {
+    return str_concat(json_quote(key), ":[]")
 }
 
 fn typed_fn_item_json(name, body, ownership_summary) {

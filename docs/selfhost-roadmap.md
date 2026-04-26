@@ -258,7 +258,8 @@ Current status on April 26, 2026:
 - `compiler/typeck/infer/ownership.dt` now also populates selected expression `use_effect` metadata in the self-host typed program for high-value ownership sites such as lets, returns, calls, method calls, and field/index reads.
 - Focused stage0 tests now lock the Rust-oracle `use_effect` shape on selected fixtures so the target ownership metadata stays explicit while the self-host path catches up.
 - Hidden `drat selfhost-stage0 typeck` now gates representative Rust-oracle ownership diagnostic kinds for move, borrow-conflict, partial-move, loop-move, raw-alias, higher-order, multi-owner, and acyclic-cycle cases through bridge-free Draton code.
-- Full ownership parity is still not complete: hidden `drat selfhost-stage0 typeck` now has bridge-free focused ownership-summary, selected `use_effect`, and representative diagnostic coverage, but full self-host ownership state tracking and free-point selection still trail `crates/draton-typeck/src/ownership.rs`.
+- Hidden `drat selfhost-stage0 typeck` now also exposes representative `ownership_free_points` keys and compares straight-line and branch-local frees against the Rust oracle.
+- Full ownership parity is still not complete: hidden `drat selfhost-stage0 typeck` now has bridge-free focused ownership-summary, selected `use_effect`, representative diagnostic coverage, and selected free-point key coverage, but full self-host ownership state tracking and complete free-point selection still trail `crates/draton-typeck/src/ownership.rs`.
 
 ## Phase 4: Replace the fake backend surface with a real LLVM-first self-host backend and an auxiliary Draton backend
 

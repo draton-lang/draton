@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use draton_lexer::Lexer;
 use draton_parser::Parser;
 use draton_typeck::typed_ast::{TypedExpr, TypedExprKind, TypedFnDef, TypedItem, TypedStmtKind};
-use draton_typeck::{TypeCheckResult, TypeChecker, TypeError, UseEffect};
+use draton_typeck::{OwnershipChecker, TypeCheckResult, TypeChecker, TypeError, UseEffect};
 use serde_json::Value;
 
 fn temp_case_dir(name: &str) -> PathBuf {
@@ -72,6 +72,35 @@ fn compile_with_rust_typechecker(source: &str) -> TypeCheckResult {
         parsed.warnings
     );
     TypeChecker::new().check(parsed.program)
+}
+
+fn rust_ownership_free_keys(result: &TypeCheckResult) -> Vec<String> {
+    let mut program = result.typed_program.clone();
+    let mut checker = OwnershipChecker::new();
+    let errors = checker.check_program(&mut program);
+    assert!(
+        errors.is_empty(),
+        "ownership checker errors while collecting free points: {:?}",
+        errors
+    );
+    let mut keys = checker
+        .recorded_free_points()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    keys.sort();
+    keys
+}
+
+fn stage0_ownership_free_keys(result: &Value) -> Vec<String> {
+    let mut keys = result["ownership_free_points"]
+        .as_object()
+        .expect("stage0 ownership_free_points object")
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    keys.sort();
+    keys
 }
 
 fn rust_function<'a>(result: &'a TypeCheckResult, name: &str) -> &'a TypedFnDef {
@@ -774,6 +803,57 @@ class Node {
 }
 "#,
     );
+}
+
+#[test]
+fn typeck_json_matches_rust_ownership_free_point_keys() {
+    for (case_name, source) in [
+        (
+            "typeck_ownership_free_straight_line",
+            r#"fn main() {
+    let name = input("name: ")
+    print(name.len())
+}
+"#,
+        ),
+        (
+            "typeck_ownership_free_branch_local",
+            r#"fn main(flag) {
+    let name = input("name: ")
+    if flag {
+        print(name.len())
+    } else {
+        print(name.len())
+    }
+}
+"#,
+        ),
+    ] {
+        let dir = temp_case_dir(case_name);
+        let src = dir.join("main.dt");
+        fs::write(&src, source).expect("write source");
+
+        let rust_checked = compile_with_rust_typechecker(source);
+        assert!(
+            rust_checked.errors.is_empty(),
+            "rust typechecker errors for {case_name}: {:?}",
+            rust_checked.errors
+        );
+
+        let json = run_stage0(&[
+            "selfhost-stage0",
+            "typeck",
+            "--json",
+            src.to_str().expect("utf8 path"),
+        ]);
+        let result = expect_envelope(&json, "typeck", &src, "selfhost", None, true);
+
+        assert_eq!(
+            stage0_ownership_free_keys(result),
+            rust_ownership_free_keys(&rust_checked),
+            "stage0/rust ownership free-point key drift for {case_name}"
+        );
+    }
 }
 
 #[test]
