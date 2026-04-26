@@ -260,6 +260,7 @@ Current status on April 26, 2026:
 - Hidden `drat selfhost-stage0 typeck` now gates representative Rust-oracle ownership diagnostic kinds for move, borrow-conflict, partial-move, loop-move, raw-alias, higher-order, multi-owner, and acyclic-cycle cases through bridge-free Draton code.
 - Hidden `drat selfhost-stage0 typeck` now also exposes representative `ownership_free_points` keys and compares straight-line and branch-local frees against the Rust oracle.
 - Full ownership parity is still not complete: hidden `drat selfhost-stage0 typeck` now has bridge-free focused ownership-summary, selected `use_effect`, representative diagnostic coverage, and selected free-point key coverage, but full self-host ownership state tracking and complete free-point selection still trail `crates/draton-typeck/src/ownership.rs`.
+- A direct flip from `compiler/driver/pipeline.dt` to `compiler/driver/typeck_stage.dt` remains blocked until `compiler/driver/typeck_stage.dt` and `compiler/typeck/infer/ownership.dt` avoid unchecked `Option[T]` field access or the Rust typechecker supports the required flow-sensitive `value != None` narrowing.
 
 ## Phase 4: Replace the fake backend surface with a real LLVM-first self-host backend and an auxiliary Draton backend
 

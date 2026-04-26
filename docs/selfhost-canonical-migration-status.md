@@ -115,6 +115,7 @@ The current Phase 1 outcome is a frozen oracle surface for the stages that alrea
   - `crates/draton-runtime/src/lib.rs` still reaches the Rust `drat build` path for production build fallback behavior.
 - Blockers:
   - Hidden `drat selfhost-stage0 typeck` no longer goes through `host_type_json`, but full ownership state tracking and complete free-point behavior still remain Phase 3 work.
+  - Switching hidden stage0 typeck directly to `D:/draton/compiler/driver/typeck_stage.dt` is still blocked: the full self-host stage currently fails to typecheck because the Rust oracle does not narrow `Option[T]` field accesses after `value != None`, so files such as `D:/draton/compiler/driver/typeck_stage.dt` and `D:/draton/compiler/typeck/infer/ownership.dt` must either use explicit `Some(value) => ...` matching or the Rust typechecker must gain the needed flow-sensitive narrowing.
   - The new self-host `use_effect` population currently covers a selected, high-value subset of expression forms rather than the full `crates/draton-typeck/src/ownership.rs` matrix.
   - Ownership diagnostic parity is still representative rather than complete; the focused borrow/move/raw-alias cases are now gated, while the rest of the `crates/draton-typeck/src/ownership.rs` diagnostic matrix remains open.
   - `crates/draton-runtime/src/lib.rs` remains the production-path bridge through `host_build_json`.

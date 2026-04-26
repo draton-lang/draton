@@ -145,8 +145,9 @@ fn serialize_typed_items(items) {
 
 fn serialize_typed_item(item) {
     let mut fields = []
-    fields.push(json_field("kind", json_quote(typed_item_kind_name(item))))
-    if item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler {
+    let kind = typed_item_kind_name(item)
+    fields.push(json_field("kind", json_quote(kind)))
+    if kind == "Fn" || kind == "PanicHandler" || kind == "OomHandler" {
         if item.fn_def != None {
             fields.push(json_field("name", json_quote(item.fn_def.name)))
             fields.push(json_field("body", serialize_optional_typed_block(item.fn_def.body)))
@@ -157,37 +158,7 @@ fn serialize_typed_item(item) {
 }
 
 fn typed_item_kind_name(item) {
-    if item.kind == Fn {
-        return "Fn"
-    }
-    if item.kind == Class {
-        return "Class"
-    }
-    if item.kind == Interface {
-        return "Interface"
-    }
-    if item.kind == Enum {
-        return "Enum"
-    }
-    if item.kind == Error {
-        return "Error"
-    }
-    if item.kind == Const {
-        return "Const"
-    }
-    if item.kind == Import {
-        return "Import"
-    }
-    if item.kind == Extern {
-        return "Extern"
-    }
-    if item.kind == TypeBlock {
-        return "TypeBlock"
-    }
-    if item.kind == PanicHandler {
-        return "PanicHandler"
-    }
-    return "OomHandler"
+    return item.kind.to_string()
 }
 
 fn serialize_optional_int(value) {
@@ -245,95 +216,48 @@ fn serialize_typed_stmts(stmts) {
 
 fn serialize_typed_stmt(stmt) {
     let mut fields = []
-    fields.push(json_field("kind", json_quote(typed_stmt_kind_name(stmt))))
-    if stmt.kind == Let && stmt.let_stmt != None {
+    let kind = typed_stmt_kind_name(stmt)
+    fields.push(json_field("kind", json_quote(kind)))
+    if kind == "Let" && stmt.let_stmt != None {
         fields.push(json_field("name", json_quote(stmt.let_stmt.name)))
         fields.push(json_field("value", serialize_optional_typed_expr(stmt.let_stmt.value)))
-    } elif stmt.kind == LetDestructure && stmt.let_destructure != None {
+    } elif kind == "LetDestructure" && stmt.let_destructure != None {
         fields.push(json_field("value", serialize_typed_expr(stmt.let_destructure.value)))
-    } elif stmt.kind == Assign && stmt.assign_stmt != None {
+    } elif kind == "Assign" && stmt.assign_stmt != None {
         fields.push(json_field("target", serialize_typed_expr(stmt.assign_stmt.target)))
         fields.push(json_field("value", serialize_optional_typed_expr(stmt.assign_stmt.value)))
-    } elif stmt.kind == Return && stmt.return_stmt != None {
+    } elif kind == "Return" && stmt.return_stmt != None {
         fields.push(json_field("value", serialize_optional_typed_expr(stmt.return_stmt.value)))
-    } elif stmt.kind == Expr && stmt.expr != None {
+    } elif kind == "Expr" && stmt.expr != None {
         fields.push(json_field("expr", serialize_typed_expr(stmt.expr)))
-    } elif stmt.kind == If && stmt.if_stmt != None {
+    } elif kind == "If" && stmt.if_stmt != None {
         fields.push(json_field("condition", serialize_typed_expr(stmt.if_stmt.condition)))
         fields.push(json_field("then_branch", serialize_typed_block(stmt.if_stmt.then_branch)))
         fields.push(json_field("else_branch", serialize_optional_else_branch(stmt.if_stmt.else_branch)))
-    } elif stmt.kind == For && stmt.for_stmt != None {
+    } elif kind == "For" && stmt.for_stmt != None {
         fields.push(json_field("name", json_quote(stmt.for_stmt.name)))
         fields.push(json_field("iter", serialize_typed_expr(stmt.for_stmt.iter)))
         fields.push(json_field("body", serialize_typed_block(stmt.for_stmt.body)))
-    } elif stmt.kind == While && stmt.while_stmt != None {
+    } elif kind == "While" && stmt.while_stmt != None {
         fields.push(json_field("condition", serialize_typed_expr(stmt.while_stmt.condition)))
         fields.push(json_field("body", serialize_typed_block(stmt.while_stmt.body)))
-    } elif stmt.kind == Spawn && stmt.spawn_stmt != None {
+    } elif kind == "Spawn" && stmt.spawn_stmt != None {
         fields.push(json_field("body", serialize_typed_spawn_body(stmt.spawn_stmt.body)))
-    } elif stmt.kind == Block || stmt.kind == UnsafeBlock || stmt.kind == PointerBlock || stmt.kind == ComptimeBlock {
+    } elif kind == "Block" || kind == "UnsafeBlock" || kind == "PointerBlock" || kind == "ComptimeBlock" {
         if stmt.block != None {
             fields.push(json_field("body", serialize_typed_block(stmt.block)))
         }
-    } elif stmt.kind == IfCompile && stmt.if_compile != None {
+    } elif kind == "IfCompile" && stmt.if_compile != None {
         fields.push(json_field("condition", serialize_typed_expr(stmt.if_compile.condition)))
         fields.push(json_field("body", serialize_typed_block(stmt.if_compile.body)))
-    } elif stmt.kind == GcConfig && stmt.gc_config != None {
+    } elif kind == "GcConfig" && stmt.gc_config != None {
         fields.push(json_field("entries", serialize_gc_entries(stmt.gc_config.entries)))
     }
     return json_object(fields)
 }
 
 fn typed_stmt_kind_name(stmt) {
-    if stmt.kind == Let {
-        return "Let"
-    }
-    if stmt.kind == LetDestructure {
-        return "LetDestructure"
-    }
-    if stmt.kind == Assign {
-        return "Assign"
-    }
-    if stmt.kind == Return {
-        return "Return"
-    }
-    if stmt.kind == Expr {
-        return "Expr"
-    }
-    if stmt.kind == If {
-        return "If"
-    }
-    if stmt.kind == For {
-        return "For"
-    }
-    if stmt.kind == While {
-        return "While"
-    }
-    if stmt.kind == Spawn {
-        return "Spawn"
-    }
-    if stmt.kind == Block {
-        return "Block"
-    }
-    if stmt.kind == UnsafeBlock {
-        return "UnsafeBlock"
-    }
-    if stmt.kind == PointerBlock {
-        return "PointerBlock"
-    }
-    if stmt.kind == AsmBlock {
-        return "AsmBlock"
-    }
-    if stmt.kind == ComptimeBlock {
-        return "ComptimeBlock"
-    }
-    if stmt.kind == IfCompile {
-        return "IfCompile"
-    }
-    if stmt.kind == GcConfig {
-        return "GcConfig"
-    }
-    return "TypeBlock"
+    return stmt.kind.to_string()
 }
 
 fn serialize_optional_else_branch(else_branch) {
@@ -383,51 +307,52 @@ fn serialize_optional_typed_expr(expr) {
 
 fn serialize_typed_expr(expr) {
     let mut fields = []
-    fields.push(json_field("kind", json_quote(typed_expr_kind_name(expr))))
+    let kind = typed_expr_kind_name(expr)
+    fields.push(json_field("kind", json_quote(kind)))
     if expr.use_effect == None {
         fields.push(json_field("use_effect", "null"))
     } else {
         fields.push(json_field("use_effect", json_quote(serialize_use_effect(expr.use_effect))))
     }
-    if expr.kind == ExprIdent && expr.name != None {
+    if kind == "Ident" && expr.name != None {
         fields.push(json_field("name", json_quote(expr.name)))
-    } elif expr.kind == StrLit && expr.string_value != None {
+    } elif kind == "StrLit" && expr.string_value != None {
         fields.push(json_field("value", json_quote(expr.string_value)))
-    } elif expr.kind == IntLit && expr.int_value != None {
+    } elif kind == "IntLit" && expr.int_value != None {
         fields.push(json_field("value", expr.int_value.to_string()))
-    } elif expr.kind == FloatLit && expr.float_value != None {
+    } elif kind == "FloatLit" && expr.float_value != None {
         fields.push(json_field("value", expr.float_value.to_string()))
-    } elif expr.kind == BoolLit && expr.bool_value != None {
+    } elif kind == "BoolLit" && expr.bool_value != None {
         fields.push(json_field("value", expr.bool_value.to_string()))
-    } elif expr.kind == Array || expr.kind == Set || expr.kind == Tuple {
+    } elif kind == "Array" || kind == "Set" || kind == "Tuple" {
         if expr.items != None {
             fields.push(json_field("items", serialize_typed_exprs(expr.items)))
         }
-    } elif expr.kind == Map && expr.entries != None {
+    } elif kind == "Map" && expr.entries != None {
         fields.push(json_field("entries", serialize_typed_map_entries(expr.entries)))
-    } elif expr.kind == BinOp || expr.kind == Nullish {
+    } elif kind == "BinOp" || kind == "Nullish" {
         fields.push(json_field("left", serialize_optional_typed_expr(expr.left)))
         fields.push(json_field("right", serialize_optional_typed_expr(expr.right)))
         fields.push(json_field("op", serialize_optional_string(expr.op)))
-    } elif expr.kind == UnOp || expr.kind == Cast || expr.kind == Ok || expr.kind == Err {
+    } elif kind == "UnOp" || kind == "Cast" || kind == "Ok" || kind == "Err" {
         fields.push(json_field("body", serialize_optional_typed_expr(expr.body)))
         fields.push(json_field("op", serialize_optional_string(expr.op)))
-    } elif expr.kind == Call {
+    } elif kind == "Call" {
         fields.push(json_field("callee", serialize_optional_typed_expr(expr.callee)))
         fields.push(json_field("args", serialize_typed_exprs(expr.args)))
-    } elif expr.kind == MethodCall {
+    } elif kind == "MethodCall" {
         fields.push(json_field("target", serialize_optional_typed_expr(expr.target)))
         fields.push(json_field("name", serialize_optional_string(expr.name)))
         fields.push(json_field("args", serialize_typed_exprs(expr.args)))
-    } elif expr.kind == ExprField {
+    } elif kind == "Field" {
         fields.push(json_field("target", serialize_optional_typed_expr(expr.target)))
         fields.push(json_field("name", serialize_optional_string(expr.name)))
-    } elif expr.kind == Index {
+    } elif kind == "Index" {
         fields.push(json_field("target", serialize_optional_typed_expr(expr.target)))
         fields.push(json_field("index", serialize_optional_typed_expr(expr.index)))
-    } elif expr.kind == Lambda {
+    } elif kind == "Lambda" {
         fields.push(json_field("body", serialize_optional_typed_expr(expr.body)))
-    } elif expr.kind == Match {
+    } elif kind == "Match" {
         fields.push(json_field("subject", serialize_optional_typed_expr(expr.left)))
         fields.push(json_field("arms", serialize_match_arms(expr.arms)))
     }
@@ -435,76 +360,7 @@ fn serialize_typed_expr(expr) {
 }
 
 fn typed_expr_kind_name(expr) {
-    if expr.kind == IntLit {
-        return "IntLit"
-    }
-    if expr.kind == FloatLit {
-        return "FloatLit"
-    }
-    if expr.kind == StrLit {
-        return "StrLit"
-    }
-    if expr.kind == FStrLit {
-        return "FStrLit"
-    }
-    if expr.kind == BoolLit {
-        return "BoolLit"
-    }
-    if expr.kind == NoneLit {
-        return "NoneLit"
-    }
-    if expr.kind == ExprIdent {
-        return "Ident"
-    }
-    if expr.kind == Array {
-        return "Array"
-    }
-    if expr.kind == Map {
-        return "Map"
-    }
-    if expr.kind == Set {
-        return "Set"
-    }
-    if expr.kind == Tuple {
-        return "Tuple"
-    }
-    if expr.kind == BinOp {
-        return "BinOp"
-    }
-    if expr.kind == UnOp {
-        return "UnOp"
-    }
-    if expr.kind == Call {
-        return "Call"
-    }
-    if expr.kind == MethodCall {
-        return "MethodCall"
-    }
-    if expr.kind == ExprField {
-        return "Field"
-    }
-    if expr.kind == Index {
-        return "Index"
-    }
-    if expr.kind == Lambda {
-        return "Lambda"
-    }
-    if expr.kind == Cast {
-        return "Cast"
-    }
-    if expr.kind == Match {
-        return "Match"
-    }
-    if expr.kind == Ok {
-        return "Ok"
-    }
-    if expr.kind == Err {
-        return "Err"
-    }
-    if expr.kind == Nullish {
-        return "Nullish"
-    }
-    return "Chan"
+    return expr.kind.to_string()
 }
 
 fn serialize_typed_exprs(exprs) {

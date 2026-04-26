@@ -44,17 +44,18 @@ fn collect_deprecated_syntax(checker, program) {
 }
 
 fn collect_deprecated_item(checker, item) {
-    if item.kind == Fn || item.kind == PanicHandler || item.kind == OomHandler {
+    let kind = item.kind.to_string()
+    if kind == "Fn" || kind == "PanicHandler" || kind == "OomHandler" {
         collect_deprecated_fn(checker, item.fn_def)
         return
     }
-    if item.kind == Class {
+    if kind == "Class" {
         let mut index = 0
         while index < item.class_def.members.len() {
             let member = item.class_def.members[index]
-            if member.kind == Method {
+            if member.kind.to_string() == "Method" {
                 collect_deprecated_fn(checker, member.method)
-            } elif member.kind == Layer {
+            } elif member.kind.to_string() == "Layer" {
                 let mut layer_index = 0
                 while layer_index < member.layer_def.methods.len() {
                     collect_deprecated_fn(checker, member.layer_def.methods[layer_index])
@@ -65,7 +66,7 @@ fn collect_deprecated_item(checker, item) {
         }
         return
     }
-    if item.kind == Interface {
+    if kind == "Interface" {
         let mut index = 0
         while index < item.interface_def.methods.len() {
             collect_deprecated_fn(checker, item.interface_def.methods[index])
@@ -73,7 +74,7 @@ fn collect_deprecated_item(checker, item) {
         }
         return
     }
-    if item.kind == Extern {
+    if kind == "Extern" {
         let mut index = 0
         while index < item.extern_block.functions.len() {
             collect_deprecated_fn(checker, item.extern_block.functions[index])
@@ -116,7 +117,8 @@ fn collect_deprecated_block(checker, block) {
 }
 
 fn collect_deprecated_stmt(checker, stmt) {
-    if stmt.kind == Let {
+    let kind = stmt.kind.to_string()
+    if kind == "Let" {
         if stmt.let_stmt.type_hint != None {
             checker.push_deprecated_syntax(
                 "inline let type annotation '" + stmt.let_stmt.name + ": ...'",
@@ -126,11 +128,11 @@ fn collect_deprecated_stmt(checker, stmt) {
         }
         return
     }
-    if stmt.kind == If {
+    if kind == "If" {
         collect_deprecated_block(checker, stmt.if_stmt.then_branch)
         if stmt.if_stmt.else_branch != None {
             let else_branch = stmt.if_stmt.else_branch
-            if else_branch.kind == If {
+            if else_branch.kind.to_string() == "If" {
                 collect_deprecated_block(checker, else_branch.if_branch.then_branch)
             } else {
                 collect_deprecated_block(checker, else_branch.block)
@@ -138,25 +140,25 @@ fn collect_deprecated_stmt(checker, stmt) {
         }
         return
     }
-    if stmt.kind == For {
+    if kind == "For" {
         collect_deprecated_block(checker, stmt.for_stmt.body)
         return
     }
-    if stmt.kind == While {
+    if kind == "While" {
         collect_deprecated_block(checker, stmt.while_stmt.body)
         return
     }
-    if stmt.kind == Spawn {
-        if stmt.spawn_stmt.body.kind == Block {
+    if kind == "Spawn" {
+        if stmt.spawn_stmt.body.kind.to_string() == "Block" {
             collect_deprecated_block(checker, stmt.spawn_stmt.body.block)
         }
         return
     }
-    if stmt.kind == Block || stmt.kind == UnsafeBlock || stmt.kind == PointerBlock || stmt.kind == ComptimeBlock {
+    if kind == "Block" || kind == "UnsafeBlock" || kind == "PointerBlock" || kind == "ComptimeBlock" {
         collect_deprecated_block(checker, stmt.block)
         return
     }
-    if stmt.kind == IfCompile {
+    if kind == "IfCompile" {
         collect_deprecated_block(checker, stmt.if_compile.body)
     }
 }
