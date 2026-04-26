@@ -52,6 +52,7 @@
     forward_body_json: () -> String
     effects_main_body_json: () -> String
     ownership_use_after_move_error_json: () -> String
+    ownership_error_json: (String) -> String
     ident_kind_json: (String) -> String
     str_lit_kind_json: (String) -> String
     return_stmt_json: (String) -> String
@@ -1519,10 +1520,6 @@ fn ownership_error_json(kind) {
             "}"
         )
     )
-}
-
-fn ownership_move_while_borrowed_error_json() {
-    return ownership_error_json("MoveWhileBorrowed")
 }
 
 fn ident_kind_json(name) {
