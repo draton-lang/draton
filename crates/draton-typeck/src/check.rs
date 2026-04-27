@@ -1490,7 +1490,7 @@ impl TypeChecker {
             Expr::Index(target, index, span) => self.infer_index(target, index, *span),
             Expr::Lambda(params, body, span) => self.infer_lambda(params, body, *span, None),
             Expr::Cast(expr, ty, span) => self.infer_cast(expr, ty, *span),
-            Expr::Match(subject, arms, span) => self.infer_match(subject, arms, *span),
+            Expr::Match(subject, arms, span) => self.infer_match(subject, arms, *span, None),
             Expr::Ok(expr, span) => {
                 let (typed, ok_ty) = self.infer_expr(expr);
                 let err_ty = self.fresh_var();
@@ -1518,6 +1518,48 @@ impl TypeChecker {
     ) -> (TypedExpr, Type) {
         match expr {
             Expr::Lambda(params, body, span) => self.infer_lambda(params, body, *span, expected),
+            Expr::Match(subject, arms, span) => self.infer_match(subject, arms, *span, expected),
+            Expr::Ident(name, span) => {
+                if let Some(expected) = expected.clone() {
+                    let expected_ty = self.apply_subst(expected);
+                    if self.enum_variant_matches_expected(name, &expected_ty) {
+                        return (
+                            TypedExpr {
+                                kind: TypedExprKind::Ident(name.clone()),
+                                ty: expected_ty.clone(),
+                                span: *span,
+                                use_effect: None,
+                            },
+                            expected_ty,
+                        );
+                    }
+                }
+                let (mut typed, ty) = self.infer_expr(expr);
+                if let Some(expected) = expected {
+                    let original_ty = self.apply_subst(ty.clone());
+                    let expected_ty = self.apply_subst(expected.clone());
+                    let resolved = self.unify(ty, expected, expr.span());
+                    let resolved = self.apply_subst(resolved);
+                    if self.can_upcast_to_interface(&original_ty, &expected_ty) {
+                        let cast_span = expr.span();
+                        let cast_kind = TypedExprKind::Cast(Box::new(typed), expected_ty.clone());
+                        (
+                            TypedExpr {
+                                kind: cast_kind,
+                                ty: expected_ty.clone(),
+                                span: cast_span,
+                                use_effect: None,
+                            },
+                            expected_ty,
+                        )
+                    } else {
+                        typed.ty = resolved.clone();
+                        (typed, resolved)
+                    }
+                } else {
+                    (typed, ty)
+                }
+            }
             _ => {
                 let (mut typed, ty) = self.infer_expr(expr);
                 if let Some(expected) = expected {
@@ -1545,6 +1587,17 @@ impl TypeChecker {
                     (typed, ty)
                 }
             }
+        }
+    }
+
+    fn enum_variant_matches_expected(&self, variant: &str, expected: &Type) -> bool {
+        match expected {
+            Type::Named(enum_name, args) if args.is_empty() => self
+                .enum_defs
+                .get(enum_name)
+                .map(|variants| variants.iter().any(|candidate| candidate == variant))
+                .unwrap_or(false),
+            _ => false,
         }
     }
 
@@ -1581,7 +1634,8 @@ impl TypeChecker {
                     }
                     _ => {
                         let (typed_lhs, lhs_ty) = self.infer_expr(lhs);
-                        let (typed_rhs, rhs_ty) = self.infer_expr(rhs);
+                        let (typed_rhs, rhs_ty) =
+                            self.infer_expr_with_expected(rhs, Some(lhs_ty.clone()));
                         (typed_lhs, lhs_ty, typed_rhs, rhs_ty)
                     }
                 }
@@ -2056,9 +2110,10 @@ impl TypeChecker {
         subject: &Expr,
         arms: &[MatchArm],
         span: draton_ast::Span,
+        expected_result: Option<Type>,
     ) -> (TypedExpr, Type) {
         let (typed_subject, subject_ty) = self.infer_expr(subject);
-        let result_ty = self.fresh_var();
+        let result_ty = expected_result.unwrap_or_else(|| self.fresh_var());
         let expected_subject = self.apply_subst(subject_ty.clone());
         let typed_arms = arms
             .iter()
@@ -2069,7 +2124,8 @@ impl TypeChecker {
                 let _ = self.unify(subject_ty.clone(), pattern_ty, arm.pattern.span());
                 let (typed_body, body_ty) = match &arm.body {
                     MatchArmBody::Expr(expr) => {
-                        let (typed, ty) = self.infer_expr(expr);
+                        let (typed, ty) =
+                            self.infer_expr_with_expected(expr, Some(result_ty.clone()));
                         (TypedMatchArmBody::Expr(typed), ty)
                     }
                     MatchArmBody::Block(block) => {
@@ -2979,13 +3035,15 @@ impl TypeChecker {
                         .enum_defs
                         .insert(enum_def.name.clone(), enum_def.variants.clone());
                     for variant in &enum_def.variants {
-                        self.env.define(
-                            variant,
-                            Scheme {
-                                quantified: Vec::new(),
-                                ty: Type::Named(enum_def.name.clone(), Vec::new()),
-                            },
-                        );
+                        if self.env.lookup(variant).is_none() {
+                            self.env.define(
+                                variant,
+                                Scheme {
+                                    quantified: Vec::new(),
+                                    ty: Type::Named(enum_def.name.clone(), Vec::new()),
+                                },
+                            );
+                        }
                     }
                 }
                 _ => {}
